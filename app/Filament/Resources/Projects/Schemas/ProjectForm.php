@@ -1,0 +1,91 @@
+<?php
+
+namespace App\Filament\Resources\Projects\Schemas;
+
+use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
+use Filament\Schemas\Components\Section;
+use Filament\Schemas\Schema;
+
+class ProjectForm
+{
+    public static function configure(Schema $schema): Schema
+    {
+        return $schema->columns(2)->components([
+            Section::make('معلومات عامة')->columns(2)->schema([
+                TextInput::make('name')
+                    ->label('اسم المشروع')
+                    ->required()
+                    ->maxLength(255)
+                    ->columnSpanFull(),
+                Select::make('project_status_id')
+                    ->label('الحالة')
+                    ->relationship('projectStatus', 'name')
+                    ->searchable()
+                    ->preload()
+                    ->required(),
+                Select::make('donor_id')
+                    ->label('الجهة المانحة')
+                    ->relationship('donor', 'name')
+                    ->searchable()
+                    ->preload(),
+                Select::make('project_super_id')
+                    ->label('المشروع الرئيسي')
+                    ->relationship('projectSuper', 'name')
+                    ->searchable()
+                    ->preload(),
+                TextInput::make('donor_project_name')
+                    ->label('اسم المشروع لدى الجهة المانحة')
+                    ->maxLength(255)
+                    ->columnSpanFull(),
+            ]),
+            Section::make('التواريخ')->columns(2)->schema([
+                DatePicker::make('approval_date')
+                    ->label('تاريخ الاعتماد'),
+                DatePicker::make('implementation_date')
+                    ->label('تاريخ التنفيذ'),
+                DatePicker::make('start_date')
+                    ->label('تاريخ البداية'),
+                DatePicker::make('end_date')
+                    ->label('تاريخ النهاية'),
+                Textarea::make('notes')
+                    ->label('ملاحظات')
+                    ->columnSpanFull(),
+            ]),
+            Section::make('تكاليف المشروع')->columnSpanFull()->schema([
+                Repeater::make('costs')
+                    ->relationship()
+                    ->label('')
+                    ->schema([
+                        Select::make('account_type_id')
+                            ->label('نوع الحساب')
+                            ->relationship('accountType', 'name')
+                            ->searchable()
+                            ->preload()
+                            ->required()
+                            ->columnSpan(2),
+                        TextInput::make('amount')
+                            ->label('المبلغ')
+                            ->numeric()
+                            ->required(),
+                        TextInput::make('administrative_percentage')
+                            ->label('نسبة الإدارة %')
+                            ->numeric()
+                            ->suffix('%')
+                            ->default(0),
+                        Textarea::make('notes')
+                            ->label('ملاحظات')
+                            ->columnSpanFull(),
+                    ])
+                    ->columns(4)
+                    ->addActionLabel('إضافة تكلفة')
+                    ->defaultItems(0)
+                    ->collapsible()
+                    ->reorderable(),
+            ]),
+        ]);
+    }
+}
