@@ -1,35 +1,39 @@
 <?php
 
-namespace App\Filament\Resources\ProjectCosts\Schemas;
+namespace App\Filament\Resources\ProjectCostBudgetsPayments\Schemas;
 
+use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 
-class ProjectCostForm
+class ProjectCostBudgetsPaymentForm
 {
     public static function configure(Schema $schema): Schema
     {
         return $schema->components([
             Section::make()->columns(2)->schema([
-                Select::make('project_id')
-                    ->label('المشروع')
-                    ->relationship('project', 'name')
+                Select::make('project_cost_budget_id')
+                    ->label('ميزانية التكلفة')
+                    ->relationship('projectCostBudget', 'id')
                     ->searchable()
                     ->preload()
                     ->required()
                     ->columnSpanFull(),
-                Select::make('account_type_id')
-                    ->label('نوع الحساب')
-                    ->relationship('accountType', 'name')
+                Select::make('transaction_id')
+                    ->label('المعاملة المالية')
+                    ->relationship('transaction', 'transaction_number')
                     ->searchable()
                     ->preload()
-                    ->required(),
+                    ->nullable(),
                 TextInput::make('amount')
                     ->label('المبلغ')
                     ->numeric()
+                    ->required(),
+                DatePicker::make('date')
+                    ->label('التاريخ')
                     ->required(),
                 Textarea::make('notes')
                     ->label('ملاحظات')

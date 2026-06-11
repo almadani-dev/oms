@@ -8,16 +8,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class ProjectCost extends Model
+class ProjectCostBudget extends Model
 {
     use SoftDeletes, HasUserTracking;
 
-    protected $table = 'projects_costs';
-
     protected $fillable = [
-        'project_id',
-        'account_type_id',
-        'amount',
+        'project_cost_id',
+        'administrative_percentage',
+        'transfer_percentage',
+        'exchange_percentage',
+        'amount_after_percentages',
         'notes',
         'created_by',
         'updated_by',
@@ -26,33 +26,21 @@ class ProjectCost extends Model
     protected function casts(): array
     {
         return [
-            'amount' => 'decimal:2',
+            'administrative_percentage' => 'decimal:2',
+            'transfer_percentage'       => 'decimal:2',
+            'exchange_percentage'       => 'decimal:2',
+            'amount_after_percentages'  => 'decimal:2',
         ];
     }
 
-    public function project(): BelongsTo
+    public function projectCost(): BelongsTo
     {
-        return $this->belongsTo(Project::class);
+        return $this->belongsTo(ProjectCost::class);
     }
 
-    public function accountType(): BelongsTo
+    public function payments(): HasMany
     {
-        return $this->belongsTo(AccountType::class);
-    }
-
-    public function transactionLines(): HasMany
-    {
-        return $this->hasMany(TransactionLine::class, 'project_cost_id');
-    }
-
-    public function budgets(): HasMany
-    {
-        return $this->hasMany(ProjectCostBudget::class);
-    }
-
-    public function receipts(): HasMany
-    {
-        return $this->hasMany(ProjectCostReceipt::class);
+        return $this->hasMany(ProjectCostBudgetsPayment::class);
     }
 
     public function createdBy(): BelongsTo

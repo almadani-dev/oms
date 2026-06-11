@@ -41,7 +41,10 @@ class ProjectCostResource extends Resource
 
     public static function getRelations(): array
     {
-        return [];
+        return [
+            \App\Filament\Resources\ProjectCosts\RelationManagers\BudgetsRelationManager::class,
+            \App\Filament\Resources\ProjectCosts\RelationManagers\ReceiptsRelationManager::class,
+        ];
     }
 
     public static function getPages(): array

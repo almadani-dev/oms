@@ -71,11 +71,6 @@ class ProjectForm
                             ->label('المبلغ')
                             ->numeric()
                             ->required(),
-                        TextInput::make('administrative_percentage')
-                            ->label('نسبة الإدارة %')
-                            ->numeric()
-                            ->suffix('%')
-                            ->default(0),
                         Textarea::make('notes')
                             ->label('ملاحظات')
                             ->columnSpanFull(),

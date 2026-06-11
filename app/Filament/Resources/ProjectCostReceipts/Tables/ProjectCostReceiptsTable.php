@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Filament\Resources\ProjectCosts\Tables;
+namespace App\Filament\Resources\ProjectCostReceipts\Tables;
 
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -9,23 +9,22 @@ use Filament\Actions\ForceDeleteBulkAction;
 use Filament\Actions\RestoreBulkAction;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 
-class ProjectCostsTable
+class ProjectCostReceiptsTable
 {
     public static function configure(Table $table): Table
     {
         return $table
             ->columns([
-                TextColumn::make('project.name')->label('المشروع')->searchable()->sortable(),
-                TextColumn::make('accountType.name')->label('نوع الحساب')->searchable()->sortable(),
+                TextColumn::make('projectCost.id')->label('تكلفة المشروع')->sortable(),
+                TextColumn::make('transaction.transaction_number')->label('المعاملة المالية')->searchable()->sortable(),
                 TextColumn::make('amount')->label('المبلغ')->formatStateUsing(fn($state) => \App\Helpers\NumberHelper::bigComma($state))->html()->sortable(),
+                TextColumn::make('date')->label('التاريخ')->date()->sortable(),
                 TextColumn::make('created_at')->label('تاريخ الإنشاء')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                SelectFilter::make('project_id')->relationship('project', 'name')->searchable()->preload()->label('المشروع'),
                 TrashedFilter::make(),
             ])
             ->recordActions([ViewAction::make(), EditAction::make()])

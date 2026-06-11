@@ -52,6 +52,16 @@ class Transaction extends Model
         return $this->hasMany(TransactionLine::class);
     }
 
+    public function projectCostBudgetPayments(): HasMany
+    {
+        return $this->hasMany(ProjectCostBudgetsPayment::class);
+    }
+
+    public function projectCostReceipts(): HasMany
+    {
+        return $this->hasMany(ProjectCostReceipt::class);
+    }
+
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');

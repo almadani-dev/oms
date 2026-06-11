@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Filament\Resources\ProjectCosts\Tables;
+namespace App\Filament\Resources\ProjectCostBudgets\Tables;
 
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -9,23 +9,23 @@ use Filament\Actions\ForceDeleteBulkAction;
 use Filament\Actions\RestoreBulkAction;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 
-class ProjectCostsTable
+class ProjectCostBudgetsTable
 {
     public static function configure(Table $table): Table
     {
         return $table
             ->columns([
-                TextColumn::make('project.name')->label('المشروع')->searchable()->sortable(),
-                TextColumn::make('accountType.name')->label('نوع الحساب')->searchable()->sortable(),
-                TextColumn::make('amount')->label('المبلغ')->formatStateUsing(fn($state) => \App\Helpers\NumberHelper::bigComma($state))->html()->sortable(),
+                TextColumn::make('projectCost.id')->label('تكلفة المشروع')->sortable(),
+                TextColumn::make('administrative_percentage')->label('نسبة الإدارة %')->formatStateUsing(fn($state) => \App\Helpers\NumberHelper::bigComma($state))->html(),
+                TextColumn::make('transfer_percentage')->label('نسبة التحويل %')->formatStateUsing(fn($state) => \App\Helpers\NumberHelper::bigComma($state))->html(),
+                TextColumn::make('exchange_percentage')->label('نسبة الصرف %')->formatStateUsing(fn($state) => \App\Helpers\NumberHelper::bigComma($state))->html(),
+                TextColumn::make('amount_after_percentages')->label('المبلغ بعد النسب')->formatStateUsing(fn($state) => \App\Helpers\NumberHelper::bigComma($state))->html()->sortable(),
                 TextColumn::make('created_at')->label('تاريخ الإنشاء')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                SelectFilter::make('project_id')->relationship('project', 'name')->searchable()->preload()->label('المشروع'),
                 TrashedFilter::make(),
             ])
             ->recordActions([ViewAction::make(), EditAction::make()])

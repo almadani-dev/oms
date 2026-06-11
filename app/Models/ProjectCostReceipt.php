@@ -5,19 +5,17 @@ namespace App\Models;
 use App\Traits\HasUserTracking;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class ProjectCost extends Model
+class ProjectCostReceipt extends Model
 {
     use SoftDeletes, HasUserTracking;
 
-    protected $table = 'projects_costs';
-
     protected $fillable = [
-        'project_id',
-        'account_type_id',
+        'project_cost_id',
+        'transaction_id',
         'amount',
+        'date',
         'notes',
         'created_by',
         'updated_by',
@@ -27,32 +25,18 @@ class ProjectCost extends Model
     {
         return [
             'amount' => 'decimal:2',
+            'date'   => 'date',
         ];
     }
 
-    public function project(): BelongsTo
+    public function projectCost(): BelongsTo
     {
-        return $this->belongsTo(Project::class);
+        return $this->belongsTo(ProjectCost::class);
     }
 
-    public function accountType(): BelongsTo
+    public function transaction(): BelongsTo
     {
-        return $this->belongsTo(AccountType::class);
-    }
-
-    public function transactionLines(): HasMany
-    {
-        return $this->hasMany(TransactionLine::class, 'project_cost_id');
-    }
-
-    public function budgets(): HasMany
-    {
-        return $this->hasMany(ProjectCostBudget::class);
-    }
-
-    public function receipts(): HasMany
-    {
-        return $this->hasMany(ProjectCostReceipt::class);
+        return $this->belongsTo(Transaction::class);
     }
 
     public function createdBy(): BelongsTo
