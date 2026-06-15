@@ -15,6 +15,7 @@ class Account extends Model
         'account_code',
         'name',
         'account_type_id',
+        'bank_type_id',
         'currency_id',
         'current_balance',
         'is_active',
@@ -33,6 +34,11 @@ class Account extends Model
     public function accountType(): BelongsTo
     {
         return $this->belongsTo(AccountType::class, 'account_type_id');
+    }
+
+    public function bankType(): BelongsTo
+    {
+        return $this->belongsTo(BankType::class);
     }
 
     public function currency(): BelongsTo

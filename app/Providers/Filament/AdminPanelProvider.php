@@ -41,6 +41,9 @@ class AdminPanelProvider extends PanelProvider
                 NavigationGroup::make('النظام'),
             ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
+            ->resources([
+                \App\Filament\Resources\ProjectCostReceipts\ProjectCostReceiptResource::class,
+            ])
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([
                 Dashboard::class,

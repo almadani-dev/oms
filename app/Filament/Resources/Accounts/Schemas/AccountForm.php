@@ -30,6 +30,12 @@ class AccountForm
                     ->searchable()
                     ->preload()
                     ->required(),
+                Select::make('bank_type_id')
+                    ->label('نوع البنك')
+                    ->relationship('bankType', 'name')
+                    ->searchable()
+                    ->preload()
+                    ->required(),
                 Select::make('currency_id')
                     ->label('العملة')
                     ->relationship('currency', 'name')

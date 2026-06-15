@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Traits\HasUserTracking;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class ProjectCostReceipt extends Model
@@ -37,6 +38,11 @@ class ProjectCostReceipt extends Model
     public function transaction(): BelongsTo
     {
         return $this->belongsTo(Transaction::class);
+    }
+
+    public function attachments(): MorphMany
+    {
+        return $this->morphMany(Attachment::class, 'attachable');
     }
 
     public function createdBy(): BelongsTo

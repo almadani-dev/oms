@@ -12,11 +12,20 @@ class ProjectSuperForm
     public static function configure(Schema $schema): Schema
     {
         return $schema->components([
-            Section::make()->columns(1)->schema([
+            Section::make()->columns(2)->schema([
                 TextInput::make('name')
                     ->label('اسم المشروع الرئيسي')
                     ->required()
-                    ->maxLength(255),
+                    ->maxLength(255)
+                    ->columnSpanFull(),
+
+                TextInput::make('code_prefix')
+                    ->label('بادئة الكود (مثال: WATER)')
+                    ->required()
+                    ->maxLength(20)
+                    ->hint('سيتم إنشاء الكود تلقائياً')
+                    ->dehydrateStateUsing(fn ($state) => strtoupper($state ?? '')),
+
                 Textarea::make('notes')
                     ->label('ملاحظات')
                     ->columnSpanFull(),

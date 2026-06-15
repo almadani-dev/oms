@@ -2,10 +2,12 @@
 
 namespace App\Filament\Resources\ProjectCostBudgets\Schemas;
 
+use App\Models\ProjectCost;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 
 class ProjectCostBudgetForm
@@ -20,7 +22,22 @@ class ProjectCostBudgetForm
                     ->searchable()
                     ->preload()
                     ->required()
+                    ->live()
                     ->columnSpanFull(),
+
+                TextInput::make('cost_currency')
+                    ->label('عملة التكلفة')
+                    ->disabled()
+                    ->dehydrated(false)
+                    ->state(function (Get $get) {
+                        $costId = $get('project_cost_id');
+                        if (! $costId) return null;
+                        $cost = ProjectCost::with('currency')->find($costId);
+                        return $cost?->currency
+                            ? $cost->currency->code . ' - ' . $cost->currency->name
+                            : null;
+                    })
+                    ->placeholder('يتم التعبئة تلقائياً عند اختيار التكلفة'),
                 TextInput::make('administrative_percentage')
                     ->label('نسبة الإدارة %')
                     ->numeric()

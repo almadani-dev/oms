@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ProjectCosts\Schemas;
 
+use App\Models\Currency;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -17,6 +18,7 @@ class ProjectCostForm
                 Select::make('project_id')
                     ->label('المشروع')
                     ->relationship('project', 'name')
+                    ->getOptionLabelFromRecordUsing(fn ($record) => $record->code ?: $record->name)
                     ->searchable()
                     ->preload()
                     ->required()
@@ -24,6 +26,15 @@ class ProjectCostForm
                 Select::make('account_type_id')
                     ->label('نوع الحساب')
                     ->relationship('accountType', 'name')
+                    ->searchable()
+                    ->preload()
+                    ->required(),
+                Select::make('currency_id')
+                    ->label('العملة')
+                    ->options(
+                        Currency::orderBy('code')->get()
+                            ->mapWithKeys(fn ($c) => [$c->id => $c->code . ' - ' . $c->name])
+                    )
                     ->searchable()
                     ->preload()
                     ->required(),

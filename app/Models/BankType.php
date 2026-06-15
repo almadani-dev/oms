@@ -8,37 +8,22 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class ProjectSuper extends Model
+class BankType extends Model
 {
     use SoftDeletes, HasUserTracking;
 
-    protected $table = 'projects_super';
+    protected $table = 'bank_types';
 
     protected $fillable = [
         'name',
-        'code_prefix',
-        'code',
         'notes',
         'created_by',
         'updated_by',
     ];
 
-    protected static function boot(): void
+    public function accounts(): HasMany
     {
-        parent::boot();
-
-        static::creating(function ($model) {
-            $prefix = strtoupper($model->code_prefix);
-            $count = ProjectSuper::withTrashed()
-                ->where('code_prefix', $prefix)
-                ->count() + 1;
-            $model->code = $prefix . '_' . str_pad($count, 3, '0', STR_PAD_LEFT);
-        });
-    }
-
-    public function projects(): HasMany
-    {
-        return $this->hasMany(Project::class, 'project_super_id');
+        return $this->hasMany(Account::class);
     }
 
     public function createdBy(): BelongsTo

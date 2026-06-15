@@ -3,14 +3,8 @@
 namespace App\Filament\Resources\ProjectCosts\RelationManagers;
 
 use Filament\Actions\BulkActionGroup;
-use Filament\Actions\CreateAction;
-use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
-use Filament\Actions\EditAction;
-use Filament\Forms\Components\DatePicker;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Textarea;
-use Filament\Forms\Components\TextInput;
+use Filament\Actions\ViewAction;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
@@ -20,28 +14,16 @@ class ReceiptsRelationManager extends RelationManager
 {
     protected static string $relationship = 'receipts';
 
-    protected static ?string $title = 'الإيصالات';
+    protected static ?string $title = 'الاستلامات';
+
+    public function isReadOnly(): bool
+    {
+        return true;
+    }
 
     public function form(Schema $schema): Schema
     {
-        return $schema->components([
-            Select::make('transaction_id')
-                ->label('المعاملة المالية')
-                ->relationship('transaction', 'transaction_number')
-                ->searchable()
-                ->preload()
-                ->nullable(),
-            TextInput::make('amount')
-                ->label('المبلغ')
-                ->numeric()
-                ->required(),
-            DatePicker::make('date')
-                ->label('التاريخ')
-                ->required(),
-            Textarea::make('notes')
-                ->label('ملاحظات')
-                ->columnSpanFull(),
-        ]);
+        return $schema->components([]);
     }
 
     public function table(Table $table): Table
@@ -49,22 +31,47 @@ class ReceiptsRelationManager extends RelationManager
         return $table
             ->recordTitleAttribute('id')
             ->columns([
-                TextColumn::make('transaction.transaction_number')->label('المعاملة المالية')->searchable()->sortable(),
-                TextColumn::make('amount')->label('المبلغ')->formatStateUsing(fn($state) => \App\Helpers\NumberHelper::bigComma($state))->html()->sortable(),
-                TextColumn::make('date')->label('التاريخ')->date()->sortable(),
-                TextColumn::make('created_at')->label('تاريخ الإنشاء')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('transaction.transaction_number')
+                    ->label('رقم المعاملة')
+                    ->searchable()
+                    ->sortable(),
+
+                TextColumn::make('transaction.partner.name')
+                    ->label('الجهة المانحة')
+                    ->sortable(),
+
+                TextColumn::make('debit_account')
+                    ->label('الحساب المدين')
+                    ->state(fn ($record) => $record->transaction
+                        ?->lines()->with('account')->where('debit_base', '>', 0)->first()
+                        ?->account?->name),
+
+                TextColumn::make('credit_account')
+                    ->label('الحساب الدائن')
+                    ->state(fn ($record) => $record->transaction
+                        ?->lines()->with('account')->where('credit_base', '>', 0)->first()
+                        ?->account?->name),
+
+                TextColumn::make('amount')
+                    ->label('المبلغ')
+                    ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
+                    ->html()
+                    ->sortable(),
+
+                TextColumn::make('date')
+                    ->label('التاريخ')
+                    ->date()
+                    ->sortable(),
+
+                TextColumn::make('has_attachment')
+                    ->label('إشعار مرفق')
+                    ->badge()
+                    ->state(fn ($record) => $record->attachments()->exists() ? 'نعم' : 'لا')
+                    ->color(fn ($state) => $state === 'نعم' ? 'success' : 'gray'),
             ])
-            ->recordActions([
-                EditAction::make(),
-                DeleteAction::make(),
-            ])
-            ->headerActions([
-                CreateAction::make(),
-            ])
+            ->recordActions([ViewAction::make()])
             ->toolbarActions([
-                BulkActionGroup::make([
-                    DeleteBulkAction::make(),
-                ]),
+                BulkActionGroup::make([DeleteBulkAction::make()]),
             ]);
     }
 }

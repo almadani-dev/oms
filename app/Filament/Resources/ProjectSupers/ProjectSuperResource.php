@@ -7,6 +7,7 @@ use App\Filament\Resources\ProjectSupers\Pages\EditProjectSuper;
 use App\Filament\Resources\ProjectSupers\Pages\ListProjectSupers;
 use App\Filament\Resources\ProjectSupers\Pages\ViewProjectSuper;
 use App\Filament\Resources\ProjectSupers\Schemas\ProjectSuperForm;
+use App\Filament\Resources\ProjectSupers\Schemas\ProjectSuperInfolist;
 use App\Filament\Resources\ProjectSupers\Tables\ProjectSupersTable;
 use App\Models\ProjectSuper;
 use BackedEnum;
@@ -35,6 +36,11 @@ class ProjectSuperResource extends Resource
     public static function form(Schema $schema): Schema
     {
         return ProjectSuperForm::configure($schema);
+    }
+
+    public static function infolist(Schema $schema): Schema
+    {
+        return ProjectSuperInfolist::configure($schema);
     }
 
     public static function table(Table $table): Table

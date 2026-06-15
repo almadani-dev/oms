@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Traits\HasUserTracking;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -14,6 +15,7 @@ class Project extends Model
 
     protected $fillable = [
         'name',
+        'code',
         'approval_date',
         'implementation_date',
         'start_date',
@@ -35,6 +37,23 @@ class Project extends Model
             'start_date'          => 'date',
             'end_date'            => 'date',
         ];
+    }
+
+    protected static function boot(): void
+    {
+        parent::boot();
+
+        static::creating(function ($model) {
+            $super = ProjectSuper::find($model->project_super_id);
+            $prefix = strtoupper($super?->code_prefix ?? 'PRJ');
+            $date = $model->approval_date
+                ? Carbon::parse($model->approval_date)->format('Ymd')
+                : Carbon::now()->format('Ymd');
+            $count = Project::withTrashed()
+                ->where('project_super_id', $model->project_super_id)
+                ->count() + 1;
+            $model->code = $prefix . '_' . $date . '_' . str_pad($count, 3, '0', STR_PAD_LEFT);
+        });
     }
 
     public function donor(): BelongsTo

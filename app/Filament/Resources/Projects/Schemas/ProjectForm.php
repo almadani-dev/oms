@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Projects\Schemas;
 
+use App\Models\Currency;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
@@ -21,6 +22,14 @@ class ProjectForm
                     ->required()
                     ->maxLength(255)
                     ->columnSpanFull(),
+
+                TextInput::make('code')
+                    ->label('كود المشروع')
+                    ->disabled()
+                    ->dehydrated(false)
+                    ->placeholder('سيتم إنشاؤه تلقائياً بعد الحفظ')
+                    ->columnSpanFull(),
+
                 Select::make('project_status_id')
                     ->label('الحالة')
                     ->relationship('projectStatus', 'name')
@@ -35,6 +44,7 @@ class ProjectForm
                 Select::make('project_super_id')
                     ->label('المشروع الرئيسي')
                     ->relationship('projectSuper', 'name')
+                    ->getOptionLabelFromRecordUsing(fn ($record) => $record->code ?: $record->name)
                     ->searchable()
                     ->preload(),
                 TextInput::make('donor_project_name')
@@ -67,6 +77,14 @@ class ProjectForm
                             ->preload()
                             ->required()
                             ->columnSpan(2),
+                        Select::make('currency_id')
+                            ->label('العملة')
+                            ->options(
+                                Currency::orderBy('code')->get()
+                                    ->mapWithKeys(fn ($c) => [$c->id => $c->code . ' - ' . $c->name])
+                            )
+                            ->searchable()
+                            ->required(),
                         TextInput::make('amount')
                             ->label('المبلغ')
                             ->numeric()

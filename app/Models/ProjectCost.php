@@ -18,6 +18,7 @@ class ProjectCost extends Model
         'project_id',
         'account_type_id',
         'amount',
+        'currency_id',
         'notes',
         'created_by',
         'updated_by',
@@ -38,6 +39,11 @@ class ProjectCost extends Model
     public function accountType(): BelongsTo
     {
         return $this->belongsTo(AccountType::class);
+    }
+
+    public function currency(): BelongsTo
+    {
+        return $this->belongsTo(Currency::class);
     }
 
     public function transactionLines(): HasMany

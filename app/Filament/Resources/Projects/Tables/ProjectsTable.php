@@ -19,6 +19,12 @@ class ProjectsTable
     {
         return $table
             ->columns([
+                TextColumn::make('code')
+                    ->label('الكود')
+                    ->badge()
+                    ->color('primary')
+                    ->searchable()
+                    ->sortable(),
                 TextColumn::make('name')->label('اسم المشروع')->searchable()->sortable(),
                 TextColumn::make('projectStatus.name')->label('الحالة')->badge()
                     ->color(fn ($record) => $record?->projectStatus?->color ? 'gray' : 'primary'),

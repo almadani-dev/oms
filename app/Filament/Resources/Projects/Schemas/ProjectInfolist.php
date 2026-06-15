@@ -12,6 +12,11 @@ class ProjectInfolist
     {
         return $schema->columns(2)->components([
             Section::make('معلومات عامة')->columns(2)->schema([
+                TextEntry::make('code')
+                    ->label('كود المشروع')
+                    ->badge()
+                    ->color('primary')
+                    ->columnSpanFull(),
                 TextEntry::make('name')
                     ->label('اسم المشروع')
                     ->columnSpanFull(),

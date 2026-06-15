@@ -23,6 +23,7 @@ class AccountsTable
                 TextColumn::make('account_code')->label('رقم الحساب')->searchable()->sortable()->copyable(),
                 TextColumn::make('name')->label('اسم الحساب')->searchable()->sortable(),
                 TextColumn::make('accountType.name')->label('نوع الحساب')->badge()->sortable(),
+                TextColumn::make('bankType.name')->label('نوع البنك')->badge()->sortable(),
                 TextColumn::make('currency.code')->label('العملة')->badge(),
                 TextColumn::make('current_balance')->label('الرصيد الحالي')->formatStateUsing(fn($state) => \App\Helpers\NumberHelper::bigComma($state))->html()->sortable(),
                 IconColumn::make('is_active')->label('نشط')->boolean(),

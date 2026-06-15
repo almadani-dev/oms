@@ -9,10 +9,8 @@ use App\Filament\Resources\ProjectCostReceipts\Pages\ViewProjectCostReceipt;
 use App\Filament\Resources\ProjectCostReceipts\Schemas\ProjectCostReceiptForm;
 use App\Filament\Resources\ProjectCostReceipts\Tables\ProjectCostReceiptsTable;
 use App\Models\ProjectCostReceipt;
-use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
-use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
@@ -20,12 +18,19 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
 class ProjectCostReceiptResource extends Resource
 {
     protected static ?string $model = ProjectCostReceipt::class;
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedInboxArrowDown;
-    protected static \UnitEnum|string|null $navigationGroup = 'المشاريع';
-    protected static ?int $navigationSort = 5;
-    protected static ?string $navigationLabel = 'دفعات الاستلام';
-    protected static ?string $modelLabel = 'إيصال تكلفة';
-    protected static ?string $pluralModelLabel = 'إيصالات التكاليف';
+
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-arrow-down-circle';
+
+    protected static string|\UnitEnum|null $navigationGroup = 'المالية';
+
+    protected static ?int $navigationSort = 99;
+
+    protected static ?string $navigationLabel = 'المبالغ المستلمة';
+
+    protected static ?string $modelLabel = 'استلام مبلغ';
+
+    protected static ?string $pluralModelLabel = 'استلامات المبالغ';
+
     protected static ?string $recordTitleAttribute = 'id';
 
     public static function form(Schema $schema): Schema

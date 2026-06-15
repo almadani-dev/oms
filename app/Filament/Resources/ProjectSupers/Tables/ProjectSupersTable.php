@@ -18,6 +18,11 @@ class ProjectSupersTable
     {
         return $table
             ->columns([
+                TextColumn::make('code')
+                    ->label('الكود')
+                    ->badge()
+                    ->searchable()
+                    ->sortable(),
                 TextColumn::make('name')
                     ->label('الاسم')
                     ->searchable()
