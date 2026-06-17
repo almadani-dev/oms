@@ -5,14 +5,23 @@ namespace App\Models;
 use App\Traits\HasUserTracking;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class ProjectCostBudgetsPayment extends Model
 {
     use SoftDeletes, HasUserTracking;
 
+    /**
+     * Role tags written to transaction_lines.notes so the four disbursement
+     * lines can be reliably identified again on edit / view / delete.
+     */
+    public const LINE_SOURCE      = 'صرف - المصدر (دائن)';
+    public const LINE_ADMIN       = 'صرف - النسبة الإدارية (مدين)';
+    public const LINE_TRANSFER    = 'صرف - نسبة التحويل (مدين)';
+    public const LINE_DESTINATION = 'صرف - الوجهة (مدين - نهائي)';
+
     protected $fillable = [
-        'project_cost_budget_id',
         'transaction_id',
         'amount',
         'date',
@@ -37,6 +46,11 @@ class ProjectCostBudgetsPayment extends Model
     public function transaction(): BelongsTo
     {
         return $this->belongsTo(Transaction::class);
+    }
+
+    public function attachments(): MorphMany
+    {
+        return $this->morphMany(Attachment::class, 'attachable');
     }
 
     public function createdBy(): BelongsTo

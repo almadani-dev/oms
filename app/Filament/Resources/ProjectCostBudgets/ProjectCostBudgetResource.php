@@ -7,6 +7,7 @@ use App\Filament\Resources\ProjectCostBudgets\Pages\EditProjectCostBudget;
 use App\Filament\Resources\ProjectCostBudgets\Pages\ListProjectCostBudgets;
 use App\Filament\Resources\ProjectCostBudgets\Pages\ViewProjectCostBudget;
 use App\Filament\Resources\ProjectCostBudgets\Schemas\ProjectCostBudgetForm;
+use App\Filament\Resources\ProjectCostBudgets\Schemas\ProjectCostBudgetInfolist;
 use App\Filament\Resources\ProjectCostBudgets\Tables\ProjectCostBudgetsTable;
 use App\Models\ProjectCostBudget;
 use BackedEnum;
@@ -31,6 +32,11 @@ class ProjectCostBudgetResource extends Resource
     public static function form(Schema $schema): Schema
     {
         return ProjectCostBudgetForm::configure($schema);
+    }
+
+    public static function infolist(Schema $schema): Schema
+    {
+        return ProjectCostBudgetInfolist::configure($schema);
     }
 
     public static function table(Table $table): Table

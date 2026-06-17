@@ -8,24 +8,23 @@ use App\Filament\Resources\ProjectCostBudgetsPayments\Pages\ListProjectCostBudge
 use App\Filament\Resources\ProjectCostBudgetsPayments\Pages\ViewProjectCostBudgetsPayment;
 use App\Filament\Resources\ProjectCostBudgetsPayments\Schemas\ProjectCostBudgetsPaymentForm;
 use App\Filament\Resources\ProjectCostBudgetsPayments\Tables\ProjectCostBudgetsPaymentsTable;
-use App\Models\ProjectCostBudgetsPayment;
+use App\Models\ProjectCostBudget;
 use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
-use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class ProjectCostBudgetsPaymentResource extends Resource
 {
-    protected static ?string $model = ProjectCostBudgetsPayment::class;
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedCreditCard;
-    protected static \UnitEnum|string|null $navigationGroup = 'المشاريع';
-    protected static ?int $navigationSort = 4;
-    protected static ?string $navigationLabel = 'دفعات الصرف';
-    protected static ?string $modelLabel = 'دفعة ميزانية';
-    protected static ?string $pluralModelLabel = 'دفعات الميزانيات';
+    protected static ?string $model = ProjectCostBudget::class;
+    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-arrow-up-circle';
+    protected static \UnitEnum|string|null $navigationGroup = 'المالية';
+    protected static ?int $navigationSort = 50;
+    protected static ?string $navigationLabel = 'صرف مبلغ المشروع';
+    protected static ?string $modelLabel = 'صرف مبلغ';
+    protected static ?string $pluralModelLabel = 'صرف مبالغ المشاريع';
     protected static ?string $recordTitleAttribute = 'id';
 
     public static function form(Schema $schema): Schema
@@ -53,9 +52,17 @@ class ProjectCostBudgetsPaymentResource extends Resource
         ];
     }
 
+    public static function getEloquentQuery(): Builder
+    {
+        // Only disbursements (rows linked to a transaction) belong to this resource;
+        // planned budgets (transaction_id = null) live in ProjectCostBudgetResource.
+        return parent::getEloquentQuery()->whereNotNull('transaction_id');
+    }
+
     public static function getRecordRouteBindingEloquentQuery(): Builder
     {
         return parent::getRecordRouteBindingEloquentQuery()
-            ->withoutGlobalScopes([SoftDeletingScope::class]);
+            ->withoutGlobalScopes([SoftDeletingScope::class])
+            ->whereNotNull('transaction_id');
     }
 }
