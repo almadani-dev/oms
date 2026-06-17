@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
 class ProjectCostBudgetsPaymentResource extends Resource
 {
     protected static ?string $model = ProjectCostBudget::class;
+    protected static ?string $slug = 'project-cost-budgets-disbursements';
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-arrow-up-circle';
     protected static \UnitEnum|string|null $navigationGroup = 'المالية';
     protected static ?int $navigationSort = 50;
@@ -26,6 +27,9 @@ class ProjectCostBudgetsPaymentResource extends Resource
     protected static ?string $modelLabel = 'صرف مبلغ';
     protected static ?string $pluralModelLabel = 'صرف مبالغ المشاريع';
     protected static ?string $recordTitleAttribute = 'id';
+
+    // Disabled: global search on a numeric id adds query overhead with no value.
+    protected static bool $isGloballySearchable = false;
 
     public static function form(Schema $schema): Schema
     {
@@ -56,7 +60,10 @@ class ProjectCostBudgetsPaymentResource extends Resource
     {
         // Only disbursements (rows linked to a transaction) belong to this resource;
         // planned budgets (transaction_id = null) live in ProjectCostBudgetResource.
-        return parent::getEloquentQuery()->whereNotNull('transaction_id');
+        // Eager load relationships shown in the table to avoid N+1 queries.
+        return parent::getEloquentQuery()
+            ->whereNotNull('transaction_id')
+            ->with(['projectCost.project', 'transaction.partner']);
     }
 
     public static function getRecordRouteBindingEloquentQuery(): Builder

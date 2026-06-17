@@ -33,6 +33,9 @@ class ProjectCostReceiptResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'id';
 
+    // Disabled: global search on a numeric id adds query overhead with no value.
+    protected static bool $isGloballySearchable = false;
+
     public static function form(Schema $schema): Schema
     {
         return ProjectCostReceiptForm::configure($schema);
@@ -56,6 +59,16 @@ class ProjectCostReceiptResource extends Resource
             'view'   => ViewProjectCostReceipt::route('/{record}'),
             'edit'   => EditProjectCostReceipt::route('/{record}/edit'),
         ];
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        // Eager load relationships shown in the table to avoid N+1 queries.
+        return parent::getEloquentQuery()->with([
+            'transaction.partner',
+            'transaction.transactionType',
+            'projectCost.project',
+        ]);
     }
 
     public static function getRecordRouteBindingEloquentQuery(): Builder

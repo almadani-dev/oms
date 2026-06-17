@@ -18,8 +18,7 @@ class AccountsTable
 {
     public static function configure(Table $table): Table
     {
-        return $table
-            ->columns([
+        return $table            ->columns([
                 TextColumn::make('account_code')->label('رقم الحساب')->searchable()->sortable()->copyable(),
                 TextColumn::make('name')->label('اسم الحساب')->searchable()->sortable(),
                 TextColumn::make('accountType.name')->label('نوع الحساب')->badge()->sortable(),

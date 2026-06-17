@@ -14,6 +14,7 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class TransactionLineResource extends Resource
 {
@@ -25,6 +26,9 @@ class TransactionLineResource extends Resource
     protected static ?string $modelLabel = 'سطر معاملة';
     protected static ?string $pluralModelLabel = 'سطور المعاملات';
     protected static ?string $recordTitleAttribute = 'id';
+
+    // Disabled: global search on a numeric id adds query overhead with no value.
+    protected static bool $isGloballySearchable = false;
 
     public static function form(Schema $schema): Schema
     {
@@ -49,5 +53,11 @@ class TransactionLineResource extends Resource
             'view'   => ViewTransactionLine::route('/{record}'),
             'edit'   => EditTransactionLine::route('/{record}/edit'),
         ];
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        // Eager load relationships shown in the table to avoid N+1 queries.
+        return parent::getEloquentQuery()->with(['transaction', 'account', 'currency']);
     }
 }

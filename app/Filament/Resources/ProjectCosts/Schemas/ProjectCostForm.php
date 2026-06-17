@@ -20,7 +20,8 @@ class ProjectCostForm
                     ->relationship('project', 'name')
                     ->getOptionLabelFromRecordUsing(fn ($record) => $record->code ?: $record->name)
                     ->searchable()
-                    ->preload()
+                    ->preload(false)
+                    ->optionsLimit(50)
                     ->required()
                     ->columnSpanFull(),
                 Select::make('account_type_id')
@@ -32,7 +33,7 @@ class ProjectCostForm
                 Select::make('currency_id')
                     ->label('العملة')
                     ->options(
-                        Currency::orderBy('code')->get()
+                        Currency::orderBy('code')->get(['id', 'code', 'name'])
                             ->mapWithKeys(fn ($c) => [$c->id => $c->code . ' - ' . $c->name])
                     )
                     ->searchable()

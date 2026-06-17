@@ -68,9 +68,9 @@ class ProjectCostBudgetsPaymentForm
 
                 Select::make('project_cost_id')
                     ->label('تكلفة المشروع')
-                    ->options(fn (Get $get) => ProjectCost::with('currency')
+                    ->options(fn (Get $get) => ProjectCost::with('currency:id,name')
                         ->where('project_id', $get('project_id'))
-                        ->get()
+                        ->get(['id', 'amount', 'currency_id'])
                         ->mapWithKeys(fn ($cost) => [
                             $cost->id => number_format((float) $cost->amount, 2) . ' ' . ($cost->currency->name ?? ''),
                         ]))
@@ -464,7 +464,7 @@ class ProjectCostBudgetsPaymentForm
             ->where('bank_type_id', $bankTypeId)
             ->where('currency_id', $currencyId)
             ->orderBy('account_code')
-            ->get()
+            ->get(['id', 'account_code', 'name'])
             ->mapWithKeys(fn ($a) => [$a->id => trim(($a->account_code ? $a->account_code . ' - ' : '') . $a->name)])
             ->toArray();
     }

@@ -53,6 +53,12 @@ class PartnerResource extends Resource
         ];
     }
 
+    public static function getEloquentQuery(): Builder
+    {
+        // Eager load relationships shown in the table to avoid N+1 queries.
+        return parent::getEloquentQuery()->with(['partnerType']);
+    }
+
     public static function getRecordRouteBindingEloquentQuery(): Builder
     {
         return parent::getRecordRouteBindingEloquentQuery()

@@ -18,13 +18,15 @@ class TransactionLineForm
                     ->label('المعاملة')
                     ->relationship('transaction', 'transaction_number')
                     ->searchable()
-                    ->preload()
+                    ->preload(false)
+                    ->optionsLimit(50)
                     ->required(),
                 Select::make('account_id')
                     ->label('الحساب')
                     ->relationship('account', 'name')
                     ->searchable()
-                    ->preload()
+                    ->preload(false)
+                    ->optionsLimit(50)
                     ->required(),
                 Select::make('currency_id')
                     ->label('العملة')
@@ -36,7 +38,8 @@ class TransactionLineForm
                     ->label('تكلفة المشروع')
                     ->relationship('projectCost', 'id')
                     ->searchable()
-                    ->preload(),
+                    ->preload(false)
+                    ->optionsLimit(50),
                 TextInput::make('amount_currency')
                     ->label('المبلغ بالعملة')
                     ->numeric()

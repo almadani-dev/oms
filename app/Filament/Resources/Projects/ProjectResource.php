@@ -62,6 +62,12 @@ class ProjectResource extends Resource
         ];
     }
 
+    public static function getEloquentQuery(): Builder
+    {
+        // Eager load relationships shown in the table to avoid N+1 queries.
+        return parent::getEloquentQuery()->with(['projectStatus', 'donor']);
+    }
+
     public static function getRecordRouteBindingEloquentQuery(): Builder
     {
         return parent::getRecordRouteBindingEloquentQuery()

@@ -29,6 +29,9 @@ class ProjectCostBudgetResource extends Resource
     protected static ?string $pluralModelLabel = 'ميزانيات التكاليف';
     protected static ?string $recordTitleAttribute = 'id';
 
+    // Disabled: global search on a numeric id adds query overhead with no value.
+    protected static bool $isGloballySearchable = false;
+
     public static function form(Schema $schema): Schema
     {
         return ProjectCostBudgetForm::configure($schema);
@@ -59,6 +62,12 @@ class ProjectCostBudgetResource extends Resource
             'view'   => ViewProjectCostBudget::route('/{record}'),
             'edit'   => EditProjectCostBudget::route('/{record}/edit'),
         ];
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        // Eager load relationships shown in the table to avoid N+1 queries.
+        return parent::getEloquentQuery()->with(['projectCost.project', 'transaction']);
     }
 
     public static function getRecordRouteBindingEloquentQuery(): Builder

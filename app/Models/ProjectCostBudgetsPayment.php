@@ -21,7 +21,16 @@ class ProjectCostBudgetsPayment extends Model
     public const LINE_TRANSFER    = 'صرف - نسبة التحويل (مدين)';
     public const LINE_DESTINATION = 'صرف - الوجهة (مدين - نهائي)';
 
+    /**
+     * Role tags for the two execution-payment (صرف مبالغ التنفيذ) lines, so the
+     * beneficiary (debit) and auto credit (destination) lines can be reliably
+     * identified again on edit / view / delete.
+     */
+    public const LINE_BENEFICIARY = 'تنفيذ - المستفيد (مدين)';
+    public const LINE_CREDIT      = 'تنفيذ - الوجهة التلقائية (دائن)';
+
     protected $fillable = [
+        'project_cost_budget_id',
         'transaction_id',
         'amount',
         'date',

@@ -20,7 +20,8 @@ class ProjectCostBudgetForm
                     ->label('تكلفة المشروع')
                     ->relationship('projectCost', 'id')
                     ->searchable()
-                    ->preload()
+                    ->preload(false)
+                    ->optionsLimit(50)
                     ->required()
                     ->live()
                     ->columnSpanFull(),

@@ -38,7 +38,8 @@ class TransactionForm
                     ->label('الشريك')
                     ->relationship('partner', 'name')
                     ->searchable()
-                    ->preload(),
+                    ->preload(false)
+                    ->optionsLimit(50),
                 TextInput::make('reference')
                     ->label('المرجع')
                     ->maxLength(255)

@@ -58,9 +58,9 @@ class ProjectCostReceiptForm
 
                 Select::make('project_cost_id')
                     ->label('تكلفة المشروع')
-                    ->options(fn (Get $get) => ProjectCost::with('currency')
+                    ->options(fn (Get $get) => ProjectCost::with('currency:id,name')
                         ->where('project_id', $get('project_id'))
-                        ->get()
+                        ->get(['id', 'amount', 'currency_id'])
                         ->mapWithKeys(fn ($cost) => [
                             $cost->id => number_format((float) $cost->amount, 2) . ' ' . ($cost->currency->name ?? ''),
                         ]))
@@ -149,7 +149,7 @@ class ProjectCostReceiptForm
                     ->options(fn (Get $get) => Account::where('account_type_id', $get('debit_account_type_id'))
                         ->where('bank_type_id', $get('debit_bank_type_id'))
                         ->orderBy('account_code')
-                        ->get()
+                        ->get(['id', 'account_code', 'name'])
                         ->mapWithKeys(fn ($a) => [$a->id => $a->account_code . ' - ' . $a->name]))
                     ->required()
                     ->live()
@@ -182,7 +182,7 @@ class ProjectCostReceiptForm
                     ->options(fn (Get $get) => Account::where('account_type_id', $get('credit_account_type_id'))
                         ->where('bank_type_id', $get('credit_bank_type_id'))
                         ->orderBy('account_code')
-                        ->get()
+                        ->get(['id', 'account_code', 'name'])
                         ->mapWithKeys(fn ($a) => [$a->id => $a->account_code . ' - ' . $a->name]))
                     ->required()
                     ->live()
