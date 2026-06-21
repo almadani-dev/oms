@@ -1,0 +1,88 @@
+<?php
+
+namespace App\Models;
+
+use App\Traits\HasUserTracking;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+
+class GeneralExchange extends Model
+{
+    use SoftDeletes, HasUserTracking;
+
+    protected $table = 'general_exchanges';
+
+    /**
+     * Role tags written to transaction_lines.notes so the four exchange lines
+     * can be reliably identified again on edit / view / delete.
+     */
+    public const LINE_SOURCE      = 'تحويل عام - المصدر (دائن)';
+    public const LINE_ADMIN       = 'تحويل عام - النسبة الإدارية (مدين)';
+    public const LINE_TRANSFER    = 'تحويل عام - نسبة التحويل (مدين)';
+    public const LINE_DESTINATION = 'تحويل عام - الوجهة (مدين - نهائي)';
+
+    protected $fillable = [
+        'transaction_id',
+        'original_amount',
+        'administrative_percentage',
+        'transfer_percentage',
+        'fx_rate',
+        'final_amount',
+        'source_currency_id',
+        'disbursement_currency_id',
+        'partner_id',
+        'notes',
+        'date',
+        'created_by',
+        'updated_by',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'original_amount'           => 'decimal:2',
+            'administrative_percentage' => 'decimal:2',
+            'transfer_percentage'       => 'decimal:2',
+            'fx_rate'                   => 'decimal:6',
+            'final_amount'              => 'decimal:2',
+            'date'                      => 'date',
+        ];
+    }
+
+    public function transaction(): BelongsTo
+    {
+        return $this->belongsTo(Transaction::class);
+    }
+
+    public function partner(): BelongsTo
+    {
+        return $this->belongsTo(Partner::class);
+    }
+
+    public function sourceCurrency(): BelongsTo
+    {
+        return $this->belongsTo(Currency::class, 'source_currency_id');
+    }
+
+    public function disbursementCurrency(): BelongsTo
+    {
+        return $this->belongsTo(Currency::class, 'disbursement_currency_id');
+    }
+
+    public function attachments(): MorphMany
+    {
+        return $this->morphMany(Attachment::class, 'attachable');
+    }
+
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function updatedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'updated_by');
+    }
+}

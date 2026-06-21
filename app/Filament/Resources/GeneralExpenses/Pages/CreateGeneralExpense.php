@@ -1,0 +1,167 @@
+<?php
+
+namespace App\Filament\Resources\GeneralExpenses\Pages;
+
+use App\Filament\Resources\GeneralExpenses\GeneralExpenseResource;
+use App\Models\Account;
+use App\Models\Attachment;
+use App\Models\GeneralExpense;
+use App\Models\Transaction;
+use App\Models\TransactionLine;
+use Carbon\Carbon;
+use Filament\Notifications\Notification;
+use Filament\Resources\Pages\CreateRecord;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+
+class CreateGeneralExpense extends CreateRecord
+{
+    protected static string $resource = GeneralExpenseResource::class;
+
+    protected function getSavedNotificationTitle(): ?string
+    {
+        return null;
+    }
+
+    protected function handleRecordCreation(array $data): Model
+    {
+        $amount     = (float) $data['amount'];
+        $currencyId = (int) $data['currency_id'];
+
+        return DB::transaction(function () use ($data, $amount, $currencyId) {
+            // STEP 1 - Create the transaction (GEN-YYYY-XXXX)
+            $year              = Carbon::parse($data['date'])->format('Y');
+            $transactionNumber = $this->generateTransactionNumber('GEN-' . $year . '-');
+
+            $transaction = Transaction::create([
+                'fiscal_year_id'      => $data['fiscal_year_id'],
+                'transaction_type_id' => $data['transaction_type_id'],
+                'transaction_number'  => $transactionNumber,
+                'transaction_time'    => Carbon::parse($data['date']),
+                'partner_id'          => $data['partner_id'],
+                'notes'               => $data['notes'] ?? null,
+                'created_by'          => auth()->id(),
+                'updated_by'          => auth()->id(),
+            ]);
+
+            // STEP 2 - Create the two balanced transaction lines
+            $this->createLines($transaction->id, $data['debit_account_id'], $data['credit_account_id'], $currencyId, $amount);
+
+            // STEP 3 - Create the general expense row
+            $expense = GeneralExpense::create([
+                'transaction_id' => $transaction->id,
+                'amount'         => $amount,
+                'date'           => Carbon::parse($data['date']),
+                'partner_id'     => $data['partner_id'],
+                'description'    => $data['description'] ?? null,
+                'notes'          => $data['notes'] ?? null,
+                'created_by'     => auth()->id(),
+                'updated_by'     => auth()->id(),
+            ]);
+
+            // STEP 4 - Update account balances
+            Account::find($data['debit_account_id'])?->increment('current_balance', $amount);  // مدين
+            Account::find($data['credit_account_id'])?->decrement('current_balance', $amount);  // دائن
+
+            // STEP 5 - Store the attachment if provided
+            if (! empty($data['expense_image'])) {
+                $this->storeAttachment($expense, $data['expense_image'], $amount);
+            }
+
+            // STEP 6 - Success notification
+            Notification::make()
+                ->title('تم تسجيل المصروف بنجاح')
+                ->body('رقم المعاملة: ' . $transactionNumber)
+                ->success()
+                ->send();
+
+            return $expense;
+        });
+    }
+
+    /**
+     * Build the next transaction number for the given prefix (e.g. "GEN-2026-").
+     *
+     * Uses the real MAX of the existing numeric suffixes - including soft-deleted
+     * rows - instead of a row count, so deletions can never cause a duplicate.
+     */
+    protected function generateTransactionNumber(string $prefix): string
+    {
+        $numbers = Transaction::withTrashed()
+            ->where('transaction_number', 'like', $prefix . '%')
+            ->lockForUpdate()
+            ->pluck('transaction_number');
+
+        $max = 0;
+        foreach ($numbers as $number) {
+            $suffix = (int) substr((string) $number, strrpos((string) $number, '-') + 1);
+            $max    = max($max, $suffix);
+        }
+
+        return $prefix . str_pad($max + 1, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Line 1: مدين (debit_base = amount). Line 2: دائن (credit_base = amount).
+     */
+    protected function createLines(int $transactionId, $debitAccountId, $creditAccountId, int $currencyId, float $amount): void
+    {
+        $uid = auth()->id();
+
+        TransactionLine::create([
+            'transaction_id'  => $transactionId,
+            'account_id'      => $debitAccountId,
+            'currency_id'     => $currencyId,
+            'amount_currency' => $amount,
+            'fx_rate'         => 1,
+            'debit_base'      => $amount,
+            'credit_base'     => 0,
+            'created_by'      => $uid,
+            'updated_by'      => $uid,
+        ]);
+
+        TransactionLine::create([
+            'transaction_id'  => $transactionId,
+            'account_id'      => $creditAccountId,
+            'currency_id'     => $currencyId,
+            'amount_currency' => $amount,
+            'fx_rate'         => 1,
+            'debit_base'      => 0,
+            'credit_base'     => $amount,
+            'created_by'      => $uid,
+            'updated_by'      => $uid,
+        ]);
+    }
+
+    protected function storeAttachment(GeneralExpense $expense, string $tempPath, float $amount): void
+    {
+        $ext      = pathinfo($tempPath, PATHINFO_EXTENSION);
+        $mimeType = Storage::disk('public')->mimeType($tempPath);
+        $fileSize = Storage::disk('public')->size($tempPath);
+
+        $attachment = Attachment::create([
+            'attachable_type' => GeneralExpense::class,
+            'attachable_id'   => $expense->id,
+            'file_name'       => basename($tempPath),
+            'file_path'       => $tempPath,
+            'file_type'       => $mimeType,
+            'file_size'       => $fileSize,
+            'created_by'      => auth()->id(),
+            'updated_by'      => auth()->id(),
+        ]);
+
+        $newName = 'gen_' . $attachment->id
+            . '_' . Carbon::parse($expense->date ?? now())->format('Ymd')
+            . '_' . (int) $amount
+            . '.' . $ext;
+
+        $newPath = 'general-expenses/' . $newName;
+        Storage::disk('public')->move($tempPath, $newPath);
+
+        $attachment->update([
+            'file_name' => $newName,
+            'file_path' => $newPath,
+        ]);
+    }
+}

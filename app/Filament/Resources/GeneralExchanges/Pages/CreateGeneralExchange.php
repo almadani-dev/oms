@@ -1,0 +1,225 @@
+<?php
+
+namespace App\Filament\Resources\GeneralExchanges\Pages;
+
+use App\Filament\Resources\GeneralExchanges\GeneralExchangeResource;
+use App\Filament\Resources\GeneralExchanges\Schemas\GeneralExchangeForm;
+use App\Models\Account;
+use App\Models\Attachment;
+use App\Models\GeneralExchange;
+use App\Models\Transaction;
+use App\Models\TransactionLine;
+use Carbon\Carbon;
+use Filament\Notifications\Notification;
+use Filament\Resources\Pages\CreateRecord;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+
+class CreateGeneralExchange extends CreateRecord
+{
+    protected static string $resource = GeneralExchangeResource::class;
+
+    protected function getSavedNotificationTitle(): ?string
+    {
+        return null;
+    }
+
+    protected function handleRecordCreation(array $data): Model
+    {
+        // Derive every amount on the server from the trusted inputs.
+        $original    = (float) $data['original_amount'];
+        $adminPct    = (float) ($data['administrative_percentage'] ?? 0);
+        $transferPct = (float) ($data['transfer_percentage'] ?? 0);
+        $fxRate      = (float) ($data['fx_rate'] ?: 1);
+
+        [$adminAmount, $transferAmount, , $finalAmount] = GeneralExchangeForm::deriveAmounts($original, $adminPct, $transferPct, $fxRate);
+
+        $sourceCurrencyId = (int) $data['source_currency_id'];
+        $disbCurrencyId   = (int) $data['disbursement_currency_id'];
+
+        return DB::transaction(function () use (
+            $data, $original, $adminPct, $transferPct, $fxRate,
+            $adminAmount, $transferAmount, $finalAmount, $sourceCurrencyId, $disbCurrencyId
+        ) {
+            // STEP 1 - Create transaction (EXT-YYYY-XXXX)
+            $year              = Carbon::parse($data['date'])->format('Y');
+            $transactionNumber = $this->generateTransactionNumber('EXT-' . $year . '-');
+
+            $transaction = Transaction::create([
+                'fiscal_year_id'      => $data['fiscal_year_id'],
+                'transaction_type_id' => $data['transaction_type_id'],
+                'transaction_number'  => $transactionNumber,
+                'transaction_time'    => Carbon::parse($data['date']),
+                'partner_id'          => $data['partner_id'] ?? null,
+                'notes'               => $data['notes'] ?? null,
+                'created_by'          => auth()->id(),
+                'updated_by'          => auth()->id(),
+            ]);
+
+            // STEP 2 - Create the four transaction lines
+            $this->buildLines($transaction->id, $data, $sourceCurrencyId, $disbCurrencyId, [
+                'original' => $original,
+                'admin'    => $adminAmount,
+                'transfer' => $transferAmount,
+                'final'    => $finalAmount,
+                'fx'       => $fxRate,
+            ]);
+
+            // STEP 3 - Create the general exchange row
+            $exchange = GeneralExchange::create([
+                'transaction_id'            => $transaction->id,
+                'original_amount'           => $original,
+                'administrative_percentage' => $adminPct,
+                'transfer_percentage'       => $transferPct,
+                'fx_rate'                   => $fxRate,
+                'final_amount'              => $finalAmount,
+                'source_currency_id'        => $sourceCurrencyId,
+                'disbursement_currency_id'  => $disbCurrencyId,
+                'partner_id'                => $data['partner_id'] ?? null,
+                'notes'                     => $data['notes'] ?? null,
+                'date'                      => Carbon::parse($data['date']),
+                'created_by'                => auth()->id(),
+                'updated_by'                => auth()->id(),
+            ]);
+
+            // STEP 4 - Update account balances
+            Account::find($data['source_account_id'])?->decrement('current_balance', $original);
+            Account::find($data['admin_account_id'])?->increment('current_balance', $adminAmount);
+            Account::find($data['transfer_account_id'])?->increment('current_balance', $transferAmount);
+            Account::find($data['destination_account_id'])?->increment('current_balance', $finalAmount);
+
+            // STEP 5 - Store the attachment if provided
+            if (! empty($data['exchange_image'])) {
+                $this->storeAttachment($exchange, $data['exchange_image'], $finalAmount);
+            }
+
+            // STEP 6 - Success notification
+            Notification::make()
+                ->title('تم التحويل بنجاح')
+                ->body('رقم المعاملة: ' . $transactionNumber)
+                ->success()
+                ->send();
+
+            return $exchange;
+        });
+    }
+
+    /**
+     * Build the next transaction number for the given prefix (e.g. "EXT-2026-").
+     *
+     * Uses the real MAX of the existing numeric suffixes - including soft-deleted
+     * rows - instead of a row count, so deletions can never cause a duplicate.
+     */
+    protected function generateTransactionNumber(string $prefix): string
+    {
+        $numbers = Transaction::withTrashed()
+            ->where('transaction_number', 'like', $prefix . '%')
+            ->lockForUpdate()
+            ->pluck('transaction_number');
+
+        $max = 0;
+        foreach ($numbers as $number) {
+            $suffix = (int) substr((string) $number, strrpos((string) $number, '-') + 1);
+            $max    = max($max, $suffix);
+        }
+
+        return $prefix . str_pad($max + 1, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Four lines: 1 credit (source) + 3 debit (admin, transfer, destination),
+     * each tagged via notes for later identification on edit / view / delete.
+     */
+    protected function buildLines(int $transactionId, array $data, int $sourceCurrencyId, int $disbCurrencyId, array $amounts): void
+    {
+        $uid = auth()->id();
+
+        // Line 1 - دائن - المصدر (بعملة المصدر)
+        TransactionLine::create([
+            'transaction_id'  => $transactionId,
+            'account_id'      => $data['source_account_id'],
+            'currency_id'     => $sourceCurrencyId,
+            'amount_currency' => $amounts['original'],
+            'fx_rate'         => 1,
+            'debit_base'      => 0,
+            'credit_base'     => $amounts['original'],
+            'notes'           => GeneralExchange::LINE_SOURCE,
+            'created_by'      => $uid,
+            'updated_by'      => $uid,
+        ]);
+
+        // Line 2 - مدين - النسبة الإدارية (بعملة المصدر)
+        TransactionLine::create([
+            'transaction_id'  => $transactionId,
+            'account_id'      => $data['admin_account_id'],
+            'currency_id'     => $sourceCurrencyId,
+            'amount_currency' => $amounts['admin'],
+            'fx_rate'         => 1,
+            'debit_base'      => $amounts['admin'],
+            'credit_base'     => 0,
+            'notes'           => GeneralExchange::LINE_ADMIN,
+            'created_by'      => $uid,
+            'updated_by'      => $uid,
+        ]);
+
+        // Line 3 - مدين - التحويل (بعملة المصدر)
+        TransactionLine::create([
+            'transaction_id'  => $transactionId,
+            'account_id'      => $data['transfer_account_id'],
+            'currency_id'     => $sourceCurrencyId,
+            'amount_currency' => $amounts['transfer'],
+            'fx_rate'         => 1,
+            'debit_base'      => $amounts['transfer'],
+            'credit_base'     => 0,
+            'notes'           => GeneralExchange::LINE_TRANSFER,
+            'created_by'      => $uid,
+            'updated_by'      => $uid,
+        ]);
+
+        // Line 4 - مدين - الوجهة (بعملة الصرف)
+        TransactionLine::create([
+            'transaction_id'  => $transactionId,
+            'account_id'      => $data['destination_account_id'],
+            'currency_id'     => $disbCurrencyId,
+            'amount_currency' => $amounts['final'],
+            'fx_rate'         => $amounts['fx'],
+            'debit_base'      => $amounts['final'],
+            'credit_base'     => 0,
+            'notes'           => GeneralExchange::LINE_DESTINATION,
+            'created_by'      => $uid,
+            'updated_by'      => $uid,
+        ]);
+    }
+
+    protected function storeAttachment(GeneralExchange $exchange, string $tempPath, float $finalAmount): void
+    {
+        $ext      = pathinfo($tempPath, PATHINFO_EXTENSION);
+        $mimeType = Storage::disk('public')->mimeType($tempPath);
+        $fileSize = Storage::disk('public')->size($tempPath);
+
+        $attachment = Attachment::create([
+            'attachable_type' => GeneralExchange::class,
+            'attachable_id'   => $exchange->id,
+            'file_name'       => basename($tempPath),
+            'file_path'       => $tempPath,
+            'file_type'       => $mimeType,
+            'file_size'       => $fileSize,
+            'created_by'      => auth()->id(),
+            'updated_by'      => auth()->id(),
+        ]);
+
+        $newName = 'ext_' . $attachment->id
+            . '_' . Carbon::parse($exchange->date ?? now())->format('Ymd')
+            . '_' . (int) $finalAmount
+            . '.' . $ext;
+
+        $newPath = 'general-exchanges/' . $newName;
+        Storage::disk('public')->move($tempPath, $newPath);
+
+        $attachment->update([
+            'file_name' => $newName,
+            'file_path' => $newPath,
+        ]);
+    }
+}
