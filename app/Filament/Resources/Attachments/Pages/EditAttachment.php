@@ -4,8 +4,6 @@ namespace App\Filament\Resources\Attachments\Pages;
 
 use App\Filament\Resources\Attachments\AttachmentResource;
 use Filament\Actions\DeleteAction;
-use Filament\Actions\ForceDeleteAction;
-use Filament\Actions\RestoreAction;
 use Filament\Resources\Pages\EditRecord;
 
 class EditAttachment extends EditRecord
@@ -14,6 +12,6 @@ class EditAttachment extends EditRecord
 
     protected function getHeaderActions(): array
     {
-        return [DeleteAction::make(), ForceDeleteAction::make(), RestoreAction::make()];
+        return [DeleteAction::make()];
     }
 }

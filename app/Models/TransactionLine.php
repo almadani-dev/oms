@@ -5,10 +5,11 @@ namespace App\Models;
 use App\Traits\HasUserTracking;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class TransactionLine extends Model
 {
-    use HasUserTracking;
+    use HasUserTracking, SoftDeletes;
 
     protected $fillable = [
         'transaction_id',

@@ -4,8 +4,6 @@ namespace App\Filament\Resources\Currencies\Pages;
 
 use App\Filament\Resources\Currencies\CurrencyResource;
 use Filament\Actions\DeleteAction;
-use Filament\Actions\ForceDeleteAction;
-use Filament\Actions\RestoreAction;
 use Filament\Resources\Pages\EditRecord;
 
 class EditCurrency extends EditRecord
@@ -16,8 +14,6 @@ class EditCurrency extends EditRecord
     {
         return [
             DeleteAction::make(),
-            ForceDeleteAction::make(),
-            RestoreAction::make(),
         ];
     }
 }

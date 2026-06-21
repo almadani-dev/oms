@@ -19,7 +19,6 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class ProjectCostBudgetsPaymentsTable
 {
@@ -148,22 +147,21 @@ class ProjectCostBudgetsPaymentsTable
                 $transfer?->account?->decrement('current_balance', (float) $transfer->debit_base);
                 $dest?->account?->decrement('current_balance', (float) $dest->debit_base);
 
-                // STEP 2 - Delete all transaction lines (no SoftDeletes -> permanent)
+                // STEP 2 - Soft delete all transaction lines
                 $transaction->lines()->delete();
 
-                // STEP 3 - Delete transaction
-                $transaction->forceDelete();
+                // STEP 3 - Soft delete the transaction
+                $transaction->delete();
             }
 
-            // STEP 5 - Delete attachment file and record
+            // STEP 5 - Soft delete the attachment record (keep the physical file for audit)
             $attachment = $record->attachments()->first();
             if ($attachment) {
-                Storage::disk('public')->delete($attachment->file_path);
-                $attachment->forceDelete();
+                $attachment->delete();
             }
 
-            // STEP 4 - Delete project_cost_budgets row
-            $record->forceDelete();
+            // STEP 4 - Soft delete the project_cost_budgets row
+            $record->delete();
         });
     }
 }

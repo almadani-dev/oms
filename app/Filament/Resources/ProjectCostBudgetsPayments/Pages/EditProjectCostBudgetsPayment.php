@@ -160,8 +160,9 @@ class EditProjectCostBudgetsPayment extends EditRecord
                 'updated_by'          => auth()->id(),
             ]);
 
-            // STEP 3 - Delete old transaction_lines, create new ones
-            $transaction?->lines()->delete();
+            // STEP 3 - Replace old transaction_lines, create new ones (hard delete: these are
+            // being immediately recreated, so no soft-deleted duplicates should accumulate)
+            $transaction?->lines()->forceDelete();
 
             if ($transaction) {
                 $this->rebuildLines($transaction->id, $projectCostId, $costCurrencyId, $data, [
@@ -199,13 +200,11 @@ class EditProjectCostBudgetsPayment extends EditRecord
 
             if ($isNewFile) {
                 if ($existing) {
-                    Storage::disk('public')->delete($existing->file_path);
-                    $existing->forceDelete();
+                    $existing->delete();
                 }
                 $this->storeAttachment($record, $newFilePath, $finalAmount);
             } elseif (! $newFilePath && $existing) {
-                Storage::disk('public')->delete($existing->file_path);
-                $existing->forceDelete();
+                $existing->delete();
             }
 
             // STEP 7 - Success

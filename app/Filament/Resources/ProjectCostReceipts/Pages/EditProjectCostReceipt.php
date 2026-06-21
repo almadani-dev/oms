@@ -128,8 +128,7 @@ class EditProjectCostReceipt extends EditRecord
 
             if ($isNewFile) {
                 if ($existingAttachment) {
-                    Storage::disk('public')->delete($existingAttachment->file_path);
-                    $existingAttachment->forceDelete();
+                    $existingAttachment->delete();
                 }
 
                 $tempPath = $newFilePath;
@@ -162,8 +161,7 @@ class EditProjectCostReceipt extends EditRecord
                     'file_path' => $newPath,
                 ]);
             } elseif (!$newFilePath && $existingAttachment) {
-                Storage::disk('public')->delete($existingAttachment->file_path);
-                $existingAttachment->forceDelete();
+                $existingAttachment->delete();
             }
 
             // STEP 9 - Success notification

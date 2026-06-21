@@ -11,8 +11,6 @@ use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
-use Filament\Actions\ForceDeleteBulkAction;
-use Filament\Actions\RestoreBulkAction;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
@@ -21,7 +19,6 @@ use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class ProjectCostReceiptsTable
 {
@@ -141,8 +138,6 @@ class ProjectCostReceiptsTable
                             }
                         })
                         ->successNotificationTitle('تم حذف الاستلامات المحددة بنجاح'),
-                    ForceDeleteBulkAction::make(),
-                    RestoreBulkAction::make(),
                 ]),
             ]);
     }
@@ -171,23 +166,21 @@ class ProjectCostReceiptsTable
                     $creditLine->account->increment('current_balance', $record->amount);
                 }
 
-                // STEP 4 - Delete the transaction lines
-                // (TransactionLine has no SoftDeletes, so delete() is permanent)
+                // STEP 4 - Soft delete the transaction lines
                 $transaction->lines()->delete();
 
-                // STEP 5 - Delete the transaction
-                $transaction->forceDelete();
+                // STEP 5 - Soft delete the transaction
+                $transaction->delete();
             }
 
-            // STEP 6 - Delete the attachment file and record
+            // STEP 6 - Soft delete the attachment record (keep the physical file for audit)
             $attachment = $record->attachments()->first();
             if ($attachment) {
-                Storage::disk('public')->delete($attachment->file_path);
-                $attachment->forceDelete();
+                $attachment->delete();
             }
 
-            // STEP 7 - Delete the receipt record
-            $record->forceDelete();
+            // STEP 7 - Soft delete the receipt record
+            $record->delete();
         });
     }
 }
