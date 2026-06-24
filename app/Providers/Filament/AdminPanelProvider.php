@@ -35,6 +35,7 @@ class AdminPanelProvider extends PanelProvider
                 'primary' => Color::Amber,
             ])
             ->navigationGroups([
+                NavigationGroup::make('التقارير'),
                 NavigationGroup::make('المشاريع'),
                 NavigationGroup::make('المالية'),
                 NavigationGroup::make('الشركاء والبنوك'),
