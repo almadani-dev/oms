@@ -116,6 +116,7 @@ class EditGeneralExpense extends EditRecord
             // STEP 4 - Update the general expense row
             $record->update([
                 'amount'      => $amount,
+                'currency_id' => $currencyId,
                 'date'        => Carbon::parse($data['date']),
                 'partner_id'  => $data['partner_id'],
                 'description' => $data['description'] ?? null,

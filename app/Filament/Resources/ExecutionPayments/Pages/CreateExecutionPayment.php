@@ -70,6 +70,7 @@ class CreateExecutionPayment extends CreateRecord
                 'project_cost_budget_id' => $budget?->id,
                 'transaction_id'         => $transaction->id,
                 'amount'                 => $amount,
+                'currency_id'            => $currencyId,
                 'date'                   => Carbon::parse($data['date']),
                 'notes'                  => $data['notes'] ?? null,
                 'created_by'             => auth()->id(),

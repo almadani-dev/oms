@@ -76,6 +76,7 @@ class CreateProjectCostReceipt extends CreateRecord
                 'project_cost_id' => $data['project_cost_id'],
                 'transaction_id'  => $transaction->id,
                 'amount'          => $data['amount'],
+                'currency_id'     => $projectCost?->currency_id,
                 'date'            => $data['date'],
                 'notes'           => $data['notes'] ?? null,
                 'created_by'      => auth()->id(),

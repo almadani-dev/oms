@@ -112,6 +112,7 @@ class EditProjectCostReceipt extends EditRecord
             $record->update([
                 'project_cost_id' => $data['project_cost_id'],
                 'amount'          => $data['amount'],
+                'currency_id'     => $projectCost?->currency_id,
                 'date'            => $data['date'],
                 'notes'           => $data['notes'] ?? null,
                 'updated_by'      => auth()->id(),

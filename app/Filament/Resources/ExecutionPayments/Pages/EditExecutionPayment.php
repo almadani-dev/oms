@@ -134,6 +134,7 @@ class EditExecutionPayment extends EditRecord
             $record->update([
                 'project_cost_budget_id' => $budget?->id,
                 'amount'                 => $amount,
+                'currency_id'            => $currencyId,
                 'date'                   => Carbon::parse($data['date']),
                 'notes'                  => $data['notes'] ?? null,
                 'updated_by'             => auth()->id(),

@@ -52,6 +52,7 @@ class CreateGeneralExpense extends CreateRecord
             $expense = GeneralExpense::create([
                 'transaction_id' => $transaction->id,
                 'amount'         => $amount,
+                'currency_id'    => $currencyId,
                 'date'           => Carbon::parse($data['date']),
                 'partner_id'     => $data['partner_id'],
                 'description'    => $data['description'] ?? null,

@@ -45,7 +45,7 @@ class CreateProjectCostBudgetsPayment extends CreateRecord
 
         return DB::transaction(function () use (
             $data, $projectCostId, $costCurrencyId,
-            $original, $adminPct, $transferPct, $adminAmount, $transferAmount, $finalAmount, $fxRate
+            $original, $adminPct, $transferPct, $adminAmount, $transferAmount, $afterDeduct, $finalAmount, $fxRate
         ) {
             // STEP 1 - Create transaction
             $year              = Carbon::parse($data['date'])->format('Y');
@@ -76,11 +76,14 @@ class CreateProjectCostBudgetsPayment extends CreateRecord
                 'project_cost_id'           => $projectCostId,
                 'transaction_id'            => $transaction->id,
                 'original_amount'           => $original,
+                'amount_after_deductions'   => $afterDeduct,
+                'source_currency_id'        => $costCurrencyId,
+                'disbursement_currency_id'  => $data['disbursement_currency_id'],
                 'administrative_percentage' => $adminPct,
                 'transfer_percentage'       => $transferPct,
                 'exchange_percentage'       => 0,
                 'fx_rate'                   => $fxRate,
-                'final_amount'  => $finalAmount,
+                'final_amount'              => $finalAmount,
                 'notes'                     => $data['notes'] ?? null,
                 'created_by'                => auth()->id(),
                 'updated_by'                => auth()->id(),
