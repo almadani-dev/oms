@@ -65,9 +65,10 @@ class ProjectCostBudgetsPaymentResource extends Resource
             ->whereNotNull('transaction_id')
             ->with([
                 'projectCost.project.projectSuper',
-                'projectCost.currency',
                 'transaction.partner',
-                'transaction.lines.currency',
+                // Currency is now denormalized; no line walk needed for display.
+                'sourceCurrency',
+                'disbursementCurrency',
             ]);
     }
 

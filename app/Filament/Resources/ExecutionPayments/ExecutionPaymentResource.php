@@ -65,12 +65,15 @@ class ExecutionPaymentResource extends Resource
             ->with([
                 'projectCostBudget.projectCost.project.projectSuper',
                 'projectCostBudget.projectCost.currency',
-                'projectCostBudget.transaction.lines.currency',
+                // Budget disbursement currency is denormalized; no budget line walk.
+                'projectCostBudget.disbursementCurrency',
                 'transaction.transactionType',
                 'transaction.fiscalYear',
                 'transaction.partner',
+                // Lines still needed for the debit/credit account columns.
                 'transaction.lines.account',
-                'transaction.lines.currency',
+                // Execution payment currency is denormalized.
+                'currency',
             ]);
     }
 

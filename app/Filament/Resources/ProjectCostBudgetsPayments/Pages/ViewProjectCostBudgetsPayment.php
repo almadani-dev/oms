@@ -72,27 +72,22 @@ class ViewProjectCostBudgetsPayment extends ViewRecord
                     ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
                     ->html(),
 
+                // Read the denormalized net (before fx) column directly.
                 TextEntry::make('amount_after_deductions')
                     ->label('المبلغ بعد الخصومات')
-                    ->state(function ($record) {
-                        $admin    = (float) self::lineAmount($record, ProjectCostBudget::LINE_ADMIN, 'debit_base');
-                        $transfer = (float) self::lineAmount($record, ProjectCostBudget::LINE_TRANSFER, 'debit_base');
-                        return (float) $record->original_amount - $admin - $transfer;
-                    })
                     ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
                     ->html(),
 
-                TextEntry::make('disbursement_currency')
-                    ->label('عملة الصرف')
-                    ->state(fn ($record) => self::destinationLine($record)?->currency?->name),
+                TextEntry::make('disbursementCurrency.name')
+                    ->label('عملة الصرف'),
 
                 TextEntry::make('fx_rate')
                     ->label('سعر الصرف')
                     ->state(fn ($record) => (float) $record->fx_rate),
 
+                // Read the denormalized final (post-fx, disbursement currency) column directly.
                 TextEntry::make('final_amount')
                     ->label('المبلغ النهائي (بعملة الصرف)')
-                    ->state(fn ($record) => self::lineAmount($record, ProjectCostBudget::LINE_DESTINATION, 'debit_base'))
                     ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
                     ->html(),
 
@@ -173,14 +168,6 @@ class ViewProjectCostBudgetsPayment extends ViewRecord
             ]),
 
         ]);
-    }
-
-    protected static function destinationLine(ProjectCostBudget $record)
-    {
-        return $record->transaction
-            ?->lines()->with('currency')
-            ->where('notes', ProjectCostBudget::LINE_DESTINATION)
-            ->first();
     }
 
     protected static function lineAmount(ProjectCostBudget $record, string $tag, string $column)

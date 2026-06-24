@@ -65,11 +65,9 @@ class ExecutionPaymentsTable
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
 
-                // عملة المبلغ المرصود: disbursement currency of the budget (hidden by default)
-                TextColumn::make('budget_currency')
+                // عملة المبلغ المرصود: denormalized disbursement currency of the budget (hidden by default)
+                TextColumn::make('projectCostBudget.disbursementCurrency.name')
                     ->label('عملة المبلغ المرصود')
-                    ->state(fn ($record) => $record->projectCostBudget?->transaction?->lines
-                        ->firstWhere('notes', \App\Models\ProjectCostBudget::LINE_DESTINATION)?->currency?->name)
                     ->toggleable(isToggledHiddenByDefault: true),
 
                 TextColumn::make('amount')
@@ -78,10 +76,9 @@ class ExecutionPaymentsTable
                     ->html()
                     ->sortable(),
 
-                // عملة مبلغ التنفيذ: always visible (currency of the execution payment line)
-                TextColumn::make('execution_currency')
-                    ->label('عملة مبلغ التنفيذ')
-                    ->state(fn ($record) => self::line($record, ProjectCostBudgetsPayment::LINE_BENEFICIARY)?->currency?->name),
+                // عملة مبلغ التنفيذ: always visible (denormalized execution payment currency)
+                TextColumn::make('currency.name')
+                    ->label('عملة مبلغ التنفيذ'),
 
                 // --- Detailed: debit (beneficiary) + credit accounts ---
                 TextColumn::make('beneficiary_account')

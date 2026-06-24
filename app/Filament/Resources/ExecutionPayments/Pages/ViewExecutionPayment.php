@@ -60,7 +60,7 @@ class ViewExecutionPayment extends ViewRecord
 
                 TextEntry::make('budget_currency')
                     ->label('عملة المرصود')
-                    ->state(fn ($record) => ExecutionPaymentForm::budgetCurrencyName($record->project_cost_budget_id)),
+                    ->state(fn ($record) => $record->projectCostBudget?->disbursementCurrency?->name),
 
             ]),
 

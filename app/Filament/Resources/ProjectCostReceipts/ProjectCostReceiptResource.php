@@ -69,7 +69,7 @@ class ProjectCostReceiptResource extends Resource
             'transaction.transactionType',
             'transaction.fiscalYear',
             'projectCost.project.projectSuper',
-            'projectCost.currency',
+            'currency',
         ]);
     }
 

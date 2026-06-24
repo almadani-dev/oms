@@ -66,8 +66,10 @@ class GeneralExpenseResource extends Resource
                 'transaction.partner',
                 'transaction.transactionType',
                 'transaction.fiscalYear',
+                // Lines still needed for the debit/credit account columns.
                 'transaction.lines.account',
-                'transaction.lines.currency',
+                // Expense currency is denormalized; no line walk needed for display.
+                'currency',
                 'partner',
             ]);
     }

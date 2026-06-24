@@ -53,7 +53,8 @@ class ProjectCostBudgetsPaymentsTable
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
 
-                TextColumn::make('projectCost.currency.name')
+                // العملة الأصلية: denormalized source currency of the budget.
+                TextColumn::make('sourceCurrency.name')
                     ->label('العملة الأصلية')
                     ->toggleable(isToggledHiddenByDefault: true),
 
@@ -93,15 +94,9 @@ class ProjectCostBudgetsPaymentsTable
                     ->html()
                     ->toggleable(isToggledHiddenByDefault: true),
 
-                // --- Detailed: amount after deductions (net) ---
+                // --- Detailed: amount after deductions (net), read from denormalized column ---
                 TextColumn::make('amount_after_deductions')
                     ->label('المبلغ بعد الخصومات / الصافي')
-                    ->state(fn ($record) => round(
-                        (float) $record->original_amount
-                        - round((float) $record->original_amount * (float) $record->administrative_percentage / 100, 2)
-                        - round((float) $record->original_amount * (float) $record->transfer_percentage / 100, 2),
-                        2
-                    ))
                     ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
                     ->html()
                     ->toggleable(isToggledHiddenByDefault: true),
@@ -118,11 +113,9 @@ class ProjectCostBudgetsPaymentsTable
                     ->html()
                     ->sortable(),
 
-                // عملة التحويل: currency of the destination transaction line
-                TextColumn::make('disbursement_currency')
+                // عملة التحويل: denormalized disbursement (destination) currency.
+                TextColumn::make('disbursementCurrency.name')
                     ->label('عملة التحويل')
-                    ->state(fn ($record) => $record->transaction?->lines
-                        ->firstWhere('notes', ProjectCostBudget::LINE_DESTINATION)?->currency?->name)
                     ->toggleable(isToggledHiddenByDefault: true),
 
                 TextColumn::make('transaction.transaction_time')

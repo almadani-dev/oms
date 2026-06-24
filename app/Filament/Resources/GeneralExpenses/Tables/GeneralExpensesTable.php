@@ -39,10 +39,9 @@ class GeneralExpensesTable
                     ->html()
                     ->sortable(),
 
-                // العملة: always visible (both expense lines share the same currency)
-                TextColumn::make('currency')
-                    ->label('العملة')
-                    ->state(fn ($record) => self::debitLine($record)?->currency?->name),
+                // العملة: always visible (denormalized expense currency; both lines share it)
+                TextColumn::make('currency.name')
+                    ->label('العملة'),
 
                 // --- Detailed columns (hidden by default, toggleable) ---
                 TextColumn::make('debit_account')

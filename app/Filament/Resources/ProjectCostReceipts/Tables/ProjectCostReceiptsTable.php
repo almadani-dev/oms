@@ -82,8 +82,8 @@ class ProjectCostReceiptsTable
                     ->html()
                     ->sortable(),
 
-                // العملة: always visible (project cost currency)
-                TextColumn::make('projectCost.currency.name')
+                // العملة: always visible (denormalized receipt currency)
+                TextColumn::make('currency.name')
                     ->label('العملة'),
 
                 TextColumn::make('date')

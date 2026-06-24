@@ -34,9 +34,8 @@ class ViewGeneralExpense extends ViewRecord
                     ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
                     ->html(),
 
-                TextEntry::make('currency')
-                    ->label('العملة')
-                    ->state(fn ($record) => self::currencyName($record)),
+                TextEntry::make('currency.name')
+                    ->label('العملة'),
 
                 TextEntry::make('partner.name')
                     ->label('الجهة / المستفيد')
@@ -116,12 +115,6 @@ class ViewGeneralExpense extends ViewRecord
             ]),
 
         ]);
-    }
-
-    protected static function currencyName(GeneralExpense $record): ?string
-    {
-        return $record->transaction
-            ?->lines()->with('currency')->first()?->currency?->name;
     }
 
     /**

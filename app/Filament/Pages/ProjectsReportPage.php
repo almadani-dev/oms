@@ -6,6 +6,7 @@ use App\Helpers\NumberHelper;
 use App\Models\Currency;
 use App\Models\FiscalYear;
 use App\Models\ProjectCost;
+use App\Models\ProjectCostBudget;
 use App\Models\ProjectStatus;
 use App\Models\ProjectSuper;
 use Filament\Forms\Components\DatePicker;
@@ -36,19 +37,24 @@ class ProjectsReportPage extends Page implements HasTable
     protected string $view = 'filament.pages.projects-report-page';
 
     /**
-     * One row = one project + one currency.
+     * COST-SIDE rows. One row = one project + one COST currency.
      *
-     * All money aggregates are computed as correlated scalar subqueries keyed on
-     * (project_id, currency_id) — never as JOINs — so the different child grains
-     * (receipts / disbursements / execution payments) cannot fan-out and multiply
-     * each other. The whole report is therefore 2 queries: this grouped query
-     * (paginated, for the table) and one derived-table SUM query (for the totals).
+     * Holds only the cost-currency metrics (التكلفة / المستلم / متبقي الاستلام):
+     * cost and receipts are always expressed in the project cost's own currency,
+     * so they group cleanly on (project_id, projects_costs.currency_id).
+     *
+     * The execution side (disbursement / execution payments) lives in a SEPARATE
+     * grain — see buildExecutionRowQuery() — because a single (project, cost-currency)
+     * group can disburse in several different currencies after fx, which would make a
+     * mixed-currency "available to execute" on a cost row meaningless.
+     *
+     * All money aggregates are correlated scalar subqueries keyed on
+     * (project_id, currency_id) — never JOINs — so child grains cannot fan-out.
      *
      * Soft-deleted rows are excluded everywhere:
      *   - projects_costs: via ProjectCost's SoftDeletes global scope
      *   - projects: explicit whereNull (a JOIN bypasses the global scope)
-     *   - receipts / budgets / payments / transactions: explicit `deleted_at IS NULL`
-     *     inside every subquery.
+     *   - receipts / transactions: explicit `deleted_at IS NULL` inside every subquery.
      */
     protected function buildRowQuery(): Builder
     {
@@ -93,43 +99,6 @@ class ProjectsReportPage extends Page implements HasTable
                   AND r.deleted_at IS NULL
                   ' . ($fy ? 'AND rtx.fiscal_year_id = ?' : '') . '
             ), 0) as total_received',
-            $fy ? [$fy] : []
-        );
-
-        // الصافي — for real disbursements only (transaction_id IS NOT NULL):
-        // SUM(original - admin% - transfer%) = disbursed - admin - transfer.
-        $query->selectRaw(
-            'COALESCE((
-                SELECT SUM(
-                    b.original_amount
-                    - b.original_amount * b.administrative_percentage / 100
-                    - b.original_amount * b.transfer_percentage / 100
-                )
-                FROM project_cost_budgets b
-                INNER JOIN projects_costs bc ON bc.id = b.project_cost_id AND bc.deleted_at IS NULL
-                ' . ($fy ? 'INNER JOIN transactions btx ON btx.id = b.transaction_id AND btx.deleted_at IS NULL' : '') . '
-                WHERE bc.project_id  = projects_costs.project_id
-                  AND bc.currency_id = projects_costs.currency_id
-                  AND b.deleted_at IS NULL
-                  AND b.transaction_id IS NOT NULL
-                  ' . ($fy ? 'AND btx.fiscal_year_id = ?' : '') . '
-            ), 0) as total_net',
-            $fy ? [$fy] : []
-        );
-
-        // المنفّذ — execution payments against this project's budgets, in this currency.
-        $query->selectRaw(
-            'COALESCE((
-                SELECT SUM(p.amount)
-                FROM project_cost_budgets_payments p
-                INNER JOIN project_cost_budgets pb ON pb.id = p.project_cost_budget_id AND pb.deleted_at IS NULL
-                INNER JOIN projects_costs pcc ON pcc.id = pb.project_cost_id AND pcc.deleted_at IS NULL
-                ' . ($fy ? 'INNER JOIN transactions ptx ON ptx.id = p.transaction_id AND ptx.deleted_at IS NULL' : '') . '
-                WHERE pcc.project_id  = projects_costs.project_id
-                  AND pcc.currency_id = projects_costs.currency_id
-                  AND p.deleted_at IS NULL
-                  ' . ($fy ? 'AND ptx.fiscal_year_id = ?' : '') . '
-            ), 0) as total_executed',
             $fy ? [$fy] : []
         );
 
@@ -248,43 +217,12 @@ class ProjectsReportPage extends Page implements HasTable
                     ->alignEnd()
                     ->sortable(),
 
-                TextColumn::make('total_executed')
-                    ->label('المنفّذ')
-                    ->formatStateUsing(fn ($state) => NumberHelper::bigComma($state))
-                    ->html()
-                    ->alignEnd()
-                    ->sortable(),
-
                 TextColumn::make('remaining_to_receive')
                     ->label('متبقي الاستلام')
                     ->state(fn ($record) => (float) $record->total_cost - (float) $record->total_received)
                     ->formatStateUsing(fn ($state) => NumberHelper::bigComma($state))
                     ->html()
                     ->alignEnd(),
-
-                TextColumn::make('available_to_execute')
-                    ->label('متاح للتنفيذ')
-                    ->state(fn ($record) => (float) $record->total_net - (float) $record->total_executed)
-                    ->formatStateUsing(fn ($state) => NumberHelper::bigComma($state))
-                    ->html()
-                    ->alignEnd(),
-
-                TextColumn::make('completion_percentage')
-                    ->label('نسبة الإنجاز')
-                    ->state(function ($record) {
-                        $net = (float) $record->total_net;
-
-                        return $net > 0 ? round((float) $record->total_executed / $net * 100, 1) : 0.0;
-                    })
-                    ->badge()
-                    ->color(fn ($state): string => match (true) {
-                        $state >= 100 => 'success',
-                        $state >= 67  => 'info',
-                        $state >= 34  => 'warning',
-                        default       => 'danger',
-                    })
-                    ->formatStateUsing(fn ($state) => $state . '%')
-                    ->alignCenter(),
             ])
             ->filters([
                 SelectFilter::make('project_super')
@@ -329,9 +267,9 @@ class ProjectsReportPage extends Page implements HasTable
     }
 
     /**
-     * Totals grouped strictly per currency (currencies are never summed together).
-     * Built from a derived table over the same filtered row query, so it always
-     * matches whatever the table is showing.
+     * COST-SIDE totals, grouped strictly per cost currency (currencies are never
+     * summed together). Built from a derived table over the same filtered cost-row
+     * query, so it always matches whatever the cost table is showing.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -345,8 +283,6 @@ class ProjectsReportPage extends Page implements HasTable
             ->selectRaw('MAX(t.currency_code) as currency_code')
             ->selectRaw('SUM(t.total_cost) as sum_cost')
             ->selectRaw('SUM(t.total_received) as sum_received')
-            ->selectRaw('SUM(t.total_executed) as sum_executed')
-            ->selectRaw('SUM(t.total_net) as sum_net')
             ->orderByRaw('t.currency_id IS NULL') // real currencies first, "غير محدد" last
             ->orderByRaw('MAX(t.currency_name)')
             ->get();
@@ -357,9 +293,154 @@ class ProjectsReportPage extends Page implements HasTable
                 : 'غير محدد',
             'sum_cost'            => (float) $r->sum_cost,
             'sum_received'        => (float) $r->sum_received,
-            'sum_executed'        => (float) $r->sum_executed,
             'sum_remaining'       => (float) $r->sum_cost - (float) $r->sum_received,
-            'sum_available'       => (float) $r->sum_net - (float) $r->sum_executed,
+        ])->all();
+    }
+
+    /**
+     * EXECUTION-SIDE rows. One row = one project + one DISBURSEMENT currency.
+     *
+     * Built on real disbursements (project_cost_budgets with a transaction), grouped
+     * on (project_id, disbursement_currency_id) so every metric is expressed in ONE
+     * consistent currency — the disbursement / execution currency:
+     *   - المرصود (total_disbursed)  = SUM(final_amount)         [post-fx, disbursement cur]
+     *   - المنفّذ (total_executed)   = SUM(execution payments)   [same disbursement cur]
+     *   - متاح للتنفيذ               = total_disbursed - total_executed
+     *
+     * This fixes the previous fx bug where "available to execute" subtracted an
+     * execution-currency figure from a source-currency (pre-fx) net.
+     *
+     * Soft-deletes: project_cost_budgets via the SoftDeletes global scope (base, not
+     * aliased); joined projects_costs / projects via explicit whereNull; payments /
+     * transactions via explicit `deleted_at IS NULL` in the subquery.
+     */
+    protected function buildExecutionRowQuery(): Builder
+    {
+        $filters = $this->getRowFilters();
+        $fy = $filters['fiscal_year'];
+
+        $query = ProjectCostBudget::query()
+            ->from('project_cost_budgets')
+            ->join('projects_costs as c', 'c.id', '=', 'project_cost_budgets.project_cost_id')
+            ->join('projects as p', 'p.id', '=', 'c.project_id')
+            ->leftJoin('currencies as cur', 'cur.id', '=', 'project_cost_budgets.disbursement_currency_id')
+            ->whereNull('c.deleted_at')
+            ->whereNull('p.deleted_at')
+            ->whereNotNull('project_cost_budgets.transaction_id')
+            ->groupBy('c.project_id', 'project_cost_budgets.disbursement_currency_id')
+            ->selectRaw("CONCAT(c.project_id, '_', COALESCE(project_cost_budgets.disbursement_currency_id, 0)) as id")
+            ->addSelect('c.project_id')
+            ->selectRaw('project_cost_budgets.disbursement_currency_id as currency_id')
+            ->selectRaw('MAX(p.code) as project_code')
+            ->selectRaw('MAX(p.name) as project_name')
+            ->selectRaw('MAX(cur.name) as currency_name')
+            ->selectRaw('MAX(cur.code) as currency_code')
+            // المرصود — post-fx disbursed amounts, already in the disbursement currency.
+            ->selectRaw('SUM(project_cost_budgets.final_amount) as total_disbursed');
+
+        // فلترة السنة المالية على معاملة الصرف نفسها.
+        if ($fy) {
+            $query->whereExists(fn ($sub) => $sub
+                ->selectRaw('1')
+                ->from('transactions as btx')
+                ->whereColumn('btx.id', 'project_cost_budgets.transaction_id')
+                ->whereNull('btx.deleted_at')
+                ->where('btx.fiscal_year_id', $fy));
+        }
+
+        // المنفّذ — execution payments against this project's budgets, in this
+        // disbursement currency. Null-safe (<=>) so a NULL disbursement currency
+        // group still matches its payments.
+        $query->selectRaw(
+            'COALESCE((
+                SELECT SUM(pay.amount)
+                FROM project_cost_budgets_payments pay
+                INNER JOIN project_cost_budgets pb ON pb.id = pay.project_cost_budget_id AND pb.deleted_at IS NULL
+                INNER JOIN projects_costs pcc ON pcc.id = pb.project_cost_id AND pcc.deleted_at IS NULL
+                ' . ($fy ? 'INNER JOIN transactions ptx ON ptx.id = pay.transaction_id AND ptx.deleted_at IS NULL' : '') . '
+                WHERE pcc.project_id = c.project_id
+                  AND pb.disbursement_currency_id <=> project_cost_budgets.disbursement_currency_id
+                  AND pay.deleted_at IS NULL
+                  ' . ($fy ? 'AND ptx.fiscal_year_id = ?' : '') . '
+            ), 0) as total_executed',
+            $fy ? [$fy] : []
+        );
+
+        $query
+            ->when($filters['project_super'], fn (Builder $q, $v) => $q->where('p.project_super_id', $v))
+            ->when($filters['project_status'], fn (Builder $q, $v) => $q->where('p.project_status_id', $v))
+            // The page-wide currency filter is a COST currency; apply it through the
+            // project cost so both grains stay in lock-step with one filter value.
+            ->when($filters['currency'], fn (Builder $q, $v) => $q->where('c.currency_id', $v));
+
+        foreach (['approval_date', 'implementation_date', 'start_date', 'end_date'] as $dateField) {
+            $range = $filters[$dateField];
+            $query
+                ->when($range['from'], fn (Builder $q, $v) => $q->whereDate("p.{$dateField}", '>=', $v))
+                ->when($range['until'], fn (Builder $q, $v) => $q->whereDate("p.{$dateField}", '<=', $v));
+        }
+
+        return $query;
+    }
+
+    /**
+     * Execution rows for the second (disbursement-currency) table, ordered like the
+     * cost table. Not paginated — rendered as a plain section, same as the totals.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getExecutionRows(): array
+    {
+        return $this->buildExecutionRowQuery()
+            ->toBase()
+            ->orderBy('project_code')
+            ->orderBy('currency_id')
+            ->get()
+            ->map(function ($r) {
+                $disbursed = (float) $r->total_disbursed;
+                $executed  = (float) $r->total_executed;
+
+                return [
+                    'project_code'    => $r->project_code,
+                    'project_name'    => $r->project_name,
+                    'currency_label'  => $r->currency_name
+                        ? $r->currency_name . ($r->currency_code ? " ({$r->currency_code})" : '')
+                        : 'غير محدد',
+                    'total_disbursed' => $disbursed,
+                    'total_executed'  => $executed,
+                    'available'       => $disbursed - $executed,
+                    'completion'      => $disbursed > 0 ? round($executed / $disbursed * 100, 1) : 0.0,
+                ];
+            })
+            ->all();
+    }
+
+    /**
+     * EXECUTION-SIDE totals, grouped strictly per disbursement currency.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getExecutionTotals(): array
+    {
+        $rows = DB::query()
+            ->fromSub($this->buildExecutionRowQuery()->toBase(), 't')
+            ->groupBy('t.currency_id')
+            ->selectRaw('t.currency_id')
+            ->selectRaw('MAX(t.currency_name) as currency_name')
+            ->selectRaw('MAX(t.currency_code) as currency_code')
+            ->selectRaw('SUM(t.total_disbursed) as sum_disbursed')
+            ->selectRaw('SUM(t.total_executed) as sum_executed')
+            ->orderByRaw('t.currency_id IS NULL')
+            ->orderByRaw('MAX(t.currency_name)')
+            ->get();
+
+        return $rows->map(fn ($r) => [
+            'currency_label' => $r->currency_name
+                ? $r->currency_name . ($r->currency_code ? " ({$r->currency_code})" : '')
+                : 'غير محدد',
+            'sum_disbursed' => (float) $r->sum_disbursed,
+            'sum_executed'  => (float) $r->sum_executed,
+            'sum_available' => (float) $r->sum_disbursed - (float) $r->sum_executed,
         ])->all();
     }
 
