@@ -304,7 +304,8 @@ class ProjectsGeneralFinancialReportService
     }
 
     /**
-     * numerator[cur] / denominator[cur] * 100, rounded to 2 dp.
+     * numerator[cur] / denominator[cur] * 100, truncated (NOT rounded) to 2 dp
+     * so a partial percentage is never overstated (e.g. 224.995 -> 224.99).
      * null when the denominator is missing or zero ("غير متاح").
      */
     private function percentageMap(array $numerator, array $denominator): array
@@ -314,7 +315,7 @@ class ProjectsGeneralFinancialReportService
             $den = $denominator[$cur] ?? 0;
             $out[$cur] = (abs($den) < self::EPSILON)
                 ? null
-                : round((($numerator[$cur] ?? 0) / $den) * 100, 2);
+                : floor((($numerator[$cur] ?? 0) / $den) * 100 * 100) / 100;
         }
 
         return $out;
