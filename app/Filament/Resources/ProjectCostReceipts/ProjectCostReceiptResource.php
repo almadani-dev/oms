@@ -67,7 +67,9 @@ class ProjectCostReceiptResource extends Resource
         return parent::getEloquentQuery()->with([
             'transaction.partner',
             'transaction.transactionType',
-            'projectCost.project',
+            'transaction.fiscalYear',
+            'projectCost.project.projectSuper',
+            'projectCost.currency',
         ]);
     }
 

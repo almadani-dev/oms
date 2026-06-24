@@ -31,6 +31,12 @@ class ProjectCostBudgetsPaymentsTable
                     ->searchable()
                     ->sortable(),
 
+                // --- Detailed columns (hidden by default, toggleable) ---
+                TextColumn::make('projectCost.project.projectSuper.name')
+                    ->label('المشروع الرئيسي')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
                 TextColumn::make('projectCost.project.name')
                     ->label('المشروع')
                     ->sortable(),
@@ -39,17 +45,85 @@ class ProjectCostBudgetsPaymentsTable
                     ->label('الجهة / الشريك')
                     ->sortable(),
 
+                // --- Detailed: project cost amount + its original currency ---
+                TextColumn::make('projectCost.amount')
+                    ->label('تكلفة المشروع')
+                    ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
+                    ->html()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                TextColumn::make('projectCost.currency.name')
+                    ->label('العملة الأصلية')
+                    ->toggleable(isToggledHiddenByDefault: true),
+
                 TextColumn::make('original_amount')
                     ->label('المبلغ الأصلي')
                     ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
                     ->html()
                     ->sortable(),
 
+                // --- Detailed: administrative percentage + amount ---
+                TextColumn::make('administrative_percentage')
+                    ->label('النسبة الإدارية %')
+                    ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
+                    ->html()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                TextColumn::make('administrative_amount')
+                    ->label('مبلغ النسبة الإدارية')
+                    ->state(fn ($record) => round((float) $record->original_amount * (float) $record->administrative_percentage / 100, 2))
+                    ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
+                    ->html()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                // --- Detailed: transfer percentage + amount ---
+                TextColumn::make('transfer_percentage')
+                    ->label('نسبة التحويل %')
+                    ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
+                    ->html()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                TextColumn::make('transfer_amount')
+                    ->label('مبلغ نسبة التحويل')
+                    ->state(fn ($record) => round((float) $record->original_amount * (float) $record->transfer_percentage / 100, 2))
+                    ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
+                    ->html()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                // --- Detailed: amount after deductions (net) ---
+                TextColumn::make('amount_after_deductions')
+                    ->label('المبلغ بعد الخصومات / الصافي')
+                    ->state(fn ($record) => round(
+                        (float) $record->original_amount
+                        - round((float) $record->original_amount * (float) $record->administrative_percentage / 100, 2)
+                        - round((float) $record->original_amount * (float) $record->transfer_percentage / 100, 2),
+                        2
+                    ))
+                    ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
+                    ->html()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                // --- Detailed: fx rate ---
+                TextColumn::make('fx_rate')
+                    ->label('سعر الصرف')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
                 TextColumn::make('amount_after_percentages')
                     ->label('المبلغ النهائي')
                     ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
                     ->html()
                     ->sortable(),
+
+                // عملة التحويل: currency of the destination transaction line
+                TextColumn::make('disbursement_currency')
+                    ->label('عملة التحويل')
+                    ->state(fn ($record) => $record->transaction?->lines
+                        ->firstWhere('notes', ProjectCostBudget::LINE_DESTINATION)?->currency?->name)
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 TextColumn::make('transaction.transaction_time')
                     ->label('التاريخ')
@@ -62,6 +136,7 @@ class ProjectCostBudgetsPaymentsTable
                     ->state(fn ($record) => $record->attachments()->exists() ? 'نعم' : 'لا')
                     ->color(fn ($state) => $state === 'نعم' ? 'success' : 'gray'),
             ])
+            ->defaultSort('id', 'desc')
             ->filters([
                 SelectFilter::make('project_super')
                     ->label('المشروع الرئيسي')

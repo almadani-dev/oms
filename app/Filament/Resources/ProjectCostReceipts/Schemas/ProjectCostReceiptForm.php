@@ -38,7 +38,7 @@ class ProjectCostReceiptForm
                     ->afterStateUpdated(function (Set $set) {
                         $set('project_id', null);
                         $set('project_cost_id', null);
-                        $set('cost_currency', null);
+                        self::resetCostCurrency($set);
                     })
                     ->columnSpanFull(),
 
@@ -52,7 +52,7 @@ class ProjectCostReceiptForm
                     ->disabled(fn (Get $get) => blank($get('project_super_id')))
                     ->afterStateUpdated(function (Set $set) {
                         $set('project_cost_id', null);
-                        $set('cost_currency', null);
+                        self::resetCostCurrency($set);
                     })
                     ->columnSpanFull(),
 
@@ -69,7 +69,16 @@ class ProjectCostReceiptForm
                     ->disabled(fn (Get $get) => blank($get('project_id')))
                     ->afterStateUpdated(function (Get $get, Set $set) {
                         $cost = ProjectCost::with('currency')->find($get('project_cost_id'));
-                        $set('cost_currency', $cost?->currency?->name ?? '');
+                        $costCurrencyName = $cost?->currency?->name ?? '';
+
+                        // Both accounts must use the project cost currency.
+                        $set('cost_currency', $costCurrencyName);
+                        $set('debit_currency', $costCurrencyName);
+                        $set('credit_currency', $costCurrencyName);
+
+                        // Accounts tied to the cost currency are no longer valid.
+                        $set('debit_account_id', null);
+                        $set('credit_account_id', null);
                     })
                     ->columnSpanFull(),
 
@@ -144,16 +153,24 @@ class ProjectCostReceiptForm
                     ->disabled(fn (Get $get) => blank($get('debit_account_type_id')))
                     ->afterStateUpdated(fn (Set $set) => $set('debit_account_id', null)),
 
+                TextInput::make('debit_currency')
+                    ->label('العملة')
+                    ->disabled()
+                    ->dehydrated(false),
+
                 Select::make('debit_account_id')
                     ->label('الحساب المدين')
-                    ->options(fn (Get $get) => Account::where('account_type_id', $get('debit_account_type_id'))
-                        ->where('bank_type_id', $get('debit_bank_type_id'))
-                        ->orderBy('account_code')
-                        ->get(['id', 'account_code', 'name'])
-                        ->mapWithKeys(fn ($a) => [$a->id => $a->account_code . ' - ' . $a->name]))
+                    ->options(fn (Get $get) => self::accountOptions(
+                        $get('debit_account_type_id'),
+                        $get('debit_bank_type_id'),
+                        self::costCurrencyId($get)
+                    ))
                     ->required()
                     ->live()
-                    ->disabled(fn (Get $get) => blank($get('debit_bank_type_id'))),
+                    ->searchable()
+                    ->disabled(fn (Get $get) => blank($get('debit_bank_type_id')))
+                    ->helperText('حساب بعملة التكلفة')
+                    ->columnSpanFull(),
 
             ]),
 
@@ -177,16 +194,24 @@ class ProjectCostReceiptForm
                     ->disabled(fn (Get $get) => blank($get('credit_account_type_id')))
                     ->afterStateUpdated(fn (Set $set) => $set('credit_account_id', null)),
 
+                TextInput::make('credit_currency')
+                    ->label('العملة')
+                    ->disabled()
+                    ->dehydrated(false),
+
                 Select::make('credit_account_id')
                     ->label('الحساب الدائن')
-                    ->options(fn (Get $get) => Account::where('account_type_id', $get('credit_account_type_id'))
-                        ->where('bank_type_id', $get('credit_bank_type_id'))
-                        ->orderBy('account_code')
-                        ->get(['id', 'account_code', 'name'])
-                        ->mapWithKeys(fn ($a) => [$a->id => $a->account_code . ' - ' . $a->name]))
+                    ->options(fn (Get $get) => self::accountOptions(
+                        $get('credit_account_type_id'),
+                        $get('credit_bank_type_id'),
+                        self::costCurrencyId($get)
+                    ))
                     ->required()
                     ->live()
-                    ->disabled(fn (Get $get) => blank($get('credit_bank_type_id'))),
+                    ->searchable()
+                    ->disabled(fn (Get $get) => blank($get('credit_bank_type_id')))
+                    ->helperText('حساب بعملة التكلفة')
+                    ->columnSpanFull(),
 
             ]),
 
@@ -202,5 +227,43 @@ class ProjectCostReceiptForm
             ]),
 
         ]);
+    }
+
+    /**
+     * Clear all cost-currency displays and the currency-filtered accounts.
+     */
+    protected static function resetCostCurrency(Set $set): void
+    {
+        $set('cost_currency', null);
+        $set('debit_currency', null);
+        $set('credit_currency', null);
+        $set('debit_account_id', null);
+        $set('credit_account_id', null);
+    }
+
+    /**
+     * The currency id of the selected project cost; both accounts are filtered by it.
+     */
+    protected static function costCurrencyId(Get $get): ?int
+    {
+        return ProjectCost::find($get('project_cost_id'))?->currency_id;
+    }
+
+    /**
+     * Accounts matching the type + bank + project cost currency, as id => "code - name".
+     */
+    protected static function accountOptions($accountTypeId, $bankTypeId, $currencyId): array
+    {
+        if (blank($accountTypeId) || blank($bankTypeId) || blank($currencyId)) {
+            return [];
+        }
+
+        return Account::where('account_type_id', $accountTypeId)
+            ->where('bank_type_id', $bankTypeId)
+            ->where('currency_id', $currencyId)
+            ->orderBy('account_code')
+            ->get(['id', 'account_code', 'name'])
+            ->mapWithKeys(fn ($a) => [$a->id => trim(($a->account_code ? $a->account_code . ' - ' : '') . $a->name)])
+            ->toArray();
     }
 }

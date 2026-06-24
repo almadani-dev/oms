@@ -62,7 +62,16 @@ class ExecutionPaymentResource extends Resource
         // Eager load relationships shown in the table to avoid N+1 queries.
         return parent::getEloquentQuery()
             ->whereNotNull('transaction_id')
-            ->with(['projectCostBudget.projectCost.project', 'transaction.partner']);
+            ->with([
+                'projectCostBudget.projectCost.project.projectSuper',
+                'projectCostBudget.projectCost.currency',
+                'projectCostBudget.transaction.lines.currency',
+                'transaction.transactionType',
+                'transaction.fiscalYear',
+                'transaction.partner',
+                'transaction.lines.account',
+                'transaction.lines.currency',
+            ]);
     }
 
     public static function getRecordRouteBindingEloquentQuery(): Builder

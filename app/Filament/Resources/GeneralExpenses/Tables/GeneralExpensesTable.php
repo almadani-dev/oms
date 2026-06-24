@@ -39,6 +39,32 @@ class GeneralExpensesTable
                     ->html()
                     ->sortable(),
 
+                // العملة: always visible (both expense lines share the same currency)
+                TextColumn::make('currency')
+                    ->label('العملة')
+                    ->state(fn ($record) => self::debitLine($record)?->currency?->name),
+
+                // --- Detailed columns (hidden by default, toggleable) ---
+                TextColumn::make('debit_account')
+                    ->label('الحساب المدين')
+                    ->state(fn ($record) => self::accountLabel(self::debitLine($record)?->account))
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                TextColumn::make('credit_account')
+                    ->label('الحساب الدائن')
+                    ->state(fn ($record) => self::accountLabel(self::creditLine($record)?->account))
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                TextColumn::make('transaction.transactionType.name')
+                    ->label('نوع المعاملة')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                TextColumn::make('transaction.fiscalYear.name')
+                    ->label('السنة المالية')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
                 TextColumn::make('date')
                     ->label('التاريخ')
                     ->date()
@@ -50,6 +76,7 @@ class GeneralExpensesTable
                     ->state(fn ($record) => $record->attachments()->exists() ? 'نعم' : 'لا')
                     ->color(fn ($state) => $state === 'نعم' ? 'success' : 'gray'),
             ])
+            ->defaultSort('id', 'desc')
             ->filters([
                 SelectFilter::make('partner')
                     ->label('الجهة / المستفيد')
@@ -95,6 +122,32 @@ class GeneralExpensesTable
                         ->successNotificationTitle('تم حذف المصروفات المحددة بنجاح'),
                 ]),
             ]);
+    }
+
+    /**
+     * The debit / credit line of the expense, identified the same way as on delete
+     * (by debit_base / credit_base). Reads the eager-loaded lines to avoid N+1.
+     */
+    protected static function debitLine($record): ?\App\Models\TransactionLine
+    {
+        return $record->transaction?->lines->first(fn ($l) => (float) $l->debit_base > 0);
+    }
+
+    protected static function creditLine($record): ?\App\Models\TransactionLine
+    {
+        return $record->transaction?->lines->first(fn ($l) => (float) $l->credit_base > 0);
+    }
+
+    /**
+     * Build a "code - name" label for an account, or null when missing.
+     */
+    protected static function accountLabel($account): ?string
+    {
+        if (! $account) {
+            return null;
+        }
+
+        return trim(($account->account_code ? $account->account_code . ' - ' : '') . $account->name);
     }
 
     /**

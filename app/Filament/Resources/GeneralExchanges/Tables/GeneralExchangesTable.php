@@ -40,11 +40,101 @@ class GeneralExchangesTable
                     ->html()
                     ->sortable(),
 
+                // العملة الأصلية: always visible
+                TextColumn::make('sourceCurrency.name')
+                    ->label('العملة الأصلية')
+                    ->sortable(),
+
+                // --- Detailed: administrative percentage + amount (hidden by default) ---
+                TextColumn::make('administrative_percentage')
+                    ->label('النسبة الإدارية %')
+                    ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
+                    ->html()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                TextColumn::make('administrative_amount')
+                    ->label('مبلغ النسبة الإدارية')
+                    ->state(fn ($record) => round((float) $record->original_amount * (float) $record->administrative_percentage / 100, 2))
+                    ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
+                    ->html()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                // --- Detailed: transfer percentage + amount (hidden by default) ---
+                TextColumn::make('transfer_percentage')
+                    ->label('نسبة التحويل %')
+                    ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
+                    ->html()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                TextColumn::make('transfer_amount')
+                    ->label('مبلغ نسبة التحويل')
+                    ->state(fn ($record) => round((float) $record->original_amount * (float) $record->transfer_percentage / 100, 2))
+                    ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
+                    ->html()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                // --- Detailed: amount after deductions (net) + fx rate (hidden by default) ---
+                TextColumn::make('amount_after_deductions')
+                    ->label('المبلغ بعد الخصومات / الصافي')
+                    ->state(fn ($record) => round(
+                        (float) $record->original_amount
+                        - round((float) $record->original_amount * (float) $record->administrative_percentage / 100, 2)
+                        - round((float) $record->original_amount * (float) $record->transfer_percentage / 100, 2),
+                        2
+                    ))
+                    ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
+                    ->html()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                TextColumn::make('fx_rate')
+                    ->label('سعر الصرف')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
                 TextColumn::make('final_amount')
                     ->label('المبلغ النهائي')
                     ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
                     ->html()
                     ->sortable(),
+
+                // عملة الصرف: always visible
+                TextColumn::make('disbursementCurrency.name')
+                    ->label('عملة الصرف')
+                    ->sortable(),
+
+                // --- Detailed: the four exchange accounts (hidden by default) ---
+                TextColumn::make('source_account')
+                    ->label('حساب المصدر')
+                    ->state(fn ($record) => self::accountLabel(self::line($record, GeneralExchange::LINE_SOURCE)?->account))
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                TextColumn::make('admin_account')
+                    ->label('حساب النسبة الإدارية')
+                    ->state(fn ($record) => self::accountLabel(self::line($record, GeneralExchange::LINE_ADMIN)?->account))
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                TextColumn::make('transfer_account')
+                    ->label('حساب التحويل')
+                    ->state(fn ($record) => self::accountLabel(self::line($record, GeneralExchange::LINE_TRANSFER)?->account))
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                TextColumn::make('destination_account')
+                    ->label('حساب الوجهة')
+                    ->state(fn ($record) => self::accountLabel(self::line($record, GeneralExchange::LINE_DESTINATION)?->account))
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                // --- Detailed: transaction type + fiscal year (hidden by default) ---
+                TextColumn::make('transaction.transactionType.name')
+                    ->label('نوع المعاملة')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                TextColumn::make('transaction.fiscalYear.name')
+                    ->label('السنة المالية')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 TextColumn::make('date')
                     ->label('التاريخ')
@@ -57,6 +147,7 @@ class GeneralExchangesTable
                     ->state(fn ($record) => $record->attachments()->exists() ? 'نعم' : 'لا')
                     ->color(fn ($state) => $state === 'نعم' ? 'success' : 'gray'),
             ])
+            ->defaultSort('id', 'desc')
             ->filters([
                 SelectFilter::make('partner')
                     ->label('الجهة')
@@ -102,6 +193,27 @@ class GeneralExchangesTable
                         ->successNotificationTitle('تم حذف التحويلات المحددة بنجاح'),
                 ]),
             ]);
+    }
+
+    /**
+     * Find a loaded transaction line by its role tag (notes), using the
+     * eager-loaded transaction.lines collection to avoid extra queries.
+     */
+    protected static function line($record, string $note): ?\App\Models\TransactionLine
+    {
+        return $record->transaction?->lines->firstWhere('notes', $note);
+    }
+
+    /**
+     * Build a "code - name" label for an account, or null when missing.
+     */
+    protected static function accountLabel($account): ?string
+    {
+        if (! $account) {
+            return null;
+        }
+
+        return trim(($account->account_code ? $account->account_code . ' - ' : '') . $account->name);
     }
 
     /**

@@ -31,6 +31,12 @@ class ExecutionPaymentsTable
                     ->searchable()
                     ->sortable(),
 
+                // --- Detailed: project super (hidden by default) ---
+                TextColumn::make('projectCostBudget.projectCost.project.projectSuper.name')
+                    ->label('المشروع الرئيسي')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
                 TextColumn::make('projectCostBudget.projectCost.project.name')
                     ->label('المشروع')
                     ->sortable(),
@@ -39,11 +45,65 @@ class ExecutionPaymentsTable
                     ->label('الجهة / المستفيد')
                     ->sortable(),
 
+                // --- Detailed: project cost amount + reserved (budget) amount ---
+                TextColumn::make('projectCostBudget.projectCost.amount')
+                    ->label('تكلفة المشروع')
+                    ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
+                    ->html()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                // عملة تكلفة المشروع (hidden by default)
+                TextColumn::make('projectCostBudget.projectCost.currency.name')
+                    ->label('عملة تكلفة المشروع')
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                TextColumn::make('projectCostBudget.amount_after_percentages')
+                    ->label('المبلغ المرصود')
+                    ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
+                    ->html()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                // عملة المبلغ المرصود: disbursement currency of the budget (hidden by default)
+                TextColumn::make('budget_currency')
+                    ->label('عملة المبلغ المرصود')
+                    ->state(fn ($record) => $record->projectCostBudget?->transaction?->lines
+                        ->firstWhere('notes', \App\Models\ProjectCostBudget::LINE_DESTINATION)?->currency?->name)
+                    ->toggleable(isToggledHiddenByDefault: true),
+
                 TextColumn::make('amount')
                     ->label('مبلغ التنفيذ')
                     ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
                     ->html()
                     ->sortable(),
+
+                // عملة مبلغ التنفيذ: always visible (currency of the execution payment line)
+                TextColumn::make('execution_currency')
+                    ->label('عملة مبلغ التنفيذ')
+                    ->state(fn ($record) => self::line($record, ProjectCostBudgetsPayment::LINE_BENEFICIARY)?->currency?->name),
+
+                // --- Detailed: debit (beneficiary) + credit accounts ---
+                TextColumn::make('beneficiary_account')
+                    ->label('الحساب المدين / المستفيد')
+                    ->state(fn ($record) => self::accountLabel(self::line($record, ProjectCostBudgetsPayment::LINE_BENEFICIARY)?->account))
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                TextColumn::make('credit_account')
+                    ->label('الحساب الدائن')
+                    ->state(fn ($record) => self::accountLabel(self::line($record, ProjectCostBudgetsPayment::LINE_CREDIT)?->account))
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                // --- Detailed: transaction type + fiscal year ---
+                TextColumn::make('transaction.transactionType.name')
+                    ->label('نوع المعاملة')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                TextColumn::make('transaction.fiscalYear.name')
+                    ->label('السنة المالية')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 TextColumn::make('date')
                     ->label('التاريخ')
@@ -56,6 +116,7 @@ class ExecutionPaymentsTable
                     ->state(fn ($record) => $record->attachments()->exists() ? 'نعم' : 'لا')
                     ->color(fn ($state) => $state === 'نعم' ? 'success' : 'gray'),
             ])
+            ->defaultSort('id', 'desc')
             ->filters([
                 SelectFilter::make('project_super')
                     ->label('المشروع الرئيسي')
@@ -115,6 +176,27 @@ class ExecutionPaymentsTable
                         ->successNotificationTitle('تم حذف عمليات التنفيذ المحددة بنجاح'),
                 ]),
             ]);
+    }
+
+    /**
+     * Find a loaded transaction line by its role tag (notes), using the
+     * eager-loaded transaction.lines collection to avoid extra queries.
+     */
+    protected static function line($record, string $note): ?\App\Models\TransactionLine
+    {
+        return $record->transaction?->lines->firstWhere('notes', $note);
+    }
+
+    /**
+     * Build a "code - name" label for an account, or null when missing.
+     */
+    protected static function accountLabel($account): ?string
+    {
+        if (! $account) {
+            return null;
+        }
+
+        return trim(($account->account_code ? $account->account_code . ' - ' : '') . $account->name);
     }
 
     /**

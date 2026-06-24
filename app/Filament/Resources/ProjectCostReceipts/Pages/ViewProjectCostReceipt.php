@@ -40,7 +40,7 @@ class ViewProjectCostReceipt extends ViewRecord
                     ->html(),
 
                 TextEntry::make('projectCost.currency.name')
-                    ->label('العملة'),
+                    ->label('عملة تكلفة المشروع'),
 
                 TextEntry::make('transaction.transactionType.transactionSuperType.name')
                     ->label('تصنيف المعاملة'),

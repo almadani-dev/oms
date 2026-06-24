@@ -31,9 +31,23 @@ class ProjectCostReceiptsTable
                     ->searchable()
                     ->sortable(),
 
+                // المشروع الرئيسي (hidden by default)
+                TextColumn::make('projectCost.project.projectSuper.name')
+                    ->label('المشروع الرئيسي')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
                 TextColumn::make('projectCost.project.name')
                     ->label('المشروع')
                     ->sortable(),
+
+                // تكلفة المشروع (hidden by default)
+                TextColumn::make('projectCost.amount')
+                    ->label('تكلفة المشروع')
+                    ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
+                    ->html()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 TextColumn::make('transaction.partner.name')
                     ->label('الجهة المانحة')
@@ -41,7 +55,14 @@ class ProjectCostReceiptsTable
 
                 TextColumn::make('transaction.transactionType.name')
                     ->label('نوع المعاملة')
-                    ->sortable(),
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+
+                // السنة المالية (hidden by default)
+                TextColumn::make('transaction.fiscalYear.name')
+                    ->label('السنة المالية')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 TextColumn::make('debit_account')
                     ->label('الحساب المدين')
@@ -61,6 +82,10 @@ class ProjectCostReceiptsTable
                     ->html()
                     ->sortable(),
 
+                // العملة: always visible (project cost currency)
+                TextColumn::make('projectCost.currency.name')
+                    ->label('العملة'),
+
                 TextColumn::make('date')
                     ->label('التاريخ')
                     ->date()
@@ -72,6 +97,7 @@ class ProjectCostReceiptsTable
                     ->state(fn ($record) => $record->attachments()->exists() ? 'نعم' : 'لا')
                     ->color(fn ($state) => $state === 'نعم' ? 'success' : 'gray'),
             ])
+            ->defaultSort('id', 'desc')
             ->filters([
                 SelectFilter::make('project_super')
                     ->label('المشروع الرئيسي')

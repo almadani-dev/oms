@@ -70,13 +70,6 @@ class ProjectForm
                     ->relationship()
                     ->label('')
                     ->schema([
-                        Select::make('account_type_id')
-                            ->label('نوع الحساب')
-                            ->relationship('accountType', 'name')
-                            ->searchable()
-                            ->preload()
-                            ->required()
-                            ->columnSpan(2),
                         Select::make('currency_id')
                             ->label('العملة')
                             ->options(
@@ -93,7 +86,7 @@ class ProjectForm
                             ->label('ملاحظات')
                             ->columnSpanFull(),
                     ])
-                    ->columns(4)
+                    ->columns(2)
                     ->addActionLabel('إضافة تكلفة')
                     ->defaultItems(0)
                     ->collapsible()

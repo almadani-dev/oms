@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Projects\RelationManagers;
 
+use App\Models\Currency;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
@@ -14,6 +15,7 @@ use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class CostsRelationManager extends RelationManager
 {
@@ -29,21 +31,30 @@ class CostsRelationManager extends RelationManager
     public function form(Schema $schema): Schema
     {
         return $schema->components([
-            Select::make('account_type_id')->relationship('accountType', 'name')->searchable()->preload()->required()->label('نوع الحساب'),
             TextInput::make('amount')->numeric()->required()->label('المبلغ'),
-            Textarea::make('notes')->label('ملاحظات'),
+            Select::make('currency_id')
+                ->label('العملة')
+                ->options(
+                    Currency::orderBy('code')->get()
+                        ->mapWithKeys(fn ($c) => [$c->id => $c->code . ' - ' . $c->name])
+                )
+                ->searchable()
+                ->required(),
+            Textarea::make('notes')->label('ملاحظات')->columnSpanFull(),
         ]);
     }
 
     public function table(Table $table): Table
     {
         return $table
-            ->recordTitleAttribute('accountType.name')
+            ->modifyQueryUsing(fn (Builder $query) => $query->with('currency'))
+            ->recordTitleAttribute('amount')
             ->emptyStateHeading('لا توجد تكاليف')
             ->emptyStateDescription('قم بإضافة تكلفة للمشروع للبدء')
             ->columns([
-                TextColumn::make('accountType.name')->label('نوع الحساب')->sortable(),
                 TextColumn::make('amount')->label('المبلغ')->formatStateUsing(fn($state) => \App\Helpers\NumberHelper::bigComma($state))->html()->sortable(),
+                TextColumn::make('currency.name')->label('العملة')->sortable(),
+                TextColumn::make('notes')->label('ملاحظات')->wrap(),
             ])
             ->headerActions([CreateAction::make()])
             ->recordActions([EditAction::make(), DeleteAction::make()])

@@ -62,7 +62,15 @@ class GeneralExchangeResource extends Resource
         // Eager load the relationships shown in the table to avoid N+1 queries.
         return parent::getEloquentQuery()
             ->whereNotNull('transaction_id')
-            ->with(['transaction.partner', 'partner']);
+            ->with([
+                'sourceCurrency',
+                'disbursementCurrency',
+                'transaction.partner',
+                'transaction.transactionType',
+                'transaction.fiscalYear',
+                'transaction.lines.account',
+                'partner',
+            ]);
     }
 
     public static function getRecordRouteBindingEloquentQuery(): Builder
