@@ -54,7 +54,7 @@ class ProjectCostBudgetForm
                     ->numeric()
                     ->suffix('%')
                     ->default(0),
-                TextInput::make('amount_after_percentages')
+                TextInput::make('final_amount')
                     ->label('المبلغ بعد النسب')
                     ->numeric()
                     ->default(0),

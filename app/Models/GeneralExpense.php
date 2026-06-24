@@ -17,6 +17,7 @@ class GeneralExpense extends Model
     protected $fillable = [
         'transaction_id',
         'amount',
+        'currency_id',
         'date',
         'partner_id',
         'description',
@@ -36,6 +37,11 @@ class GeneralExpense extends Model
     public function transaction(): BelongsTo
     {
         return $this->belongsTo(Transaction::class);
+    }
+
+    public function currency(): BelongsTo
+    {
+        return $this->belongsTo(Currency::class);
     }
 
     public function partner(): BelongsTo

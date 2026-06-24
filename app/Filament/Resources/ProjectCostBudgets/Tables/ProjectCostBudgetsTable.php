@@ -53,7 +53,7 @@ class ProjectCostBudgetsTable
                     ->formatStateUsing(fn ($state) => (float) $state)
                     ->sortable(),
 
-                TextColumn::make('amount_after_percentages')
+                TextColumn::make('final_amount')
                     ->label('المبلغ النهائي')
                     ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
                     ->html()

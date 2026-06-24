@@ -39,7 +39,7 @@ class BudgetsRelationManager extends RelationManager
                 ->numeric()
                 ->suffix('%')
                 ->default(0),
-            TextInput::make('amount_after_percentages')
+            TextInput::make('final_amount')
                 ->label('المبلغ بعد النسب')
                 ->numeric()
                 ->default(0),
@@ -58,7 +58,7 @@ class BudgetsRelationManager extends RelationManager
                 TextColumn::make('administrative_percentage')->label('نسبة الإدارة %')->formatStateUsing(fn($state) => \App\Helpers\NumberHelper::bigComma($state))->html(),
                 TextColumn::make('transfer_percentage')->label('نسبة التحويل %')->formatStateUsing(fn($state) => \App\Helpers\NumberHelper::bigComma($state))->html(),
                 TextColumn::make('exchange_percentage')->label('نسبة الصرف %')->formatStateUsing(fn($state) => \App\Helpers\NumberHelper::bigComma($state))->html(),
-                TextColumn::make('amount_after_percentages')->label('المبلغ بعد النسب')->formatStateUsing(fn($state) => \App\Helpers\NumberHelper::bigComma($state))->html()->sortable(),
+                TextColumn::make('final_amount')->label('المبلغ بعد النسب')->formatStateUsing(fn($state) => \App\Helpers\NumberHelper::bigComma($state))->html()->sortable(),
                 TextColumn::make('created_at')->label('تاريخ الإنشاء')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),
             ])
             ->recordActions([

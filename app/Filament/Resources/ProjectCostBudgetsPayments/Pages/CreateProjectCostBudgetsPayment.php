@@ -80,7 +80,7 @@ class CreateProjectCostBudgetsPayment extends CreateRecord
                 'transfer_percentage'       => $transferPct,
                 'exchange_percentage'       => 0,
                 'fx_rate'                   => $fxRate,
-                'amount_after_percentages'  => $finalAmount,
+                'final_amount'  => $finalAmount,
                 'notes'                     => $data['notes'] ?? null,
                 'created_by'                => auth()->id(),
                 'updated_by'                => auth()->id(),

@@ -58,7 +58,7 @@ class ExecutionPaymentsTable
                     ->label('عملة تكلفة المشروع')
                     ->toggleable(isToggledHiddenByDefault: true),
 
-                TextColumn::make('projectCostBudget.amount_after_percentages')
+                TextColumn::make('projectCostBudget.final_amount')
                     ->label('المبلغ المرصود')
                     ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
                     ->html()

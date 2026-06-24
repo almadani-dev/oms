@@ -63,7 +63,7 @@ class ProjectCostBudgetInfolist
                     ->label('سعر الصرف')
                     ->state(fn ($record) => (float) $record->fx_rate),
 
-                TextEntry::make('amount_after_percentages')
+                TextEntry::make('final_amount')
                     ->label('المبلغ النهائي')
                     ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
                     ->html(),

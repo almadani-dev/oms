@@ -43,7 +43,7 @@ class ViewExecutionPayment extends ViewRecord
 
                 TextEntry::make('budget_amount')
                     ->label('المبلغ المرصود')
-                    ->state(fn ($record) => (float) ($record->projectCostBudget?->amount_after_percentages ?? 0))
+                    ->state(fn ($record) => (float) ($record->projectCostBudget?->final_amount ?? 0))
                     ->formatStateUsing(fn ($state) => \App\Helpers\NumberHelper::bigComma($state))
                     ->html(),
 

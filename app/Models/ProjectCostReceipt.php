@@ -16,6 +16,7 @@ class ProjectCostReceipt extends Model
         'project_cost_id',
         'transaction_id',
         'amount',
+        'currency_id',
         'date',
         'notes',
         'created_by',
@@ -33,6 +34,11 @@ class ProjectCostReceipt extends Model
     public function projectCost(): BelongsTo
     {
         return $this->belongsTo(ProjectCost::class);
+    }
+
+    public function currency(): BelongsTo
+    {
+        return $this->belongsTo(Currency::class);
     }
 
     public function transaction(): BelongsTo

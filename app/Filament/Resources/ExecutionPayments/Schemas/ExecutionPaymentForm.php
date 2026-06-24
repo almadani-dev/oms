@@ -81,9 +81,9 @@ class ExecutionPaymentForm
                     ->options(fn (Get $get) => ProjectCostBudget::where('project_cost_id', $get('project_cost_id'))
                         ->whereNotNull('transaction_id')
                         ->orderByDesc('id')
-                        ->get(['id', 'amount_after_percentages'])
+                        ->get(['id', 'final_amount'])
                         ->mapWithKeys(fn ($b) => [
-                            $b->id => number_format((float) $b->amount_after_percentages, 2)
+                            $b->id => number_format((float) $b->final_amount, 2)
                                 . ' (المتبقي: ' . number_format(self::budgetRemaining($b->id), 2) . ')',
                         ]))
                     ->required()
@@ -280,7 +280,7 @@ class ExecutionPaymentForm
     }
 
     /**
-     * Budget remaining = disbursed amount_after_percentages
+     * Budget remaining = disbursed final_amount
      *   - sum of existing (non-trashed) execution payments for this budget.
      * Pass $excludePaymentId on edit so the row being edited is not counted.
      */
@@ -296,7 +296,7 @@ class ExecutionPaymentForm
             ->when($excludePaymentId, fn ($q) => $q->where('id', '!=', $excludePaymentId))
             ->sum('amount');
 
-        return round((float) $budget->amount_after_percentages - (float) $paid, 2);
+        return round((float) $budget->final_amount - (float) $paid, 2);
     }
 
     protected static function accountOptions($accountTypeId, $bankTypeId, $currencyId): array

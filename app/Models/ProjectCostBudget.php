@@ -26,11 +26,14 @@ class ProjectCostBudget extends Model
         'project_cost_id',
         'transaction_id',
         'original_amount',
+        'amount_after_deductions',
+        'source_currency_id',
+        'disbursement_currency_id',
         'administrative_percentage',
         'transfer_percentage',
         'exchange_percentage',
         'fx_rate',
-        'amount_after_percentages',
+        'final_amount',
         'notes',
         'created_by',
         'updated_by',
@@ -40,17 +43,28 @@ class ProjectCostBudget extends Model
     {
         return [
             'original_amount'           => 'decimal:2',
+            'amount_after_deductions'   => 'decimal:2',
             'administrative_percentage' => 'decimal:2',
             'transfer_percentage'       => 'decimal:2',
             'exchange_percentage'       => 'decimal:2',
             'fx_rate'                   => 'decimal:6',
-            'amount_after_percentages'  => 'decimal:2',
+            'final_amount'              => 'decimal:2',
         ];
     }
 
     public function projectCost(): BelongsTo
     {
         return $this->belongsTo(ProjectCost::class);
+    }
+
+    public function sourceCurrency(): BelongsTo
+    {
+        return $this->belongsTo(Currency::class, 'source_currency_id');
+    }
+
+    public function disbursementCurrency(): BelongsTo
+    {
+        return $this->belongsTo(Currency::class, 'disbursement_currency_id');
     }
 
     public function transaction(): BelongsTo

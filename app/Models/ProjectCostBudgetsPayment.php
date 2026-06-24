@@ -33,6 +33,7 @@ class ProjectCostBudgetsPayment extends Model
         'project_cost_budget_id',
         'transaction_id',
         'amount',
+        'currency_id',
         'date',
         'notes',
         'created_by',
@@ -50,6 +51,11 @@ class ProjectCostBudgetsPayment extends Model
     public function projectCostBudget(): BelongsTo
     {
         return $this->belongsTo(ProjectCostBudget::class);
+    }
+
+    public function currency(): BelongsTo
+    {
+        return $this->belongsTo(Currency::class);
     }
 
     public function transaction(): BelongsTo
