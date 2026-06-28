@@ -100,7 +100,7 @@ class ProjectsGeneralFinancialPage extends Page implements HasTable
                     ->toggleable(),
 
                 TextColumn::make('remaining_to_receive_display')
-                    ->label('المتبقي للاستلام')
+                    ->label('الفائض/العجز')
                     ->getStateUsing(fn (ProjectFinancialSnapshot $record): string => $this->formatMoneyMap($record->remaining_to_receive_by_currency))
                     ->html()
                     ->toggleable(),
@@ -126,12 +126,6 @@ class ProjectsGeneralFinancialPage extends Page implements HasTable
                 TextColumn::make('execution_paid_display')
                     ->label('المدفوع تنفيذياً')
                     ->getStateUsing(fn (ProjectFinancialSnapshot $record): string => $this->formatMoneyMap($record->execution_paid_by_currency))
-                    ->html()
-                    ->toggleable(),
-
-                TextColumn::make('execution_pct_of_planned_display')
-                    ->label('نسبة التنفيذ من التكلفة')
-                    ->getStateUsing(fn (ProjectFinancialSnapshot $record): string => $this->formatPercentageMap($record->execution_pct_of_planned_by_currency))
                     ->html()
                     ->toggleable(),
 
@@ -320,12 +314,11 @@ class ProjectsGeneralFinancialPage extends Page implements HasTable
             'تاريخ النهاية',
             'التكلفة المخططة',
             'المقبوض',
-            'المتبقي للاستلام',
+            'الفائض/العجز',
             'الصرف الأصلي',
             'بعد الخصومات',
             'الصرف النهائي',
             'المدفوع تنفيذياً',
-            'نسبة التنفيذ من التكلفة',
             'نسبة التنفيذ من الصرف',
             'رصيد التنفيذ',
             'الخصومات',
@@ -365,7 +358,6 @@ class ProjectsGeneralFinancialPage extends Page implements HasTable
                             $this->moneyMapToText($record->budget_after_deductions_by_currency),
                             $this->moneyMapToText($record->budget_final_by_currency),
                             $this->moneyMapToText($record->execution_paid_by_currency),
-                            $this->percentMapToText($record->execution_pct_of_planned_by_currency),
                             $this->percentMapToText($record->execution_pct_of_final_by_currency),
                             $this->moneyMapToText($record->remaining_execution_by_currency),
                             $this->moneyMapToText($record->deductions_by_currency),

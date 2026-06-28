@@ -45,11 +45,11 @@ class ProjectsGeneralFinancialReportService
         $deductions           = array_map(fn ($r) => round($r['original'] - $r['after'], 2), $budgetSource);
 
         // --- derived per-currency maps ---
-        $remainingToReceive = $this->subtractMaps($planned, $received);
+        // الفائض/العجز: received − planned (surplus positive, deficit negative).
+        $remainingToReceive = $this->subtractMaps($received, $planned);
         $remainingExecution = $this->subtractMaps($budgetFinal, $executionPaid);
 
         // --- percentages (null when denominator is 0/missing) ---
-        $pctOfPlanned = $this->percentageMap($executionPaid, $planned);
         $pctOfFinal   = $this->percentageMap($executionPaid, $budgetFinal);
 
         // --- currency code lookup for every currency involved ---
@@ -57,7 +57,7 @@ class ProjectsGeneralFinancialReportService
             $planned, $received, $remainingToReceive,
             $budgetOriginal, $budgetAfterDeductions, $budgetFinal,
             $executionPaid, $remainingExecution, $deductions,
-            $pctOfPlanned, $pctOfFinal
+            $pctOfFinal
         );
         $codes = $this->currencyCodes($currencyIds);
 
@@ -80,7 +80,6 @@ class ProjectsGeneralFinancialReportService
                 'execution_paid'           => round($executionPaid[$cid] ?? 0, 2),
                 'remaining_execution'      => round($remainingExecution[$cid] ?? 0, 2),
                 'deductions_total'         => round($deductions[$cid] ?? 0, 2),
-                'execution_pct_of_planned' => $pctOfPlanned[$cid] ?? null,
                 'execution_pct_of_final'   => $pctOfFinal[$cid] ?? null,
             ];
         }
@@ -95,7 +94,6 @@ class ProjectsGeneralFinancialReportService
             'execution_paid_by_currency'           => $this->toCodeMap($executionPaid, $codes),
             'remaining_execution_by_currency'      => $this->toCodeMap($remainingExecution, $codes),
             'deductions_by_currency'               => $this->toCodeMap($deductions, $codes),
-            'execution_pct_of_planned_by_currency' => $this->toCodeMap($pctOfPlanned, $codes, allowNull: true),
             'execution_pct_of_final_by_currency'   => $this->toCodeMap($pctOfFinal, $codes, allowNull: true),
             'financial_indicator'                  => $financialIndicator,
             'financial_safety_indicator'           => self::SAFETY_OK,
@@ -130,7 +128,6 @@ class ProjectsGeneralFinancialReportService
             'execution_paid_by_currency'           => $data['execution_paid_by_currency'],
             'remaining_execution_by_currency'      => $data['remaining_execution_by_currency'],
             'deductions_by_currency'               => $data['deductions_by_currency'],
-            'execution_pct_of_planned_by_currency' => $data['execution_pct_of_planned_by_currency'],
             'execution_pct_of_final_by_currency'   => $data['execution_pct_of_final_by_currency'],
         ];
 

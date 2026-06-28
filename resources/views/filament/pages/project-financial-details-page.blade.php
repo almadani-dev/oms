@@ -80,6 +80,25 @@
         return 'report-number';
     };
 
+    // الفائض/العجز: surplus (>0) green, deficit (<0) red, zero neutral.
+    $signedClass = function ($value) {
+        if ($value === null || $value === '') {
+            return 'report-number report-muted-number';
+        }
+
+        $value = (float) $value;
+
+        if ($value > 0) {
+            return 'report-number report-number-success';
+        }
+
+        if ($value < 0) {
+            return 'report-number report-number-danger';
+        }
+
+        return 'report-number';
+    };
+
     $currencyClass = fn ($currency) => match ($currency) {
         'USD' => 'report-currency report-currency-success',
         'ILS' => 'report-currency report-currency-info',
@@ -220,14 +239,121 @@
 
 <x-filament-panels::page>
     <style>
+        /* Light theme (default) tokens — overridden under .dark below. */
         .project-report-page {
+            --pr-card-bg: #ffffff;
+            --pr-card-border: #e5e7eb;
+            --pr-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+            --pr-soft-bg: #f9fafb;
+            --pr-soft-border: #e5e7eb;
+            --pr-heading: #111827;
+            --pr-value: #111827;
+            --pr-name: #374151;
+            --pr-muted: #6b7280;
+            --pr-chip-bg: #f3f4f6;
+            --pr-chip-border: #e5e7eb;
+            --pr-chip-text: #374151;
+            --pr-th-bg: #f3f4f6;
+            --pr-th-text: #374151;
+            --pr-td-text: #374151;
+            --pr-rowhead-text: #111827;
+            --pr-table-border: #e5e7eb;
+            --pr-row-even: rgba(0, 0, 0, 0.02);
+            --pr-row-hover: rgba(0, 0, 0, 0.04);
+            --pr-number: #111827;
+            --pr-empty-border: #d1d5db;
+
+            --pr-accent: #f59e0b;
+            --pr-accent-strong: #d97706;
+            --pr-accent-soft: rgba(245, 158, 11, 0.10);
+            --pr-accent-soft-border: rgba(245, 158, 11, 0.30);
+
+            --pr-danger-text: #b91c1c;
+            --pr-danger-bg: #fee2e2;
+            --pr-danger-border: #fecaca;
+            --pr-danger-number: #dc2626;
+            --pr-danger-rowbg: rgba(239, 68, 68, 0.06);
+            --pr-danger-rail: rgba(220, 38, 38, 0.6);
+
+            --pr-warning-text: #b45309;
+            --pr-warning-bg: #fef3c7;
+            --pr-warning-border: #fde68a;
+            --pr-warning-number: #d97706;
+            --pr-warning-rowbg: rgba(245, 158, 11, 0.06);
+            --pr-warning-rail: rgba(217, 119, 6, 0.6);
+
+            --pr-success-text: #15803d;
+            --pr-success-bg: #dcfce7;
+            --pr-success-border: #bbf7d0;
+            --pr-success-number: #16a34a;
+
+            --pr-info-text: #1d4ed8;
+            --pr-info-bg: #dbeafe;
+            --pr-info-border: #bfdbfe;
+
+            --pr-neutral-rail: rgba(148, 163, 184, 0.55);
+
             direction: rtl;
             width: 100%;
-            max-width: 1500px;
-            margin: 0 auto;
-            padding: 1.5rem;
-            color: #f9fafb;
+            max-width: none;
+            margin: 0;
+            padding: 1.5rem 0;
+            color: var(--pr-value);
             font-family: inherit;
+        }
+
+        .dark .project-report-page {
+            --pr-card-bg: rgba(17, 24, 39, 0.76);
+            --pr-card-border: rgba(255, 255, 255, 0.10);
+            --pr-card-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+            --pr-soft-bg: rgba(31, 41, 55, 0.55);
+            --pr-soft-border: rgba(255, 255, 255, 0.08);
+            --pr-heading: #ffffff;
+            --pr-value: #ffffff;
+            --pr-name: #e5e7eb;
+            --pr-muted: #9ca3af;
+            --pr-chip-bg: rgba(255, 255, 255, 0.055);
+            --pr-chip-border: rgba(255, 255, 255, 0.10);
+            --pr-chip-text: #d1d5db;
+            --pr-th-bg: rgba(255, 255, 255, 0.06);
+            --pr-th-text: #e5e7eb;
+            --pr-td-text: #d1d5db;
+            --pr-rowhead-text: #f3f4f6;
+            --pr-table-border: rgba(255, 255, 255, 0.10);
+            --pr-row-even: rgba(255, 255, 255, 0.018);
+            --pr-row-hover: rgba(255, 255, 255, 0.035);
+            --pr-number: #f9fafb;
+            --pr-empty-border: rgba(255, 255, 255, 0.16);
+
+            --pr-accent: #f59e0b;
+            --pr-accent-strong: #fbbf24;
+            --pr-accent-soft: rgba(245, 158, 11, 0.10);
+            --pr-accent-soft-border: rgba(245, 158, 11, 0.30);
+
+            --pr-danger-text: #fecaca;
+            --pr-danger-bg: rgba(239, 68, 68, 0.12);
+            --pr-danger-border: rgba(248, 113, 113, 0.24);
+            --pr-danger-number: #fca5a5;
+            --pr-danger-rowbg: rgba(127, 29, 29, 0.12);
+            --pr-danger-rail: rgba(248, 113, 113, 0.65);
+
+            --pr-warning-text: #fde68a;
+            --pr-warning-bg: rgba(245, 158, 11, 0.12);
+            --pr-warning-border: rgba(251, 191, 36, 0.24);
+            --pr-warning-number: #fde68a;
+            --pr-warning-rowbg: rgba(120, 53, 15, 0.10);
+            --pr-warning-rail: rgba(251, 191, 36, 0.62);
+
+            --pr-success-text: #bbf7d0;
+            --pr-success-bg: rgba(34, 197, 94, 0.12);
+            --pr-success-border: rgba(74, 222, 128, 0.24);
+            --pr-success-number: #bbf7d0;
+
+            --pr-info-text: #bfdbfe;
+            --pr-info-bg: rgba(59, 130, 246, 0.12);
+            --pr-info-border: rgba(96, 165, 250, 0.24);
+
+            --pr-neutral-rail: rgba(148, 163, 184, 0.45);
         }
 
         .project-report-stack {
@@ -239,10 +365,10 @@
         .project-report-card,
         .project-report-hero,
         .project-report-nav {
-            background: rgba(17, 24, 39, 0.76);
-            border: 1px solid rgba(255, 255, 255, 0.10);
+            background: var(--pr-card-bg);
+            border: 1px solid var(--pr-card-border);
             border-radius: 1rem;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+            box-shadow: var(--pr-card-shadow);
         }
 
         .project-report-card {
@@ -254,7 +380,7 @@
             position: relative;
             overflow: hidden;
             padding: 1.35rem;
-            border-top: 3px solid rgba(245, 158, 11, 0.65);
+            border-top: 3px solid var(--pr-accent);
         }
 
         .project-report-hero::before {
@@ -275,7 +401,7 @@
 
         .project-report-title {
             margin: 0.75rem 0 0.35rem;
-            color: #ffffff;
+            color: var(--pr-heading);
             font-size: clamp(1.55rem, 2.2vw, 2rem);
             font-weight: 800;
             line-height: 1.35;
@@ -283,7 +409,7 @@
 
         .project-report-name {
             margin: 0;
-            color: #e5e7eb;
+            color: var(--pr-name);
             font-size: 1.05rem;
             font-weight: 700;
             line-height: 1.7;
@@ -291,7 +417,7 @@
 
         .project-report-subline {
             margin-top: 0.85rem;
-            color: #9ca3af;
+            color: var(--pr-muted);
             font-size: 0.9rem;
             line-height: 1.8;
         }
@@ -309,7 +435,7 @@
             min-height: 2.4rem;
             padding: 0.65rem 1rem;
             border-radius: 0.75rem;
-            background: #f59e0b;
+            background: var(--pr-accent);
             color: #111827;
             font-size: 0.875rem;
             font-weight: 800;
@@ -318,7 +444,7 @@
         }
 
         .project-report-action-button:hover {
-            background: #fbbf24;
+            background: var(--pr-accent-strong);
             transform: translateY(-1px);
         }
 
@@ -329,21 +455,21 @@
         }
 
         .project-report-card-soft {
-            background: rgba(31, 41, 55, 0.55);
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: var(--pr-soft-bg);
+            border: 1px solid var(--pr-soft-border);
             border-radius: 0.875rem;
             padding: 1rem;
         }
 
         .project-report-muted {
-            color: #9ca3af;
+            color: var(--pr-muted);
             font-size: 0.82rem;
             font-weight: 650;
         }
 
         .project-report-value {
             margin-top: 0.4rem;
-            color: #ffffff;
+            color: var(--pr-value);
             font-size: 0.95rem;
             font-weight: 750;
             line-height: 1.55;
@@ -352,7 +478,7 @@
 
         .project-report-value-lg {
             margin-top: 0.35rem;
-            color: #ffffff;
+            color: var(--pr-value);
             font-size: 1.5rem;
             font-weight: 850;
             line-height: 1;
@@ -367,8 +493,8 @@
 
         .project-report-summary-card {
             min-height: 6.35rem;
-            background: rgba(31, 41, 55, 0.55);
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: var(--pr-soft-bg);
+            border: 1px solid var(--pr-soft-border);
             border-radius: 0.875rem;
             padding: 1rem;
         }
@@ -389,9 +515,9 @@
             min-height: 2rem;
             padding: 0.45rem 0.8rem;
             border-radius: 999px;
-            background: rgba(255, 255, 255, 0.035);
-            border: 1px solid rgba(255, 255, 255, 0.09);
-            color: #d1d5db;
+            background: var(--pr-chip-bg);
+            border: 1px solid var(--pr-chip-border);
+            color: var(--pr-chip-text);
             font-size: 0.8rem;
             font-weight: 700;
             text-decoration: none;
@@ -399,9 +525,9 @@
         }
 
         .project-report-nav a:hover {
-            color: #ffffff;
-            background: rgba(245, 158, 11, 0.10);
-            border-color: rgba(245, 158, 11, 0.30);
+            color: var(--pr-accent-strong);
+            background: var(--pr-accent-soft);
+            border-color: var(--pr-accent-soft-border);
         }
 
         .project-report-section-head {
@@ -414,15 +540,17 @@
 
         .project-report-section-title {
             margin: 0;
-            color: #ffffff;
+            color: var(--pr-heading);
             font-size: 1.18rem;
             font-weight: 800;
             line-height: 1.4;
+            padding-right: 0.7rem;
+            border-right: 3px solid var(--pr-accent);
         }
 
         .project-report-section-subtitle {
             margin: 0.25rem 0 0;
-            color: #9ca3af;
+            color: var(--pr-muted);
             font-size: 0.86rem;
             line-height: 1.65;
         }
@@ -432,9 +560,9 @@
             align-items: center;
             white-space: nowrap;
             border-radius: 999px;
-            background: rgba(255, 255, 255, 0.055);
-            border: 1px solid rgba(255, 255, 255, 0.09);
-            color: #d1d5db;
+            background: var(--pr-chip-bg);
+            border: 1px solid var(--pr-chip-border);
+            color: var(--pr-chip-text);
             padding: 0.4rem 0.75rem;
             font-size: 0.78rem;
             font-weight: 750;
@@ -454,25 +582,25 @@
         }
 
         .project-report-alert-stat {
-            background: rgba(31, 41, 55, 0.55);
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: var(--pr-soft-bg);
+            border: 1px solid var(--pr-soft-border);
             border-radius: 0.875rem;
             padding: 0.85rem;
         }
 
         .project-report-alert-stat.danger {
-            background: rgba(127, 29, 29, 0.22);
-            border-color: rgba(248, 113, 113, 0.22);
+            background: var(--pr-danger-bg);
+            border-color: var(--pr-danger-border);
         }
 
         .project-report-alert-stat.warning {
-            background: rgba(120, 53, 15, 0.20);
-            border-color: rgba(251, 191, 36, 0.22);
+            background: var(--pr-warning-bg);
+            border-color: var(--pr-warning-border);
         }
 
         .project-report-table-wrap {
             overflow-x: auto;
-            border: 1px solid rgba(255, 255, 255, 0.10);
+            border: 1px solid var(--pr-table-border);
             border-radius: 0.875rem;
         }
 
@@ -484,8 +612,8 @@
         }
 
         .project-report-table th {
-            background: rgba(255, 255, 255, 0.06);
-            color: #e5e7eb;
+            background: var(--pr-th-bg);
+            color: var(--pr-th-text);
             font-weight: 750;
             padding: 0.85rem 1rem;
             text-align: right;
@@ -493,48 +621,48 @@
         }
 
         .project-report-table td {
-            color: #d1d5db;
+            color: var(--pr-td-text);
             padding: 0.85rem 1rem;
-            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            border-top: 1px solid var(--pr-table-border);
             vertical-align: top;
             line-height: 1.65;
         }
 
         .project-report-table tbody tr:nth-child(even) td,
         .project-report-table tbody tr:nth-child(even) th {
-            background: rgba(255, 255, 255, 0.018);
+            background: var(--pr-row-even);
         }
 
         .project-report-table tr:hover td,
         .project-report-table tr:hover th {
-            background: rgba(255, 255, 255, 0.035);
+            background: var(--pr-row-hover);
         }
 
         .project-report-table tbody th {
-            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            border-top: 1px solid var(--pr-table-border);
             background: transparent;
-            color: #f3f4f6;
+            color: var(--pr-rowhead-text);
         }
 
         .report-alert-row-danger td {
-            background: rgba(127, 29, 29, 0.12);
-            border-right: 3px solid rgba(248, 113, 113, 0.65);
+            background: var(--pr-danger-rowbg);
+            border-right: 3px solid var(--pr-danger-rail);
         }
 
         .report-alert-row-warning td {
-            background: rgba(120, 53, 15, 0.10);
-            border-right: 3px solid rgba(251, 191, 36, 0.62);
+            background: var(--pr-warning-rowbg);
+            border-right: 3px solid var(--pr-warning-rail);
         }
 
         .report-alert-row-neutral td {
-            border-right: 3px solid rgba(148, 163, 184, 0.45);
+            border-right: 3px solid var(--pr-neutral-rail);
         }
 
         .project-report-empty {
-            border: 1px dashed rgba(255, 255, 255, 0.16);
+            border: 1px dashed var(--pr-empty-border);
             border-radius: 0.875rem;
             padding: 1.5rem;
-            color: #9ca3af;
+            color: var(--pr-muted);
             text-align: center;
             font-weight: 700;
         }
@@ -554,70 +682,70 @@
         }
 
         .report-badge-danger {
-            color: #fecaca;
-            background: rgba(239, 68, 68, 0.12);
-            border-color: rgba(248, 113, 113, 0.24);
+            color: var(--pr-danger-text);
+            background: var(--pr-danger-bg);
+            border-color: var(--pr-danger-border);
         }
 
         .report-badge-warning {
-            color: #fde68a;
-            background: rgba(245, 158, 11, 0.12);
-            border-color: rgba(251, 191, 36, 0.24);
+            color: var(--pr-warning-text);
+            background: var(--pr-warning-bg);
+            border-color: var(--pr-warning-border);
         }
 
         .report-badge-success {
-            color: #bbf7d0;
-            background: rgba(34, 197, 94, 0.12);
-            border-color: rgba(74, 222, 128, 0.24);
+            color: var(--pr-success-text);
+            background: var(--pr-success-bg);
+            border-color: var(--pr-success-border);
         }
 
         .report-badge-info,
         .report-currency-info {
-            color: #bfdbfe;
-            background: rgba(59, 130, 246, 0.12);
-            border-color: rgba(96, 165, 250, 0.24);
+            color: var(--pr-info-text);
+            background: var(--pr-info-bg);
+            border-color: var(--pr-info-border);
         }
 
         .report-badge-neutral,
         .report-currency {
-            color: #d1d5db;
-            background: rgba(255, 255, 255, 0.055);
-            border-color: rgba(255, 255, 255, 0.10);
+            color: var(--pr-chip-text);
+            background: var(--pr-chip-bg);
+            border-color: var(--pr-chip-border);
         }
 
         .report-currency-success {
-            color: #bbf7d0;
-            background: rgba(34, 197, 94, 0.12);
-            border-color: rgba(74, 222, 128, 0.24);
+            color: var(--pr-success-text);
+            background: var(--pr-success-bg);
+            border-color: var(--pr-success-border);
         }
 
         .report-number {
             direction: ltr;
             text-align: right;
-            color: #f9fafb;
+            color: var(--pr-number);
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
             font-variant-numeric: tabular-nums;
             white-space: nowrap;
         }
 
         .report-muted-number {
-            color: #9ca3af;
+            color: var(--pr-muted);
         }
 
         .report-number-danger,
         .report-text-danger {
-            color: #fca5a5;
+            color: var(--pr-danger-number);
             font-weight: 800;
         }
 
         .report-number-warning,
         .report-text-warning {
-            color: #fde68a;
+            color: var(--pr-warning-number);
             font-weight: 800;
         }
 
         .report-number-success {
-            color: #bbf7d0;
+            color: var(--pr-success-number);
             font-weight: 800;
         }
 
@@ -764,8 +892,13 @@
                                 <tr>
                                     <th>{{ $row['label'] }}</th>
                                     @forelse ($currencies as $currency)
-                                        @php $rawValue = $row['values'][$currency] ?? null; @endphp
-                                        <td class="{{ $valueClass($rawValue, $row['type'] === 'percentage') }}">
+                                        @php
+                                            $rawValue = $row['values'][$currency] ?? null;
+                                            $cellClass = ($row['tone'] ?? null) === 'signed'
+                                                ? $signedClass($rawValue)
+                                                : $valueClass($rawValue, $row['type'] === 'percentage');
+                                        @endphp
+                                        <td class="{{ $cellClass }}">
                                             {{ $metricValue($row, $currency) }}
                                         </td>
                                     @empty

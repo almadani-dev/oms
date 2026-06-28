@@ -78,7 +78,6 @@ class ProjectsFinancialAlertsGenerator
             $budgetFinal = $this->money($total['budget_final'] ?? 0);
             $executionPaid = $this->money($total['execution_paid'] ?? 0);
             $remainingExecution = $this->money($total['remaining_execution'] ?? 0);
-            $pctOfPlanned = $total['execution_pct_of_planned'] ?? null;
             $pctOfFinal = $total['execution_pct_of_final'] ?? null;
 
             if ($budgetOriginal > self::MONEY_EPSILON && $received <= self::MONEY_EPSILON) {
@@ -130,19 +129,6 @@ class ProjectsFinancialAlertsGenerator
                     $code,
                     $remainingExecution,
                     meta: ['rule' => 'negative_remaining_execution']
-                );
-            }
-
-            if ($pctOfPlanned !== null && (float) $pctOfPlanned > 100) {
-                $this->addAlert(
-                    $alerts,
-                    ProjectFinancialAlert::SEVERITY_CRITICAL,
-                    'نسبة التنفيذ المالي من التكلفة تجاوزت 100%',
-                    'نسبة التنفيذ المالي من التكلفة بعملة '.$this->currencyText($code).' بلغت '.$this->formatPercent($pctOfPlanned).'%.',
-                    $currencyId,
-                    $code,
-                    (float) $pctOfPlanned,
-                    meta: ['rule' => 'execution_pct_of_planned_over_100', 'planned' => $planned]
                 );
             }
 
@@ -470,9 +456,11 @@ class ProjectsFinancialAlertsGenerator
         if ($project->status_name === 'مكتمل') {
             foreach ($totals as $currencyId => $total) {
                 $remainingExecution = $this->money($total['remaining_execution'] ?? 0);
-                $remainingToReceive = $this->money($total['remaining_to_receive'] ?? 0);
+                // remaining_to_receive now stores الفائض/العجز; an open balance still
+                // owed to the project is a deficit (negative), so flip the sign here.
+                $owedToReceive = -$this->money($total['remaining_to_receive'] ?? 0);
 
-                if ($remainingExecution > self::MONEY_EPSILON || $remainingToReceive > self::MONEY_EPSILON) {
+                if ($remainingExecution > self::MONEY_EPSILON || $owedToReceive > self::MONEY_EPSILON) {
                     $code = $total['currency_code'] ?? null;
                     $this->addAlert(
                         $alerts,
@@ -481,7 +469,7 @@ class ProjectsFinancialAlertsGenerator
                         'المشروع مكتمل ويوجد رصيد مفتوح بعملة '.$this->currencyText($code).'.',
                         $currencyId,
                         $code,
-                        max($remainingExecution, $remainingToReceive),
+                        max($remainingExecution, $owedToReceive),
                         'Project',
                         $projectId,
                         ['rule' => 'completed_project_with_open_balances']
@@ -606,19 +594,21 @@ class ProjectsFinancialAlertsGenerator
     {
         foreach ($totals as $currencyId => $total) {
             $code = $total['currency_code'] ?? null;
-            $remainingToReceive = $this->money($total['remaining_to_receive'] ?? 0);
+            // remaining_to_receive now stores الفائض/العجز (received − planned);
+            // a deficit (still owed) is a negative value, so flip the sign here.
+            $owedToReceive = -$this->money($total['remaining_to_receive'] ?? 0);
             $budgetFinal = $this->money($total['budget_final'] ?? 0);
             $executionPaid = $this->money($total['execution_paid'] ?? 0);
 
-            if ($remainingToReceive > self::MONEY_EPSILON) {
+            if ($owedToReceive > self::MONEY_EPSILON) {
                 $this->addAlert(
                     $alerts,
                     ProjectFinancialAlert::SEVERITY_NOTE,
                     'يوجد متبقي للاستلام',
-                    'يوجد متبقي للاستلام بقيمة '.$this->formatMoney($remainingToReceive, $code).'.',
+                    'يوجد متبقي للاستلام بقيمة '.$this->formatMoney($owedToReceive, $code).'.',
                     $currencyId,
                     $code,
-                    $remainingToReceive,
+                    $owedToReceive,
                     meta: ['rule' => 'remaining_to_receive']
                 );
             }

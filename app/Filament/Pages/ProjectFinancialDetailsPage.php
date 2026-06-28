@@ -121,14 +121,13 @@ class ProjectFinancialDetailsPage extends Page
         return [
             ['label' => 'التكلفة المخططة', 'type' => 'money', 'values' => $this->normalizeCurrencyMap($snapshot->planned_by_currency)],
             ['label' => 'المقبوض', 'type' => 'money', 'values' => $this->normalizeCurrencyMap($snapshot->received_by_currency)],
-            ['label' => 'المتبقي للاستلام', 'type' => 'money', 'values' => $this->normalizeCurrencyMap($snapshot->remaining_to_receive_by_currency)],
+            ['label' => 'الفائض/العجز', 'type' => 'money', 'tone' => 'signed', 'values' => $this->normalizeCurrencyMap($snapshot->remaining_to_receive_by_currency)],
             ['label' => 'الصرف الأصلي', 'type' => 'money', 'values' => $this->normalizeCurrencyMap($snapshot->budget_original_by_currency)],
             ['label' => 'بعد الخصومات', 'type' => 'money', 'values' => $this->normalizeCurrencyMap($snapshot->budget_after_deductions_by_currency)],
             ['label' => 'الصرف النهائي', 'type' => 'money', 'values' => $this->normalizeCurrencyMap($snapshot->budget_final_by_currency)],
             ['label' => 'المدفوع تنفيذياً', 'type' => 'money', 'values' => $this->normalizeCurrencyMap($snapshot->execution_paid_by_currency)],
             ['label' => 'رصيد التنفيذ', 'type' => 'money', 'values' => $this->normalizeCurrencyMap($snapshot->remaining_execution_by_currency)],
             ['label' => 'الخصومات', 'type' => 'money', 'values' => $this->normalizeCurrencyMap($snapshot->deductions_by_currency)],
-            ['label' => 'نسبة التنفيذ من التكلفة', 'type' => 'percentage', 'values' => $this->normalizeCurrencyMap($snapshot->execution_pct_of_planned_by_currency)],
             ['label' => 'نسبة التنفيذ من الصرف', 'type' => 'percentage', 'values' => $this->normalizeCurrencyMap($snapshot->execution_pct_of_final_by_currency)],
         ];
     }

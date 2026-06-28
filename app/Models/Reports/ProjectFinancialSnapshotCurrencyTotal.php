@@ -24,7 +24,6 @@ class ProjectFinancialSnapshotCurrencyTotal extends Model
         'execution_paid',
         'remaining_execution',
         'deductions_total',
-        'execution_pct_of_planned',
         'execution_pct_of_final',
     ];
 
@@ -40,7 +39,6 @@ class ProjectFinancialSnapshotCurrencyTotal extends Model
             'execution_paid'           => 'decimal:2',
             'remaining_execution'      => 'decimal:2',
             'deductions_total'         => 'decimal:2',
-            'execution_pct_of_planned' => 'decimal:2',
             'execution_pct_of_final'   => 'decimal:2',
         ];
     }
