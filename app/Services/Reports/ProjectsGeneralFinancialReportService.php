@@ -17,10 +17,14 @@ use Illuminate\Support\Facades\DB;
  */
 class ProjectsGeneralFinancialReportService
 {
-    /** Default placeholder until alerts are computed in batch 3. */
+    /** Default safety label when the alerts engine finds no issues. */
     public const SAFETY_OK = 'سليم';
 
     private const EPSILON = 0.005;
+
+    public function __construct(
+        private readonly ProjectsFinancialAlertsGenerator $alertsGenerator,
+    ) {}
 
     /**
      * Compute every per-currency map + the financial indicator for one project.
@@ -132,8 +136,10 @@ class ProjectsGeneralFinancialReportService
 
         $hash = md5(json_encode([$maps, $data['financial_indicator']], JSON_UNESCAPED_UNICODE));
         $now  = Carbon::now();
+        $alerts = $this->alertsGenerator->generate($projectId, $data);
+        $alertSummary = $this->alertsGenerator->summarize($alerts);
 
-        DB::transaction(function () use ($project, $projectId, $data, $maps, $hash, $now) {
+        DB::transaction(function () use ($project, $projectId, $data, $maps, $hash, $now, $alerts, $alertSummary) {
             // Eloquent casts the per-currency arrays to JSON and manages timestamps.
             ProjectFinancialSnapshot::updateOrCreate(
                 ['project_id' => $projectId],
@@ -151,21 +157,38 @@ class ProjectsGeneralFinancialReportService
                     'start_date'          => $project->start_date,
                     'end_date'            => $project->end_date,
                     'financial_indicator'        => $data['financial_indicator'],
-                    'financial_safety_indicator' => $data['financial_safety_indicator'],
-                    // Alert columns are recomputed in batch 3.
-                    'alerts_count'            => 0,
-                    'critical_alerts_count'   => 0,
-                    'warning_alerts_count'    => 0,
-                    'notes_count'             => 0,
-                    'most_severe_alert_title' => null,
-                    'has_critical_alerts'     => false,
-                    'has_warning_alerts'      => false,
-                    'has_notes'               => false,
+                    'financial_safety_indicator' => $alertSummary['financial_safety_indicator'],
+                    'alerts_count'            => $alertSummary['alerts_count'],
+                    'critical_alerts_count'   => $alertSummary['critical_alerts_count'],
+                    'warning_alerts_count'    => $alertSummary['warning_alerts_count'],
+                    'notes_count'             => $alertSummary['notes_count'],
+                    'most_severe_alert_title' => $alertSummary['most_severe_alert_title'],
+                    'has_critical_alerts'     => $alertSummary['has_critical_alerts'],
+                    'has_warning_alerts'      => $alertSummary['has_warning_alerts'],
+                    'has_notes'               => $alertSummary['has_notes'],
                     'is_dirty'                => false,
                     'calculated_at'           => $now,
                     'data_hash'               => $hash,
                 ])
             );
+
+            DB::table('project_financial_alerts')
+                ->where('project_id', $projectId)
+                ->delete();
+
+            if (! empty($alerts)) {
+                $alertRows = array_map(fn ($alert) => array_merge($alert, [
+                    'project_id' => $projectId,
+                    'meta' => $alert['meta'] === null
+                        ? null
+                        : json_encode($alert['meta'], JSON_UNESCAPED_UNICODE),
+                    'calculated_at' => $now,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]), $alerts);
+
+                DB::table('project_financial_alerts')->insert($alertRows);
+            }
 
             DB::table('project_financial_snapshot_currency_totals')
                 ->where('project_id', $projectId)
@@ -189,6 +212,7 @@ class ProjectsGeneralFinancialReportService
     public function remove(int $projectId): void
     {
         DB::transaction(function () use ($projectId) {
+            DB::table('project_financial_alerts')->where('project_id', $projectId)->delete();
             DB::table('project_financial_snapshot_currency_totals')->where('project_id', $projectId)->delete();
             DB::table('project_financial_snapshots')->where('project_id', $projectId)->delete();
         });

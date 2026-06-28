@@ -53,9 +53,31 @@ class RefreshProjectsFinancialReport extends Command
                 }
             });
 
-        $this->summary($refreshed, $skipped, $start);
+        $removed = $this->removeOrphanSnapshots($service);
+
+        $this->summary($refreshed, $skipped, $start, $removed);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Drop snapshots (+ totals + alerts) for projects that no longer exist as
+     * active projects — e.g. soft-deleted after a snapshot was built. The bulk
+     * loop above only visits active projects, so it can never clean these up.
+     */
+    private function removeOrphanSnapshots(ProjectsGeneralFinancialReportService $service): int
+    {
+        $activeIds = Project::query()->pluck('id');
+
+        $orphanIds = ProjectFinancialSnapshot::query()
+            ->whereNotIn('project_id', $activeIds)
+            ->pluck('project_id');
+
+        foreach ($orphanIds as $projectId) {
+            $service->remove((int) $projectId);
+        }
+
+        return $orphanIds->count();
     }
 
     /**
@@ -74,13 +96,14 @@ class RefreshProjectsFinancialReport extends Command
             ->flip();
     }
 
-    private function summary(int $refreshed, int $skipped, float $start): void
+    private function summary(int $refreshed, int $skipped, float $start, int $removed = 0): void
     {
         $seconds = round(microtime(true) - $start, 2);
 
         $this->newLine();
         $this->info("Refreshed: {$refreshed}");
         $this->info("Skipped:   {$skipped}");
+        $this->info("Removed:   {$removed}");
         $this->info("Time:      {$seconds}s");
     }
 }
