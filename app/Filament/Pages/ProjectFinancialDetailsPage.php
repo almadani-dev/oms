@@ -107,8 +107,6 @@ class ProjectFinancialDetailsPage extends Page
             ['label' => 'تاريخ البداية', 'value' => $this->date($snapshot->start_date)],
             ['label' => 'تاريخ النهاية', 'value' => $this->date($snapshot->end_date)],
             ['label' => 'آخر تحديث للتقرير', 'value' => $this->dateTime($snapshot->calculated_at)],
-            ['label' => 'المؤشر المالي', 'value' => $snapshot->financial_indicator ?: '-', 'badge' => $this->financialIndicatorColor($snapshot->financial_indicator)],
-            ['label' => 'السلامة المالية', 'value' => $snapshot->financial_safety_indicator ?: '-', 'badge' => $this->safetyIndicatorColor($snapshot->financial_safety_indicator)],
             ['label' => 'عدد التنبيهات', 'value' => number_format((int) $snapshot->alerts_count)],
         ];
     }
@@ -300,27 +298,5 @@ class ProjectFinancialDetailsPage extends Page
     private function dateTime(mixed $value): string
     {
         return $value ? Carbon::parse($value)->format('Y-m-d H:i') : '-';
-    }
-
-    private function financialIndicatorColor(?string $state): string
-    {
-        return match ($state) {
-            'مكتمل مالياً' => 'success',
-            'قيد التنفيذ' => 'info',
-            'قيد المتابعة' => 'warning',
-            'لم يبدأ مالياً', 'لا توجد تكلفة مخططة' => 'gray',
-            default => 'primary',
-        };
-    }
-
-    private function safetyIndicatorColor(?string $state): string
-    {
-        return match ($state) {
-            'خطر مالي' => 'danger',
-            'يحتاج مراجعة' => 'warning',
-            'ملاحظات' => 'gray',
-            'سليم' => 'success',
-            default => 'gray',
-        };
     }
 }

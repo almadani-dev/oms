@@ -17,9 +17,6 @@ use Illuminate\Support\Facades\DB;
  */
 class ProjectsGeneralFinancialReportService
 {
-    /** Default safety label when the alerts engine finds no issues. */
-    public const SAFETY_OK = 'سليم';
-
     private const EPSILON = 0.005;
 
     public function __construct(
@@ -27,9 +24,9 @@ class ProjectsGeneralFinancialReportService
     ) {}
 
     /**
-     * Compute every per-currency map + the financial indicator for one project.
-     * Returns code-keyed JSON maps plus an id-keyed `currency_totals` payload for
-     * the normalized table. Does NOT touch the database.
+     * Compute every per-currency map for one project. Returns code-keyed JSON
+     * maps plus an id-keyed `currency_totals` payload for the normalized table.
+     * Does NOT touch the database.
      */
     public function calculateForProject(int $projectId): array
     {
@@ -61,10 +58,6 @@ class ProjectsGeneralFinancialReportService
         );
         $codes = $this->currencyCodes($currencyIds);
 
-        $financialIndicator = $this->financialIndicator(
-            $planned, $received, $budgetFinal, $executionPaid, $remainingExecution
-        );
-
         // --- normalized currency_totals payload (one row per currency) ---
         $currencyTotals = [];
         foreach ($currencyIds as $cid) {
@@ -95,8 +88,6 @@ class ProjectsGeneralFinancialReportService
             'remaining_execution_by_currency'      => $this->toCodeMap($remainingExecution, $codes),
             'deductions_by_currency'               => $this->toCodeMap($deductions, $codes),
             'execution_pct_of_final_by_currency'   => $this->toCodeMap($pctOfFinal, $codes, allowNull: true),
-            'financial_indicator'                  => $financialIndicator,
-            'financial_safety_indicator'           => self::SAFETY_OK,
             'currency_totals'                      => array_values($currencyTotals),
         ];
     }
@@ -131,7 +122,7 @@ class ProjectsGeneralFinancialReportService
             'execution_pct_of_final_by_currency'   => $data['execution_pct_of_final_by_currency'],
         ];
 
-        $hash = md5(json_encode([$maps, $data['financial_indicator']], JSON_UNESCAPED_UNICODE));
+        $hash = md5(json_encode($maps, JSON_UNESCAPED_UNICODE));
         $now  = Carbon::now();
         $alerts = $this->alertsGenerator->generate($projectId, $data);
         $alertSummary = $this->alertsGenerator->summarize($alerts);
@@ -153,8 +144,6 @@ class ProjectsGeneralFinancialReportService
                     'implementation_date' => $project->implementation_date,
                     'start_date'          => $project->start_date,
                     'end_date'            => $project->end_date,
-                    'financial_indicator'        => $data['financial_indicator'],
-                    'financial_safety_indicator' => $alertSummary['financial_safety_indicator'],
                     'alerts_count'            => $alertSummary['alerts_count'],
                     'critical_alerts_count'   => $alertSummary['critical_alerts_count'],
                     'warning_alerts_count'    => $alertSummary['warning_alerts_count'],
@@ -162,7 +151,6 @@ class ProjectsGeneralFinancialReportService
                     'most_severe_alert_title' => $alertSummary['most_severe_alert_title'],
                     'has_critical_alerts'     => $alertSummary['has_critical_alerts'],
                     'has_warning_alerts'      => $alertSummary['has_warning_alerts'],
-                    'has_notes'               => $alertSummary['has_notes'],
                     'is_dirty'                => false,
                     'calculated_at'           => $now,
                     'data_hash'               => $hash,
@@ -340,53 +328,6 @@ class ProjectsGeneralFinancialReportService
         }
 
         return $out;
-    }
-
-    /** Pick the first matching financial indicator. */
-    private function financialIndicator(
-        array $planned,
-        array $received,
-        array $budgetFinal,
-        array $executionPaid,
-        array $remainingExecution
-    ): string {
-        if (! $this->hasAny($planned)) {
-            return 'لا توجد تكلفة مخططة';
-        }
-        if (! $this->hasAny($received)) {
-            return 'لم يبدأ مالياً';
-        }
-        if (! $this->hasAny($budgetFinal)) {
-            return 'تم الاستلام ولم يتم الصرف';
-        }
-        if (! $this->hasAny($executionPaid)) {
-            return 'تم الصرف ولم يبدأ التنفيذ';
-        }
-        foreach ($remainingExecution as $value) {
-            if ($value > self::EPSILON) {
-                return 'قيد التنفيذ';
-            }
-        }
-        foreach ($remainingExecution as $value) {
-            if (abs($value) > self::EPSILON) {
-                // Has imbalance but none positive (over-executed) -> still being followed up.
-                return 'قيد المتابعة';
-            }
-        }
-
-        return 'مكتمل مالياً';
-    }
-
-    /** True when any currency in the map has a non-zero value. */
-    private function hasAny(array $map): bool
-    {
-        foreach ($map as $value) {
-            if ($value !== null && abs($value) > self::EPSILON) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /** Union of all currency_id keys across the given maps. */

@@ -147,22 +147,8 @@ class ProjectsGeneralFinancialPage extends Page implements HasTable
                     ->html()
                     ->toggleable(),
 
-                TextColumn::make('financial_indicator')
-                    ->label('المؤشر المالي')
-                    ->badge()
-                    ->color(fn (?string $state): string => $this->financialIndicatorColor($state))
-                    ->sortable()
-                    ->toggleable(),
-
-                TextColumn::make('financial_safety_indicator')
-                    ->label('السلامة المالية')
-                    ->badge()
-                    ->color(fn (?string $state): string => $this->safetyIndicatorColor($state))
-                    ->sortable()
-                    ->toggleable(),
-
                 TextColumn::make('alerts_count')
-                    ->label('التنبيهات')
+                    ->label('المخاطر')
                     ->state(fn (ProjectFinancialSnapshot $record): string => $this->formatAlertsSummary($record))
                     ->html()
                     ->sortable()
@@ -207,15 +193,6 @@ class ProjectsGeneralFinancialPage extends Page implements HasTable
                     ->searchable()
                     ->query(fn (Builder $query, array $data): Builder => $query
                         ->when($data['value'] ?? null, fn (Builder $q, $value) => $q->where('project_status_id', $value))),
-
-                SelectFilter::make('financial_safety_indicator')
-                    ->label('السلامة المالية')
-                    ->options([
-                        'خطر مالي' => 'خطر مالي',
-                        'يحتاج مراجعة' => 'يحتاج مراجعة',
-                        'ملاحظات' => 'ملاحظات',
-                        'سليم' => 'سليم',
-                    ]),
 
                 SelectFilter::make('risk_level')
                     ->label('مشاريع فيها مخاطر فقط')
@@ -322,9 +299,7 @@ class ProjectsGeneralFinancialPage extends Page implements HasTable
             'نسبة التنفيذ من الصرف',
             'رصيد التنفيذ',
             'الخصومات',
-            'المؤشر المالي',
-            'السلامة المالية',
-            'عدد التنبيهات',
+            'عدد المخاطر',
             'آخر تحديث',
         ];
 
@@ -361,8 +336,6 @@ class ProjectsGeneralFinancialPage extends Page implements HasTable
                             $this->percentMapToText($record->execution_pct_of_final_by_currency),
                             $this->moneyMapToText($record->remaining_execution_by_currency),
                             $this->moneyMapToText($record->deductions_by_currency),
-                            $record->financial_indicator,
-                            $record->financial_safety_indicator,
                             (int) $record->alerts_count,
                             $record->calculated_at ? Carbon::parse($record->calculated_at)->format('Y-m-d H:i') : '',
                         ]);
@@ -527,47 +500,16 @@ class ProjectsGeneralFinancialPage extends Page implements HasTable
 
     private function formatAlertsSummary(ProjectFinancialSnapshot $record): string
     {
-        if ($record->alerts_count === 0) {
-            return '<span class="text-success-600 font-semibold">لا توجد مشاكل</span>';
+        if ((int) $record->alerts_count === 0) {
+            return '<span class="text-success-600 font-semibold">لا توجد مخاطر</span>';
         }
 
-        if ($record->has_critical_alerts) {
-            $label = 'خطر مالي - '.$record->alerts_count.' تنبيه';
-            $class = 'text-danger-600';
-        } elseif ($record->has_warning_alerts) {
-            $label = 'يحتاج مراجعة - '.$record->alerts_count.' تنبيه';
-            $class = 'text-warning-600';
-        } else {
-            $label = 'ملاحظات - '.$record->notes_count.' ملاحظة';
-            $class = 'text-gray-600';
-        }
+        $label = 'عدد المخاطر: '.(int) $record->alerts_count;
 
         $title = $record->most_severe_alert_title
             ? '<div class="text-xs text-gray-500 max-w-52 truncate">'.e($record->most_severe_alert_title).'</div>'
             : '';
 
-        return '<div class="space-y-1"><div class="font-semibold '.$class.'">'.e($label).'</div>'.$title.'</div>';
-    }
-
-    private function financialIndicatorColor(?string $state): string
-    {
-        return match ($state) {
-            'مكتمل مالياً' => 'success',
-            'قيد التنفيذ' => 'info',
-            'قيد المتابعة' => 'warning',
-            'لم يبدأ مالياً', 'لا توجد تكلفة مخططة' => 'gray',
-            default => 'primary',
-        };
-    }
-
-    private function safetyIndicatorColor(?string $state): string
-    {
-        return match ($state) {
-            'خطر مالي' => 'danger',
-            'يحتاج مراجعة' => 'warning',
-            'ملاحظات' => 'gray',
-            'سليم' => 'success',
-            default => 'gray',
-        };
+        return '<div class="space-y-1"><div class="font-semibold text-danger-600">'.e($label).'</div>'.$title.'</div>';
     }
 }

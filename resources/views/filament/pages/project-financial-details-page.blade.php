@@ -111,16 +111,12 @@
     $projectDonor = $projectInfo[3] ?? ['label' => 'المانح', 'value' => '-'];
     $projectStatus = $projectInfo[4] ?? ['label' => 'حالة المشروع', 'value' => '-'];
     $lastUpdated = $projectInfo[9] ?? ['label' => 'آخر تحديث', 'value' => '-'];
-    $financialIndicator = $projectInfo[10] ?? ['label' => 'المؤشر المالي', 'value' => '-', 'badge' => 'gray'];
-    $financialSafety = $projectInfo[11] ?? ['label' => 'السلامة المالية', 'value' => '-', 'badge' => 'gray'];
-    $alertsTotal = $projectInfo[12]['value'] ?? number_format(array_sum($alertCounts));
+    $alertsTotal = number_format(array_sum($alertCounts));
 
     $summaryCards = [
         ['label' => 'كود المشروع', 'value' => $projectCode],
         ['label' => 'حالة المشروع', 'value' => $projectStatus['value'], 'badge' => 'info'],
-        ['label' => 'المؤشر المالي', 'value' => $financialIndicator['value'], 'badge' => $financialIndicator['badge'] ?? 'gray'],
-        ['label' => 'السلامة المالية', 'value' => $financialSafety['value'], 'badge' => $financialSafety['badge'] ?? 'gray'],
-        ['label' => 'عدد التنبيهات', 'value' => $alertsTotal, 'class' => 'report-text-warning'],
+        ['label' => 'عدد المخاطر', 'value' => $alertsTotal, 'class' => 'report-text-warning'],
         ['label' => 'عدد المخاطر الحرجة', 'value' => $alertCounts['critical'], 'class' => 'report-text-danger'],
         ['label' => 'المانح', 'value' => $projectDonor['value']],
         ['label' => 'آخر تحديث', 'value' => $lastUpdated['value'], 'ltr' => true],
@@ -797,8 +793,6 @@
                         <div>
                             <span class="report-badge report-badge-info" dir="ltr">{{ $projectCode }}</span>
                             <span class="report-badge report-badge-neutral">{{ $projectStatus['value'] }}</span>
-                            <span class="{{ $badgeClass($financialIndicator['badge'] ?? 'gray') }}">{{ $financialIndicator['value'] }}</span>
-                            <span class="{{ $badgeClass($financialSafety['badge'] ?? 'gray') }}">{{ $financialSafety['value'] }}</span>
                         </div>
 
                         <h1 class="project-report-title">التقرير المالي للمشروع</h1>
