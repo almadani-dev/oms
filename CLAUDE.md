@@ -19,3 +19,19 @@ Rules:
 - Do not mix currencies in reports.
 - Respect SoftDeletes.
 - After code changes, summarize changed files and verification steps.
+
+## Project Memory Rules
+
+After every approved change:
+1. Update docs/AI_PROJECT_MEMORY.md with what changed, why it changed, and any important context.
+2. Update docs/TASKS_LOG.md with the task result, changed files, verification steps, and commit hash if available.
+3. Update docs/DECISIONS_LOG.md if a decision was made.
+4. Update docs/PROMPTS_LOG.md if an important prompt was used.
+5. Update docs/NEXT_STEPS.md with the next recommended step.
+6. Do not document guessed information.
+7. Do not document sensitive data.
+8. Do not read or summarize .env, storage/app/public, uploaded files, payment proofs, receipt proofs, or images.
+9. Show the documentation diff before commit.
+
+Workflow:
+Plan -> approval -> edit -> verification -> update memory docs -> show diff -> commit.
