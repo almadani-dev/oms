@@ -20,7 +20,9 @@ class AccountStatementReportService
      */
     public function generate(int $accountId, ?string $dateFrom, ?string $dateTo): array
     {
-        $account = Account::with('currency')->findOrFail($accountId);
+        // accountType/bankType are only used for export headers (not for any
+        // balance calculation) — eager loaded here to avoid extra queries.
+        $account = Account::with(['currency', 'accountType', 'bankType'])->findOrFail($accountId);
 
         $openingBalance = $this->calculateOpeningBalance($accountId, $dateFrom);
 

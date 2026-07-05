@@ -6,9 +6,13 @@ use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\BankType;
 use App\Models\Currency;
+use App\Services\Reports\AccountStatementExcelExportService;
 use App\Services\Reports\AccountStatementReportService;
+use App\Services\Reports\AccountStatementWordExportService;
+use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
+use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
@@ -16,6 +20,7 @@ use Filament\Schemas\Concerns\InteractsWithSchemas;
 use Filament\Schemas\Contracts\HasSchemas;
 use Filament\Schemas\Schema;
 use Illuminate\Support\Carbon;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * "تقرير كشف الحساب" — read-only ledger statement for one account.
@@ -67,6 +72,16 @@ class AccountStatementPage extends Page implements HasSchemas
 
     public ?string $currencyCode = null;
 
+    /**
+     * Snapshot of the date range actually used to build the currently
+     * displayed report — set only inside showReport(). Exports read these
+     * (never the live $this->data values) so a filter change after "عرض"
+     * can never leak into a download.
+     */
+    public ?string $appliedDateFrom = null;
+
+    public ?string $appliedDateTo = null;
+
     public float $openingBalance = 0.0;
 
     public float $closingBalance = 0.0;
@@ -89,6 +104,21 @@ class AccountStatementPage extends Page implements HasSchemas
             'date_from' => now()->startOfMonth()->toDateString(),
             'date_to' => now()->toDateString(),
         ]);
+    }
+
+    protected function getHeaderActions(): array
+    {
+        return [
+            Action::make('exportExcel')
+                ->label('تصدير Excel')
+                ->icon('heroicon-o-arrow-down-tray')
+                ->action(fn () => $this->exportExcel()),
+
+            Action::make('exportWord')
+                ->label('تصدير Word')
+                ->icon('heroicon-o-document-text')
+                ->action(fn () => $this->exportWord()),
+        ];
     }
 
     public function form(Schema $schema): Schema
@@ -189,6 +219,9 @@ class AccountStatementPage extends Page implements HasSchemas
         $this->rows = $result['rows'];
         $this->hasMixedCurrencies = $result['has_mixed_currencies'];
 
+        $this->appliedDateFrom = $state['date_from'];
+        $this->appliedDateTo = $state['date_to'];
+
         $this->hasSubmitted = true;
     }
 
@@ -208,6 +241,73 @@ class AccountStatementPage extends Page implements HasSchemas
         $this->totalCredit = 0.0;
         $this->movementsCount = 0;
         $this->hasMixedCurrencies = false;
+        $this->appliedDateFrom = null;
+        $this->appliedDateTo = null;
+    }
+
+    /**
+     * Exports the exact result currently on screen — never the live filter
+     * state. Both export methods stay thin; all rendering lives in their
+     * dedicated services.
+     */
+    public function exportExcel(): ?StreamedResponse
+    {
+        if (! $this->canExport()) {
+            return null;
+        }
+
+        return app(AccountStatementExcelExportService::class)->stream(
+            $this->selectedAccount,
+            $this->appliedDateFrom,
+            $this->appliedDateTo,
+            $this->rows,
+            $this->openingBalance,
+            $this->closingBalance,
+            $this->totalDebit,
+            $this->totalCredit,
+            $this->movementsCount,
+            $this->currencyCode,
+            $this->hasMixedCurrencies,
+        );
+    }
+
+    public function exportWord(): ?StreamedResponse
+    {
+        if (! $this->canExport()) {
+            return null;
+        }
+
+        return app(AccountStatementWordExportService::class)->stream(
+            $this->selectedAccount,
+            $this->appliedDateFrom,
+            $this->appliedDateTo,
+            $this->rows,
+            $this->openingBalance,
+            $this->closingBalance,
+            $this->totalDebit,
+            $this->totalCredit,
+            $this->movementsCount,
+            $this->currencyCode,
+            $this->hasMixedCurrencies,
+        );
+    }
+
+    /**
+     * Guards both exports: only the currently displayed ("عرض"-applied)
+     * report may be exported. Warns and blocks otherwise.
+     */
+    protected function canExport(): bool
+    {
+        if ($this->hasSubmitted && $this->selectedAccount) {
+            return true;
+        }
+
+        Notification::make()
+            ->title('يرجى اختيار الحساب والفترة ثم الضغط على عرض قبل التصدير')
+            ->warning()
+            ->send();
+
+        return false;
     }
 
     /**
