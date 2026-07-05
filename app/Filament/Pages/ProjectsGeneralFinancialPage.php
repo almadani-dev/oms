@@ -15,9 +15,12 @@ use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ProjectsGeneralFinancialPage extends Page implements HasTable
@@ -316,20 +319,22 @@ class ProjectsGeneralFinancialPage extends Page implements HasTable
                         ->send();
                 }),
 
-            Action::make('exportCsv')
-                ->label('تصدير CSV')
+            Action::make('exportXlsx')
+                ->label('تصدير Excel')
                 ->icon('heroicon-o-arrow-down-tray')
-                ->action(fn () => $this->exportCsv()),
+                ->action(fn () => $this->exportXlsx()),
         ];
     }
 
     /**
-     * Stream the report as a UTF-8 (BOM) CSV with Arabic headers, one row per
-     * project, read straight from the snapshot table in chunks (never loads the
-     * whole result set into memory). Money/percentage cells keep currencies
-     * separated within the cell so currencies are never mixed.
+     * Stream the report as a real .xlsx workbook (RTL, Arabic headers), one row
+     * per project + currency (a project with 2 currencies gets 2 rows) so
+     * amounts are never mixed across currencies in a single cell. Currency
+     * amounts come from the normalized currency_totals table, not the
+     * snapshot's aggregated per-currency JSON maps. A project with no currency
+     * totals yet still gets a single row with blank currency/amount cells.
      */
-    public function exportCsv(): StreamedResponse
+    public function exportXlsx(): StreamedResponse
     {
         $headers = [
             'كود المشروع',
@@ -341,6 +346,7 @@ class ProjectsGeneralFinancialPage extends Page implements HasTable
             'تاريخ التنفيذ',
             'تاريخ البداية',
             'تاريخ النهاية',
+            'العملة',
             'التكلفة المخططة',
             'المقبوض',
             'الفائض/العجز',
@@ -355,92 +361,92 @@ class ProjectsGeneralFinancialPage extends Page implements HasTable
             'آخر تحديث',
         ];
 
-        $filename = 'projects-general-financial-'.now()->format('Y-m-d_His').'.csv';
+        $rows = [];
 
-        return response()->streamDownload(function () use ($headers): void {
-            $handle = fopen('php://output', 'w');
+        ProjectFinancialSnapshot::query()
+            ->with(['currencyTotals' => fn (HasMany $query) => $query->orderBy('currency_code')])
+            ->orderBy('project_code')
+            ->chunk(200, function ($snapshots) use (&$rows): void {
+                foreach ($snapshots as $snapshot) {
+                    $projectColumns = [
+                        $snapshot->project_code,
+                        $snapshot->project_name,
+                        $snapshot->project_super_name,
+                        $snapshot->donor_name,
+                        $snapshot->project_status_name,
+                        $this->dateText($snapshot->approval_date),
+                        $this->dateText($snapshot->implementation_date),
+                        $this->dateText($snapshot->start_date),
+                        $this->dateText($snapshot->end_date),
+                    ];
 
-            // UTF-8 BOM so Excel renders Arabic correctly.
-            fwrite($handle, "\xEF\xBB\xBF");
-            fputcsv($handle, $headers);
+                    $tailColumns = [
+                        (int) $snapshot->alerts_count,
+                        $snapshot->calculated_at ? Carbon::parse($snapshot->calculated_at)->format('Y-m-d H:i') : null,
+                    ];
 
-            ProjectFinancialSnapshot::query()
-                ->orderBy('project_code')
-                ->chunk(200, function ($snapshots) use ($handle): void {
-                    foreach ($snapshots as $record) {
-                        fputcsv($handle, [
-                            $record->project_code,
-                            $record->project_name,
-                            $record->project_super_name,
-                            $record->donor_name,
-                            $record->project_status_name,
-                            $this->dateText($record->approval_date),
-                            $this->dateText($record->implementation_date),
-                            $this->dateText($record->start_date),
-                            $this->dateText($record->end_date),
-                            $this->moneyMapToText($record->planned_by_currency),
-                            $this->moneyMapToText($record->received_by_currency),
-                            $this->moneyMapToText($record->remaining_to_receive_by_currency),
-                            $this->moneyMapToText($record->budget_original_by_currency),
-                            $this->moneyMapToText($record->budget_after_deductions_by_currency),
-                            $this->moneyMapToText($record->budget_final_by_currency),
-                            $this->moneyMapToText($record->execution_paid_by_currency),
-                            $this->percentMapToText($record->execution_pct_of_final_by_currency),
-                            $this->moneyMapToText($record->remaining_execution_by_currency),
-                            $this->moneyMapToText($record->deductions_by_currency),
-                            (int) $record->alerts_count,
-                            $record->calculated_at ? Carbon::parse($record->calculated_at)->format('Y-m-d H:i') : '',
-                        ]);
+                    if ($snapshot->currencyTotals->isEmpty()) {
+                        $rows[] = [
+                            ...$projectColumns,
+                            null, null, null, null, null, null, null, null, null, null, null,
+                            ...$tailColumns,
+                        ];
+
+                        continue;
                     }
-                });
 
-            fclose($handle);
+                    foreach ($snapshot->currencyTotals as $total) {
+                        $rows[] = [
+                            ...$projectColumns,
+                            $total->currency_code,
+                            (float) $total->planned,
+                            (float) $total->received,
+                            (float) $total->remaining_to_receive,
+                            (float) $total->budget_original,
+                            (float) $total->budget_after_deductions,
+                            (float) $total->budget_final,
+                            (float) $total->execution_paid,
+                            $total->execution_pct_of_final === null ? null : (float) $total->execution_pct_of_final,
+                            (float) $total->remaining_execution,
+                            (float) $total->deductions_total,
+                            ...$tailColumns,
+                        ];
+                    }
+                }
+            });
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('التقرير العام');
+        $sheet->setRightToLeft(true);
+
+        // strictNullComparison=true: PHP's loose null == 0.0 would otherwise blank out legitimate zero amounts.
+        $sheet->fromArray($headers, null, 'A1', true);
+        $sheet->fromArray($rows, null, 'A2', true);
+
+        $lastColumn = $sheet->getHighestColumn();
+        $lastRow = $sheet->getHighestRow();
+
+        $sheet->getStyle('A1:'.$lastColumn.'1')->getFont()->setBold(true);
+        $sheet->freezePane('A2');
+        $sheet->setAutoFilter('A1:'.$lastColumn.$lastRow);
+
+        foreach (range('A', $lastColumn) as $column) {
+            $sheet->getColumnDimension($column)->setAutoSize(true);
+        }
+
+        $filename = 'projects-general-financial-report-'.now()->format('Y-m-d').'.xlsx';
+
+        return response()->streamDownload(function () use ($spreadsheet): void {
+            (new Xlsx($spreadsheet))->save('php://output');
         }, $filename, [
-            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ]);
     }
 
     private function dateText(mixed $value): string
     {
         return $value ? Carbon::parse($value)->format('Y-m-d') : '';
-    }
-
-    /** Flatten a per-currency money map to "USD: 1,000.00 | ILS: 500.00" (currencies kept separate). */
-    private function moneyMapToText(mixed $state): string
-    {
-        $map = $this->normalizeCurrencyMap($state);
-        if (empty($map)) {
-            return '';
-        }
-
-        $parts = [];
-        foreach ($map as $currency => $amount) {
-            $value = $amount === null || $amount === ''
-                ? '-'
-                : number_format((float) $amount, 2, '.', ',');
-            $parts[] = $currency.': '.$value;
-        }
-
-        return implode(' | ', $parts);
-    }
-
-    /** Flatten a per-currency percentage map; null denominators show "غير متاح". */
-    private function percentMapToText(mixed $state): string
-    {
-        $map = $this->normalizeCurrencyMap($state);
-        if (empty($map)) {
-            return '';
-        }
-
-        $parts = [];
-        foreach ($map as $currency => $percentage) {
-            $value = $percentage === null || $percentage === ''
-                ? 'غير متاح'
-                : number_format((float) $percentage, 2, '.', ',').'%';
-            $parts[] = $currency.': '.$value;
-        }
-
-        return implode(' | ', $parts);
     }
 
     /**
