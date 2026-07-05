@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Models\Project;
 use App\Models\Reports\ProjectFinancialSnapshot;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;
@@ -34,6 +35,57 @@ class ProjectsGeneralFinancialPage extends Page implements HasTable
     protected static ?string $title = 'الصفحة العامة للمشاريع';
 
     protected string $view = 'filament.pages.projects-general-financial-page';
+
+    /** Above this many dirty/missing projects, auto-refresh is skipped in favor of the manual full-force button. */
+    private const AUTO_REFRESH_LIMIT = 25;
+
+    /** Guards against running the auto-refresh more than once per request (e.g. if the page is mounted more than once). */
+    private static bool $autoRefreshHandledThisRequest = false;
+
+    public function mount(): void
+    {
+        if (self::$autoRefreshHandledThisRequest) {
+            return;
+        }
+
+        self::$autoRefreshHandledThisRequest = true;
+
+        $needsRefreshCount = $this->countProjectsNeedingRefresh();
+
+        if ($needsRefreshCount === 0) {
+            return;
+        }
+
+        if ($needsRefreshCount > self::AUTO_REFRESH_LIMIT) {
+            Notification::make()
+                ->title('يوجد عدد كبير من المشاريع يحتاج تحديث')
+                ->body('استخدم زر "تحديث التقرير" لتنفيذ تحديث كامل.')
+                ->warning()
+                ->send();
+
+            return;
+        }
+
+        // No --force: only the dirty/missing projects counted above get recalculated.
+        Artisan::call('reports:refresh-projects-financial');
+
+        Notification::make()
+            ->title('تم تحديث التقرير تلقائيًا للمشاريع التي تحتاج تحديث')
+            ->success()
+            ->send();
+    }
+
+    /** Active projects lacking a clean (is_dirty = false) snapshot — i.e. dirty or missing. */
+    private function countProjectsNeedingRefresh(): int
+    {
+        $cleanProjectIds = ProjectFinancialSnapshot::query()
+            ->where('is_dirty', false)
+            ->pluck('project_id');
+
+        return Project::query()
+            ->whereNotIn('id', $cleanProjectIds)
+            ->count();
+    }
 
     public function table(Table $table): Table
     {
