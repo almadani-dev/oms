@@ -1940,8 +1940,8 @@
     "semantic_hash": "a5f0758f0546e3d2eb2c654d952c1d6b"
   },
   ".claude/settings.json": {
-    "mtime": 1782743612.7648053,
-    "ast_hash": "598cb075410bcd95220ac90bbb60344a",
+    "mtime": 1783253486.7694583,
+    "ast_hash": "1e26283856d1486c3fe21c6114fdc9f3",
     "semantic_hash": ""
   },
   "app/Observers/Concerns/MarksProjectSnapshotDirty.php": {
@@ -2012,6 +2012,56 @@
   "app/Services/Reports/ProjectFinancialDetailsWordExportService.php": {
     "mtime": 1783247541.7660625,
     "ast_hash": "d904652ee8ce0f2a41698161ba243a7b",
+    "semantic_hash": ""
+  },
+  "app/Filament/Pages/AccountStatementPage.php": {
+    "mtime": 1783251401.474825,
+    "ast_hash": "fd376e974cbae369df2774f45060fc94",
+    "semantic_hash": ""
+  },
+  "app/Services/Reports/AccountStatementReportService.php": {
+    "mtime": 1783251212.8995016,
+    "ast_hash": "30bb4053686d8916dc6417d440405a6e",
+    "semantic_hash": ""
+  },
+  "bootstrap/cache/packages.php": {
+    "mtime": 1783254545.0229154,
+    "ast_hash": "7c6e5b9781b4e14d1487b9a8e92c61f5",
+    "semantic_hash": ""
+  },
+  "bootstrap/cache/services.php": {
+    "mtime": 1783254545.1205823,
+    "ast_hash": "204033b0b676e45abe90b0ca88778141",
+    "semantic_hash": ""
+  },
+  "resources/views/filament/pages/account-statement-page.blade.php": {
+    "mtime": 1783250433.622924,
+    "ast_hash": "88e0df5e35d498299264d3bd052196bb",
+    "semantic_hash": ""
+  },
+  "app/Services/Reports/AccountStatementExcelExportService.php": {
+    "mtime": 1783251856.0100486,
+    "ast_hash": "9a6ca6c8766fe208f92e353ca128e4ef",
+    "semantic_hash": ""
+  },
+  "app/Services/Reports/AccountStatementWordExportService.php": {
+    "mtime": 1783251346.4845777,
+    "ast_hash": "bce0c5b6745a4a450413bcb6182b4ffe",
+    "semantic_hash": ""
+  },
+  "app/Filament/Pages/TrialBalancePage.php": {
+    "mtime": 1783254392.1531923,
+    "ast_hash": "a751935d77eb2e0c5a5c6b640f9dd704",
+    "semantic_hash": ""
+  },
+  "app/Services/Reports/TrialBalanceReportService.php": {
+    "mtime": 1783254367.7247498,
+    "ast_hash": "5e72faf51ccc15816c46a5af6b4eb4e2",
+    "semantic_hash": ""
+  },
+  "resources/views/filament/pages/trial-balance-page.blade.php": {
+    "mtime": 1783254435.4645703,
+    "ast_hash": "f07a0f4cfbec52359490aed5f0ce01ef",
     "semantic_hash": ""
   }
 }
