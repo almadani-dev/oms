@@ -10,8 +10,8 @@
     "semantic_hash": "82267b62fcd2f12d723d892e0382bf29"
   },
   "app/Filament/Pages/ProjectFinancialDetailsPage.php": {
-    "mtime": 1783245365.6861813,
-    "ast_hash": "d1c43e39eab449c6c7297a8f5ed92d75",
+    "mtime": 1783246986.0447745,
+    "ast_hash": "26b0b7d26fbbad41e15f7a5099f1fcc3",
     "semantic_hash": ""
   },
   "app/Filament/Pages/ProjectsGeneralFinancialPage.php": {
@@ -1650,9 +1650,9 @@
     "semantic_hash": "b2042a8301c3fb939b69adeca1b98c85"
   },
   "resources/views/filament/pages/project-financial-details-page.blade.php": {
-    "mtime": 1782647967.046594,
-    "ast_hash": "1f6bd321234af458a1584223f1dba0ff",
-    "semantic_hash": "1f6bd321234af458a1584223f1dba0ff"
+    "mtime": 1783247515.8122663,
+    "ast_hash": "512a646fe5f17359b38f086366f38e50",
+    "semantic_hash": ""
   },
   "resources/views/filament/pages/projects-general-financial-page.blade.php": {
     "mtime": 1782315379.8762374,
@@ -2010,8 +2010,8 @@
     "semantic_hash": ""
   },
   "app/Services/Reports/ProjectFinancialDetailsWordExportService.php": {
-    "mtime": 1783245456.9998295,
-    "ast_hash": "f74dccd9b4404b4d7fe096774fcf97e5",
+    "mtime": 1783247541.7660625,
+    "ast_hash": "d904652ee8ce0f2a41698161ba243a7b",
     "semantic_hash": ""
   }
 }

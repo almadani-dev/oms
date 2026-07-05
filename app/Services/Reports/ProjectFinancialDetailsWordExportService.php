@@ -171,9 +171,8 @@ class ProjectFinancialDetailsWordExportService
             ['spaceAfter' => 60],
         );
 
-        $totalAlerts = array_sum($alertCounts);
         $section->addText(
-            'عدد التنبيهات: '.number_format($totalAlerts).'     |     مخاطر حرجة: '.number_format($alertCounts['critical']),
+            'مخاطر حرجة: '.number_format($alertCounts['critical']),
             ['size' => 10, 'color' => self::COLOR_MUTED],
             ['spaceAfter' => 60],
         );
@@ -192,11 +191,9 @@ class ProjectFinancialDetailsWordExportService
     {
         $this->addSectionTitle($section, 'بيانات المشروع');
 
-        // The first 10 entries are exactly the descriptive fields (code through
-        // "آخر تحديث للتقرير"); alerts_count (index 10) belongs to the alerts section.
         $rows = array_map(
             fn (array $item): array => [(string) $item['label'], (string) ($item['value'] ?? '-')],
-            array_slice($projectInfo, 0, 10),
+            $projectInfo,
         );
 
         $table = $section->addTable([
@@ -301,11 +298,8 @@ class ProjectFinancialDetailsWordExportService
     {
         $this->addSectionTitle($section, 'التنبيهات والمخاطر', 'مؤشرات المخاطر والتنبيهات المالية المحسوبة لهذا المشروع.');
 
-        $total = array_sum($alertCounts);
         $section->addText(
-            'عدد التنبيهات: '.number_format($total)
-                .'     |     مخاطر حرجة: '.number_format($alertCounts['critical'])
-                .'     |     تنبيهات: '.number_format($alertCounts['warning'])
+            'مخاطر حرجة: '.number_format($alertCounts['critical'])
                 .'     |     ملاحظات: '.number_format($alertCounts['note']),
             ['size' => 9, 'bold' => true],
             ['spaceAfter' => 100],

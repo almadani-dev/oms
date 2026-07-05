@@ -111,13 +111,11 @@
     $projectDonor = $projectInfo[3] ?? ['label' => 'المانح', 'value' => '-'];
     $projectStatus = $projectInfo[4] ?? ['label' => 'حالة المشروع', 'value' => '-'];
     $lastUpdated = $projectInfo[9] ?? ['label' => 'آخر تحديث', 'value' => '-'];
-    $alertsTotal = number_format(array_sum($alertCounts));
 
+    // Alert/risk counts are shown once, in the hero above — not repeated here.
     $summaryCards = [
         ['label' => 'كود المشروع', 'value' => $projectCode],
         ['label' => 'حالة المشروع', 'value' => $projectStatus['value'], 'badge' => 'info'],
-        ['label' => 'عدد المخاطر', 'value' => $alertsTotal, 'class' => 'report-text-warning'],
-        ['label' => 'عدد المخاطر الحرجة', 'value' => $alertCounts['critical'], 'class' => 'report-text-danger'],
         ['label' => 'المانح', 'value' => $projectDonor['value']],
         ['label' => 'آخر تحديث', 'value' => $lastUpdated['value'], 'ltr' => true],
     ];
@@ -133,7 +131,7 @@
         ['href' => '#deductions', 'label' => 'الخصومات'],
     ];
 
-    $projectMeta = array_slice($projectInfo, 0, 10);
+    $projectMeta = $projectInfo;
 
     $detailSections = [
         [
@@ -446,7 +444,7 @@
 
         .project-report-alert-box {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: minmax(0, 1fr);
             gap: 0.65rem;
         }
 
@@ -572,9 +570,9 @@
 
         .project-report-alert-stats {
             display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 0.75rem;
-            min-width: 410px;
+            min-width: 280px;
         }
 
         .project-report-alert-stat {
@@ -810,10 +808,6 @@
                         </a>
                         <div class="project-report-alert-box">
                             <div class="project-report-card-soft">
-                                <div class="project-report-muted">عدد التنبيهات</div>
-                                <div class="project-report-value-lg report-text-warning">{{ $alertsTotal }}</div>
-                            </div>
-                            <div class="project-report-card-soft">
                                 <div class="project-report-muted">مخاطر حرجة</div>
                                 <div class="project-report-value-lg report-text-danger">{{ $alertCounts['critical'] }}</div>
                             </div>
@@ -958,10 +952,6 @@
                         <div class="project-report-alert-stat danger">
                             <div class="project-report-muted">مخاطر حرجة</div>
                             <div class="project-report-value-lg report-text-danger">{{ $alertCounts['critical'] }}</div>
-                        </div>
-                        <div class="project-report-alert-stat warning">
-                            <div class="project-report-muted">تنبيهات</div>
-                            <div class="project-report-value-lg report-text-warning">{{ $alertCounts['warning'] }}</div>
                         </div>
                         <div class="project-report-alert-stat">
                             <div class="project-report-muted">ملاحظات</div>

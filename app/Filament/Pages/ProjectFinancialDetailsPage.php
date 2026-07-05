@@ -132,7 +132,6 @@ class ProjectFinancialDetailsPage extends Page
             ['label' => 'تاريخ البداية', 'value' => $this->date($snapshot->start_date)],
             ['label' => 'تاريخ النهاية', 'value' => $this->date($snapshot->end_date)],
             ['label' => 'آخر تحديث للتقرير', 'value' => $this->dateTime($snapshot->calculated_at)],
-            ['label' => 'عدد التنبيهات', 'value' => number_format((int) $snapshot->alerts_count)],
         ];
     }
 
