@@ -3,9 +3,12 @@
 namespace App\Filament\Pages;
 
 use App\Models\Reports\ProjectFinancialSnapshot;
+use App\Services\Reports\ProjectFinancialDetailsWordExportService;
+use Filament\Actions\Action;
 use Filament\Pages\Page;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ProjectFinancialDetailsPage extends Page
 {
@@ -77,7 +80,29 @@ class ProjectFinancialDetailsPage extends Page
 
     protected function getHeaderActions(): array
     {
-        return [];
+        return [
+            Action::make('exportWord')
+                ->label('تصدير Word')
+                ->icon('heroicon-o-arrow-down-tray')
+                ->action(fn () => $this->exportWord()),
+        ];
+    }
+
+    /** Reuses the exact data already computed in mount() — no recalculation. */
+    public function exportWord(): StreamedResponse
+    {
+        return app(ProjectFinancialDetailsWordExportService::class)->stream(
+            $this->projectInfo,
+            $this->financialMatrix,
+            $this->currencies,
+            $this->alerts,
+            $this->alertCounts,
+            $this->costs,
+            $this->receipts,
+            $this->budgets,
+            $this->payments,
+            $this->deductions,
+        );
     }
 
     // Heading/subheading are intentionally blank: the in-page hero owns the report title and action.

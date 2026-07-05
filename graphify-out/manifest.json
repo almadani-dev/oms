@@ -10,9 +10,9 @@
     "semantic_hash": "82267b62fcd2f12d723d892e0382bf29"
   },
   "app/Filament/Pages/ProjectFinancialDetailsPage.php": {
-    "mtime": 1782647937.4635885,
-    "ast_hash": "fd0691eee8b78b2f4973086ff3efa7b7",
-    "semantic_hash": "fd0691eee8b78b2f4973086ff3efa7b7"
+    "mtime": 1783245365.6861813,
+    "ast_hash": "d1c43e39eab449c6c7297a8f5ed92d75",
+    "semantic_hash": ""
   },
   "app/Filament/Pages/ProjectsGeneralFinancialPage.php": {
     "mtime": 1783244108.1415439,
@@ -1135,8 +1135,8 @@
     "semantic_hash": "b109e90817d119f9a9eddf43f522010d"
   },
   "composer.json": {
-    "mtime": 1783243818.1048896,
-    "ast_hash": "5cf7d6f177d4773f539f62800e1fa39d",
+    "mtime": 1783244943.4917195,
+    "ast_hash": "6dc83b300d3d0d86bf13a452784af7b4",
     "semantic_hash": ""
   },
   "config/app.php": {
@@ -1500,142 +1500,142 @@
     "semantic_hash": "d8eda274115af5fd2aaa8230af329ef7"
   },
   "public/js/filament/actions/actions.js": {
-    "mtime": 1783243803.1812987,
+    "mtime": 1783244940.2350247,
     "ast_hash": "00fb2b50971ff292f9ce909e8a821c07",
     "semantic_hash": "00fb2b50971ff292f9ce909e8a821c07"
   },
   "public/js/filament/filament/app.js": {
-    "mtime": 1783243803.296778,
+    "mtime": 1783244940.2360282,
     "ast_hash": "96d953a29554401db68303925a1bff4b",
     "semantic_hash": "96d953a29554401db68303925a1bff4b"
   },
   "public/js/filament/filament/echo.js": {
-    "mtime": 1783243804.2055924,
+    "mtime": 1783244940.2370284,
     "ast_hash": "9a7993fa9a704f0e97d5c701b08e6bce",
     "semantic_hash": "9a7993fa9a704f0e97d5c701b08e6bce"
   },
   "public/js/filament/forms/components/checkbox-list.js": {
-    "mtime": 1783243796.1202893,
+    "mtime": 1783244940.207435,
     "ast_hash": "8d1d0a0523c0a624b935ca3639cab39c",
     "semantic_hash": "8d1d0a0523c0a624b935ca3639cab39c"
   },
   "public/js/filament/forms/components/code-editor.js": {
-    "mtime": 1783243796.740263,
+    "mtime": 1783244940.2084033,
     "ast_hash": "17be0efca4b7f02ffbde069a065b5b60",
     "semantic_hash": "17be0efca4b7f02ffbde069a065b5b60"
   },
   "public/js/filament/forms/components/color-picker.js": {
-    "mtime": 1783243796.864285,
+    "mtime": 1783244940.2095344,
     "ast_hash": "f63e65e7ceb794b202b4ea00aaf39855",
     "semantic_hash": "f63e65e7ceb794b202b4ea00aaf39855"
   },
   "public/js/filament/forms/components/date-time-picker.js": {
-    "mtime": 1783243798.130841,
+    "mtime": 1783244940.2105355,
     "ast_hash": "0eeac5cba18a0762e064f15589e5d516",
     "semantic_hash": "0eeac5cba18a0762e064f15589e5d516"
   },
   "public/js/filament/forms/components/file-upload.js": {
-    "mtime": 1783243798.5345674,
+    "mtime": 1783244940.2105355,
     "ast_hash": "bbda0a6c222280560cf6b16307889ac2",
     "semantic_hash": "bbda0a6c222280560cf6b16307889ac2"
   },
   "public/js/filament/forms/components/key-value.js": {
-    "mtime": 1783243798.6040523,
+    "mtime": 1783244940.2116039,
     "ast_hash": "4c46438af5b0f9bd0ad274e8b7ae4ba4",
     "semantic_hash": "4c46438af5b0f9bd0ad274e8b7ae4ba4"
   },
   "public/js/filament/forms/components/markdown-editor.js": {
-    "mtime": 1783243800.7139945,
+    "mtime": 1783244940.212532,
     "ast_hash": "8bd237524647c0c71a5d493781600d72",
     "semantic_hash": "8bd237524647c0c71a5d493781600d72"
   },
   "public/js/filament/forms/components/rich-editor.js": {
-    "mtime": 1783243801.3859665,
+    "mtime": 1783244940.2136204,
     "ast_hash": "05b90ac857155936e1497beccc564e6a",
     "semantic_hash": "05b90ac857155936e1497beccc564e6a"
   },
   "public/js/filament/forms/components/select.js": {
-    "mtime": 1783243801.5585558,
+    "mtime": 1783244940.214624,
     "ast_hash": "2e05efe2d2658d99e98df03fefef8f75",
     "semantic_hash": "2e05efe2d2658d99e98df03fefef8f75"
   },
   "public/js/filament/forms/components/slider.js": {
-    "mtime": 1783243801.7140145,
+    "mtime": 1783244940.2156248,
     "ast_hash": "9d79750b5f9aebab6e64d513925052e2",
     "semantic_hash": "9d79750b5f9aebab6e64d513925052e2"
   },
   "public/js/filament/forms/components/tags-input.js": {
-    "mtime": 1783243801.786991,
+    "mtime": 1783244940.2166257,
     "ast_hash": "81729462d1a9a05dcfd53c361a61ae24",
     "semantic_hash": "81729462d1a9a05dcfd53c361a61ae24"
   },
   "public/js/filament/forms/components/textarea.js": {
-    "mtime": 1783243801.8541498,
+    "mtime": 1783244940.2176268,
     "ast_hash": "7b506b839b943886c5cd43704e73da5d",
     "semantic_hash": "7b506b839b943886c5cd43704e73da5d"
   },
   "public/js/filament/notifications/notifications.js": {
-    "mtime": 1783243804.3253405,
+    "mtime": 1783244940.2380257,
     "ast_hash": "20d1a62ae657c6d2860037f6b35a3b25",
     "semantic_hash": "20d1a62ae657c6d2860037f6b35a3b25"
   },
   "public/js/filament/schemas/components/actions.js": {
-    "mtime": 1783243801.8601663,
+    "mtime": 1783244940.2186317,
     "ast_hash": "d4b816b5cada12ef09ac610fb83af139",
     "semantic_hash": "d4b816b5cada12ef09ac610fb83af139"
   },
   "public/js/filament/schemas/components/tabs.js": {
-    "mtime": 1783243801.9170885,
+    "mtime": 1783244940.2196248,
     "ast_hash": "c828948c2870142561a93ccbecc281ca",
     "semantic_hash": "c828948c2870142561a93ccbecc281ca"
   },
   "public/js/filament/schemas/components/wizard.js": {
-    "mtime": 1783243801.9870427,
+    "mtime": 1783244940.2206235,
     "ast_hash": "59b1e2398d02edf5b34beea2041bb880",
     "semantic_hash": "59b1e2398d02edf5b34beea2041bb880"
   },
   "public/js/filament/schemas/schemas.js": {
-    "mtime": 1783243804.4052198,
+    "mtime": 1783244940.2390263,
     "ast_hash": "2905c69a613844521c59675c8d8a1595",
     "semantic_hash": "2905c69a613844521c59675c8d8a1595"
   },
   "public/js/filament/support/support.js": {
-    "mtime": 1783243805.2255177,
+    "mtime": 1783244940.2390263,
     "ast_hash": "09a22017ad45c26233ea91be2186f1f2",
     "semantic_hash": "09a22017ad45c26233ea91be2186f1f2"
   },
   "public/js/filament/tables/components/columns/checkbox.js": {
-    "mtime": 1783243802.0193443,
+    "mtime": 1783244940.2217157,
     "ast_hash": "e753c0faaf93c780494b6e5da833e6d1",
     "semantic_hash": "e753c0faaf93c780494b6e5da833e6d1"
   },
   "public/js/filament/tables/components/columns/select.js": {
-    "mtime": 1783243802.187245,
+    "mtime": 1783244940.2227285,
     "ast_hash": "f7258f279619767f96195f0e1001fe4f",
     "semantic_hash": "f7258f279619767f96195f0e1001fe4f"
   },
   "public/js/filament/tables/components/columns/text-input.js": {
-    "mtime": 1783243802.2543178,
+    "mtime": 1783244940.2237294,
     "ast_hash": "0c4b7b80ada36ca9da26d27ab1316c98",
     "semantic_hash": "0c4b7b80ada36ca9da26d27ab1316c98"
   },
   "public/js/filament/tables/components/columns/toggle.js": {
-    "mtime": 1783243802.2580767,
+    "mtime": 1783244940.2247238,
     "ast_hash": "e753c0faaf93c780494b6e5da833e6d1",
     "semantic_hash": "e753c0faaf93c780494b6e5da833e6d1"
   },
   "public/js/filament/tables/tables.js": {
-    "mtime": 1783243805.3340783,
+    "mtime": 1783244940.2405338,
     "ast_hash": "4923d82c16696a1e3bb8c233953f8569",
     "semantic_hash": "4923d82c16696a1e3bb8c233953f8569"
   },
   "public/js/filament/widgets/components/chart.js": {
-    "mtime": 1783243802.6479704,
+    "mtime": 1783244940.2257247,
     "ast_hash": "b9dfbe5c0996d880d971327af19b93ad",
     "semantic_hash": "b9dfbe5c0996d880d971327af19b93ad"
   },
   "public/js/filament/widgets/components/stats-overview/stat/chart.js": {
-    "mtime": 1783243802.9580748,
+    "mtime": 1783244940.2267253,
     "ast_hash": "75a4c95e96d85c06965a7fa3a8a3d951",
     "semantic_hash": "75a4c95e96d85c06965a7fa3a8a3d951"
   },
@@ -2007,6 +2007,11 @@
   "docs/TASKS_LOG.md": {
     "mtime": 1782748236.523827,
     "ast_hash": "f36a533ad3d71be39aed414f7636ea41",
+    "semantic_hash": ""
+  },
+  "app/Services/Reports/ProjectFinancialDetailsWordExportService.php": {
+    "mtime": 1783245456.9998295,
+    "ast_hash": "f74dccd9b4404b4d7fe096774fcf97e5",
     "semantic_hash": ""
   }
 }
