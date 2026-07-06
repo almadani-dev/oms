@@ -186,3 +186,33 @@ Implemented after a read-only impact report and explicit user approval of 4 flag
 
 ### Commit Hash
 (not committed yet)
+
+---
+
+### Date
+2026-07-06
+
+### Task
+Implement "تقرير الجهات المانحة" (Donor Financial Report): a read-only Filament report page showing one donor, its linked projects, and the full cost/disbursement/execution financial picture between the organization and that donor, plus Excel and Word exports. Followed with a full audit (no code changes) before docs/commit.
+
+### Result
+Implemented and audited. New service + page + Blade view + 2 export services, following the established Trial Balance / Comprehensive Financial Transactions pattern (hasSubmitted gate, applied-filter snapshot, `clearResults()` on any filter change, exports read the on-screen snapshot only). `donor_id` required (`partners.is_donor = true` only); projects scoped via `projects.donor_id`; optional date_from/date_to filter `projects.approval_date` only; project_status_id/project_super_id/project_id are project filters; `currency_id` is display-only (hides non-matching rows/groups, never excludes a project). Three currency grains never mixed: cost-side (planned/received/surplus from `projects_costs`/`project_cost_receipts`), disbursement-source (original/admin-deduction/transfer-deduction/after-deductions from `project_cost_budgets.source_currency_id` + `transaction_lines` tagged `ProjectCostBudget::LINE_ADMIN`/`LINE_TRANSFER`), and execution (final/execution-paid/remaining from `project_cost_budgets.disbursement_currency_id` + `project_cost_budgets_payments`). "Real" disbursements = `transaction_id IS NOT NULL`, matching `ProjectsReportPage`'s existing convention. No existing report, snapshot, observer, model, migration, or accounting write logic was modified.
+
+### Changed Files
+- `app/Filament/Pages/DonorFinancialReportPage.php` (new)
+- `app/Services/Reports/DonorFinancialReportService.php` (new)
+- `app/Services/Reports/DonorFinancialReportExcelExportService.php` (new)
+- `app/Services/Reports/DonorFinancialReportWordExportService.php` (new)
+- `resources/views/filament/pages/donor-financial-report-page.blade.php` (new)
+
+### Verification
+- Full code audit against the checklist: file scope (`git status`/`git diff --stat` confirmed only the 5 files above are new, nothing else modified), page registration (auto-discovered via `AdminPanelProvider`'s existing `discoverPages()`, nav group التقارير, label تقرير الجهات المانحة, no manual registration needed), filter behavior, query correctness (soft-deletes excluded at every join level; no N+1 — all aggregates bulk-fetched before the per-project loop; no fan-out double counting since each disbursement transaction is 1:1 with its `project_cost_budgets` row, traced through `CreateProjectCostBudgetsPayment`), admin/transfer deduction tagging (confirmed `ProjectCostBudget::LINE_ADMIN`/`LINE_TRANSFER` constants are the same ones written by the real disbursement-creation code, not the differently-worded `GeneralExchange` constants), currency separation, Blade RTL/dark-light/empty-states/sign-coloring, and both export services (verified pure renderers of the passed-in `$report` array, no recalculation).
+- `php -l` on all 4 new PHP files: no syntax errors.
+- `php artisan optimize:clear`: succeeded.
+- `php artisan route:list --path=donor-financial-report`: confirmed `GET admin/donor-financial-report` registered.
+- Tinker smoke test against real dev data (1 donor, 1 linked project, 2 `projects_costs` rows in USD/ILS, 0 receipts): `DonorFinancialReportService::generate()` ran without error; correctly returned unmerged per-currency cost rows (planned 20,000 USD / 40,000 ILS, received 0 in both) — no cross-currency blending.
+- Dev DB currently has 0 `project_cost_budgets` and 0 `project_cost_budgets_payments` rows, so the disbursement-source, deductions, final-disbursement, execution-paid, and remaining-execution sections could only be verified by code review, not by live numeric comparison — full numeric validation is pending real disbursement data (see NEXT_STEPS.md).
+- No migrations run.
+
+### Commit Hash
+(not committed yet)
