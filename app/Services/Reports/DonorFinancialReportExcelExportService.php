@@ -130,20 +130,56 @@ class DonorFinancialReportExcelExportService
      */
     private function writeCostSummary(Worksheet $sheet, int $row, array $rows): int
     {
-        $row = $this->writeSectionBanner($sheet, $row, 'الملخص المالي — جانب التكلفة (بعملة تكلفة المشروع)');
+        $row = $this->writeSectionBanner($sheet, $row, 'ملخص التمويل حسب العملة');
 
-        return $this->writeSummaryTable(
-            $sheet,
-            $row,
-            ['العملة', 'إجمالي تكاليف المشاريع', 'إجمالي المبالغ المستلمة', 'الفائض/العجز'],
-            array_map(fn (array $r) => [
-                $r['currency_code'],
-                $r['planned'],
-                $r['received'],
-                $r['surplus'],
-            ], $rows),
-            signedColumns: [3],
-        );
+        $headers = ['العملة', 'إجمالي المبالغ المطلوبة', 'إجمالي المبالغ المستلمة', 'الفائض/العجز', 'نسبة التحصيل'];
+        $lastColumn = chr(ord('A') + count($headers) - 1);
+
+        $sheet->fromArray($headers, null, "A{$row}");
+        $headerStyle = $sheet->getStyle("A{$row}:{$lastColumn}{$row}");
+        $headerStyle->getFont()->setBold(true);
+        $headerStyle->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB(self::COLOR_HEADER_BG);
+        $headerStyle->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+        if (empty($rows)) {
+            $lastRow = $this->writeEmptyNotice($sheet, $row + 1, $lastColumn);
+        } else {
+            $dataRow = $row + 1;
+
+            foreach ($rows as $r) {
+                $sheet->setCellValue("A{$dataRow}", (string) $r['currency_code']);
+
+                $sheet->setCellValue("B{$dataRow}", (float) $r['planned']);
+                $sheet->getStyle("B{$dataRow}")->getNumberFormat()->setFormatCode(self::NUMBER_FORMAT);
+
+                $sheet->setCellValue("C{$dataRow}", (float) $r['received']);
+                $sheet->getStyle("C{$dataRow}")->getNumberFormat()->setFormatCode(self::NUMBER_FORMAT);
+
+                $sheet->setCellValue("D{$dataRow}", (float) $r['surplus']);
+                $sheet->getStyle("D{$dataRow}")->getNumberFormat()->setFormatCode(self::NUMBER_FORMAT);
+                if ((float) $r['surplus'] !== 0.0) {
+                    $sheet->getStyle("D{$dataRow}")->getFont()->getColor()
+                        ->setRGB((float) $r['surplus'] > 0 ? self::COLOR_SUCCESS : self::COLOR_DANGER);
+                }
+
+                $sheet->setCellValueExplicit("E{$dataRow}", $this->collectionPercentageText($r['collection_percentage'] ?? null), DataType::TYPE_STRING);
+
+                $dataRow++;
+            }
+
+            $lastRow = $dataRow - 1;
+            $sheet->getStyle("A{$row}:{$lastColumn}{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        }
+
+        $this->borderRange($sheet, "A{$row}:{$lastColumn}{$lastRow}");
+
+        return $lastRow + 2;
+    }
+
+    /** "—" when null, else "12.34%". */
+    private function collectionPercentageText(?float $value): string
+    {
+        return $value === null ? '—' : number_format($value, 2) . '%';
     }
 
     /**

@@ -279,6 +279,7 @@ class DonorFinancialReportService
                 'planned' => $p,
                 'received' => $r,
                 'surplus' => round($r - $p, 2),
+                'collection_percentage' => $p > 0 ? round($r / $p * 100, 2) : null,
             ];
         }
 

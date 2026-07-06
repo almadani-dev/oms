@@ -216,3 +216,29 @@ Implemented and audited. New service + page + Blade view + 2 export services, fo
 
 ### Commit Hash
 (not committed yet)
+
+---
+
+### Date
+2026-07-06
+
+### Task
+Fix broken image icon for "صورة الإشعار" on the Project Cost Receipt view page (`/admin/project-cost-receipts/{id}`).
+
+### Result
+Diagnosed as environmental, not a code bug. Inspected `ProjectCostReceiptForm` (FileUpload field, disk `public`, directory `receipts`), `CreateProjectCostReceipt`/`EditProjectCostReceipt` (file-move-and-rename logic into `Attachment.file_path`), and `ViewProjectCostReceipt`'s infolist (`Storage::disk('public')->url($attachment->file_path)`) — all already correct per Filament/Laravel convention, so no application code was changed. Root cause: `public/storage` was a real, empty directory rather than a symlink, so `php artisan storage:link` had previously silently failed ("link already exists") and every attachment URL 404'd. Confirmed the directory was empty (`find -mindepth 1` → 0 entries), removed it, and re-ran `php artisan storage:link`, which created the correct symlink to `storage/app/public`. Verified via tinker against receipt #1's real attachment row: `Storage::disk('public')->url()` now returns a URL whose target file `Storage::disk('public')->exists()` confirms is present, and `readlink -f public/storage` now resolves to `storage/app/public`.
+
+### Changed Files
+- None (application code unchanged)
+- Filesystem only: removed the stray empty `public/storage` directory and recreated it as a symlink via `php artisan storage:link` (user-confirmed before deletion)
+
+### Verification
+- `stat`/`readlink -f public/storage` before fix: real empty directory, not a symlink.
+- `php artisan storage:link` before fix: `ERROR The [...\public\storage] link already exists.`
+- `find public/storage -mindepth 1 | wc -l` → 0, confirming the directory held nothing before removal.
+- After `rmdir` + `php artisan storage:link`: command succeeded ("link has been connected to [...storage/app/public]"); `readlink -f public/storage` now resolves to `storage/app/public`.
+- Tinker: `ProjectCostReceipt::find(1)->attachments()->first()` → `file_path = receipts/receive_2_20260706_15000.jpeg`, `Storage::disk('public')->url()` → `http://localhost/storage/receipts/receive_2_20260706_15000.jpeg`, `Storage::disk('public')->exists()` → true.
+- No migrations run, no accounting/transaction logic touched.
+
+### Commit Hash
+(not committed yet)

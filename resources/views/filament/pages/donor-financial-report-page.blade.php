@@ -1,5 +1,6 @@
 @php
     $money = fn ($value) => \App\Helpers\NumberHelper::bigComma($value) ?? '0.00';
+    $percent = fn ($value) => $value === null ? '—' : number_format((float) $value, 2) . '%';
     $signClass = function (float $value) {
         if ($value > 0.0) {
             return 'donor-rpt-number donor-rpt-number-success';
@@ -291,11 +292,10 @@
                     @endif
                 </section>
 
-                {{-- B) Financial summary by currency — two grains, never mixed --}}
+                {{-- B) Funding summary (cost-side) — immediately after donor info --}}
                 <section class="donor-rpt-card">
-                    <div class="donor-rpt-section-title">الملخص المالي حسب العملة</div>
+                    <div class="donor-rpt-section-title">ملخص التمويل حسب العملة</div>
 
-                    <div class="donor-rpt-subtitle">جانب التكلفة (بعملة تكلفة المشروع)</div>
                     @if (empty($report['cost_summary']))
                         <div class="donor-rpt-empty">لا توجد بيانات تكاليف</div>
                     @else
@@ -304,9 +304,10 @@
                                 <thead>
                                     <tr>
                                         <th>العملة</th>
-                                        <th>إجمالي تكاليف المشاريع</th>
+                                        <th>إجمالي المبالغ المطلوبة</th>
                                         <th>إجمالي المبالغ المستلمة</th>
                                         <th>الفائض/العجز</th>
+                                        <th>نسبة التحصيل</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -316,12 +317,18 @@
                                             <td><span class="donor-rpt-number">{!! $money($row['planned']) !!}</span></td>
                                             <td><span class="donor-rpt-number">{!! $money($row['received']) !!}</span></td>
                                             <td><span class="{{ $signClass($row['surplus']) }}">{!! $money($row['surplus']) !!}</span></td>
+                                            <td><span class="donor-rpt-number">{{ $percent($row['collection_percentage']) }}</span></td>
                                         </tr>
                                     @endforeach
                                 </tbody>
                             </table>
                         </div>
                     @endif
+                </section>
+
+                {{-- C) Disbursement / execution summary by currency — two grains, never mixed --}}
+                <section class="donor-rpt-card">
+                    <div class="donor-rpt-section-title">الملخص المالي حسب العملة</div>
 
                     <div class="donor-rpt-subtitle">جانب الصرف — بعملة المصدر (المبالغ المرصودة والخصومات)</div>
                     @if (empty($report['disb_source_summary']))
@@ -382,7 +389,7 @@
                     @endif
                 </section>
 
-                {{-- C) Projects table --}}
+                {{-- D) Projects table --}}
                 <section class="donor-rpt-card">
                     <div class="donor-rpt-section-title">مشاريع الجهة المانحة ({{ $report['projects_count'] }})</div>
                     @if (empty($report['projects']))
@@ -438,7 +445,7 @@
                     @endif
                 </section>
 
-                {{-- D) Project cost details --}}
+                {{-- E) Project cost details --}}
                 <section class="donor-rpt-card">
                     <div class="donor-rpt-section-title">تفاصيل تكاليف المشاريع</div>
                     @if (empty($report['cost_details']))
@@ -478,7 +485,7 @@
                     @endif
                 </section>
 
-                {{-- E) Financial movements --}}
+                {{-- F) Financial movements --}}
                 <section class="donor-rpt-card">
                     <div class="donor-rpt-section-title">الحركات المالية ({{ count($report['movements']) }})</div>
                     @if (empty($report['movements']))

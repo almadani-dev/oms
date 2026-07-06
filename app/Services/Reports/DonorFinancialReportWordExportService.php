@@ -139,16 +139,17 @@ class DonorFinancialReportWordExportService
      */
     private function addCostSummarySection(Section $section, array $rows): void
     {
-        $this->addSectionTitle($section, 'الملخص المالي — جانب التكلفة (بعملة تكلفة المشروع)');
+        $this->addSectionTitle($section, 'ملخص التمويل حسب العملة');
 
         $this->addDataTable(
             $section,
-            ['العملة', 'إجمالي تكاليف المشاريع', 'إجمالي المبالغ المستلمة', 'الفائض/العجز'],
+            ['العملة', 'إجمالي المبالغ المطلوبة', 'إجمالي المبالغ المستلمة', 'الفائض/العجز', 'نسبة التحصيل'],
             array_map(fn (array $r) => [
                 [(string) $r['currency_code'], null],
                 [$this->money($r['planned']), null],
                 [$this->money($r['received']), null],
                 [$this->money($r['surplus']), $this->signColor($r['surplus'])],
+                [$this->collectionPercentageText($r['collection_percentage'] ?? null), null],
             ], $rows),
         );
     }
@@ -421,6 +422,12 @@ class DonorFinancialReportWordExportService
         }
 
         return implode("\n", $lines);
+    }
+
+    /** "—" when null, else "12.34%". */
+    private function collectionPercentageText(?float $value): string
+    {
+        return $value === null ? '—' : number_format($value, 2) . '%';
     }
 
     private function money(mixed $value): string
