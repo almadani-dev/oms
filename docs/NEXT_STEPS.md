@@ -1,7 +1,7 @@
 # Next Steps
 
 ## Recommended Next Step
-Database is now clean (16 operational tables truncated 2026-07-06) — have the user begin entering real accounts, partners, projects, and transactions. Spot-check the first few real entries in Trial Balance / Comprehensive Financial Transactions reports to confirm everything still balances correctly against fresh data.
+Create the first real accounts in the browser (/admin/accounts/create) using the new "الرصيد الافتتاحي" section: one account without an opening balance, one with, and one in a second currency. Confirm the OPB transaction number, the "أرصدة افتتاحية" clearing account per currency, the account's current_balance, and that Trial Balance shows متوازن for each currency. Then continue entering real partners, projects, and transactions.
 
 ## Pending Items
 - Comprehensive Financial Transactions: consider pagination or a row cap if very wide date ranges become slow — the page and exports render all rows.
@@ -9,6 +9,8 @@ Database is now clean (16 operational tables truncated 2026-07-06) — have the 
 - Trial Balance Phase 3: opening/closing balance columns, reusing `AccountStatementReportService::calculateOpeningBalance`'s per-account logic (both exports and the on-screen table would need the extra columns).
 - Decide what to do with files under storage referenced by the now-purged `attachments` rows — they were intentionally left on disk per the user's instruction ("do not delete storage files yet") and should be reviewed/cleaned up separately once confirmed unneeded.
 - Consider moving `storage/app/private/backups/oms_backup_2026-07-06.sql` off the app server to durable/offsite storage, since it's the only copy of the pre-reset data.
+- Opening balances: negative opening balances are not supported (form enforces min 0) — if the accounting team ever needs credit-side openings (e.g. liabilities), the account-nature question must be revisited first.
+- Deleting an account that has an opening transaction leaves the OPB transaction/lines in place (existing delete behavior untouched, per task constraint) — decide later whether account deletion should be blocked when transaction lines exist.
 
 ## Risks To Review
 - Comprehensive report: per-currency status can legitimately read "غير متوازن" for periods containing cross-currency transactions (debit leg in one currency, credit leg in another). Expected, but may need a UI/export footnote if accountants find it alarming.

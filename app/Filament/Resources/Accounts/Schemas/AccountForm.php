@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Accounts\Schemas;
 
+use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -45,7 +46,10 @@ class AccountForm
                 TextInput::make('current_balance')
                     ->label('الرصيد الحالي')
                     ->numeric()
-                    ->default(0),
+                    ->default(0)
+                    // يُعدَّل حصرياً عبر قيود محاسبية متوازنة، وليس يدوياً
+                    ->disabled()
+                    ->dehydrated(false),
                 Toggle::make('is_active')
                     ->label('نشط')
                     ->default(true),
@@ -56,6 +60,29 @@ class AccountForm
                     ->label('ملاحظات')
                     ->columnSpanFull(),
             ]),
+
+            // حقول القيد الافتتاحي — تظهر عند إنشاء حساب جديد فقط،
+            // وتُعالَج في CreateAccount (ليست أعمدة على جدول الحسابات).
+            Section::make('الرصيد الافتتاحي')
+                ->description('اختياري: عند إدخال رصيد افتتاحي أكبر من صفر سيتم إنشاء قيد افتتاحي متوازن تلقائياً.')
+                ->columns(3)
+                ->visible(fn (string $operation): bool => $operation === 'create')
+                ->schema([
+                    TextInput::make('opening_balance')
+                        ->label('الرصيد الافتتاحي')
+                        ->numeric()
+                        ->minValue(0)
+                        ->nullable(),
+                    DatePicker::make('opening_balance_date')
+                        ->label('تاريخ الرصيد الافتتاحي')
+                        ->default(now())
+                        ->requiredWith('opening_balance'),
+                    TextInput::make('opening_balance_fx_rate')
+                        ->label('سعر الصرف')
+                        ->numeric()
+                        ->default(1)
+                        ->minValue(0.000001),
+                ]),
         ]);
     }
 }
