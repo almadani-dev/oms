@@ -1985,8 +1985,8 @@
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1783327955.7526038,
-    "ast_hash": "b96ebac69c2b365ff31c45511b02ae47",
+    "mtime": 1783327103.9367359,
+    "ast_hash": "d337642eedf2be8dcd8e940adb8f9246",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
@@ -1995,18 +1995,18 @@
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1783327962.5562103,
-    "ast_hash": "9b521200bb1ac7c12a79ea270aa8d554",
+    "mtime": 1783327104.3612266,
+    "ast_hash": "5f289e99056f8352ea7733b777675a83",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
-    "mtime": 1783327942.3453767,
-    "ast_hash": "86898bc03b9a236cf828a0e8d05e0f15",
+    "mtime": 1783327090.3615627,
+    "ast_hash": "af3a54aad46d0ca16d659ac141a5de95",
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1783327938.206393,
-    "ast_hash": "890be60aa884583d0783cee36b790356",
+    "mtime": 1783327086.941962,
+    "ast_hash": "1794f33877eaa6c47032d6b59a6f10ad",
     "semantic_hash": ""
   },
   "app/Services/Reports/ProjectFinancialDetailsWordExportService.php": {
@@ -2025,12 +2025,12 @@
     "semantic_hash": ""
   },
   "bootstrap/cache/packages.php": {
-    "mtime": 1783327614.0994902,
+    "mtime": 1783326877.402983,
     "ast_hash": "7c6e5b9781b4e14d1487b9a8e92c61f5",
     "semantic_hash": ""
   },
   "bootstrap/cache/services.php": {
-    "mtime": 1783327614.12953,
+    "mtime": 1783326877.43455,
     "ast_hash": "204033b0b676e45abe90b0ca88778141",
     "semantic_hash": ""
   },
@@ -2075,8 +2075,8 @@
     "semantic_hash": ""
   },
   "app/Filament/Pages/ComprehensiveFinancialTransactionsPage.php": {
-    "mtime": 1783327557.7329729,
-    "ast_hash": "8cad0a63d5d0c8b3127740b7b3946fe7",
+    "mtime": 1783319382.4880793,
+    "ast_hash": "2bb1cac79da6d32b4adf4c5f983be8c1",
     "semantic_hash": ""
   },
   "app/Services/Reports/ComprehensiveFinancialTransactionsReportService.php": {
@@ -2087,16 +2087,6 @@
   "resources/views/filament/pages/comprehensive-financial-transactions-page.blade.php": {
     "mtime": 1783326850.8977542,
     "ast_hash": "b0d320e022120f949a9bf99afd93725d",
-    "semantic_hash": ""
-  },
-  "app/Services/Reports/ComprehensiveFinancialTransactionsExcelExportService.php": {
-    "mtime": 1783327473.166782,
-    "ast_hash": "0e1d43e4a80ec5717f97b82d5011e575",
-    "semantic_hash": ""
-  },
-  "app/Services/Reports/ComprehensiveFinancialTransactionsWordExportService.php": {
-    "mtime": 1783327534.2117834,
-    "ast_hash": "9e5dbc60910c10350a4a1a4d0da02dee",
     "semantic_hash": ""
   }
 }
