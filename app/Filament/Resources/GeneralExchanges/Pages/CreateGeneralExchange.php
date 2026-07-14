@@ -9,6 +9,7 @@ use App\Models\Attachment;
 use App\Models\GeneralExchange;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
+use App\Services\Transactions\TransactionDescriptionBuilder;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
@@ -89,6 +90,12 @@ class CreateGeneralExchange extends CreateRecord
             Account::find($data['transfer_account_id'])?->increment('current_balance', $transferAmount);
             Account::find($data['destination_account_id'])?->increment('current_balance', $finalAmount);
 
+            // STEP 4b - Generate & save the Arabic transaction description
+            app(TransactionDescriptionBuilder::class)->buildAndSave(
+                $transaction,
+                $this->buildGeneralExchangeSummary($data['source_account_id'], $data['destination_account_id'])
+            );
+
             // STEP 5 - Store the attachment if provided
             if (! empty($data['exchange_image'])) {
                 $this->storeAttachment($exchange, $data['exchange_image'], $finalAmount);
@@ -125,6 +132,20 @@ class CreateGeneralExchange extends CreateRecord
         }
 
         return $prefix . str_pad($max + 1, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * "تحويل مبلغ من {source} إلى {destination}" using the final saved source
+     * and destination accounts, with a fallback if either is unavailable.
+     */
+    protected function buildGeneralExchangeSummary($sourceAccountId, $destinationAccountId): string
+    {
+        $sourceName      = Account::find($sourceAccountId)?->name;
+        $destinationName = Account::find($destinationAccountId)?->name;
+
+        return ($sourceName && $destinationName)
+            ? "تحويل مبلغ من {$sourceName} إلى {$destinationName}"
+            : 'تسجيل تحويل عام';
     }
 
     /**

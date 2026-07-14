@@ -9,6 +9,7 @@ use App\Models\ProjectCost;
 use App\Models\ProjectCostBudget;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
+use App\Services\Transactions\TransactionDescriptionBuilder;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
@@ -44,7 +45,7 @@ class CreateProjectCostBudgetsPayment extends CreateRecord
         $finalAmount    = round($afterDeduct * $fxRate, 2);
 
         return DB::transaction(function () use (
-            $data, $projectCostId, $costCurrencyId,
+            $data, $projectCost, $projectCostId, $costCurrencyId,
             $original, $adminPct, $transferPct, $adminAmount, $transferAmount, $afterDeduct, $finalAmount, $fxRate
         ) {
             // STEP 1 - Create transaction
@@ -101,6 +102,12 @@ class CreateProjectCostBudgetsPayment extends CreateRecord
             Account::find($data['transfer_account_id'])?->increment('current_balance', $transferAmount);
             Account::find($data['destination_account_id'])?->increment('current_balance', $finalAmount);
 
+            // STEP 4b - Generate & save the Arabic transaction description
+            app(TransactionDescriptionBuilder::class)->buildAndSave(
+                $transaction,
+                $this->buildDisbursementSummary($projectCost)
+            );
+
             // STEP 5 - If file uploaded
             if (! empty($data['payment_image'])) {
                 $this->storeAttachment($budget, $data['payment_image'], $finalAmount);
@@ -138,6 +145,19 @@ class CreateProjectCostBudgetsPayment extends CreateRecord
         }
 
         return $prefix . str_pad($max + 1, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * "صرف مبلغ لمشروع {project} بعد الخصومات والتحويل" with a fallback when
+     * the project cost's project is unavailable. Never mentions percentages.
+     */
+    protected function buildDisbursementSummary(?ProjectCost $projectCost): string
+    {
+        $projectName = $projectCost?->project?->name;
+
+        return $projectName
+            ? "صرف مبلغ لمشروع {$projectName} بعد الخصومات والتحويل"
+            : 'صرف مبلغ مشروع بعد الخصومات والتحويل';
     }
 
     /**

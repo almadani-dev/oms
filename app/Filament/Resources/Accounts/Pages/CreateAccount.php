@@ -10,6 +10,7 @@ use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Models\TransactionSuperType;
 use App\Models\TransactionType;
+use App\Services\Transactions\TransactionDescriptionBuilder;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
@@ -68,7 +69,6 @@ class CreateAccount extends CreateRecord
                 'transaction_type_id' => $transactionTypeId,
                 'transaction_number'  => $transactionNumber,
                 'transaction_time'    => Carbon::parse($openingDate),
-                'description'         => 'قيد افتتاحي للحساب: ' . $account->name,
                 'notes'               => 'تم إنشاء هذا القيد تلقائياً عند إنشاء الحساب.',
                 'created_by'          => auth()->id(),
                 'updated_by'          => auth()->id(),
@@ -80,6 +80,12 @@ class CreateAccount extends CreateRecord
             // STEP 5 - Update balances with the standard debit/credit pattern
             $account->increment('current_balance', $openingBalance);          // مدين
             $clearingAccount->decrement('current_balance', $openingBalance);  // دائن
+
+            // STEP 6 - Generate & save the Arabic transaction description
+            app(TransactionDescriptionBuilder::class)->buildAndSave(
+                $transaction,
+                "تسجيل الرصيد الافتتاحي لحساب {$account->name}"
+            );
 
             Notification::make()
                 ->title('تم إنشاء القيد الافتتاحي')

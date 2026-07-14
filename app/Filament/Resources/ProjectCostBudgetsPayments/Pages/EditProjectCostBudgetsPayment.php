@@ -8,6 +8,7 @@ use App\Models\Account;
 use App\Models\Attachment;
 use App\Models\ProjectCost;
 use App\Models\ProjectCostBudget;
+use App\Services\Transactions\TransactionDescriptionBuilder;
 use Carbon\Carbon;
 use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
@@ -133,7 +134,7 @@ class EditProjectCostBudgetsPayment extends EditRecord
         $finalAmount    = round($afterDeduct * $fxRate, 2);
 
         return DB::transaction(function () use (
-            $record, $data, $projectCostId, $costCurrencyId,
+            $record, $data, $projectCost, $projectCostId, $costCurrencyId,
             $original, $adminPct, $transferPct, $adminAmount, $transferAmount, $afterDeduct, $finalAmount, $fxRate
         ) {
             $transaction = $record->transaction;
@@ -196,6 +197,14 @@ class EditProjectCostBudgetsPayment extends EditRecord
             Account::find($data['transfer_account_id'])?->increment('current_balance', $transferAmount);
             Account::find($data['destination_account_id'])?->increment('current_balance', $finalAmount);
 
+            // STEP 5b - Regenerate the Arabic transaction description from the final saved state
+            if ($transaction) {
+                app(TransactionDescriptionBuilder::class)->buildAndSave(
+                    $transaction,
+                    $this->buildDisbursementSummary($projectCost)
+                );
+            }
+
             // STEP 6 - Handle file swap
             $existing    = $record->attachments()->first();
             $newFilePath = $data['payment_image'] ?? null;
@@ -218,6 +227,19 @@ class EditProjectCostBudgetsPayment extends EditRecord
 
             return $record;
         });
+    }
+
+    /**
+     * "صرف مبلغ لمشروع {project} بعد الخصومات والتحويل" with a fallback when
+     * the project cost's project is unavailable. Never mentions percentages.
+     */
+    protected function buildDisbursementSummary(?ProjectCost $projectCost): string
+    {
+        $projectName = $projectCost?->project?->name;
+
+        return $projectName
+            ? "صرف مبلغ لمشروع {$projectName} بعد الخصومات والتحويل"
+            : 'صرف مبلغ مشروع بعد الخصومات والتحويل';
     }
 
     protected function rebuildLines(int $transactionId, ?int $projectCostId, ?int $costCurrencyId, array $data, array $amounts): void

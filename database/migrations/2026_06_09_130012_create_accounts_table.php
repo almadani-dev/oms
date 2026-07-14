@@ -14,9 +14,7 @@ return new class extends Migration
             $table->string('name');
             $table->foreignId('account_type_id')->constrained('accounts_type')->restrictOnDelete();
             $table->foreignId('currency_id')->constrained('currencies')->restrictOnDelete();
-            $table->decimal('current_balance', 15, 2)->default(0);
             $table->boolean('is_active')->default(true);
-$table->string('iban')->nullable();
             $table->text('notes')->nullable();
             $table->timestamps();
             $table->softDeletes();

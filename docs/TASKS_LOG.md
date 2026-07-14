@@ -297,4 +297,71 @@ Confirmed via `graphify query` + grep that `App\Filament\Pages\ProjectsReportPag
 - No migrations run, no DB tables/data touched, no accounting/transaction/receipt/budget/export logic touched.
 
 ### Commit Hash
+
+---
+
+### Date
+2026-07-14
+
+### Task
+Add automatic Arabic `transactions.description` generation to all 6 financial write flows (receipts, project disbursement, execution payments, general expenses, general exchanges, opening balance), via one shared formatter service. Exact format: `دائن: {credit entries} | مدين: {debit entries} | ملخص العملية: {summary}.`, credit before debit, one line, English digits/thousands separators/2 decimals, currency from `transaction_lines.currency_id` (never `account.currency`).
+
+### Result
+Implemented and verified. New `app/Services/Transactions/TransactionDescriptionBuilder.php::buildAndSave()` reads a transaction's final active lines (eager-loaded `account`→`withTrashed()` + `currency`), groups credit before debit preserving line-id order, formats/normalizes, throws if either side is empty (rolls back the caller's existing `DB::transaction()`). Each of the 11 Create/Edit pages (opening balance has no edit flow) now builds its own short Arabic summary from final saved relations and calls the builder as the last step inside its existing transaction boundary, before the success notification; edit flows call it again after lines are reversed/rebuilt. `transactions.notes`, `transaction_lines.notes`/`LINE_*` tags, all balance-update/currency/accounting-formula code, and attachment behavior are untouched. No migration (`description` column pre-existed). No historical backfill (explicitly out of scope). Also fixed two unrelated pre-existing migration bugs discovered while adding `RefreshDatabase`-based tests (approved separately mid-task — see DECISIONS_LOG.md 2026-07-14 entries); a third MySQL-only migration incompatibility was found and deliberately left untouched.
+
+### Changed Files
+- `app/Services/Transactions/TransactionDescriptionBuilder.php` (new)
+- `app/Filament/Resources/ProjectCostReceipts/Pages/CreateProjectCostReceipt.php`, `EditProjectCostReceipt.php`
+- `app/Filament/Resources/ProjectCostBudgetsPayments/Pages/CreateProjectCostBudgetsPayment.php`, `EditProjectCostBudgetsPayment.php`
+- `app/Filament/Resources/ExecutionPayments/Pages/CreateExecutionPayment.php`, `EditExecutionPayment.php`
+- `app/Filament/Resources/GeneralExpenses/Pages/CreateGeneralExpense.php`, `EditGeneralExpense.php`
+- `app/Filament/Resources/GeneralExchanges/Pages/CreateGeneralExchange.php`, `EditGeneralExchange.php`
+- `app/Filament/Resources/Accounts/Pages/CreateAccount.php`
+- `database/migrations/2026_06_09_130009_create_exchange_rate_history_table.php` (unrelated pre-existing bug fix)
+- `database/migrations/2026_06_09_174625_rename_exchange_rate_history_to_exchange_rate_histories.php` (unrelated pre-existing bug fix)
+- `database/migrations/2026_06_09_130012_create_accounts_table.php` (unrelated pre-existing bug fix)
+- `tests/Unit/Services/TransactionDescriptionBuilderTest.php` (new, 15 tests)
+
+### Verification
+- `php -l` on all 14 changed/new PHP files: no syntax errors.
+- `tests/Unit/Services/TransactionDescriptionBuilderTest.php`: 15/15 passing, 23 assertions — covers single/multiple credit and debit entries with `؛` separation, currency sourced from the line (not the account, including a deliberately mismatched-currency-account case), `حساب` prefix add/no-duplicate, English digits/thousands/2-decimal formatting, credit-before-debit-before-summary ordering, summary normalization (whitespace collapse, repeated-period collapse, exactly one trailing period), soft-deleted account still renders its name, soft-deleted lines excluded, zero-value lines excluded, missing-credit/missing-debit throws, `buildAndSave` persists to `transactions.description`. Runs against a minimal hand-migrated SQLite schema (not `RefreshDatabase` — see DECISIONS_LOG.md) with `PRAGMA foreign_keys = OFF`.
+- Full existing suite (`php artisan test`): 16/17 passing; the 1 failure (`Tests\Feature\ExampleTest`) is the default Laravel welcome-page scaffold test hitting `/` (404, since `resources/views/welcome.blade.php` doesn't exist in this admin-only app) — confirmed pre-existing and unrelated to this change.
+- Targeted tinker verification (real dev DB, wrapped in `DB::beginTransaction()`/`DB::rollBack()`, zero residue — transaction count 10 before and after): invoked each flow's real `handleRecordCreation`/`handleRecordUpdate` via reflection with real accounts/currencies/projects/partners. All 6 creates + 5 edits (all except opening balance, which has no edit flow) produced correctly formatted descriptions: credit first, debit second, summary last, correct account names/currency codes/posted amounts, multi-account `؛` separation and mixed-currency handling on the disbursement/exchange flows, correct old→new value swap on every edit (changed amount + changed account both reflected), and the "already starts with حساب" de-dup rule confirmed live against a deliberately `حساب`-prefixed test account name.
+- `php artisan migrate:status` checked before and after both migration-file edits: all affected migrations still show their original `Ran` batch numbers (3/4/5/14/19) — confirms zero live DB operations, only the migration **files** changed.
+- `php artisan optimize:clear` and `graphify update .` run after implementation.
+
+### Commit Hash
+(not committed yet)
+
+---
+
+### Date
+2026-07-14
+
+### Task
+Close the remaining manual-edit bypass on the raw `TransactionResource` ("المعاملات المالية", `admin/transactions`): first made `description` read-only there, then — after a follow-up read-only audit found it also allowed bare/unbalanced transaction creation and header edits independent of the owning financial record — converted the whole resource into a strictly read-only audit resource (no create/edit/delete/restore/force-delete on transactions or their lines), with authorization-layer hardening, not just hidden buttons. Also applied `defaultSort('id', 'desc')` to both its list table and the lines relation table.
+
+### Result
+Implemented and verified. `TransactionResource::getPages()` now only registers `index`/`view`; `create`/`edit` routes no longer exist. `CreateTransaction.php`/`EditTransaction.php` deleted (confirmed unreferenced elsewhere). `TransactionResource` overrides all 8 `can*` authorization methods (`canCreate`, `canEdit`, `canDelete`, `canDeleteAny`, `canRestore`, `canRestoreAny`, `canForceDelete`, `canForceDeleteAny`) to return `false`. `ListTransactions`/`ViewTransaction` no longer have header actions. `TransactionsTable` keeps only `ViewAction` + `defaultSort('id','desc')` (dropped `EditAction`, the `BulkActionGroup`/`DeleteBulkAction`). `LinesRelationManager` keeps its read-only columns/search/sort + `defaultSort('id','desc')` but has zero header/record actions and the same 8 `can*` overrides (as `protected` instance methods, matching `InteractsWithRelationshipTable`'s signatures). `TransactionForm`'s `description` field stays `disabled()->dehydrated(false)` (from the prior same-day fix, unchanged). Navigation entry "المعاملات المالية" stays visible; `TrashedFilter` kept (read-only filter, not a mutation). The 6 legitimate financial flows, `TransactionDescriptionBuilder`, and all accounting/balance/currency logic were not touched.
+
+### Changed Files
+- `app/Filament/Resources/Transactions/TransactionResource.php` (pages reduced to index/view; 8 `can*` overrides added)
+- `app/Filament/Resources/Transactions/Pages/ListTransactions.php` (removed `CreateAction` header action)
+- `app/Filament/Resources/Transactions/Pages/ViewTransaction.php` (removed `EditAction` header action)
+- `app/Filament/Resources/Transactions/Tables/TransactionsTable.php` (removed `EditAction`/bulk delete; added `defaultSort('id','desc')`)
+- `app/Filament/Resources/Transactions/RelationManagers/LinesRelationManager.php` (removed all header/record mutation actions; added `defaultSort('id','desc')` + 8 `can*` overrides)
+- `app/Filament/Resources/Transactions/Schemas/TransactionForm.php` (from the prior fix in this same task — `description` already `disabled()->dehydrated(false)`)
+- `app/Filament/Resources/Transactions/Pages/CreateTransaction.php` (deleted, unreachable after route removal)
+- `app/Filament/Resources/Transactions/Pages/EditTransaction.php` (deleted, unreachable after route removal)
+
+### Verification
+- `php -l` on all 5 changed/kept PHP files: no syntax errors.
+- `php artisan route:list --path=transactions`: before → `index`, `create`, `view`, `edit` (4 routes); after → `index`, `view` only (2 routes). `admin/transactions/create` and `admin/transactions/{record}/edit` are no longer registered.
+- Headless `Table` inspection via reflection (no full Livewire/HTTP mount needed): `TransactionsTable::configure()` → `getFlatActions()` returns exactly one `Filament\Actions\ViewAction`, `getDefaultSortColumn()`/`Direction()` → `id`/`desc`. `LinesRelationManager::table()` → `getFlatActions()` returns 0 actions, same `id`/`desc` default sort. `ListTransactions`/`ViewTransaction` → `getHeaderActions()` both return `[]`.
+- Tinker: `TransactionResource::canCreate()`/`canEdit()`/`canDelete()`/`canDeleteAny()`/`canRestore()`/`canRestoreAny()`/`canForceDelete()`/`canForceDeleteAny()` all return `false`; `shouldRegisterNavigation()` → `true`; `getNavigationLabel()` → "المعاملات المالية" unchanged; `LinesRelationManager::canCreate()` → `false`.
+- Re-ran the six-flow tinker verification (rolled back, zero residue, transaction count 10 before/after): byte-identical generated descriptions to the prior verification — confirms the 6 legitimate flows and `TransactionDescriptionBuilder` are completely unaffected by this resource-level change.
+- Re-ran `tests/Unit/Services/TransactionDescriptionBuilderTest.php`: 15/15 still passing.
+- `php artisan optimize:clear` and `graphify update .` run after implementation. `git diff --check` clean (only a benign CRLF-normalization notice from Git, not a real whitespace error).
+
+### Commit Hash
 (not committed yet)

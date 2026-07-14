@@ -107,3 +107,31 @@ Let accountants enter real starting balances for accounts (post data-reset) thro
 
 ### Result
 Impact report delivered; 4 decision points raised (no account nature exists → always-debit; fx_rate as metadata per existing own-currency base convention; new AccountType for clearing accounts; new super type "قيود افتتاحية") — user approved all recommended options. Implemented as described in TASKS_LOG.md (2026-07-06, fifth entry) and DECISIONS_LOG.md (2026-07-06, second entry).
+
+---
+
+### Date
+2026-07-14
+
+### Prompt
+User requested automatic Arabic `transactions.description` generation across all 6 financial write flows (receipts, project disbursement, execution payments, general expenses, general exchanges, opening balance), with an exact stored format (`دائن: {credit} | مدين: {debit} | ملخص العملية: {summary}.`, credit before debit, `؛ ` for multiple accounts per side, English digits/2 decimals/thousands separators, currency from `transaction_lines.currency_id` not `accounts.currency_id`), one shared `TransactionDescriptionBuilder` service, per-flow Arabic summary templates with fallbacks, regeneration on edit, no second DB transaction, no migration, no historical backfill, and required a read-only impact report first (STOP for approval), then implementation with unit + targeted integration verification.
+
+### Purpose
+Make every financial transaction human-readable at a glance (list/search/audit/exports) without changing any accounting calculation, balance, or currency-handling logic.
+
+### Result
+Impact report delivered and approved with clarifications (currency must come from the line not the account; exact `حساب`-prefix dedup rule; explicit validation requiring both sides non-empty or throw; summary normalization rules). Implemented as described in TASKS_LOG.md and DECISIONS_LOG.md (2026-07-14 entries). Mid-implementation, `RefreshDatabase`-based testing surfaced two unrelated pre-existing migration bugs; user was shown a full read-only investigation (exact files, error, historical batch evidence, safe-fix proposal) before approving a minimal fix for each, and approved leaving a third, MySQL-only-SQL migration incompatibility untouched. All 15 unit tests + 6 real create-flow + 5 real edit-regeneration tinker verifications passed against real dev-DB data with zero residue (rolled-back transaction).
+
+---
+
+### Date
+2026-07-14
+
+### Prompt
+Follow-up: user asked to close the remaining manual-edit bypass on the raw `TransactionResource` form — make `description` read-only there before final approval. After that small fix, user requested a further read-only audit (6 specific questions: navigation visibility, direct create access, whether create also builds balanced lines, independent header editing, effect of the description fix on a raw create, and whether the raw CRUD is actively needed) before approving any further change. Based on that audit's findings, user approved converting the whole resource into a strictly read-only audit resource: remove create/edit routes and actions, harden authorization (`can*` → `false`, not just hidden buttons), keep list/view/lines fully visible for audit, delete now-unreachable page classes if safe, and add `defaultSort('id', 'desc')` to both the transactions list and the lines relation table.
+
+### Purpose
+Prevent any path — form field, direct URL, or raw CRUD — from creating or mutating a `Transaction`/`TransactionLine` outside the 6 legitimate, balance-safe financial flows, while preserving 100% of this resource's genuine audit value (search, filter, view, inspect lines).
+
+### Result
+`description` made `disabled()->dehydrated(false)` on `TransactionForm` (same pattern as `current_balance` on `AccountForm`). Read-only audit answered all 6 questions directly from code (confirmed: bare/line-less/unbalanced create, independent header edits, no balance updates) — implemented as described in TASKS_LOG.md and DECISIONS_LOG.md (2026-07-14, second and third entries). `create`/`edit` routes removed, `CreateTransaction.php`/`EditTransaction.php` deleted (confirmed unreferenced), 8 `can*` methods hardcoded `false` on both `TransactionResource` and `LinesRelationManager`, all mutation actions removed from `ListTransactions`/`ViewTransaction`/`TransactionsTable`/`LinesRelationManager`, `defaultSort('id','desc')` added to both tables. Verified headlessly via reflection (real `Table` objects, `getFlatActions()`/`getDefaultSortColumn()`) rather than a full Livewire/HTTP mount, plus a full re-run of the six-flow tinker verification confirming zero impact on the 6 legitimate flows and `TransactionDescriptionBuilder`.

@@ -10,6 +10,7 @@ use App\Models\ProjectCostBudget;
 use App\Models\ProjectCostBudgetsPayment;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
+use App\Services\Transactions\TransactionDescriptionBuilder;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
@@ -28,7 +29,7 @@ class CreateExecutionPayment extends CreateRecord
 
     protected function handleRecordCreation(array $data): Model
     {
-        $budget      = ProjectCostBudget::with('transaction')->find($data['project_cost_budget_id']);
+        $budget      = ProjectCostBudget::with(['transaction', 'projectCost.project'])->find($data['project_cost_budget_id']);
         $amount      = (float) $data['amount'];
         $currencyId  = ExecutionPaymentForm::budgetCurrencyId($budget?->id);
 
@@ -83,6 +84,12 @@ class CreateExecutionPayment extends CreateRecord
                 Account::find($creditAccountId)?->decrement('current_balance', $amount);            // دائن
             }
 
+            // STEP 5b - Generate & save the Arabic transaction description
+            app(TransactionDescriptionBuilder::class)->buildAndSave(
+                $transaction,
+                $this->buildExecutionPaymentSummary($budget)
+            );
+
             // STEP 6 - Store the attachment if provided
             if (! empty($data['payment_image'])) {
                 $this->storeAttachment($payment, $data['payment_image'], $amount);
@@ -119,6 +126,19 @@ class CreateExecutionPayment extends CreateRecord
         }
 
         return $prefix . str_pad($max + 1, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * "صرف مبلغ تنفيذ ضمن مشروع {project}" with a fallback when the budget's
+     * project cost/project is unavailable. Never exposes beneficiary details.
+     */
+    protected function buildExecutionPaymentSummary(?ProjectCostBudget $budget): string
+    {
+        $projectName = $budget?->projectCost?->project?->name;
+
+        return $projectName
+            ? "صرف مبلغ تنفيذ ضمن مشروع {$projectName}"
+            : 'صرف مبلغ تنفيذ مشروع';
     }
 
     /**

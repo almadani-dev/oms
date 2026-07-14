@@ -46,7 +46,10 @@ class TransactionForm
                     ->columnSpanFull(),
                 Textarea::make('description')
                     ->label('الوصف')
-                    ->columnSpanFull(),
+                    ->columnSpanFull()
+                    // يُنشأ تلقائياً بواسطة النظام، وليس يدوياً
+                    ->disabled()
+                    ->dehydrated(false),
                 Textarea::make('notes')
                     ->label('ملاحظات')
                     ->columnSpanFull(),

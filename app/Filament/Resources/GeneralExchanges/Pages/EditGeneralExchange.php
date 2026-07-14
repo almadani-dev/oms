@@ -9,6 +9,7 @@ use App\Models\Account;
 use App\Models\Attachment;
 use App\Models\GeneralExchange;
 use App\Models\TransactionLine;
+use App\Services\Transactions\TransactionDescriptionBuilder;
 use Carbon\Carbon;
 use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
@@ -185,6 +186,14 @@ class EditGeneralExchange extends EditRecord
             Account::find($data['transfer_account_id'])?->increment('current_balance', $transferAmount);
             Account::find($data['destination_account_id'])?->increment('current_balance', $finalAmount);
 
+            // STEP 5b - Regenerate the Arabic transaction description from the final saved state
+            if ($transaction) {
+                app(TransactionDescriptionBuilder::class)->buildAndSave(
+                    $transaction,
+                    $this->buildGeneralExchangeSummary($data['source_account_id'], $data['destination_account_id'])
+                );
+            }
+
             // STEP 6 - Handle file swap
             $existing    = $record->attachments()->first();
             $newFilePath = $data['exchange_image'] ?? null;
@@ -207,6 +216,20 @@ class EditGeneralExchange extends EditRecord
 
             return $record;
         });
+    }
+
+    /**
+     * "تحويل مبلغ من {source} إلى {destination}" using the final saved source
+     * and destination accounts, with a fallback if either is unavailable.
+     */
+    protected function buildGeneralExchangeSummary($sourceAccountId, $destinationAccountId): string
+    {
+        $sourceName      = Account::find($sourceAccountId)?->name;
+        $destinationName = Account::find($destinationAccountId)?->name;
+
+        return ($sourceName && $destinationName)
+            ? "تحويل مبلغ من {$sourceName} إلى {$destinationName}"
+            : 'تسجيل تحويل عام';
     }
 
     /**

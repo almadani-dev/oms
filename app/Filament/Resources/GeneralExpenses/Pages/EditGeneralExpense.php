@@ -9,6 +9,7 @@ use App\Models\Account;
 use App\Models\Attachment;
 use App\Models\GeneralExpense;
 use App\Models\TransactionLine;
+use App\Services\Transactions\TransactionDescriptionBuilder;
 use Carbon\Carbon;
 use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
@@ -128,6 +129,14 @@ class EditGeneralExpense extends EditRecord
             Account::find($data['debit_account_id'])?->increment('current_balance', $amount);  // مدين
             Account::find($data['credit_account_id'])?->decrement('current_balance', $amount);  // دائن
 
+            // STEP 5b - Regenerate the Arabic transaction description from the final saved state
+            if ($transaction) {
+                app(TransactionDescriptionBuilder::class)->buildAndSave(
+                    $transaction,
+                    $this->buildGeneralExpenseSummary($record)
+                );
+            }
+
             // STEP 6 - Handle file swap
             $existing    = $record->attachments()->first();
             $newFilePath = $data['expense_image'] ?? null;
@@ -150,6 +159,19 @@ class EditGeneralExpense extends EditRecord
 
             return $record;
         });
+    }
+
+    /**
+     * "تسجيل مصروف عام: {purpose}" using the expense's own short description
+     * field when available, falling back to a bare label otherwise.
+     */
+    protected function buildGeneralExpenseSummary(GeneralExpense $expense): string
+    {
+        $purpose = trim((string) ($expense->description ?? ''));
+
+        return $purpose !== ''
+            ? "تسجيل مصروف عام: {$purpose}"
+            : 'تسجيل مصروف عام';
     }
 
     protected function rebuildLines(int $transactionId, $debitAccountId, $creditAccountId, int $currencyId, float $amount): void

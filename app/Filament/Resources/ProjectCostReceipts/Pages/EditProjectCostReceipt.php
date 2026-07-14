@@ -8,7 +8,9 @@ use App\Models\Account;
 use App\Models\Attachment;
 use App\Models\ProjectCost;
 use App\Models\ProjectCostReceipt;
+use App\Models\Transaction;
 use App\Models\TransactionLine;
+use App\Services\Transactions\TransactionDescriptionBuilder;
 use Carbon\Carbon;
 use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
@@ -122,6 +124,14 @@ class EditProjectCostReceipt extends EditRecord
             Account::find($data['debit_account_id'])?->increment('current_balance', $data['amount']);
             Account::find($data['credit_account_id'])?->decrement('current_balance', $data['amount']);
 
+            // STEP 7b - Regenerate the Arabic transaction description from the final saved state
+            if ($record->transaction) {
+                app(TransactionDescriptionBuilder::class)->buildAndSave(
+                    $record->transaction,
+                    $this->buildReceiptSummary($record->transaction, $projectCost)
+                );
+            }
+
             // STEP 8 - Handle file upload
             $existingAttachment = $record->attachments()->first();
             $newFilePath        = $data['receipt_image'] ?? null;
@@ -173,5 +183,22 @@ class EditProjectCostReceipt extends EditRecord
 
             return $record;
         });
+    }
+
+    /**
+     * "استلام مبلغ من {partner} لتمويل مشروع {project}" with graceful fallbacks
+     * when the partner and/or project cost's project are unavailable.
+     */
+    protected function buildReceiptSummary(Transaction $transaction, ?ProjectCost $projectCost): string
+    {
+        $partnerName = $transaction->partner?->name;
+        $projectName = $projectCost?->project?->name;
+
+        return match (true) {
+            $partnerName && $projectName => "استلام مبلغ من {$partnerName} لتمويل مشروع {$projectName}",
+            ! $partnerName && $projectName => "استلام مبلغ لتمويل مشروع {$projectName}",
+            $partnerName && ! $projectName => "استلام مبلغ من {$partnerName}",
+            default => 'تسجيل مبلغ مستلم',
+        };
     }
 }

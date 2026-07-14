@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('exchange_rate_histories', function (Blueprint $table) {
+        Schema::create('exchange_rate_history', function (Blueprint $table) {
             $table->id();
             $table->foreignId('currency_id')->constrained('currencies')->cascadeOnDelete();
             $table->decimal('rate', 15, 6);
@@ -22,6 +22,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('exchange_rate_histories');
+        Schema::dropIfExists('exchange_rate_history');
     }
 };

@@ -10,6 +10,7 @@ use App\Models\Attachment;
 use App\Models\ProjectCostBudget;
 use App\Models\ProjectCostBudgetsPayment;
 use App\Models\TransactionLine;
+use App\Services\Transactions\TransactionDescriptionBuilder;
 use Carbon\Carbon;
 use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
@@ -86,7 +87,7 @@ class EditExecutionPayment extends EditRecord
     {
         /** @var ProjectCostBudgetsPayment $record */
         $amount    = (float) $data['amount'];
-        $budget    = ProjectCostBudget::with('transaction')->find($data['project_cost_budget_id']);
+        $budget    = ProjectCostBudget::with(['transaction', 'projectCost.project'])->find($data['project_cost_budget_id']);
         $currencyId = ExecutionPaymentForm::budgetCurrencyId($budget?->id);
 
         // Non-blocking warning if the new amount exceeds the remaining (excluding this row).
@@ -146,6 +147,14 @@ class EditExecutionPayment extends EditRecord
                 Account::find($creditAccountId)?->decrement('current_balance', $amount);            // دائن
             }
 
+            // STEP 6b - Regenerate the Arabic transaction description from the final saved state
+            if ($transaction) {
+                app(TransactionDescriptionBuilder::class)->buildAndSave(
+                    $transaction,
+                    $this->buildExecutionPaymentSummary($budget)
+                );
+            }
+
             // STEP 7 - Handle file swap
             $existing    = $record->attachments()->first();
             $newFilePath = $data['payment_image'] ?? null;
@@ -168,6 +177,19 @@ class EditExecutionPayment extends EditRecord
 
             return $record;
         });
+    }
+
+    /**
+     * "صرف مبلغ تنفيذ ضمن مشروع {project}" with a fallback when the budget's
+     * project cost/project is unavailable. Never exposes beneficiary details.
+     */
+    protected function buildExecutionPaymentSummary(?ProjectCostBudget $budget): string
+    {
+        $projectName = $budget?->projectCost?->project?->name;
+
+        return $projectName
+            ? "صرف مبلغ تنفيذ ضمن مشروع {$projectName}"
+            : 'صرف مبلغ تنفيذ مشروع';
     }
 
     protected function rebuildLines(int $transactionId, $beneficiaryAccountId, $creditAccountId, ?int $currencyId, float $amount): void

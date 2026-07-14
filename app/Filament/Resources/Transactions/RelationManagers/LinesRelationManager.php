@@ -2,11 +2,6 @@
 
 namespace App\Filament\Resources\Transactions\RelationManagers;
 
-use Filament\Actions\BulkActionGroup;
-use Filament\Actions\CreateAction;
-use Filament\Actions\DeleteAction;
-use Filament\Actions\DeleteBulkAction;
-use Filament\Actions\EditAction;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -14,6 +9,7 @@ use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 
 class LinesRelationManager extends RelationManager
 {
@@ -47,8 +43,52 @@ class LinesRelationManager extends RelationManager
                 TextColumn::make('debit_base')->label('مدين')->formatStateUsing(fn($state) => \App\Helpers\NumberHelper::bigComma($state))->html(),
                 TextColumn::make('credit_base')->label('دائن')->formatStateUsing(fn($state) => \App\Helpers\NumberHelper::bigComma($state))->html(),
             ])
-            ->headerActions([CreateAction::make()])
-            ->recordActions([EditAction::make(), DeleteAction::make()])
-            ->toolbarActions([BulkActionGroup::make([DeleteBulkAction::make()])]);
+            ->defaultSort('id', 'desc');
+    }
+
+    /**
+     * Read-only audit table: lines are only ever written by the 6 legitimate
+     * financial flows (which also keep account balances in sync), never
+     * through this relation manager. Hardened at the authorization layer,
+     * not just by omitting header/record actions above.
+     */
+    protected function canCreate(): bool
+    {
+        return false;
+    }
+
+    protected function canEdit(Model $record): bool
+    {
+        return false;
+    }
+
+    protected function canDelete(Model $record): bool
+    {
+        return false;
+    }
+
+    protected function canDeleteAny(): bool
+    {
+        return false;
+    }
+
+    protected function canRestore(Model $record): bool
+    {
+        return false;
+    }
+
+    protected function canRestoreAny(): bool
+    {
+        return false;
+    }
+
+    protected function canForceDelete(Model $record): bool
+    {
+        return false;
+    }
+
+    protected function canForceDeleteAny(): bool
+    {
+        return false;
     }
 }

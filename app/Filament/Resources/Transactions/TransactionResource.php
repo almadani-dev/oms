@@ -2,8 +2,6 @@
 
 namespace App\Filament\Resources\Transactions;
 
-use App\Filament\Resources\Transactions\Pages\CreateTransaction;
-use App\Filament\Resources\Transactions\Pages\EditTransaction;
 use App\Filament\Resources\Transactions\Pages\ListTransactions;
 use App\Filament\Resources\Transactions\Pages\ViewTransaction;
 use App\Filament\Resources\Transactions\RelationManagers\LinesRelationManager;
@@ -16,6 +14,7 @@ use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class TransactionResource extends Resource
@@ -49,11 +48,57 @@ class TransactionResource extends Resource
     public static function getPages(): array
     {
         return [
-            'index'  => ListTransactions::route('/'),
-            'create' => CreateTransaction::route('/create'),
-            'view'   => ViewTransaction::route('/{record}'),
-            'edit'   => EditTransaction::route('/{record}/edit'),
+            'index' => ListTransactions::route('/'),
+            'view'  => ViewTransaction::route('/{record}'),
         ];
+    }
+
+    /**
+     * Read-only audit resource: transactions are only ever created/edited
+     * through the 6 legitimate financial flows (receipts, disbursement,
+     * execution payments, general expenses, general exchanges, opening
+     * balance), never through this raw CRUD. Hardened at the authorization
+     * layer (not just by hiding UI buttons) so direct access or internal
+     * Filament actions can't mutate records either.
+     */
+    public static function canCreate(): bool
+    {
+        return false;
+    }
+
+    public static function canEdit(Model $record): bool
+    {
+        return false;
+    }
+
+    public static function canDelete(Model $record): bool
+    {
+        return false;
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return false;
+    }
+
+    public static function canRestore(Model $record): bool
+    {
+        return false;
+    }
+
+    public static function canRestoreAny(): bool
+    {
+        return false;
+    }
+
+    public static function canForceDelete(Model $record): bool
+    {
+        return false;
+    }
+
+    public static function canForceDeleteAny(): bool
+    {
+        return false;
     }
 
     public static function getEloquentQuery(): Builder

@@ -9,6 +9,7 @@ use App\Models\ProjectCost;
 use App\Models\ProjectCostReceipt;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
+use App\Services\Transactions\TransactionDescriptionBuilder;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
@@ -87,6 +88,12 @@ class CreateProjectCostReceipt extends CreateRecord
             Account::find($data['debit_account_id'])?->increment('current_balance', $data['amount']);
             Account::find($data['credit_account_id'])?->decrement('current_balance', $data['amount']);
 
+            // STEP 5b - Generate & save the Arabic transaction description
+            app(TransactionDescriptionBuilder::class)->buildAndSave(
+                $transaction,
+                $this->buildReceiptSummary($transaction, $projectCost)
+            );
+
             // STEP 6 - If file uploaded
             if (!empty($data['receipt_image'])) {
                 $tempPath = $data['receipt_image'];
@@ -152,5 +159,22 @@ class CreateProjectCostReceipt extends CreateRecord
         }
 
         return $prefix . str_pad($max + 1, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * "استلام مبلغ من {partner} لتمويل مشروع {project}" with graceful fallbacks
+     * when the partner and/or project cost's project are unavailable.
+     */
+    protected function buildReceiptSummary(Transaction $transaction, ?ProjectCost $projectCost): string
+    {
+        $partnerName = $transaction->partner?->name;
+        $projectName = $projectCost?->project?->name;
+
+        return match (true) {
+            $partnerName && $projectName => "استلام مبلغ من {$partnerName} لتمويل مشروع {$projectName}",
+            ! $partnerName && $projectName => "استلام مبلغ لتمويل مشروع {$projectName}",
+            $partnerName && ! $projectName => "استلام مبلغ من {$partnerName}",
+            default => 'تسجيل مبلغ مستلم',
+        };
     }
 }

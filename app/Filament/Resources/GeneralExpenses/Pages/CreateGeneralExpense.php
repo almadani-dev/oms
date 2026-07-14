@@ -8,6 +8,7 @@ use App\Models\Attachment;
 use App\Models\GeneralExpense;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
+use App\Services\Transactions\TransactionDescriptionBuilder;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
@@ -65,6 +66,12 @@ class CreateGeneralExpense extends CreateRecord
             Account::find($data['debit_account_id'])?->increment('current_balance', $amount);  // مدين
             Account::find($data['credit_account_id'])?->decrement('current_balance', $amount);  // دائن
 
+            // STEP 4b - Generate & save the Arabic transaction description
+            app(TransactionDescriptionBuilder::class)->buildAndSave(
+                $transaction,
+                $this->buildGeneralExpenseSummary($expense)
+            );
+
             // STEP 5 - Store the attachment if provided
             if (! empty($data['expense_image'])) {
                 $this->storeAttachment($expense, $data['expense_image'], $amount);
@@ -101,6 +108,19 @@ class CreateGeneralExpense extends CreateRecord
         }
 
         return $prefix . str_pad($max + 1, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * "تسجيل مصروف عام: {purpose}" using the expense's own short description
+     * field when available, falling back to a bare label otherwise.
+     */
+    protected function buildGeneralExpenseSummary(GeneralExpense $expense): string
+    {
+        $purpose = trim((string) ($expense->description ?? ''));
+
+        return $purpose !== ''
+            ? "تسجيل مصروف عام: {$purpose}"
+            : 'تسجيل مصروف عام';
     }
 
     /**

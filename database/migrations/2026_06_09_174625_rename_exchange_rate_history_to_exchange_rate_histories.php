@@ -7,11 +7,27 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::rename('exchange_rate_history', 'exchange_rate_histories');
+        if (
+            Schema::hasTable('exchange_rate_history')
+            && ! Schema::hasTable('exchange_rate_histories')
+        ) {
+            Schema::rename(
+                'exchange_rate_history',
+                'exchange_rate_histories'
+            );
+        }
     }
 
     public function down(): void
     {
-        Schema::rename('exchange_rate_histories', 'exchange_rate_history');
+        if (
+            Schema::hasTable('exchange_rate_histories')
+            && ! Schema::hasTable('exchange_rate_history')
+        ) {
+            Schema::rename(
+                'exchange_rate_histories',
+                'exchange_rate_history'
+            );
+        }
     }
 };
