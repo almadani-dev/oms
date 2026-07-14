@@ -819,45 +819,35 @@
     "ast_hash": "1a44ad7112af42a8a1502f36616ef66b",
     "semantic_hash": "1a44ad7112af42a8a1502f36616ef66b"
   },
-  "app/Filament/Resources/Transactions/Pages/CreateTransaction.php": {
-    "mtime": 1781008588.8718157,
-    "ast_hash": "c2d4ac8a9f0f0002a37e157dfaddb16e",
-    "semantic_hash": "c2d4ac8a9f0f0002a37e157dfaddb16e"
-  },
-  "app/Filament/Resources/Transactions/Pages/EditTransaction.php": {
-    "mtime": 1782037417.4402473,
-    "ast_hash": "f14b3d4a7c0344ab5617afd6fe6042e2",
-    "semantic_hash": "f14b3d4a7c0344ab5617afd6fe6042e2"
-  },
   "app/Filament/Resources/Transactions/Pages/ListTransactions.php": {
-    "mtime": 1781008584.0951998,
-    "ast_hash": "275374bebe48afac3b5ec020816b956f",
-    "semantic_hash": "275374bebe48afac3b5ec020816b956f"
+    "mtime": 1784016898.6412609,
+    "ast_hash": "2a39e976e311e33a017a10f096e4fbaa",
+    "semantic_hash": ""
   },
   "app/Filament/Resources/Transactions/Pages/ViewTransaction.php": {
-    "mtime": 1781008603.0672398,
-    "ast_hash": "bf46f1d6795af79d6bc198d0a6baf4c0",
-    "semantic_hash": "bf46f1d6795af79d6bc198d0a6baf4c0"
+    "mtime": 1784016904.6787415,
+    "ast_hash": "f6d78d1dfb400488ce1660035ad729b1",
+    "semantic_hash": ""
   },
   "app/Filament/Resources/Transactions/RelationManagers/LinesRelationManager.php": {
-    "mtime": 1781089512.2529898,
-    "ast_hash": "e5d12dd8fd5080b90eb63df33d0dd5fa",
-    "semantic_hash": "e5d12dd8fd5080b90eb63df33d0dd5fa"
+    "mtime": 1784016938.4940307,
+    "ast_hash": "1b74530c34b1b6ef6515ee775147ced6",
+    "semantic_hash": ""
   },
   "app/Filament/Resources/Transactions/Schemas/TransactionForm.php": {
-    "mtime": 1781694178.782703,
-    "ast_hash": "576e479d20473256c489f5815653b0e0",
-    "semantic_hash": "576e479d20473256c489f5815653b0e0"
+    "mtime": 1784016166.060715,
+    "ast_hash": "b32392eab69e0a1f3a3fca5ad1338d6d",
+    "semantic_hash": ""
   },
   "app/Filament/Resources/Transactions/Tables/TransactionsTable.php": {
-    "mtime": 1782037507.3020926,
-    "ast_hash": "757f81e4148e5eb6d664f70c33d15814",
-    "semantic_hash": "757f81e4148e5eb6d664f70c33d15814"
+    "mtime": 1784016916.52801,
+    "ast_hash": "88f29734b71a1294af90d921808432e4",
+    "semantic_hash": ""
   },
   "app/Filament/Resources/Transactions/TransactionResource.php": {
-    "mtime": 1781693998.1576567,
-    "ast_hash": "b302dcc4c9a497f996afef890d684aab",
-    "semantic_hash": "b302dcc4c9a497f996afef890d684aab"
+    "mtime": 1784016893.0363586,
+    "ast_hash": "ca80a1e20489623b1a1f28e6e6508dfb",
+    "semantic_hash": ""
   },
   "app/Filament/Resources/Users/Pages/CreateUser.php": {
     "mtime": 1781008733.2150745,
@@ -1895,28 +1885,28 @@
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1783349484.4376602,
-    "ast_hash": "fb1767bca885a1bcef63456ffe689dfe",
+    "mtime": 1784015802.1208115,
+    "ast_hash": "9e9fcb9d1e44e5058e4cf8a70970cfa2",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
-    "mtime": 1783348204.6471756,
-    "ast_hash": "98918fc9160ae1dee63f134245368866",
+    "mtime": 1784015879.9055746,
+    "ast_hash": "a362a0fdcca605a87dfa409648b17d7a",
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1783349519.1011825,
-    "ast_hash": "c76913500a623146735dc104c6b3707b",
+    "mtime": 1784015926.8163083,
+    "ast_hash": "b370edf60adb191b6e496ae42640f658",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
-    "mtime": 1783331278.9698012,
-    "ast_hash": "835497468b7704c8876b332ced870ade",
+    "mtime": 1784015904.030809,
+    "ast_hash": "40d54cb6fb73c90addca1991bbe54e6a",
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1783349501.5293589,
-    "ast_hash": "98409914ddb82ab6a081c313c53adb18",
+    "mtime": 1784015851.718395,
+    "ast_hash": "d72c7c1acdd5f27495a70eb617c3626d",
     "semantic_hash": ""
   },
   "app/Services/Reports/ProjectFinancialDetailsWordExportService.php": {
@@ -2107,6 +2097,16 @@
   "tests/Unit/Services/TransactionDescriptionBuilderTest.php": {
     "mtime": 1784015438.4636734,
     "ast_hash": "9b38d671ddd55dfb769d27a0e4310563",
+    "semantic_hash": ""
+  },
+  "bootstrap/cache/packages.php": {
+    "mtime": 1784016994.254564,
+    "ast_hash": "7c6e5b9781b4e14d1487b9a8e92c61f5",
+    "semantic_hash": ""
+  },
+  "bootstrap/cache/services.php": {
+    "mtime": 1784016994.344245,
+    "ast_hash": "204033b0b676e45abe90b0ca88778141",
     "semantic_hash": ""
   }
 }
