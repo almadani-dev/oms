@@ -242,3 +242,59 @@ Diagnosed as environmental, not a code bug. Inspected `ProjectCostReceiptForm` (
 
 ### Commit Hash
 (not committed yet)
+
+---
+
+### Date
+2026-07-06
+
+### Task
+Remove the old "المبالغ المرصودة" Filament resource (`/admin/project-cost-budgets`) from the sidebar and routing, without deleting the `project_cost_budgets` table, the `ProjectCostBudget` model, or touching any accounting/disbursement/execution-payment logic.
+
+### Result
+Confirmed via `graphify query` + grep that `App\Filament\Resources\ProjectCostBudgets\ProjectCostBudgetResource` (auto-discovered by `AdminPanelProvider::discoverResources()`) was the only class registering `admin/project-cost-budgets` / "المبالغ المرصودة", and that every file under its namespace (`Pages/{List,Create,View,Edit}ProjectCostBudget`, `RelationManagers/PaymentsRelationManager`, `Schemas/ProjectCostBudgetForm`, `Schemas/ProjectCostBudgetInfolist`, `Tables/ProjectCostBudgetsTable`) was referenced only from within that same namespace — no other resource, page, service, or test depended on any of them. Traced the actual data flow and found this resource was a plain generic CRUD directly on `project_cost_budgets` (no transaction lines, no balance updates) — genuinely obsolete, since the real disbursement flow (`ProjectCostBudgetsPaymentResource` / "صرف مبلغ المشروع") already creates every real `project_cost_budgets` row itself inside a balanced `DB::transaction()`. Deleted the entire `app/Filament/Resources/ProjectCostBudgets/` directory (`git rm -r`), then ran `php artisan optimize:clear`, `php artisan filament:optimize`, `php artisan icons:cache`, and `graphify update .`.
+
+### Changed Files
+- `app/Filament/Resources/ProjectCostBudgets/ProjectCostBudgetResource.php` (deleted)
+- `app/Filament/Resources/ProjectCostBudgets/Pages/ListProjectCostBudgets.php` (deleted)
+- `app/Filament/Resources/ProjectCostBudgets/Pages/CreateProjectCostBudget.php` (deleted)
+- `app/Filament/Resources/ProjectCostBudgets/Pages/ViewProjectCostBudget.php` (deleted)
+- `app/Filament/Resources/ProjectCostBudgets/Pages/EditProjectCostBudget.php` (deleted)
+- `app/Filament/Resources/ProjectCostBudgets/RelationManagers/PaymentsRelationManager.php` (deleted)
+- `app/Filament/Resources/ProjectCostBudgets/Schemas/ProjectCostBudgetForm.php` (deleted)
+- `app/Filament/Resources/ProjectCostBudgets/Schemas/ProjectCostBudgetInfolist.php` (deleted)
+- `app/Filament/Resources/ProjectCostBudgets/Tables/ProjectCostBudgetsTable.php` (deleted)
+
+### Verification
+- `php artisan route:list --path=project-cost-budgets` → only the 4 `project-cost-budgets-disbursements` routes remain (the different, untouched resource); no plain `project-cost-budgets` route.
+- `php artisan route:list --path=project-cost-budgets-disbursements` → all 4 CRUD routes for "صرف مبلغ المشروع" (`ProjectCostBudgetsPaymentResource`) still registered.
+- `php artisan route:list` filtered for `execution-payment` → all 4 CRUD routes for "صرف مبالغ التنفيذ" still registered.
+- Tinker: `class_exists(App\Models\ProjectCostBudget::class)` → true; `Schema::hasTable('project_cost_budgets')` → true; `ProjectCostBudget::count()` unaffected (still reflects the pre-existing dev-data purge, 0 rows) — model, table, and data untouched.
+- No migrations run, no accounting/transaction/receipt/disbursement/execution-payment logic touched. `ProjectCostBudgetsPaymentResource.php` was only read, never edited (its one comment mentioning `ProjectCostBudgetResource` is a data-provenance note, not a navigation reference, so left as-is per task scope).
+
+### Commit Hash
+(not committed yet)
+
+---
+
+### Date
+2026-07-06
+
+### Task
+Remove the old "تقارير المشاريع" Filament page (`/admin/projects-report-page`) completely from navigation and routing, without touching the current general financial report page, project financial snapshot tables/services, or any accounting logic.
+
+### Result
+Confirmed via `graphify query` + grep that `App\Filament\Pages\ProjectsReportPage` (auto-discovered by `AdminPanelProvider::discoverPages()`, no custom route, no manual registration) was the only class registering that URL/label, had no dedicated DB table or migration (it only read `projects`/`projects_costs`/`project_cost_budgets` etc. read-only, correlated subqueries, no writes), and its Blade view (`resources/views/filament/pages/projects-report-page.blade.php`) was used exclusively by this page. No other code, test, or route referenced either file. Deleted both files (`git rm`), then ran `php artisan optimize:clear`, `php artisan filament:optimize`, `php artisan icons:cache`, and `graphify update .`.
+
+### Changed Files
+- `app/Filament/Pages/ProjectsReportPage.php` (deleted)
+- `resources/views/filament/pages/projects-report-page.blade.php` (deleted)
+
+### Verification
+- `php artisan route:list --path=projects-report-page` → no matching routes (confirmed removed).
+- `php artisan route:list --path=admin` filtered for report pages → `account-statement`, `comprehensive-financial-transactions`, `donor-financial-report`, `project-financial-details/{project}`, `projects-general-financial-page`, and `trial-balance` all still registered and unaffected.
+- `php -l app/Providers/Filament/AdminPanelProvider.php` → no syntax errors (panel provider itself untouched; page removal relies on Filament's directory auto-discovery, so no edit was needed there).
+- No migrations run, no DB tables/data touched, no accounting/transaction/receipt/budget/export logic touched.
+
+### Commit Hash
+(not committed yet)
