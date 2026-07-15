@@ -395,102 +395,134 @@ class ProjectFinancialDetailsWordExportService
         $this->addDataTable($section, $columns, $rows);
     }
 
-    /** @param  array<int, array<string, mixed>>  $receipts */
+    /**
+     * One block per receipt (not one flat table): a compact header line, the
+     * وصف العملية المالية as a paragraph, then a small accounting-lines
+     * table with the approved دور سطر القيد / وصف سطر القيد columns.
+     *
+     * @param  array<int, array<string, mixed>>  $receipts
+     */
     private function addReceiptsSection(Section $section, array $receipts): void
     {
         $this->addSectionTitle($section, 'المقبوضات', 'حركات الاستلام والمبالغ المقبوضة حسب البنود.');
 
-        $columns = [
-            ['رقم المقبوض', true],
-            ['رقم الحركة', true],
-            ['التاريخ', true],
-            ['رقم بند التكلفة', true],
-            ['المبلغ', true],
-            ['العملة', true],
-            ['ملاحظات', false],
-        ];
-
-        $rows = array_map(fn (array $receipt): array => [
-            (string) $receipt['id'],
-            (string) ($receipt['transaction_number'] ?: ($receipt['transaction_id'] ?: '-')),
+        $this->addTransactionRows($section, $receipts, fn (array $receipt): string => sprintf(
+            'رقم المقبوض: %s     رقم الحركة: %s     التاريخ: %s     رقم بند التكلفة: %s     المبلغ: %s     ملاحظات: %s',
+            $receipt['id'],
+            $receipt['transaction_number'] ?: ($receipt['transaction_id'] ?: '-'),
             $this->date($receipt['date']),
-            (string) $receipt['project_cost_id'],
-            $this->money($receipt['amount']),
-            (string) ($receipt['currency_code'] ?: '-'),
-            (string) ($receipt['notes'] ?: '-'),
-        ], $receipts);
-
-        $this->addDataTable($section, $columns, $rows);
+            $receipt['project_cost_id'],
+            $this->money($receipt['amount'], $receipt['currency_code'] ?: null),
+            $receipt['notes'] ?: '-',
+        ));
     }
 
-    /** @param  array<int, array<string, mixed>>  $budgets */
+    /**
+     * @param  array<int, array<string, mixed>>  $budgets
+     */
     private function addBudgetsSection(Section $section, array $budgets): void
     {
         $this->addSectionTitle($section, 'الصرف / الميزانيات', 'تفاصيل الصرف والخصومات والتحويلات لكل ميزانية.');
 
-        $columns = [
-            ['رقم الصرف', true],
-            ['رقم الحركة', true],
-            ['رقم بند التكلفة', true],
-            ['المبلغ الأصلي', true],
-            ['عملة المصدر', true],
-            ['نسبة الإداري', true],
-            ['نسبة التحويل', true],
-            ['نسبة الصرف', true],
-            ['بعد الخصومات', true],
-            ['سعر الصرف', true],
-            ['المبلغ النهائي', true],
-            ['عملة الصرف النهائي', true],
-            ['ملاحظات', false],
-        ];
-
-        $rows = array_map(fn (array $budget): array => [
-            (string) $budget['id'],
-            (string) ($budget['transaction_number'] ?: ($budget['transaction_id'] ?: '-')),
-            (string) $budget['project_cost_id'],
-            $this->money($budget['original_amount']),
-            (string) ($budget['source_currency_code'] ?: '-'),
+        $this->addTransactionRows($section, $budgets, fn (array $budget): string => sprintf(
+            'رقم الصرف: %s     رقم الحركة: %s     رقم بند التكلفة: %s     المبلغ الأصلي: %s     نسبة الإداري: %s     '
+                .'نسبة التحويل: %s     بعد الخصومات: %s     المبلغ النهائي: %s     ملاحظات: %s',
+            $budget['id'],
+            $budget['transaction_number'] ?: ($budget['transaction_id'] ?: '-'),
+            $budget['project_cost_id'],
+            $this->money($budget['original_amount'], $budget['source_currency_code'] ?: null),
             $this->percent($budget['administrative_percentage']),
             $this->percent($budget['transfer_percentage']),
-            $this->percent($budget['exchange_percentage']),
-            $this->money($budget['amount_after_deductions']),
-            $budget['fx_rate'] === null ? '-' : number_format((float) $budget['fx_rate'], 6),
-            $this->money($budget['final_amount']),
-            (string) ($budget['disbursement_currency_code'] ?: '-'),
-            (string) ($budget['notes'] ?: '-'),
-        ], $budgets);
-
-        $this->addDataTable($section, $columns, $rows);
+            $this->money($budget['amount_after_deductions'], $budget['source_currency_code'] ?: null),
+            $this->money($budget['final_amount'], $budget['disbursement_currency_code'] ?: null),
+            $budget['notes'] ?: '-',
+        ));
     }
 
-    /** @param  array<int, array<string, mixed>>  $payments */
+    /**
+     * @param  array<int, array<string, mixed>>  $payments
+     */
     private function addPaymentsSection(Section $section, array $payments): void
     {
         $this->addSectionTitle($section, 'المدفوعات التنفيذية', 'المدفوعات التنفيذية المرتبطة بالصرف وبنود التكلفة.');
 
-        $columns = [
-            ['رقم الدفعة', true],
-            ['رقم الحركة', true],
-            ['التاريخ', true],
-            ['رقم الصرف', true],
-            ['رقم بند التكلفة', true],
-            ['المبلغ', true],
-            ['العملة', true],
-            ['ملاحظات', false],
-        ];
-
-        $rows = array_map(fn (array $payment): array => [
-            (string) $payment['id'],
-            (string) ($payment['transaction_number'] ?: ($payment['transaction_id'] ?: '-')),
+        $this->addTransactionRows($section, $payments, fn (array $payment): string => sprintf(
+            'رقم الدفعة: %s     رقم الحركة: %s     التاريخ: %s     رقم الصرف: %s     رقم بند التكلفة: %s     المبلغ: %s     ملاحظات: %s',
+            $payment['id'],
+            $payment['transaction_number'] ?: ($payment['transaction_id'] ?: '-'),
             $this->date($payment['date']),
-            (string) $payment['project_cost_budget_id'],
-            (string) $payment['project_cost_id'],
-            $this->money($payment['amount']),
-            (string) ($payment['currency_code'] ?: '-'),
-            (string) ($payment['notes'] ?: '-'),
-        ], $payments);
+            $payment['project_cost_budget_id'],
+            $payment['project_cost_id'],
+            $this->money($payment['amount'], $payment['currency_code'] ?: null),
+            $payment['notes'] ?: '-',
+        ));
+    }
 
-        $this->addDataTable($section, $columns, $rows);
+    /**
+     * Shared renderer for the three transaction-linked sections (receipts,
+     * budgets, payments): per row, a header line + وصف العملية المالية
+     * paragraph + a nested accounting-lines table.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @param  callable(array<string, mixed>): string  $headerText
+     */
+    private function addTransactionRows(Section $section, array $rows, callable $headerText): void
+    {
+        if (empty($rows)) {
+            $this->addEmptyNotice($section);
+
+            return;
+        }
+
+        foreach ($rows as $row) {
+            $section->addText($headerText($row), [
+                'bold' => true, 'size' => 9, 'color' => self::COLOR_HEADING,
+            ], ['spaceBefore' => 200, 'spaceAfter' => 40]);
+
+            $section->addText(
+                'وصف العملية المالية: '.(string) ($row['transaction_description'] ?? '—'),
+                ['size' => 9, 'italic' => true],
+                ['spaceAfter' => 60],
+            );
+
+            $this->addLinesSubtable($section, $row['lines'] ?? []);
+        }
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $lines
+     */
+    private function addLinesSubtable(Section $section, array $lines): void
+    {
+        if (empty($lines)) {
+            $section->addText('لا توجد بنود قيد', [
+                'italic' => true, 'size' => 8, 'color' => self::COLOR_MUTED,
+            ], ['spaceAfter' => 160]);
+
+            return;
+        }
+
+        $table = $section->addTable([
+            'borderSize' => 4,
+            'borderColor' => self::COLOR_BORDER,
+            'cellMargin' => 40,
+        ]);
+
+        $table->addRow();
+        foreach (['الحساب', 'العملة', 'مدين', 'دائن', 'دور سطر القيد', 'وصف سطر القيد'] as $header) {
+            $table->addCell(null, ['bgColor' => self::COLOR_HEADER_BG])
+                ->addText($header, ['bold' => true, 'size' => 7], ['alignment' => Jc::CENTER]);
+        }
+
+        foreach ($lines as $line) {
+            $table->addRow();
+            $table->addCell(1900)->addText((string) $line['account'], ['size' => 7]);
+            $table->addCell(900)->addText((string) ($line['currency_code'] ?: '-'), ['size' => 7], ['alignment' => Jc::CENTER]);
+            $table->addCell(1100)->addText($line['debit'] > 0 ? $this->money($line['debit']) : '-', ['size' => 7], ['alignment' => Jc::CENTER]);
+            $table->addCell(1100)->addText($line['credit'] > 0 ? $this->money($line['credit']) : '-', ['size' => 7], ['alignment' => Jc::CENTER]);
+            $table->addCell(1300)->addText((string) $line['line_role_label'], ['size' => 7], ['alignment' => Jc::CENTER]);
+            $table->addCell(2200)->addText((string) $line['line_description'], ['size' => 7]);
+        }
     }
 
     /** @param  array<int, array<string, mixed>>  $deductions */

@@ -214,6 +214,15 @@
             font-weight: 700;
         }
 
+        .acct-stmt-clamp {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            white-space: normal;
+            word-break: break-word;
+        }
+
         @media (max-width: 1100px) {
             .acct-stmt-summary-grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -298,7 +307,9 @@
                                         <th>التاريخ</th>
                                         <th>رقم الحركة</th>
                                         <th>نوع الحركة</th>
-                                        <th>الوصف</th>
+                                        <th>وصف العملية المالية</th>
+                                        <th>دور سطر القيد</th>
+                                        <th>وصف سطر القيد</th>
                                         <th>البيان / ملاحظات السطر</th>
                                         <th>مدين</th>
                                         <th>دائن</th>
@@ -312,7 +323,13 @@
                                             <td>{{ $dateTime($row['date']) }}</td>
                                             <td dir="ltr">{{ $row['transaction_number'] ?: '-' }}</td>
                                             <td>{{ $row['type_name'] ?: '-' }}</td>
-                                            <td>{{ $row['description'] ?: '-' }}</td>
+                                            <td style="min-width: 200px;">
+                                                <div class="acct-stmt-clamp" title="{{ $row['description'] ?: '—' }}">{{ $row['description'] ?: '—' }}</div>
+                                            </td>
+                                            <td><span class="acct-stmt-badge">{{ $row['line_role_label'] }}</span></td>
+                                            <td style="min-width: 200px;">
+                                                <div class="acct-stmt-clamp" title="{{ $row['line_description'] }}">{{ $row['line_description'] }}</div>
+                                            </td>
                                             <td>{{ $row['notes'] ?: '-' }}</td>
                                             <td>
                                                 @if ($row['debit'] > 0)

@@ -216,6 +216,15 @@
             font-weight: 700;
         }
 
+        .cft-clamp {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            white-space: normal;
+            word-break: break-word;
+        }
+
         @media (max-width: 1100px) {
             .cft-summary-grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -410,6 +419,9 @@
                                     <th>تصنيف المعاملة</th>
                                     <th>نوع المعاملة</th>
                                     <th>الوصف / البيان</th>
+                                    <th>وصف العملية المالية</th>
+                                    <th>دور سطر القيد</th>
+                                    <th>وصف سطر القيد</th>
                                     <th>الحساب</th>
                                     <th>نوع الحساب</th>
                                     <th>المشروع</th>
@@ -427,6 +439,13 @@
                                         <td>{{ $row['category'] }}</td>
                                         <td>{{ $row['type'] }}</td>
                                         <td style="min-width: 220px;">{{ $row['description'] }}</td>
+                                        <td style="min-width: 200px;">
+                                            <div class="cft-clamp" title="{{ $row['transaction_description'] }}">{{ $row['transaction_description'] }}</div>
+                                        </td>
+                                        <td><span class="cft-badge">{{ $row['line_role_label'] }}</span></td>
+                                        <td style="min-width: 200px;">
+                                            <div class="cft-clamp" title="{{ $row['line_description'] }}">{{ $row['line_description'] }}</div>
+                                        </td>
                                         <td>{{ $row['account'] }}</td>
                                         <td>{{ $row['account_type'] }}</td>
                                         <td>{{ $row['project'] }}</td>

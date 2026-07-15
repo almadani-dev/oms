@@ -2,6 +2,7 @@
 
 namespace App\Services\Reports;
 
+use App\Enums\TransactionLineRole;
 use App\Models\Partner;
 use App\Models\Project;
 use App\Models\ProjectCost;
@@ -448,7 +449,7 @@ class DonorFinancialReportService
             ->whereIn('c.project_id', $projectIds)
             ->whereNull('r.deleted_at')
             ->whereNull('c.deleted_at')
-            ->selectRaw("'receipt' AS kind, r.date AS date, p.code AS project_code, p.name AS project_name, t.transaction_number, t.reference, r.amount AS amount, cur.code AS currency_code, NULL AS final_amount, NULL AS final_currency_code, r.notes AS notes")
+            ->selectRaw("'receipt' AS kind, r.date AS date, p.code AS project_code, p.name AS project_name, t.id AS transaction_id, t.transaction_number, t.reference, t.description AS transaction_description, r.amount AS amount, cur.code AS currency_code, NULL AS final_amount, NULL AS final_currency_code, r.notes AS notes")
             ->get();
 
         $budgets = DB::table('project_cost_budgets AS b')
@@ -461,7 +462,7 @@ class DonorFinancialReportService
             ->whereNull('b.deleted_at')
             ->whereNull('c.deleted_at')
             ->whereNull('t.deleted_at')
-            ->selectRaw("'budget' AS kind, t.transaction_time AS date, p.code AS project_code, p.name AS project_name, t.transaction_number, t.reference, b.original_amount AS amount, sc.code AS currency_code, b.final_amount AS final_amount, dc.code AS final_currency_code, b.notes AS notes")
+            ->selectRaw("'budget' AS kind, t.transaction_time AS date, p.code AS project_code, p.name AS project_name, t.id AS transaction_id, t.transaction_number, t.reference, t.description AS transaction_description, b.original_amount AS amount, sc.code AS currency_code, b.final_amount AS final_amount, dc.code AS final_currency_code, b.notes AS notes")
             ->get();
 
         $payments = DB::table('project_cost_budgets_payments AS pay')
@@ -474,7 +475,7 @@ class DonorFinancialReportService
             ->whereNull('pay.deleted_at')
             ->whereNull('b.deleted_at')
             ->whereNull('c.deleted_at')
-            ->selectRaw("'payment' AS kind, pay.date AS date, p.code AS project_code, p.name AS project_name, t.transaction_number, t.reference, pay.amount AS amount, cur.code AS currency_code, NULL AS final_amount, NULL AS final_currency_code, pay.notes AS notes")
+            ->selectRaw("'payment' AS kind, pay.date AS date, p.code AS project_code, p.name AS project_name, t.id AS transaction_id, t.transaction_number, t.reference, t.description AS transaction_description, pay.amount AS amount, cur.code AS currency_code, NULL AS final_amount, NULL AS final_currency_code, pay.notes AS notes")
             ->get();
 
         $kindLabels = [
@@ -500,8 +501,10 @@ class DonorFinancialReportService
                     'date' => $row->date,
                     'project_code' => $row->project_code,
                     'project_name' => $row->project_name,
+                    'transaction_id' => $row->transaction_id,
                     'transaction_number' => $row->transaction_number,
                     'reference' => $row->reference,
+                    'transaction_description' => $this->displayOrDash($row->transaction_description),
                     'amount' => round((float) $row->amount, 2),
                     'currency_code' => $row->currency_code,
                     'final_amount' => $row->final_amount === null ? null : round((float) $row->final_amount, 2),
@@ -513,7 +516,77 @@ class DonorFinancialReportService
 
         usort($movements, fn (array $a, array $b) => strcmp((string) $a['date'], (string) $b['date']));
 
+        // Approved audit metadata: attach each movement's active transaction
+        // lines (account/currency/debit/credit + role/description) via one
+        // bulk query, to avoid N+1 lookups.
+        $linesByTransactionId = $this->linesByTransactionId(
+            collect($movements)->pluck('transaction_id')->filter()->unique()->values()->all()
+        );
+
+        foreach ($movements as &$movement) {
+            $movement['lines'] = $linesByTransactionId[$movement['transaction_id']] ?? [];
+        }
+        unset($movement);
+
         return $movements;
+    }
+
+    /**
+     * Active transaction lines (account/currency/debit/credit + approved
+     * role/description), grouped by transaction_id.
+     *
+     * @param  array<int, int>  $transactionIds
+     * @return array<int, array<int, array<string, mixed>>>
+     */
+    protected function linesByTransactionId(array $transactionIds): array
+    {
+        if ($transactionIds === []) {
+            return [];
+        }
+
+        $lines = DB::table('transaction_lines as tl')
+            ->join('accounts as a', 'a.id', '=', 'tl.account_id')
+            ->leftJoin('currencies as cur', 'cur.id', '=', 'tl.currency_id')
+            ->whereIn('tl.transaction_id', $transactionIds)
+            ->whereNull('tl.deleted_at')
+            ->whereNull('a.deleted_at')
+            ->orderBy('tl.id')
+            ->select([
+                'tl.transaction_id',
+                'tl.debit_base',
+                'tl.credit_base',
+                'tl.line_role',
+                'tl.description as line_description',
+                'a.account_code',
+                'a.name as account_name',
+                'cur.code as currency_code',
+            ])
+            ->get();
+
+        $grouped = [];
+        foreach ($lines as $line) {
+            $grouped[(int) $line->transaction_id][] = [
+                'account' => trim(($line->account_code ? $line->account_code . ' - ' : '') . $line->account_name),
+                'currency_code' => $line->currency_code,
+                'debit' => (float) $line->debit_base,
+                'credit' => (float) $line->credit_base,
+                'line_role_label' => TransactionLineRole::labelFor($line->line_role) ?? '—',
+                'line_description' => $this->displayOrDash($line->line_description),
+            ];
+        }
+
+        return $grouped;
+    }
+
+    /**
+     * Approved historical-display convention: a genuinely NULL/blank value
+     * (unclassified or pre-dating the description/role feature) renders as "—".
+     */
+    protected function displayOrDash(?string $value): string
+    {
+        $trimmed = trim((string) $value);
+
+        return $trimmed !== '' ? $trimmed : '—';
     }
 
     // ─────────────────────────────────────────────────────────────────────

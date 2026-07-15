@@ -12,6 +12,33 @@
 
         return 'donor-rpt-number';
     };
+
+    // Renders a per-movement "بنود القيد" expandable widget: account,
+    // currency, debit, credit, دور سطر القيد, وصف سطر القيد for every active
+    // line of the movement's transaction. Returns raw HTML (escaped manually).
+    $linesDetail = function (array $lines) use ($money) {
+        if (empty($lines)) {
+            return '<span style="color: var(--dr-muted);">لا توجد بنود</span>';
+        }
+
+        $rowsHtml = '';
+        foreach ($lines as $line) {
+            $rowsHtml .= '<tr>'
+                .'<td>'.e($line['account']).'</td>'
+                .'<td dir="ltr" style="text-align:right;">'.e($line['currency_code'] ?: '-').'</td>'
+                .'<td class="donor-rpt-number">'.e($line['debit'] > 0 ? $money($line['debit']) : '-').'</td>'
+                .'<td class="donor-rpt-number">'.e($line['credit'] > 0 ? $money($line['credit']) : '-').'</td>'
+                .'<td><span class="donor-rpt-badge">'.e($line['line_role_label']).'</span></td>'
+                .'<td>'.e($line['line_description']).'</td>'
+                .'</tr>';
+        }
+
+        return '<details><summary>عرض بنود القيد ('.count($lines).')</summary>'
+            .'<div class="donor-rpt-table-wrap" style="margin-top:0.5rem;">'
+            .'<table class="donor-rpt-table" style="min-width: 640px;"><thead><tr>'
+            .'<th>الحساب</th><th>العملة</th><th>مدين</th><th>دائن</th><th>دور سطر القيد</th><th>وصف سطر القيد</th>'
+            .'</tr></thead><tbody>'.$rowsHtml.'</tbody></table></div></details>';
+    };
 @endphp
 
 <x-filament-panels::page>
@@ -499,12 +526,14 @@
                                         <th>نوع الحركة</th>
                                         <th>المشروع</th>
                                         <th>رقم المعاملة</th>
+                                        <th>وصف العملية المالية</th>
                                         <th>المرجع</th>
                                         <th>المبلغ</th>
                                         <th>العملة</th>
                                         <th>المبلغ النهائي (بعد الخصومات والتحويل)</th>
                                         <th>عملة الصرف</th>
                                         <th>ملاحظات</th>
+                                        <th>بنود القيد</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -517,6 +546,7 @@
                                                 {{ $row['project_name'] }}
                                             </td>
                                             <td dir="ltr">{{ $row['transaction_number'] ?: '-' }}</td>
+                                            <td style="min-width: 200px;">{{ $row['transaction_description'] }}</td>
                                             <td>{{ $row['reference'] ?: '-' }}</td>
                                             <td><span class="donor-rpt-number">{!! $money($row['amount']) !!}</span></td>
                                             <td><span class="donor-rpt-badge" dir="ltr">{{ $row['currency_code'] ?: '-' }}</span></td>
@@ -529,6 +559,7 @@
                                             </td>
                                             <td><span class="donor-rpt-badge" dir="ltr">{{ $row['final_currency_code'] ?: '-' }}</span></td>
                                             <td>{{ $row['notes'] ?: '-' }}</td>
+                                            <td>{!! $linesDetail($row['lines'] ?? []) !!}</td>
                                         </tr>
                                     @endforeach
                                 </tbody>

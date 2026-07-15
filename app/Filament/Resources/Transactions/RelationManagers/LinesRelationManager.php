@@ -40,7 +40,7 @@ class LinesRelationManager extends RelationManager
                 TextColumn::make('account.name')->label('الحساب')->sortable(),
                 TextColumn::make('currency.code')->label('العملة')->badge(),
                 TextColumn::make('line_role')
-                    ->label('دور السطر')
+                    ->label('دور سطر القيد')
                     ->badge()
                     ->formatStateUsing(fn ($state) => TransactionLineRole::labelFor($state) ?? $state)
                     ->placeholder('—'),
@@ -49,7 +49,7 @@ class LinesRelationManager extends RelationManager
                 TextColumn::make('debit_base')->label('مدين')->formatStateUsing(fn($state) => \App\Helpers\NumberHelper::bigComma($state))->html(),
                 TextColumn::make('credit_base')->label('دائن')->formatStateUsing(fn($state) => \App\Helpers\NumberHelper::bigComma($state))->html(),
                 TextColumn::make('description')
-                    ->label('وصف السطر')
+                    ->label('وصف سطر القيد')
                     ->searchable()
                     ->limit(60)
                     ->tooltip(fn ($record) => $record->description)

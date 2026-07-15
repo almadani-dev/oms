@@ -2,6 +2,7 @@
 
 namespace App\Services\Reports;
 
+use App\Enums\TransactionLineRole;
 use App\Models\Account;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -52,12 +53,16 @@ class AccountStatementReportService
                 'date' => $line->transaction_time,
                 'transaction_number' => $line->transaction_number,
                 'type_name' => $line->type_name,
+                // t.description = وصف العملية المالية.
                 'description' => $line->description,
                 'notes' => $line->line_notes,
                 'debit' => $debit,
                 'credit' => $credit,
                 'running_balance' => $running,
                 'currency_code' => $line->line_currency_code,
+                // Approved audit metadata — display-only, never used for calculations.
+                'line_role_label' => TransactionLineRole::labelFor($line->line_role) ?? '—',
+                'line_description' => $this->displayOrDash($line->line_description),
             ];
         }
 
@@ -136,10 +141,23 @@ class AccountStatementReportService
                 'tt.name as type_name',
                 't.description',
                 'tl.notes as line_notes',
+                'tl.line_role',
+                'tl.description as line_description',
                 'tl.amount_currency',
                 'tl.debit_base',
                 'tl.credit_base',
                 'cur.code as line_currency_code',
             ]);
+    }
+
+    /**
+     * Approved historical-display convention: a genuinely NULL/blank value
+     * (unclassified or pre-dating the description/role feature) renders as "—".
+     */
+    private function displayOrDash(?string $value): string
+    {
+        $trimmed = trim((string) $value);
+
+        return $trimmed !== '' ? $trimmed : '—';
     }
 }

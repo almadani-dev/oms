@@ -99,6 +99,34 @@
         return 'report-number';
     };
 
+    // Renders a per-transaction "بنود القيد" expandable widget: account,
+    // currency, debit, credit, دور سطر القيد, وصف سطر القيد for every active
+    // line of the row's transaction. Escaped manually since this returns raw
+    // HTML for a 'html' => true cell.
+    $linesDetail = function (array $lines) use ($money) {
+        if (empty($lines)) {
+            return '<span class="project-report-muted">لا توجد بنود</span>';
+        }
+
+        $rowsHtml = '';
+        foreach ($lines as $line) {
+            $rowsHtml .= '<tr>'
+                .'<td>'.e($line['account']).'</td>'
+                .'<td dir="ltr" style="text-align:right;">'.e($line['currency_code'] ?: '-').'</td>'
+                .'<td class="report-number">'.e($line['debit'] > 0 ? $money($line['debit']) : '-').'</td>'
+                .'<td class="report-number">'.e($line['credit'] > 0 ? $money($line['credit']) : '-').'</td>'
+                .'<td><span class="report-badge report-badge-neutral">'.e($line['line_role_label']).'</span></td>'
+                .'<td>'.e($line['line_description']).'</td>'
+                .'</tr>';
+        }
+
+        return '<details><summary>عرض بنود القيد ('.count($lines).')</summary>'
+            .'<div class="project-report-table-wrap" style="margin-top:0.5rem;">'
+            .'<table class="project-report-table" style="--table-min-width: 640px;"><thead><tr>'
+            .'<th>الحساب</th><th>العملة</th><th>مدين</th><th>دائن</th><th>دور سطر القيد</th><th>وصف سطر القيد</th>'
+            .'</tr></thead><tbody>'.$rowsHtml.'</tbody></table></div></details>';
+    };
+
     $currencyClass = fn ($currency) => match ($currency) {
         'USD' => 'report-currency report-currency-success',
         'ILS' => 'report-currency report-currency-info',
@@ -156,16 +184,18 @@
             'subtitle' => 'حركات الاستلام والمبالغ المقبوضة حسب البنود.',
             'rows' => $receipts,
             'empty' => 'لا توجد بيانات',
-            'minWidth' => '920px',
-            'headers' => ['رقم المقبوض', 'رقم الحركة', 'التاريخ', 'رقم بند التكلفة', 'المبلغ', 'العملة', 'ملاحظات'],
+            'minWidth' => '1180px',
+            'headers' => ['رقم المقبوض', 'رقم الحركة', 'وصف العملية المالية', 'التاريخ', 'رقم بند التكلفة', 'المبلغ', 'العملة', 'ملاحظات', 'بنود القيد'],
             'cells' => fn ($receipt) => [
                 ['value' => $receipt['id']],
                 ['value' => $receipt['transaction_number'] ?: ($receipt['transaction_id'] ?: '-'), 'number' => true],
+                ['value' => $receipt['transaction_description']],
                 ['value' => $date($receipt['date']), 'number' => true],
                 ['value' => $receipt['project_cost_id']],
                 ['value' => $money($receipt['amount']), 'number' => true, 'raw' => $receipt['amount']],
                 ['value' => $receipt['currency_code'] ?: '-', 'currency' => $receipt['currency_code'] ?: null],
                 ['value' => $receipt['notes'] ?: '-'],
+                ['value' => $linesDetail($receipt['lines'] ?? []), 'html' => true],
             ],
         ],
         [
@@ -174,11 +204,12 @@
             'subtitle' => 'تفاصيل الصرف والخصومات والتحويلات لكل ميزانية.',
             'rows' => $budgets,
             'empty' => 'لا توجد بيانات',
-            'minWidth' => '1380px',
-            'headers' => ['رقم الصرف', 'رقم الحركة', 'رقم بند التكلفة', 'المبلغ الأصلي', 'عملة المصدر', 'نسبة الإداري', 'نسبة التحويل', 'نسبة الصرف', 'بعد الخصومات', 'سعر الصرف', 'المبلغ النهائي', 'عملة الصرف النهائي', 'ملاحظات'],
+            'minWidth' => '1680px',
+            'headers' => ['رقم الصرف', 'رقم الحركة', 'وصف العملية المالية', 'رقم بند التكلفة', 'المبلغ الأصلي', 'عملة المصدر', 'نسبة الإداري', 'نسبة التحويل', 'نسبة الصرف', 'بعد الخصومات', 'سعر الصرف', 'المبلغ النهائي', 'عملة الصرف النهائي', 'ملاحظات', 'بنود القيد'],
             'cells' => fn ($budget) => [
                 ['value' => $budget['id']],
                 ['value' => $budget['transaction_number'] ?: ($budget['transaction_id'] ?: '-'), 'number' => true],
+                ['value' => $budget['transaction_description']],
                 ['value' => $budget['project_cost_id']],
                 ['value' => $money($budget['original_amount']), 'number' => true, 'raw' => $budget['original_amount']],
                 ['value' => $budget['source_currency_code'] ?: '-', 'currency' => $budget['source_currency_code'] ?: null],
@@ -190,6 +221,7 @@
                 ['value' => $money($budget['final_amount']), 'number' => true, 'raw' => $budget['final_amount']],
                 ['value' => $budget['disbursement_currency_code'] ?: '-', 'currency' => $budget['disbursement_currency_code'] ?: null],
                 ['value' => $budget['notes'] ?: '-'],
+                ['value' => $linesDetail($budget['lines'] ?? []), 'html' => true],
             ],
         ],
         [
@@ -198,17 +230,19 @@
             'subtitle' => 'المدفوعات التنفيذية المرتبطة بالصرف وبنود التكلفة.',
             'rows' => $payments,
             'empty' => 'لا توجد بيانات',
-            'minWidth' => '1040px',
-            'headers' => ['رقم الدفعة', 'رقم الحركة', 'التاريخ', 'رقم الصرف', 'رقم بند التكلفة', 'المبلغ', 'العملة', 'ملاحظات'],
+            'minWidth' => '1300px',
+            'headers' => ['رقم الدفعة', 'رقم الحركة', 'وصف العملية المالية', 'التاريخ', 'رقم الصرف', 'رقم بند التكلفة', 'المبلغ', 'العملة', 'ملاحظات', 'بنود القيد'],
             'cells' => fn ($payment) => [
                 ['value' => $payment['id']],
                 ['value' => $payment['transaction_number'] ?: ($payment['transaction_id'] ?: '-'), 'number' => true],
+                ['value' => $payment['transaction_description']],
                 ['value' => $date($payment['date']), 'number' => true],
                 ['value' => $payment['project_cost_budget_id']],
                 ['value' => $payment['project_cost_id']],
                 ['value' => $money($payment['amount']), 'number' => true, 'raw' => $payment['amount']],
                 ['value' => $payment['currency_code'] ?: '-', 'currency' => $payment['currency_code'] ?: null],
                 ['value' => $payment['notes'] ?: '-'],
+                ['value' => $linesDetail($payment['lines'] ?? []), 'html' => true],
             ],
         ],
         [
@@ -927,6 +961,8 @@
                                             @foreach ($section['cells']($row) as $cell)
                                                 @if ($cell['currency'] ?? false)
                                                     <td><span class="{{ $currencyClass($cell['currency']) }}">{{ $cell['value'] }}</span></td>
+                                                @elseif ($cell['html'] ?? false)
+                                                    <td>{!! $cell['value'] !!}</td>
                                                 @elseif ($cell['number'] ?? false)
                                                     <td class="{{ $valueClass($cell['raw'] ?? null, $cell['percentage'] ?? false) }}">{{ $cell['value'] }}</td>
                                                 @else

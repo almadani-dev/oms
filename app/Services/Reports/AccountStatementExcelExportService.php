@@ -33,7 +33,7 @@ class AccountStatementExcelExportService
 
     private const COLOR_WARNING_TEXT = 'B45309';
 
-    private const LAST_COLUMN = 'I';
+    private const LAST_COLUMN = 'K';
 
     private const NUMBER_FORMAT = '#,##0.00';
 
@@ -109,9 +109,12 @@ class AccountStatementExcelExportService
         $row = $this->writeSummary($sheet, $row, $openingBalance, $closingBalance, $totalDebit, $totalCredit, $movementsCount);
         $this->writeMovementTable($sheet, $row + 1, $rows);
 
-        foreach (range('A', self::LAST_COLUMN) as $column) {
+        // K (وصف سطر القيد) gets a fixed wrapped width instead of autosize —
+        // its text is long and would otherwise stretch the whole sheet.
+        foreach (range('A', 'J') as $column) {
             $sheet->getColumnDimension($column)->setAutoSize(true);
         }
+        $sheet->getColumnDimension('K')->setWidth(40);
 
         return $spreadsheet;
     }
@@ -197,8 +200,9 @@ class AccountStatementExcelExportService
     private function writeMovementTable(Worksheet $sheet, int $headerRow, array $rows): void
     {
         $headers = [
-            'التاريخ', 'رقم الحركة', 'نوع الحركة', 'الوصف',
+            'التاريخ', 'رقم الحركة', 'نوع الحركة', 'وصف العملية المالية',
             'البيان / ملاحظات السطر', 'مدين', 'دائن', 'الرصيد', 'العملة',
+            'دور سطر القيد', 'وصف سطر القيد',
         ];
 
         $sheet->fromArray($headers, null, "A{$headerRow}");
@@ -227,6 +231,8 @@ class AccountStatementExcelExportService
                 $sheet->setCellValue("G{$dataRow}", (float) $row['credit']);
                 $sheet->setCellValue("H{$dataRow}", (float) $row['running_balance']);
                 $sheet->setCellValue("I{$dataRow}", (string) ($row['currency_code'] ?: '-'));
+                $sheet->setCellValueExplicit("J{$dataRow}", (string) $row['line_role_label'], DataType::TYPE_STRING);
+                $sheet->setCellValueExplicit("K{$dataRow}", (string) $row['line_description'], DataType::TYPE_STRING);
                 $dataRow++;
             }
 
@@ -235,6 +241,10 @@ class AccountStatementExcelExportService
             $sheet->getStyle("F{$headerRow}:H{$lastRow}")->getNumberFormat()->setFormatCode(self::NUMBER_FORMAT);
             $sheet->getStyle("A{$headerRow}:" . self::LAST_COLUMN . "{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             $sheet->getStyle("D{$headerRow}:E{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+            $sheet->getStyle("K" . ($headerRow + 1) . ":K{$lastRow}")->getAlignment()
+                ->setWrapText(true)
+                ->setVertical(Alignment::VERTICAL_TOP)
+                ->setHorizontal(Alignment::HORIZONTAL_RIGHT);
 
             $sheet->setAutoFilter("A{$headerRow}:" . self::LAST_COLUMN . $lastRow);
         }

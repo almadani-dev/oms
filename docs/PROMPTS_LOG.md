@@ -149,3 +149,17 @@ Make each individual ledger line self-explanatory for audit/search (which accoun
 
 ### Result
 Implemented as described in TASKS_LOG.md and DECISIONS_LOG.md (2026-07-14 line-description entries). One mid-implementation deviation was raised and user-approved before proceeding: legitimately zero-amount deduction lines (0% admin/transfer) are skipped with NULL description instead of throwing, since the flows always create them and the literal "both sides zero → throw" rule would have rolled back every 0%-deduction disbursement/exchange. 33/33 unit tests passing; all 6 create + 5 edit flows verified against real dev data in a rolled-back transaction with zero residue.
+
+---
+
+### Date
+2026-07-15
+
+### Prompt
+User requested two things in one task: (1) safely backfill the existing historical (pre-2026-07-14) transactions/transaction lines so `description`/`line_role` show correctly in reports, via a dedicated `--dry-run`/`--apply` Artisan command, with an explicit classification priority (direct FK on the authoritative domain record first, `notes` `LINE_*` tags only as supporting evidence after the flow is known, never account name/type/description-parsing/line-order/amount-similarity), explicit zero-amount-line handling (assign role, keep description NULL), a mandatory integrity snapshot proving only the 3 metadata columns change, and idempotence proven by a second `--apply` run; (2) display the three approved, permanently-named Arabic labels (`وصف العملية المالية` / `دور سطر القيد` / `وصف سطر القيد`) in the detailed financial-movement sections of 4 named reports (Comprehensive Financial Transactions, Account Statement, Project Financial Details, Donor Financial Report) — screen, Excel, and Word wherever each export already exists — explicitly excluding Trial Balance, summary cards, dashboard totals, and any percentage/collection-rate calculation, plus standardizing the same 3 labels on the transaction/transaction-line audit resources. Workflow constraints: use the current session (no clean-tree requirement beyond the already-completed prior feature), run the standard git/migrate-status checks first, use Graphify before broad source browsing, STOP and ask on any accounting-meaning ambiguity, do not commit/push, and produce one detailed final report covering every phase.
+
+### Purpose
+Close the historical-data gap left by the 2026-07-14 description/role feature (which deliberately excluded backfill pending an approved classification method) and make the new metadata actually visible where accountants read detailed financial movements, without risking any accounting figure, balance, or existing report calculation.
+
+### Result
+Implemented as described in TASKS_LOG.md and DECISIONS_LOG.md (2026-07-15 entries). No accounting-meaning ambiguity was hit — the 6 flows' authoritative domain-record FKs and the opening-balance transaction-type name were sufficient to classify all 10 dev-DB transactions deterministically (0 unclassified), so no STOP-and-ask was needed. `--dry-run`/`--apply`/idempotence-re-`--apply`/integrity-snapshot sequence all passed; 17 new backfill tests + 33 existing description/role-builder tests + full suite (52/52 relevant, 1 pre-existing unrelated failure) all passing; one real sample export per updated report/format (7 files) generated from live dev data and verified to re-open. Not committed, per instruction.

@@ -61,12 +61,12 @@ class TransactionLineForm
                     ->label('ملاحظات')
                     ->columnSpanFull(),
                 TextInput::make('line_role')
-                    ->label('دور السطر')
+                    ->label('دور سطر القيد')
                     ->formatStateUsing(fn ($state) => TransactionLineRole::labelFor($state) ?? $state)
                     ->disabled()
                     ->dehydrated(false),
                 Textarea::make('description')
-                    ->label('وصف السطر')
+                    ->label('وصف سطر القيد')
                     ->disabled()
                     ->dehydrated(false)
                     ->columnSpanFull(),

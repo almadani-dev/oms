@@ -2,6 +2,7 @@
 
 namespace App\Services\Reports;
 
+use App\Enums\TransactionLineRole;
 use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\Currency;
@@ -84,6 +85,8 @@ class ComprehensiveFinancialTransactionsReportService
                 'tt.name as type_name',
                 'tl.id as line_id',
                 'tl.notes as line_notes',
+                'tl.line_role',
+                'tl.description as line_description',
                 'tl.debit_base',
                 'tl.credit_base',
                 'a.account_code',
@@ -114,6 +117,7 @@ class ComprehensiveFinancialTransactionsReportService
             $transactionIds[$line->transaction_id] = true;
 
             $rows[] = [
+                'transaction_id' => (int) $line->transaction_id,
                 'date' => Carbon::parse($line->transaction_time)->format('Y-m-d'),
                 'reference' => $line->transaction_number ?: ('قيد #' . $line->transaction_id),
                 'category' => $category,
@@ -126,6 +130,10 @@ class ComprehensiveFinancialTransactionsReportService
                 'debit' => $debit,
                 'credit' => $credit,
                 'created_by' => $line->created_by_name ?: '-',
+                // Approved audit metadata — display-only, never used for calculations.
+                'transaction_description' => $this->displayOrDash($line->transaction_description),
+                'line_role_label' => TransactionLineRole::labelFor($line->line_role) ?? '—',
+                'line_description' => $this->displayOrDash($line->line_description),
             ];
 
             // B) per-currency totals — never blended across currencies.
@@ -225,6 +233,17 @@ class ComprehensiveFinancialTransactionsReportService
         ]);
 
         return $parts === [] ? '-' : implode(' — ', $parts);
+    }
+
+    /**
+     * Approved historical-display convention: a genuinely NULL/blank value
+     * (unclassified or pre-dating the description/role feature) renders as "—".
+     */
+    private function displayOrDash(?string $value): string
+    {
+        $trimmed = trim((string) $value);
+
+        return $trimmed !== '' ? $trimmed : '—';
     }
 
     private function currencyLabel(?string $name, ?string $code): string

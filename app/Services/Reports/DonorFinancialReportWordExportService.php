@@ -252,29 +252,80 @@ class DonorFinancialReportWordExportService
     /**
      * @param  array<int, array<string, mixed>>  $rows
      */
+    /**
+     * One block per movement (not one flat table): a compact header line,
+     * the وصف العملية المالية as a paragraph, then a small accounting-lines
+     * table with the approved دور سطر القيد / وصف سطر القيد columns.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     */
     private function addMovementsSection(Section $section, array $rows): void
     {
         $this->addSectionTitle($section, 'الحركات المالية');
 
-        $this->addDataTable(
-            $section,
-            [
-                'التاريخ', 'نوع الحركة', 'المشروع', 'رقم المعاملة', 'المرجع',
-                'المبلغ', 'العملة', 'المبلغ النهائي', 'عملة الصرف', 'ملاحظات',
-            ],
-            array_map(fn (array $m) => [
-                [$this->date($m['date']), null],
-                [(string) $m['kind_label'], null],
-                [trim(($m['project_code'] ? $m['project_code'] . ' - ' : '') . $m['project_name']), null],
-                [(string) ($m['transaction_number'] ?: '-'), null],
-                [(string) ($m['reference'] ?: '-'), null],
-                [$this->money($m['amount']), null],
-                [(string) ($m['currency_code'] ?: '-'), null],
-                [$m['final_amount'] === null ? '-' : $this->money($m['final_amount']), null],
-                [(string) ($m['final_currency_code'] ?: '-'), null],
-                [(string) ($m['notes'] ?: '-'), null],
-            ], $rows),
-        );
+        if (empty($rows)) {
+            $this->addEmptyNotice($section);
+
+            return;
+        }
+
+        foreach ($rows as $movement) {
+            $section->addText(sprintf(
+                'التاريخ: %s     النوع: %s     المشروع: %s     رقم المعاملة: %s     المرجع: %s     المبلغ: %s%s     ملاحظات: %s',
+                $this->date($movement['date']),
+                (string) $movement['kind_label'],
+                trim(($movement['project_code'] ? $movement['project_code'].' - ' : '').$movement['project_name']),
+                (string) ($movement['transaction_number'] ?: '-'),
+                (string) ($movement['reference'] ?: '-'),
+                $this->money($movement['amount']).' '.($movement['currency_code'] ?: '-'),
+                $movement['final_amount'] === null ? '' : ('     المبلغ النهائي: '.$this->money($movement['final_amount']).' '.($movement['final_currency_code'] ?: '-')),
+                (string) ($movement['notes'] ?: '-'),
+            ), ['bold' => true, 'size' => 8, 'color' => self::COLOR_HEADING], ['spaceBefore' => 200, 'spaceAfter' => 40]);
+
+            $section->addText(
+                'وصف العملية المالية: '.(string) ($movement['transaction_description'] ?? '—'),
+                ['size' => 9, 'italic' => true],
+                ['spaceAfter' => 60],
+            );
+
+            $this->addMovementLinesSubtable($section, $movement['lines'] ?? []);
+        }
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $lines
+     */
+    private function addMovementLinesSubtable(Section $section, array $lines): void
+    {
+        if (empty($lines)) {
+            $section->addText('لا توجد بنود قيد', [
+                'italic' => true, 'size' => 8, 'color' => self::COLOR_MUTED,
+            ], ['spaceAfter' => 160]);
+
+            return;
+        }
+
+        $table = $section->addTable([
+            'borderSize' => 4,
+            'borderColor' => self::COLOR_BORDER,
+            'cellMargin' => 40,
+        ]);
+
+        $table->addRow();
+        foreach (['الحساب', 'العملة', 'مدين', 'دائن', 'دور سطر القيد', 'وصف سطر القيد'] as $header) {
+            $table->addCell(null, ['bgColor' => self::COLOR_HEADER_BG])
+                ->addText($header, ['bold' => true, 'size' => 7], ['alignment' => Jc::CENTER]);
+        }
+
+        foreach ($lines as $line) {
+            $table->addRow();
+            $table->addCell(1900)->addText((string) $line['account'], ['size' => 7]);
+            $table->addCell(900)->addText((string) ($line['currency_code'] ?: '-'), ['size' => 7], ['alignment' => Jc::CENTER]);
+            $table->addCell(1100)->addText($line['debit'] > 0 ? $this->money($line['debit']) : '-', ['size' => 7], ['alignment' => Jc::CENTER]);
+            $table->addCell(1100)->addText($line['credit'] > 0 ? $this->money($line['credit']) : '-', ['size' => 7], ['alignment' => Jc::CENTER]);
+            $table->addCell(1300)->addText((string) $line['line_role_label'], ['size' => 7], ['alignment' => Jc::CENTER]);
+            $table->addCell(2200)->addText((string) $line['line_description'], ['size' => 7]);
+        }
     }
 
     private function addClosingNote(Section $section): void

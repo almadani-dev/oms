@@ -38,7 +38,7 @@ class ComprehensiveFinancialTransactionsExcelExportService
 
     private const COLOR_DANGER_TEXT = 'B91C1C';
 
-    private const LAST_COLUMN = 'L';
+    private const LAST_COLUMN = 'O';
 
     private const NUMBER_FORMAT = '#,##0.00';
 
@@ -125,9 +125,15 @@ class ComprehensiveFinancialTransactionsExcelExportService
         $row = $this->writeGroupedStats($sheet, $row, 'إحصائيات حسب نوع المعاملة', 'نوع المعاملة', $typeSummaries);
         $this->writeDetailTable($sheet, $row + 1, $rows);
 
-        foreach (range('A', self::LAST_COLUMN) as $column) {
+        // M/N/O (the three approved description/role columns) get a fixed
+        // wrapped width instead of autosize — their text is long and would
+        // otherwise stretch the whole sheet unreasonably wide.
+        foreach (range('A', 'L') as $column) {
             $sheet->getColumnDimension($column)->setAutoSize(true);
         }
+        $sheet->getColumnDimension('M')->setWidth(40);
+        $sheet->getColumnDimension('N')->setWidth(18);
+        $sheet->getColumnDimension('O')->setWidth(40);
 
         return $spreadsheet;
     }
@@ -271,6 +277,7 @@ class ComprehensiveFinancialTransactionsExcelExportService
             'التاريخ', 'رقم القيد / رقم المعاملة', 'تصنيف المعاملة', 'نوع المعاملة',
             'الوصف / البيان', 'الحساب', 'نوع الحساب', 'المشروع',
             'العملة', 'مدين', 'دائن', 'المستخدم',
+            'وصف العملية المالية', 'دور سطر القيد', 'وصف سطر القيد',
         ];
 
         $this->writeTableHeader($sheet, $headerRow, $headers, self::LAST_COLUMN);
@@ -298,6 +305,10 @@ class ComprehensiveFinancialTransactionsExcelExportService
                 $sheet->setCellValue("J{$dataRow}", (float) $row['debit']);
                 $sheet->setCellValue("K{$dataRow}", (float) $row['credit']);
                 $sheet->setCellValueExplicit("L{$dataRow}", (string) ($row['created_by'] ?? '-'), DataType::TYPE_STRING);
+                // Approved audit metadata — repeated per line so each row filters/analyzes independently.
+                $sheet->setCellValueExplicit("M{$dataRow}", (string) $row['transaction_description'], DataType::TYPE_STRING);
+                $sheet->setCellValueExplicit("N{$dataRow}", (string) $row['line_role_label'], DataType::TYPE_STRING);
+                $sheet->setCellValueExplicit("O{$dataRow}", (string) $row['line_description'], DataType::TYPE_STRING);
                 $dataRow++;
             }
 
@@ -305,6 +316,12 @@ class ComprehensiveFinancialTransactionsExcelExportService
 
             $sheet->getStyle("J" . ($headerRow + 1) . ":K{$lastRow}")->getNumberFormat()->setFormatCode(self::NUMBER_FORMAT);
             $sheet->getStyle("E" . ($headerRow + 1) . ":F{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+
+            $wrapRange = "M" . ($headerRow + 1) . ":O{$lastRow}";
+            $sheet->getStyle($wrapRange)->getAlignment()
+                ->setWrapText(true)
+                ->setVertical(Alignment::VERTICAL_TOP)
+                ->setHorizontal(Alignment::HORIZONTAL_RIGHT);
 
             $sheet->setAutoFilter("A{$headerRow}:" . self::LAST_COLUMN . $lastRow);
         }

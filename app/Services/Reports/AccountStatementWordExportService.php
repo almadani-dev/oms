@@ -213,8 +213,9 @@ class AccountStatementWordExportService
         }
 
         $headers = [
-            'التاريخ', 'رقم الحركة', 'نوع الحركة', 'الوصف',
+            'التاريخ', 'رقم الحركة', 'نوع الحركة', 'وصف العملية المالية',
             'البيان / ملاحظات السطر', 'مدين', 'دائن', 'الرصيد', 'العملة',
+            'دور سطر القيد', 'وصف سطر القيد',
         ];
 
         $table = $section->addTable([
@@ -242,6 +243,8 @@ class AccountStatementWordExportService
                 [$this->money($row['credit']), true],
                 [$this->money($row['running_balance']), true],
                 [(string) ($row['currency_code'] ?: '-'), true],
+                [(string) $row['line_role_label'], true],
+                [(string) $row['line_description'], false],
             ];
 
             foreach ($cells as [$value, $center]) {

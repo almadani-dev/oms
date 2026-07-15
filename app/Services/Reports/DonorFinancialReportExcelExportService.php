@@ -74,9 +74,16 @@ class DonorFinancialReportExcelExportService
         $row = $this->writeCostDetailsTable($sheet, $row, $report['cost_details']);
         $this->writeMovementsTable($sheet, $row, $report['movements']);
 
+        // K/L (وصف العملية المالية / بنود القيد) on the movements table get a
+        // fixed wrapped width instead of autosize — set again after this loop.
         foreach (range('A', self::LAST_COLUMN) as $column) {
+            if (in_array($column, ['K', 'L'], true)) {
+                continue;
+            }
             $sheet->getColumnDimension($column)->setAutoSize(true);
         }
+        $sheet->getColumnDimension('K')->setWidth(40);
+        $sheet->getColumnDimension('L')->setWidth(45);
 
         return $spreadsheet;
     }
@@ -389,17 +396,18 @@ class DonorFinancialReportExcelExportService
         $headers = [
             'التاريخ', 'نوع الحركة', 'المشروع', 'رقم المعاملة', 'المرجع',
             'المبلغ', 'العملة', 'المبلغ النهائي', 'عملة الصرف', 'ملاحظات',
+            'وصف العملية المالية', 'بنود القيد (الدور والوصف)',
         ];
 
         $headerRow = $row;
         $sheet->fromArray($headers, null, "A{$headerRow}");
-        $headerStyle = $sheet->getStyle("A{$headerRow}:J{$headerRow}");
+        $headerStyle = $sheet->getStyle("A{$headerRow}:L{$headerRow}");
         $headerStyle->getFont()->setBold(true);
         $headerStyle->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB(self::COLOR_HEADER_BG);
         $headerStyle->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
         if (empty($rows)) {
-            $lastRow = $this->writeEmptyNotice($sheet, $headerRow + 1, 'J');
+            $lastRow = $this->writeEmptyNotice($sheet, $headerRow + 1, 'L');
         } else {
             $dataRow = $headerRow + 1;
 
@@ -420,17 +428,42 @@ class DonorFinancialReportExcelExportService
 
                 $sheet->setCellValue("I{$dataRow}", (string) ($movement['final_currency_code'] ?: '-'));
                 $sheet->setCellValueExplicit("J{$dataRow}", (string) ($movement['notes'] ?: '-'), DataType::TYPE_STRING);
+                $sheet->setCellValueExplicit("K{$dataRow}", (string) $movement['transaction_description'], DataType::TYPE_STRING);
+                $sheet->setCellValueExplicit("L{$dataRow}", $this->linesSummary($movement['lines'] ?? []), DataType::TYPE_STRING);
                 $dataRow++;
             }
 
             $lastRow = $dataRow - 1;
             $sheet->getStyle("F{$headerRow}:F{$lastRow}")->getNumberFormat()->setFormatCode(self::NUMBER_FORMAT);
             $sheet->getStyle("H{$headerRow}:H{$lastRow}")->getNumberFormat()->setFormatCode(self::NUMBER_FORMAT);
-            $sheet->getStyle("A{$headerRow}:J{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-            $sheet->setAutoFilter("A{$headerRow}:J{$lastRow}");
+            $sheet->getStyle("A{$headerRow}:L{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle("K" . ($headerRow + 1) . ":L{$lastRow}")->getAlignment()
+                ->setWrapText(true)
+                ->setVertical(Alignment::VERTICAL_TOP)
+                ->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+            $sheet->setAutoFilter("A{$headerRow}:L{$lastRow}");
         }
 
-        $this->borderRange($sheet, "A{$headerRow}:J{$lastRow}");
+        $this->borderRange($sheet, "A{$headerRow}:L{$lastRow}");
+    }
+
+    /**
+     * One "{دور}: {وصف}" line per accounting line, joined with a line break —
+     * the movements table stays one row per movement, so multiple lines are
+     * summarized in a single wrapped cell instead of exploding the grain.
+     *
+     * @param  array<int, array<string, mixed>>  $lines
+     */
+    private function linesSummary(array $lines): string
+    {
+        if (empty($lines)) {
+            return '—';
+        }
+
+        return implode("\n", array_map(
+            fn (array $line) => "{$line['line_role_label']}: {$line['line_description']}",
+            $lines
+        ));
     }
 
     // ─────────────────────────────────────────────────────────────────────

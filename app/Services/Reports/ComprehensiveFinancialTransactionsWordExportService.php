@@ -253,6 +253,11 @@ class ComprehensiveFinancialTransactionsWordExportService
     }
 
     /**
+     * One block per transaction (not one flat table): a header line, the
+     * وصف العملية المالية as a full-width paragraph, then a small lines
+     * table — avoids an unreadably wide single table and keeps the parent
+     * description from being repeated once per column.
+     *
      * @param  array<int, array<string, mixed>>  $rows
      */
     private function addDetailTableSection(Section $section, array $rows): void
@@ -265,40 +270,73 @@ class ComprehensiveFinancialTransactionsWordExportService
             return;
         }
 
-        // Short headers keep the 11-column table printable on A4 portrait.
-        $headers = [
-            'التاريخ', 'رقم القيد', 'التصنيف', 'النوع', 'الوصف',
-            'الحساب', 'نوع الحساب', 'المشروع', 'العملة', 'مدين', 'دائن',
-        ];
+        foreach ($this->groupRowsByTransaction($rows) as $group) {
+            $this->addTransactionGroup($section, $group);
+        }
+    }
 
-        $table = $section->addTable([
-            'borderSize' => 4,
-            'borderColor' => self::COLOR_BORDER,
-            'cellMargin' => 40,
-        ]);
-
-        $this->addHeaderRow($table, $headers, 7);
+    /**
+     * Rows arrive already ordered chronologically by transaction (per
+     * ComprehensiveFinancialTransactionsReportService), so a single linear
+     * pass groups each transaction's consecutive line rows together.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, array{header: array<string, mixed>, lines: array<int, array<string, mixed>>}>
+     */
+    private function groupRowsByTransaction(array $rows): array
+    {
+        $groups = [];
+        $currentKey = null;
 
         foreach ($rows as $row) {
-            $table->addRow();
+            $key = $row['transaction_id'] ?? $row['reference'];
 
-            $cells = [
-                (string) $row['date'],
-                (string) $row['reference'],
-                (string) $row['category'],
-                (string) $row['type'],
-                (string) $row['description'],
-                (string) $row['account'],
-                (string) $row['account_type'],
-                (string) $row['project'],
-                (string) $row['currency'],
-                $this->money($row['debit']),
-                $this->money($row['credit']),
-            ];
-
-            foreach ($cells as $value) {
-                $table->addCell(null)->addText($value, ['size' => 7], ['alignment' => Jc::CENTER]);
+            if ($key !== $currentKey) {
+                $groups[] = ['header' => $row, 'lines' => []];
+                $currentKey = $key;
             }
+
+            $groups[count($groups) - 1]['lines'][] = $row;
+        }
+
+        return $groups;
+    }
+
+    /**
+     * @param  array{header: array<string, mixed>, lines: array<int, array<string, mixed>>}  $group
+     */
+    private function addTransactionGroup(Section $section, array $group): void
+    {
+        $header = $group['header'];
+
+        $section->addText(
+            "رقم القيد: {$header['reference']}     التاريخ: {$header['date']}     التصنيف: {$header['category']}     النوع: {$header['type']}",
+            ['bold' => true, 'size' => 9, 'color' => self::COLOR_HEADING],
+            ['spaceBefore' => 200, 'spaceAfter' => 40],
+        );
+
+        $section->addText(
+            'وصف العملية المالية: '.(string) $header['transaction_description'],
+            ['size' => 9, 'italic' => true],
+            ['spaceAfter' => 60],
+        );
+
+        $table = $this->addBorderedTable($section);
+
+        $this->addHeaderRow($table, [
+            'الحساب', 'نوع الحساب', 'المشروع', 'العملة', 'مدين', 'دائن', 'دور سطر القيد', 'وصف سطر القيد',
+        ], 7);
+
+        foreach ($group['lines'] as $line) {
+            $table->addRow();
+            $table->addCell(1900)->addText((string) $line['account'], ['size' => 7]);
+            $table->addCell(1300)->addText((string) $line['account_type'], ['size' => 7], ['alignment' => Jc::CENTER]);
+            $table->addCell(1500)->addText((string) $line['project'], ['size' => 7], ['alignment' => Jc::CENTER]);
+            $table->addCell(900)->addText((string) $line['currency'], ['size' => 7], ['alignment' => Jc::CENTER]);
+            $table->addCell(1100)->addText($this->money($line['debit']), ['size' => 7], ['alignment' => Jc::CENTER]);
+            $table->addCell(1100)->addText($this->money($line['credit']), ['size' => 7], ['alignment' => Jc::CENTER]);
+            $table->addCell(1300)->addText((string) $line['line_role_label'], ['size' => 7], ['alignment' => Jc::CENTER]);
+            $table->addCell(2200)->addText((string) $line['line_description'], ['size' => 7]);
         }
     }
 

@@ -38,16 +38,37 @@ class TransactionLineDescriptionBuilder
             ->get();
 
         foreach ($lines as $line) {
+            $description = $this->describeLine($line, $purposesByRole);
+
             // Zero-amount lines are legitimate placeholders (e.g. a 0% admin
             // or transfer deduction line) — they are omitted from the parent
             // transactions.description too, so their description stays null.
-            if ((float) $line->debit_base === 0.0 && (float) $line->credit_base === 0.0) {
+            if ($description === null) {
                 continue;
             }
 
-            $line->description = $this->buildForLine($line, $purposesByRole);
+            $line->description = $description;
             $line->save();
         }
+    }
+
+    /**
+     * Compute the canonical description for a single active line without
+     * persisting it. Returns null for a legitimate zero-amount placeholder
+     * line; throws the same validation exceptions as buildAndSaveForTransaction
+     * otherwise. Exposed publicly so callers that need to compute-then-diff
+     * (e.g. an idempotent historical backfill) can reuse the exact same
+     * generation/validation logic instead of re-deriving it.
+     *
+     * @param  array<string, string>  $purposesByRole
+     */
+    public function describeLine(TransactionLine $line, array $purposesByRole): ?string
+    {
+        if ((float) $line->debit_base === 0.0 && (float) $line->credit_base === 0.0) {
+            return null;
+        }
+
+        return $this->buildForLine($line, $purposesByRole);
     }
 
     /**

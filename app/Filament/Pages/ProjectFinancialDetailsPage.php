@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Enums\TransactionLineRole;
 use App\Models\Reports\ProjectFinancialSnapshot;
 use App\Services\Reports\ProjectFinancialDetailsWordExportService;
 use Filament\Actions\Action;
@@ -209,7 +210,7 @@ class ProjectFinancialDetailsPage extends Page
             ->whereNull('c.deleted_at')
             ->orderBy('r.date')
             ->orderBy('r.id')
-            ->select('r.id', 'r.transaction_id', 't.transaction_number', 'r.date', 'r.project_cost_id', 'r.amount', 'cur.code as currency_code', 'r.notes')
+            ->select('r.id', 'r.transaction_id', 't.transaction_number', 't.description as transaction_description', 'r.date', 'r.project_cost_id', 'r.amount', 'cur.code as currency_code', 'r.notes')
             ->get()
             ->map(fn ($row) => (array) $row)
             ->all();
@@ -230,6 +231,7 @@ class ProjectFinancialDetailsPage extends Page
                 'b.id',
                 'b.transaction_id',
                 't.transaction_number',
+                't.description as transaction_description',
                 'b.project_cost_id',
                 'b.original_amount',
                 'source_cur.code as source_currency_code',
@@ -260,10 +262,37 @@ class ProjectFinancialDetailsPage extends Page
             ->whereNull('c.deleted_at')
             ->orderBy('p.date')
             ->orderBy('p.id')
-            ->select('p.id', 'p.transaction_id', 't.transaction_number', 'p.date', 'p.project_cost_budget_id', 'b.project_cost_id', 'p.amount', 'cur.code as currency_code', 'p.notes')
+            ->select('p.id', 'p.transaction_id', 't.transaction_number', 't.description as transaction_description', 'p.date', 'p.project_cost_budget_id', 'b.project_cost_id', 'p.amount', 'cur.code as currency_code', 'p.notes')
             ->get()
             ->map(fn ($row) => (array) $row)
             ->all();
+
+        // Approved audit metadata: attach the parent transaction description
+        // and the active transaction lines (account/currency/debit/credit +
+        // role/description) to every receipt/budget/payment row that has an
+        // associated transaction. Costs have no transaction and stay untouched.
+        $transactionIds = collect($receipts)->pluck('transaction_id')
+            ->merge(collect($budgets)->pluck('transaction_id'))
+            ->merge(collect($payments)->pluck('transaction_id'))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $linesByTransactionId = $this->linesByTransactionId($transactionIds);
+
+        $attachTransactionDetail = function (array $rows) use ($linesByTransactionId): array {
+            return array_map(function (array $row) use ($linesByTransactionId): array {
+                $row['transaction_description'] = $this->displayOrDash($row['transaction_description'] ?? null);
+                $row['lines'] = $linesByTransactionId[$row['transaction_id']] ?? [];
+
+                return $row;
+            }, $rows);
+        };
+
+        $receipts = $attachTransactionDetail($receipts);
+        $budgets = $attachTransactionDetail($budgets);
+        $payments = $attachTransactionDetail($payments);
 
         $deductions = array_map(function (array $budget): array {
             $original = (float) $budget['original_amount'];
@@ -282,6 +311,66 @@ class ProjectFinancialDetailsPage extends Page
         }, $budgets);
 
         return compact('alerts', 'costs', 'receipts', 'budgets', 'payments', 'deductions');
+    }
+
+    /**
+     * Active transaction lines (account/currency/debit/credit + approved
+     * role/description), grouped by transaction_id — a single bulk query
+     * for every receipt/budget/payment transaction on this project, to
+     * avoid N+1 lookups inside the row-mapping loops.
+     *
+     * @param  array<int, int>  $transactionIds
+     * @return array<int, array<int, array<string, mixed>>>
+     */
+    private function linesByTransactionId(array $transactionIds): array
+    {
+        if ($transactionIds === []) {
+            return [];
+        }
+
+        $lines = DB::table('transaction_lines as tl')
+            ->join('accounts as a', 'a.id', '=', 'tl.account_id')
+            ->leftJoin('currencies as cur', 'cur.id', '=', 'tl.currency_id')
+            ->whereIn('tl.transaction_id', $transactionIds)
+            ->whereNull('tl.deleted_at')
+            ->whereNull('a.deleted_at')
+            ->orderBy('tl.id')
+            ->select([
+                'tl.transaction_id',
+                'tl.debit_base',
+                'tl.credit_base',
+                'tl.line_role',
+                'tl.description as line_description',
+                'a.account_code',
+                'a.name as account_name',
+                'cur.code as currency_code',
+            ])
+            ->get();
+
+        $grouped = [];
+        foreach ($lines as $line) {
+            $grouped[(int) $line->transaction_id][] = [
+                'account' => trim(($line->account_code ? $line->account_code . ' - ' : '') . $line->account_name),
+                'currency_code' => $line->currency_code,
+                'debit' => (float) $line->debit_base,
+                'credit' => (float) $line->credit_base,
+                'line_role_label' => TransactionLineRole::labelFor($line->line_role) ?? '—',
+                'line_description' => $this->displayOrDash($line->line_description),
+            ];
+        }
+
+        return $grouped;
+    }
+
+    /**
+     * Approved historical-display convention: a genuinely NULL/blank value
+     * (unclassified or pre-dating the description/role feature) renders as "—".
+     */
+    private function displayOrDash(mixed $value): string
+    {
+        $trimmed = trim((string) $value);
+
+        return $trimmed !== '' ? $trimmed : '—';
     }
 
     /**

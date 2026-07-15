@@ -45,7 +45,7 @@ class TransactionForm
                     ->maxLength(255)
                     ->columnSpanFull(),
                 Textarea::make('description')
-                    ->label('الوصف')
+                    ->label('وصف العملية المالية')
                     ->columnSpanFull()
                     // يُنشأ تلقائياً بواسطة النظام، وليس يدوياً
                     ->disabled()
