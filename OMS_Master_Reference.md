@@ -75,7 +75,7 @@ The system is a Filament admin panel organized into navigation groups (in order)
 - `project_cost_receipts` — money received against a project cost.
 
 **Finance:**
-- `transactions`, `transaction_lines` (`debit_base`, `credit_base`, `fx_rate`, `currency_id`, `account_id`, `project_cost_id`, `amount_currency`, `notes`).
+- `transactions`, `transaction_lines` (`debit_base`, `credit_base`, `fx_rate`, `currency_id`, `account_id`, `project_cost_id`, `amount_currency`, `notes`, + since 2026-07-14: system-generated `description` nullable text + `line_role` nullable string(50) — additive metadata only, NULL on historical rows, never parsed for accounting).
 - `general_expenses`, `general_exchanges`, `attachments` (polymorphic).
 
 ### Accounting model (double-entry) — [DECISION]
@@ -218,7 +218,9 @@ All other rules deleted. (Advisor flagged that deleting accounting-integrity ale
 ### Naming conventions
 - Project code: `PREFIX_YYYYMMDD_001` (e.g. `FOOD_20260601_004`).
 - Transaction number prefixes: `REC-`, `BUD-`, `PAY-`, `GEN-`, `EXT-` + `YYYY-XXXX`.
-- Transaction line role tags (in `notes`): `LINE_SOURCE`, `LINE_ADMIN`, `LINE_TRANSFER`, `LINE_DESTINATION`, `LINE_BENEFICIARY`.
+- Transaction line role tags (in `notes`): `LINE_SOURCE`, `LINE_ADMIN`, `LINE_TRANSFER`, `LINE_DESTINATION`, `LINE_BENEFICIARY`. These stay the authoritative tags that edit flows and reports match on — untouched by the 2026-07-14 `line_role` feature.
+- Structured line roles (in `transaction_lines.line_role`, via `App\Enums\TransactionLineRole`, since 2026-07-14): `funding_source`/`receipt_destination` (receipt), `source`/`administrative_deduction`/`transfer_fee`/`destination` (disbursement + general exchange; `source` also = expense credit line), `beneficiary`/`execution_source` (execution payment), `expense` (expense debit line), `opening_balance_target`/`opening_balance_counterpart` (opening balance). Assigned explicitly at line creation by the 6 flows — never inferred from account/side/order/description/notes; each has an Arabic UI label via `arabicLabel()`.
+- System-generated descriptions: `transactions.description` = `دائن: {credits} | مدين: {debits} | ملخص العملية: {summary}.` (`TransactionDescriptionBuilder`); `transaction_lines.description` = `{مدين|دائن}: حساب {name} ({line currency code}) — {posted amount} | الغرض: {purpose}.` (`TransactionLineDescriptionBuilder`). Both use the line's own `currency_id` (never the account's), English digits, 2 decimals, thousands separators, exactly one final period; shared formatting lives in the `FormatsTransactionText` trait. Zero-amount deduction lines (0% admin/transfer) keep `description = NULL` by design.
 - Class/method names in English; all visible UI labels in Arabic.
 - Toggleable hidden columns: `->toggleable(isToggledHiddenByDefault: true)`.
 
@@ -241,6 +243,7 @@ All other rules deleted. (Advisor flagged that deleting accounting-integrity ale
 - Bank types system + cascade in account selection.
 - App-wide soft-delete conversion (49 files; no restore by design).
 - OPcache performance fix; perf + display conventions applied.
+- Automatic Arabic descriptions (2026-07-14): `transactions.description` (all 6 flows, `TransactionDescriptionBuilder`) + per-line `transaction_lines.description` and structured `line_role` (`TransactionLineDescriptionBuilder`, `TransactionLineRole` enum). Both raw audit resources (`admin/transactions`, `admin/transaction-lines`) hardened to strictly read-only (index/view only, `can*` → false) — the 6 flows are the only write paths. Historical rows keep NULL (no backfill); reports/exports unchanged.
 
 ### Currency denormalization (completed, 3 batches)
 - `currency_id` added to receipts, payments, general_expenses.

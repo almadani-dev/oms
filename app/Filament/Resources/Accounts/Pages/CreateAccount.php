@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Accounts\Pages;
 
+use App\Enums\TransactionLineRole;
 use App\Filament\Resources\Accounts\AccountResource;
 use App\Models\Account;
 use App\Models\AccountType;
@@ -11,6 +12,7 @@ use App\Models\TransactionLine;
 use App\Models\TransactionSuperType;
 use App\Models\TransactionType;
 use App\Services\Transactions\TransactionDescriptionBuilder;
+use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
@@ -81,7 +83,13 @@ class CreateAccount extends CreateRecord
             $account->increment('current_balance', $openingBalance);          // مدين
             $clearingAccount->decrement('current_balance', $openingBalance);  // دائن
 
-            // STEP 6 - Generate & save the Arabic transaction description
+            // STEP 6 - Generate & save the Arabic line descriptions, then the
+            // parent transaction description (both from the final saved lines)
+            app(TransactionLineDescriptionBuilder::class)->buildAndSaveForTransaction($transaction, [
+                TransactionLineRole::OpeningBalanceTarget->value      => 'إثبات الرصيد الافتتاحي للحساب',
+                TransactionLineRole::OpeningBalanceCounterpart->value => 'الطرف المقابل للقيد الافتتاحي',
+            ]);
+
             app(TransactionDescriptionBuilder::class)->buildAndSave(
                 $transaction,
                 "تسجيل الرصيد الافتتاحي لحساب {$account->name}"
@@ -200,6 +208,7 @@ class CreateAccount extends CreateRecord
             'debit_base'      => $amount,
             'credit_base'     => 0,
             'notes'           => 'قيد افتتاحي',
+            'line_role'       => TransactionLineRole::OpeningBalanceTarget->value,
             'created_by'      => $uid,
             'updated_by'      => $uid,
         ]);
@@ -213,6 +222,7 @@ class CreateAccount extends CreateRecord
             'debit_base'      => 0,
             'credit_base'     => $amount,
             'notes'           => 'قيد افتتاحي',
+            'line_role'       => TransactionLineRole::OpeningBalanceCounterpart->value,
             'created_by'      => $uid,
             'updated_by'      => $uid,
         ]);

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\TransactionLines\Schemas;
 
+use App\Enums\TransactionLineRole;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -58,6 +59,16 @@ class TransactionLineForm
                     ->default(0),
                 Textarea::make('notes')
                     ->label('ملاحظات')
+                    ->columnSpanFull(),
+                TextInput::make('line_role')
+                    ->label('دور السطر')
+                    ->formatStateUsing(fn ($state) => TransactionLineRole::labelFor($state) ?? $state)
+                    ->disabled()
+                    ->dehydrated(false),
+                Textarea::make('description')
+                    ->label('وصف السطر')
+                    ->disabled()
+                    ->dehydrated(false)
                     ->columnSpanFull(),
             ]),
         ]);

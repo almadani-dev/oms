@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ProjectCostBudgetsPayments\Pages;
 
+use App\Enums\TransactionLineRole;
 use App\Filament\Resources\ProjectCostBudgetsPayments\ProjectCostBudgetsPaymentResource;
 use App\Models\Account;
 use App\Models\Attachment;
@@ -10,6 +11,7 @@ use App\Models\ProjectCostBudget;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
+use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
@@ -102,7 +104,13 @@ class CreateProjectCostBudgetsPayment extends CreateRecord
             Account::find($data['transfer_account_id'])?->increment('current_balance', $transferAmount);
             Account::find($data['destination_account_id'])?->increment('current_balance', $finalAmount);
 
-            // STEP 4b - Generate & save the Arabic transaction description
+            // STEP 4b - Generate & save the Arabic line descriptions, then the
+            // parent transaction description (both from the final saved lines)
+            app(TransactionLineDescriptionBuilder::class)->buildAndSaveForTransaction(
+                $transaction,
+                $this->buildDisbursementLinePurposes()
+            );
+
             app(TransactionDescriptionBuilder::class)->buildAndSave(
                 $transaction,
                 $this->buildDisbursementSummary($projectCost)
@@ -161,6 +169,21 @@ class CreateProjectCostBudgetsPayment extends CreateRecord
     }
 
     /**
+     * Per-line purposes keyed by line_role (fixed wording for this flow).
+     *
+     * @return array<string, string>
+     */
+    protected function buildDisbursementLinePurposes(): array
+    {
+        return [
+            TransactionLineRole::Source->value                  => 'إخراج مبلغ الصرف من حساب مصدر المشروع',
+            TransactionLineRole::AdministrativeDeduction->value => 'إثبات الخصم الإداري على مبلغ المشروع',
+            TransactionLineRole::TransferFee->value             => 'إثبات عمولة تحويل مبلغ المشروع',
+            TransactionLineRole::Destination->value             => 'إثبات صافي مبلغ المشروع في حساب التنفيذ',
+        ];
+    }
+
+    /**
      * Create the four disbursement lines, tagged via notes for later identification.
      */
     protected function createLines(int $transactionId, ?int $projectCostId, ?int $costCurrencyId, array $data, array $amounts): void
@@ -178,6 +201,7 @@ class CreateProjectCostBudgetsPayment extends CreateRecord
             'debit_base'      => 0,
             'credit_base'     => $amounts['original'],
             'notes'           => ProjectCostBudget::LINE_SOURCE,
+            'line_role'       => TransactionLineRole::Source->value,
             'created_by'      => $uid,
             'updated_by'      => $uid,
         ]);
@@ -193,6 +217,7 @@ class CreateProjectCostBudgetsPayment extends CreateRecord
             'debit_base'      => $amounts['admin'],
             'credit_base'     => 0,
             'notes'           => ProjectCostBudget::LINE_ADMIN,
+            'line_role'       => TransactionLineRole::AdministrativeDeduction->value,
             'created_by'      => $uid,
             'updated_by'      => $uid,
         ]);
@@ -208,6 +233,7 @@ class CreateProjectCostBudgetsPayment extends CreateRecord
             'debit_base'      => $amounts['transfer'],
             'credit_base'     => 0,
             'notes'           => ProjectCostBudget::LINE_TRANSFER,
+            'line_role'       => TransactionLineRole::TransferFee->value,
             'created_by'      => $uid,
             'updated_by'      => $uid,
         ]);
@@ -223,6 +249,7 @@ class CreateProjectCostBudgetsPayment extends CreateRecord
             'debit_base'      => $amounts['final'],
             'credit_base'     => 0,
             'notes'           => ProjectCostBudget::LINE_DESTINATION,
+            'line_role'       => TransactionLineRole::Destination->value,
             'created_by'      => $uid,
             'updated_by'      => $uid,
         ]);

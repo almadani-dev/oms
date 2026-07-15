@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ProjectCostBudgetsPayments\Pages;
 
+use App\Enums\TransactionLineRole;
 use App\Filament\Resources\ProjectCostBudgetsPayments\ProjectCostBudgetsPaymentResource;
 use App\Filament\Resources\ProjectCostBudgetsPayments\Tables\ProjectCostBudgetsPaymentsTable;
 use App\Models\Account;
@@ -9,6 +10,7 @@ use App\Models\Attachment;
 use App\Models\ProjectCost;
 use App\Models\ProjectCostBudget;
 use App\Services\Transactions\TransactionDescriptionBuilder;
+use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use Carbon\Carbon;
 use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
@@ -197,8 +199,14 @@ class EditProjectCostBudgetsPayment extends EditRecord
             Account::find($data['transfer_account_id'])?->increment('current_balance', $transferAmount);
             Account::find($data['destination_account_id'])?->increment('current_balance', $finalAmount);
 
-            // STEP 5b - Regenerate the Arabic transaction description from the final saved state
+            // STEP 5b - Regenerate the Arabic line descriptions and the parent
+            // transaction description from the final saved state
             if ($transaction) {
+                app(TransactionLineDescriptionBuilder::class)->buildAndSaveForTransaction(
+                    $transaction,
+                    $this->buildDisbursementLinePurposes()
+                );
+
                 app(TransactionDescriptionBuilder::class)->buildAndSave(
                     $transaction,
                     $this->buildDisbursementSummary($projectCost)
@@ -242,6 +250,21 @@ class EditProjectCostBudgetsPayment extends EditRecord
             : 'صرف مبلغ مشروع بعد الخصومات والتحويل';
     }
 
+    /**
+     * Per-line purposes keyed by line_role (fixed wording for this flow).
+     *
+     * @return array<string, string>
+     */
+    protected function buildDisbursementLinePurposes(): array
+    {
+        return [
+            TransactionLineRole::Source->value                  => 'إخراج مبلغ الصرف من حساب مصدر المشروع',
+            TransactionLineRole::AdministrativeDeduction->value => 'إثبات الخصم الإداري على مبلغ المشروع',
+            TransactionLineRole::TransferFee->value             => 'إثبات عمولة تحويل مبلغ المشروع',
+            TransactionLineRole::Destination->value             => 'إثبات صافي مبلغ المشروع في حساب التنفيذ',
+        ];
+    }
+
     protected function rebuildLines(int $transactionId, ?int $projectCostId, ?int $costCurrencyId, array $data, array $amounts): void
     {
         $uid = auth()->id();
@@ -251,7 +274,9 @@ class EditProjectCostBudgetsPayment extends EditRecord
             'project_cost_id' => $projectCostId, 'currency_id' => $costCurrencyId,
             'amount_currency' => $amounts['original'], 'fx_rate' => 1,
             'debit_base' => 0, 'credit_base' => $amounts['original'],
-            'notes' => ProjectCostBudget::LINE_SOURCE, 'created_by' => $uid, 'updated_by' => $uid,
+            'notes' => ProjectCostBudget::LINE_SOURCE,
+            'line_role' => TransactionLineRole::Source->value,
+            'created_by' => $uid, 'updated_by' => $uid,
         ]);
 
         \App\Models\TransactionLine::create([
@@ -259,7 +284,9 @@ class EditProjectCostBudgetsPayment extends EditRecord
             'project_cost_id' => $projectCostId, 'currency_id' => $costCurrencyId,
             'amount_currency' => $amounts['admin'], 'fx_rate' => 1,
             'debit_base' => $amounts['admin'], 'credit_base' => 0,
-            'notes' => ProjectCostBudget::LINE_ADMIN, 'created_by' => $uid, 'updated_by' => $uid,
+            'notes' => ProjectCostBudget::LINE_ADMIN,
+            'line_role' => TransactionLineRole::AdministrativeDeduction->value,
+            'created_by' => $uid, 'updated_by' => $uid,
         ]);
 
         \App\Models\TransactionLine::create([
@@ -267,7 +294,9 @@ class EditProjectCostBudgetsPayment extends EditRecord
             'project_cost_id' => $projectCostId, 'currency_id' => $costCurrencyId,
             'amount_currency' => $amounts['transfer'], 'fx_rate' => 1,
             'debit_base' => $amounts['transfer'], 'credit_base' => 0,
-            'notes' => ProjectCostBudget::LINE_TRANSFER, 'created_by' => $uid, 'updated_by' => $uid,
+            'notes' => ProjectCostBudget::LINE_TRANSFER,
+            'line_role' => TransactionLineRole::TransferFee->value,
+            'created_by' => $uid, 'updated_by' => $uid,
         ]);
 
         \App\Models\TransactionLine::create([
@@ -275,7 +304,9 @@ class EditProjectCostBudgetsPayment extends EditRecord
             'project_cost_id' => $projectCostId, 'currency_id' => $data['disbursement_currency_id'],
             'amount_currency' => $amounts['final'], 'fx_rate' => $amounts['fx'],
             'debit_base' => $amounts['final'], 'credit_base' => 0,
-            'notes' => ProjectCostBudget::LINE_DESTINATION, 'created_by' => $uid, 'updated_by' => $uid,
+            'notes' => ProjectCostBudget::LINE_DESTINATION,
+            'line_role' => TransactionLineRole::Destination->value,
+            'created_by' => $uid, 'updated_by' => $uid,
         ]);
     }
 

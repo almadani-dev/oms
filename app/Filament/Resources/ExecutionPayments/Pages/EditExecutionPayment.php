@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ExecutionPayments\Pages;
 
+use App\Enums\TransactionLineRole;
 use App\Filament\Resources\ExecutionPayments\ExecutionPaymentResource;
 use App\Filament\Resources\ExecutionPayments\Schemas\ExecutionPaymentForm;
 use App\Filament\Resources\ExecutionPayments\Tables\ExecutionPaymentsTable;
@@ -11,6 +12,7 @@ use App\Models\ProjectCostBudget;
 use App\Models\ProjectCostBudgetsPayment;
 use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
+use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use Carbon\Carbon;
 use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
@@ -147,8 +149,14 @@ class EditExecutionPayment extends EditRecord
                 Account::find($creditAccountId)?->decrement('current_balance', $amount);            // دائن
             }
 
-            // STEP 6b - Regenerate the Arabic transaction description from the final saved state
+            // STEP 6b - Regenerate the Arabic line descriptions and the parent
+            // transaction description from the final saved state
             if ($transaction) {
+                app(TransactionLineDescriptionBuilder::class)->buildAndSaveForTransaction(
+                    $transaction,
+                    $this->buildExecutionPaymentLinePurposes($budget)
+                );
+
                 app(TransactionDescriptionBuilder::class)->buildAndSave(
                     $transaction,
                     $this->buildExecutionPaymentSummary($budget)
@@ -192,6 +200,24 @@ class EditExecutionPayment extends EditRecord
             : 'صرف مبلغ تنفيذ مشروع';
     }
 
+    /**
+     * Per-line purposes keyed by line_role, with a graceful fallback when the
+     * budget's project is unavailable. Never exposes beneficiary details.
+     *
+     * @return array<string, string>
+     */
+    protected function buildExecutionPaymentLinePurposes(?ProjectCostBudget $budget): array
+    {
+        $projectName = $budget?->projectCost?->project?->name;
+
+        return [
+            TransactionLineRole::Beneficiary->value => $projectName
+                ? "إثبات مبلغ التنفيذ ضمن مشروع {$projectName}"
+                : 'إثبات مبلغ التنفيذ ضمن المشروع',
+            TransactionLineRole::ExecutionSource->value => 'تخفيض رصيد مبلغ المشروع المتاح للتنفيذ',
+        ];
+    }
+
     protected function rebuildLines(int $transactionId, $beneficiaryAccountId, $creditAccountId, ?int $currencyId, float $amount): void
     {
         $uid = auth()->id();
@@ -205,6 +231,7 @@ class EditExecutionPayment extends EditRecord
             'debit_base'      => $amount,
             'credit_base'     => 0,
             'notes'           => ProjectCostBudgetsPayment::LINE_BENEFICIARY,
+            'line_role'       => TransactionLineRole::Beneficiary->value,
             'created_by'      => $uid,
             'updated_by'      => $uid,
         ]);
@@ -218,6 +245,7 @@ class EditExecutionPayment extends EditRecord
             'debit_base'      => 0,
             'credit_base'     => $amount,
             'notes'           => ProjectCostBudgetsPayment::LINE_CREDIT,
+            'line_role'       => TransactionLineRole::ExecutionSource->value,
             'created_by'      => $uid,
             'updated_by'      => $uid,
         ]);

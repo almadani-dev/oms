@@ -2,8 +2,6 @@
 
 namespace App\Filament\Resources\TransactionLines;
 
-use App\Filament\Resources\TransactionLines\Pages\CreateTransactionLine;
-use App\Filament\Resources\TransactionLines\Pages\EditTransactionLine;
 use App\Filament\Resources\TransactionLines\Pages\ListTransactionLines;
 use App\Filament\Resources\TransactionLines\Pages\ViewTransactionLine;
 use App\Filament\Resources\TransactionLines\Schemas\TransactionLineForm;
@@ -15,7 +13,14 @@ use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 
+/**
+ * Read-only audit resource: transaction lines are only ever written by the 6
+ * legitimate financial flows (which keep account balances and double-entry
+ * integrity in sync), never through this resource. Hardened at the
+ * authorization layer, not just by omitting routes/actions.
+ */
 class TransactionLineResource extends Resource
 {
     protected static ?string $model = TransactionLine::class;
@@ -48,10 +53,8 @@ class TransactionLineResource extends Resource
     public static function getPages(): array
     {
         return [
-            'index'  => ListTransactionLines::route('/'),
-            'create' => CreateTransactionLine::route('/create'),
-            'view'   => ViewTransactionLine::route('/{record}'),
-            'edit'   => EditTransactionLine::route('/{record}/edit'),
+            'index' => ListTransactionLines::route('/'),
+            'view'  => ViewTransactionLine::route('/{record}'),
         ];
     }
 
@@ -59,5 +62,45 @@ class TransactionLineResource extends Resource
     {
         // Eager load relationships shown in the table to avoid N+1 queries.
         return parent::getEloquentQuery()->with(['transaction', 'account', 'currency']);
+    }
+
+    public static function canCreate(): bool
+    {
+        return false;
+    }
+
+    public static function canEdit(Model $record): bool
+    {
+        return false;
+    }
+
+    public static function canDelete(Model $record): bool
+    {
+        return false;
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return false;
+    }
+
+    public static function canRestore(Model $record): bool
+    {
+        return false;
+    }
+
+    public static function canRestoreAny(): bool
+    {
+        return false;
+    }
+
+    public static function canForceDelete(Model $record): bool
+    {
+        return false;
+    }
+
+    public static function canForceDeleteAny(): bool
+    {
+        return false;
     }
 }

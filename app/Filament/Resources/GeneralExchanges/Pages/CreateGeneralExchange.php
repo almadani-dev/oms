@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\GeneralExchanges\Pages;
 
+use App\Enums\TransactionLineRole;
 use App\Filament\Resources\GeneralExchanges\GeneralExchangeResource;
 use App\Filament\Resources\GeneralExchanges\Schemas\GeneralExchangeForm;
 use App\Models\Account;
@@ -10,6 +11,7 @@ use App\Models\GeneralExchange;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
+use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
@@ -90,7 +92,13 @@ class CreateGeneralExchange extends CreateRecord
             Account::find($data['transfer_account_id'])?->increment('current_balance', $transferAmount);
             Account::find($data['destination_account_id'])?->increment('current_balance', $finalAmount);
 
-            // STEP 4b - Generate & save the Arabic transaction description
+            // STEP 4b - Generate & save the Arabic line descriptions, then the
+            // parent transaction description (both from the final saved lines)
+            app(TransactionLineDescriptionBuilder::class)->buildAndSaveForTransaction(
+                $transaction,
+                $this->buildGeneralExchangeLinePurposes()
+            );
+
             app(TransactionDescriptionBuilder::class)->buildAndSave(
                 $transaction,
                 $this->buildGeneralExchangeSummary($data['source_account_id'], $data['destination_account_id'])
@@ -149,6 +157,21 @@ class CreateGeneralExchange extends CreateRecord
     }
 
     /**
+     * Per-line purposes keyed by line_role (fixed wording for this flow).
+     *
+     * @return array<string, string>
+     */
+    protected function buildGeneralExchangeLinePurposes(): array
+    {
+        return [
+            TransactionLineRole::Source->value                  => 'إخراج مبلغ التحويل من حساب المصدر',
+            TransactionLineRole::AdministrativeDeduction->value => 'إثبات الخصم الإداري على التحويل العام',
+            TransactionLineRole::TransferFee->value             => 'إثبات عمولة التحويل العام',
+            TransactionLineRole::Destination->value             => 'إثبات صافي المبلغ المحول إلى حساب الوجهة',
+        ];
+    }
+
+    /**
      * Four lines: 1 credit (source) + 3 debit (admin, transfer, destination),
      * each tagged via notes for later identification on edit / view / delete.
      */
@@ -166,6 +189,7 @@ class CreateGeneralExchange extends CreateRecord
             'debit_base'      => 0,
             'credit_base'     => $amounts['original'],
             'notes'           => GeneralExchange::LINE_SOURCE,
+            'line_role'       => TransactionLineRole::Source->value,
             'created_by'      => $uid,
             'updated_by'      => $uid,
         ]);
@@ -180,6 +204,7 @@ class CreateGeneralExchange extends CreateRecord
             'debit_base'      => $amounts['admin'],
             'credit_base'     => 0,
             'notes'           => GeneralExchange::LINE_ADMIN,
+            'line_role'       => TransactionLineRole::AdministrativeDeduction->value,
             'created_by'      => $uid,
             'updated_by'      => $uid,
         ]);
@@ -194,6 +219,7 @@ class CreateGeneralExchange extends CreateRecord
             'debit_base'      => $amounts['transfer'],
             'credit_base'     => 0,
             'notes'           => GeneralExchange::LINE_TRANSFER,
+            'line_role'       => TransactionLineRole::TransferFee->value,
             'created_by'      => $uid,
             'updated_by'      => $uid,
         ]);
@@ -208,6 +234,7 @@ class CreateGeneralExchange extends CreateRecord
             'debit_base'      => $amounts['final'],
             'credit_base'     => 0,
             'notes'           => GeneralExchange::LINE_DESTINATION,
+            'line_role'       => TransactionLineRole::Destination->value,
             'created_by'      => $uid,
             'updated_by'      => $uid,
         ]);

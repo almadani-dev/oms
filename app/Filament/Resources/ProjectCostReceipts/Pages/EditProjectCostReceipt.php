@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ProjectCostReceipts\Pages;
 
+use App\Enums\TransactionLineRole;
 use App\Filament\Resources\ProjectCostReceipts\ProjectCostReceiptResource;
 use App\Filament\Resources\ProjectCostReceipts\Tables\ProjectCostReceiptsTable;
 use App\Models\Account;
@@ -11,6 +12,7 @@ use App\Models\ProjectCostReceipt;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
+use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use Carbon\Carbon;
 use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
@@ -92,12 +94,14 @@ class EditProjectCostReceipt extends EditRecord
 
             $projectCost = ProjectCost::find($data['project_cost_id']);
 
-            // STEP 4 - Update debit transaction_line
+            // STEP 4 - Update debit transaction_line (line_role set explicitly so
+            // receipts created before the line_role feature self-heal on edit)
             $oldDebitLine?->update([
                 'account_id'      => $data['debit_account_id'],
                 'currency_id'     => $projectCost?->currency_id,
                 'amount_currency' => $data['amount'],
                 'debit_base'      => $data['amount'],
+                'line_role'       => TransactionLineRole::ReceiptDestination->value,
                 'updated_by'      => auth()->id(),
             ]);
 
@@ -107,6 +111,7 @@ class EditProjectCostReceipt extends EditRecord
                 'currency_id'     => $projectCost?->currency_id,
                 'amount_currency' => $data['amount'],
                 'credit_base'     => $data['amount'],
+                'line_role'       => TransactionLineRole::FundingSource->value,
                 'updated_by'      => auth()->id(),
             ]);
 
@@ -124,8 +129,14 @@ class EditProjectCostReceipt extends EditRecord
             Account::find($data['debit_account_id'])?->increment('current_balance', $data['amount']);
             Account::find($data['credit_account_id'])?->decrement('current_balance', $data['amount']);
 
-            // STEP 7b - Regenerate the Arabic transaction description from the final saved state
+            // STEP 7b - Regenerate the Arabic line descriptions and the parent
+            // transaction description from the final saved state
             if ($record->transaction) {
+                app(TransactionLineDescriptionBuilder::class)->buildAndSaveForTransaction(
+                    $record->transaction,
+                    $this->buildReceiptLinePurposes($projectCost)
+                );
+
                 app(TransactionDescriptionBuilder::class)->buildAndSave(
                     $record->transaction,
                     $this->buildReceiptSummary($record->transaction, $projectCost)
@@ -200,5 +211,25 @@ class EditProjectCostReceipt extends EditRecord
             $partnerName && ! $projectName => "استلام مبلغ من {$partnerName}",
             default => 'تسجيل مبلغ مستلم',
         };
+    }
+
+    /**
+     * Per-line purposes keyed by line_role, with graceful fallbacks when the
+     * project cost's project is unavailable.
+     *
+     * @return array<string, string>
+     */
+    protected function buildReceiptLinePurposes(?ProjectCost $projectCost): array
+    {
+        $projectName = $projectCost?->project?->name;
+
+        return [
+            TransactionLineRole::FundingSource->value => $projectName
+                ? "إثبات تمويل مشروع {$projectName}"
+                : 'إثبات تمويل المشروع',
+            TransactionLineRole::ReceiptDestination->value => $projectName
+                ? "إيداع المبلغ المستلم لمشروع {$projectName}"
+                : 'إيداع المبلغ المستلم للمشروع',
+        ];
     }
 }

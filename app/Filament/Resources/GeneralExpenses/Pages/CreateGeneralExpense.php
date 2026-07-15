@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\GeneralExpenses\Pages;
 
+use App\Enums\TransactionLineRole;
 use App\Filament\Resources\GeneralExpenses\GeneralExpenseResource;
 use App\Models\Account;
 use App\Models\Attachment;
@@ -9,6 +10,7 @@ use App\Models\GeneralExpense;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
+use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
@@ -66,7 +68,13 @@ class CreateGeneralExpense extends CreateRecord
             Account::find($data['debit_account_id'])?->increment('current_balance', $amount);  // مدين
             Account::find($data['credit_account_id'])?->decrement('current_balance', $amount);  // دائن
 
-            // STEP 4b - Generate & save the Arabic transaction description
+            // STEP 4b - Generate & save the Arabic line descriptions, then the
+            // parent transaction description (both from the final saved lines)
+            app(TransactionLineDescriptionBuilder::class)->buildAndSaveForTransaction(
+                $transaction,
+                $this->buildGeneralExpenseLinePurposes($expense)
+            );
+
             app(TransactionDescriptionBuilder::class)->buildAndSave(
                 $transaction,
                 $this->buildGeneralExpenseSummary($expense)
@@ -124,6 +132,26 @@ class CreateGeneralExpense extends CreateRecord
     }
 
     /**
+     * Per-line purposes keyed by line_role, using the expense's own short
+     * description field when available (never the large notes field).
+     *
+     * @return array<string, string>
+     */
+    protected function buildGeneralExpenseLinePurposes(GeneralExpense $expense): array
+    {
+        $purpose = trim((string) ($expense->description ?? ''));
+
+        return [
+            TransactionLineRole::Source->value => $purpose !== ''
+                ? "دفع مصروف {$purpose}"
+                : 'دفع مصروف عام',
+            TransactionLineRole::Expense->value => $purpose !== ''
+                ? "إثبات مصروف {$purpose}"
+                : 'إثبات مصروف عام',
+        ];
+    }
+
+    /**
      * Line 1: مدين (debit_base = amount). Line 2: دائن (credit_base = amount).
      */
     protected function createLines(int $transactionId, $debitAccountId, $creditAccountId, int $currencyId, float $amount): void
@@ -138,6 +166,7 @@ class CreateGeneralExpense extends CreateRecord
             'fx_rate'         => 1,
             'debit_base'      => $amount,
             'credit_base'     => 0,
+            'line_role'       => TransactionLineRole::Expense->value,
             'created_by'      => $uid,
             'updated_by'      => $uid,
         ]);
@@ -150,6 +179,7 @@ class CreateGeneralExpense extends CreateRecord
             'fx_rate'         => 1,
             'debit_base'      => 0,
             'credit_base'     => $amount,
+            'line_role'       => TransactionLineRole::Source->value,
             'created_by'      => $uid,
             'updated_by'      => $uid,
         ]);

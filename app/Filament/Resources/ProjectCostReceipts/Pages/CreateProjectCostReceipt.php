@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ProjectCostReceipts\Pages;
 
+use App\Enums\TransactionLineRole;
 use App\Filament\Resources\ProjectCostReceipts\ProjectCostReceiptResource;
 use App\Models\Account;
 use App\Models\Attachment;
@@ -10,6 +11,7 @@ use App\Models\ProjectCostReceipt;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
+use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
@@ -55,6 +57,7 @@ class CreateProjectCostReceipt extends CreateRecord
                 'fx_rate'         => 1,
                 'debit_base'      => $data['amount'],
                 'credit_base'     => 0,
+                'line_role'       => TransactionLineRole::ReceiptDestination->value,
                 'created_by'      => auth()->id(),
                 'updated_by'      => auth()->id(),
             ]);
@@ -68,6 +71,7 @@ class CreateProjectCostReceipt extends CreateRecord
                 'fx_rate'         => 1,
                 'debit_base'      => 0,
                 'credit_base'     => $data['amount'],
+                'line_role'       => TransactionLineRole::FundingSource->value,
                 'created_by'      => auth()->id(),
                 'updated_by'      => auth()->id(),
             ]);
@@ -88,7 +92,13 @@ class CreateProjectCostReceipt extends CreateRecord
             Account::find($data['debit_account_id'])?->increment('current_balance', $data['amount']);
             Account::find($data['credit_account_id'])?->decrement('current_balance', $data['amount']);
 
-            // STEP 5b - Generate & save the Arabic transaction description
+            // STEP 5b - Generate & save the Arabic line descriptions, then the
+            // parent transaction description (both from the final saved lines)
+            app(TransactionLineDescriptionBuilder::class)->buildAndSaveForTransaction(
+                $transaction,
+                $this->buildReceiptLinePurposes($projectCost)
+            );
+
             app(TransactionDescriptionBuilder::class)->buildAndSave(
                 $transaction,
                 $this->buildReceiptSummary($transaction, $projectCost)
@@ -176,5 +186,25 @@ class CreateProjectCostReceipt extends CreateRecord
             $partnerName && ! $projectName => "استلام مبلغ من {$partnerName}",
             default => 'تسجيل مبلغ مستلم',
         };
+    }
+
+    /**
+     * Per-line purposes keyed by line_role, with graceful fallbacks when the
+     * project cost's project is unavailable.
+     *
+     * @return array<string, string>
+     */
+    protected function buildReceiptLinePurposes(?ProjectCost $projectCost): array
+    {
+        $projectName = $projectCost?->project?->name;
+
+        return [
+            TransactionLineRole::FundingSource->value => $projectName
+                ? "إثبات تمويل مشروع {$projectName}"
+                : 'إثبات تمويل المشروع',
+            TransactionLineRole::ReceiptDestination->value => $projectName
+                ? "إيداع المبلغ المستلم لمشروع {$projectName}"
+                : 'إيداع المبلغ المستلم للمشروع',
+        ];
     }
 }

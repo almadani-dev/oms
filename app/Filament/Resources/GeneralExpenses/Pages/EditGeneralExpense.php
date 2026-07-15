@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\GeneralExpenses\Pages;
 
+use App\Enums\TransactionLineRole;
 use App\Filament\Resources\GeneralExpenses\GeneralExpenseResource;
 use App\Filament\Resources\GeneralExpenses\Schemas\GeneralExpenseForm;
 use App\Filament\Resources\GeneralExpenses\Tables\GeneralExpensesTable;
@@ -10,6 +11,7 @@ use App\Models\Attachment;
 use App\Models\GeneralExpense;
 use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
+use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use Carbon\Carbon;
 use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
@@ -129,8 +131,14 @@ class EditGeneralExpense extends EditRecord
             Account::find($data['debit_account_id'])?->increment('current_balance', $amount);  // مدين
             Account::find($data['credit_account_id'])?->decrement('current_balance', $amount);  // دائن
 
-            // STEP 5b - Regenerate the Arabic transaction description from the final saved state
+            // STEP 5b - Regenerate the Arabic line descriptions and the parent
+            // transaction description from the final saved state
             if ($transaction) {
+                app(TransactionLineDescriptionBuilder::class)->buildAndSaveForTransaction(
+                    $transaction,
+                    $this->buildGeneralExpenseLinePurposes($record)
+                );
+
                 app(TransactionDescriptionBuilder::class)->buildAndSave(
                     $transaction,
                     $this->buildGeneralExpenseSummary($record)
@@ -174,6 +182,26 @@ class EditGeneralExpense extends EditRecord
             : 'تسجيل مصروف عام';
     }
 
+    /**
+     * Per-line purposes keyed by line_role, using the expense's own short
+     * description field when available (never the large notes field).
+     *
+     * @return array<string, string>
+     */
+    protected function buildGeneralExpenseLinePurposes(GeneralExpense $expense): array
+    {
+        $purpose = trim((string) ($expense->description ?? ''));
+
+        return [
+            TransactionLineRole::Source->value => $purpose !== ''
+                ? "دفع مصروف {$purpose}"
+                : 'دفع مصروف عام',
+            TransactionLineRole::Expense->value => $purpose !== ''
+                ? "إثبات مصروف {$purpose}"
+                : 'إثبات مصروف عام',
+        ];
+    }
+
     protected function rebuildLines(int $transactionId, $debitAccountId, $creditAccountId, int $currencyId, float $amount): void
     {
         $uid = auth()->id();
@@ -186,6 +214,7 @@ class EditGeneralExpense extends EditRecord
             'fx_rate'         => 1,
             'debit_base'      => $amount,
             'credit_base'     => 0,
+            'line_role'       => TransactionLineRole::Expense->value,
             'created_by'      => $uid,
             'updated_by'      => $uid,
         ]);
@@ -198,6 +227,7 @@ class EditGeneralExpense extends EditRecord
             'fx_rate'         => 1,
             'debit_base'      => 0,
             'credit_base'     => $amount,
+            'line_role'       => TransactionLineRole::Source->value,
             'created_by'      => $uid,
             'updated_by'      => $uid,
         ]);

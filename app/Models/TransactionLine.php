@@ -21,6 +21,8 @@ class TransactionLine extends Model
         'debit_base',
         'credit_base',
         'notes',
+        'description',
+        'line_role',
         'created_by',
         'updated_by',
     ];

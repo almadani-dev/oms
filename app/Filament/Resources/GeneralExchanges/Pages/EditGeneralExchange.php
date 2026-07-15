@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\GeneralExchanges\Pages;
 
+use App\Enums\TransactionLineRole;
 use App\Filament\Resources\GeneralExchanges\GeneralExchangeResource;
 use App\Filament\Resources\GeneralExchanges\Schemas\GeneralExchangeForm;
 use App\Filament\Resources\GeneralExchanges\Tables\GeneralExchangesTable;
@@ -10,6 +11,7 @@ use App\Models\Attachment;
 use App\Models\GeneralExchange;
 use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
+use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use Carbon\Carbon;
 use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
@@ -186,8 +188,14 @@ class EditGeneralExchange extends EditRecord
             Account::find($data['transfer_account_id'])?->increment('current_balance', $transferAmount);
             Account::find($data['destination_account_id'])?->increment('current_balance', $finalAmount);
 
-            // STEP 5b - Regenerate the Arabic transaction description from the final saved state
+            // STEP 5b - Regenerate the Arabic line descriptions and the parent
+            // transaction description from the final saved state
             if ($transaction) {
+                app(TransactionLineDescriptionBuilder::class)->buildAndSaveForTransaction(
+                    $transaction,
+                    $this->buildGeneralExchangeLinePurposes()
+                );
+
                 app(TransactionDescriptionBuilder::class)->buildAndSave(
                     $transaction,
                     $this->buildGeneralExchangeSummary($data['source_account_id'], $data['destination_account_id'])
@@ -233,6 +241,21 @@ class EditGeneralExchange extends EditRecord
     }
 
     /**
+     * Per-line purposes keyed by line_role (fixed wording for this flow).
+     *
+     * @return array<string, string>
+     */
+    protected function buildGeneralExchangeLinePurposes(): array
+    {
+        return [
+            TransactionLineRole::Source->value                  => 'إخراج مبلغ التحويل من حساب المصدر',
+            TransactionLineRole::AdministrativeDeduction->value => 'إثبات الخصم الإداري على التحويل العام',
+            TransactionLineRole::TransferFee->value             => 'إثبات عمولة التحويل العام',
+            TransactionLineRole::Destination->value             => 'إثبات صافي المبلغ المحول إلى حساب الوجهة',
+        ];
+    }
+
+    /**
      * Four lines: 1 credit (source) + 3 debit (admin, transfer, destination),
      * each tagged via notes for later identification.
      */
@@ -244,28 +267,36 @@ class EditGeneralExchange extends EditRecord
             'transaction_id' => $transactionId, 'account_id' => $data['source_account_id'],
             'currency_id' => $sourceCurrencyId, 'amount_currency' => $amounts['original'], 'fx_rate' => 1,
             'debit_base' => 0, 'credit_base' => $amounts['original'],
-            'notes' => GeneralExchange::LINE_SOURCE, 'created_by' => $uid, 'updated_by' => $uid,
+            'notes' => GeneralExchange::LINE_SOURCE,
+            'line_role' => TransactionLineRole::Source->value,
+            'created_by' => $uid, 'updated_by' => $uid,
         ]);
 
         TransactionLine::create([
             'transaction_id' => $transactionId, 'account_id' => $data['admin_account_id'],
             'currency_id' => $sourceCurrencyId, 'amount_currency' => $amounts['admin'], 'fx_rate' => 1,
             'debit_base' => $amounts['admin'], 'credit_base' => 0,
-            'notes' => GeneralExchange::LINE_ADMIN, 'created_by' => $uid, 'updated_by' => $uid,
+            'notes' => GeneralExchange::LINE_ADMIN,
+            'line_role' => TransactionLineRole::AdministrativeDeduction->value,
+            'created_by' => $uid, 'updated_by' => $uid,
         ]);
 
         TransactionLine::create([
             'transaction_id' => $transactionId, 'account_id' => $data['transfer_account_id'],
             'currency_id' => $sourceCurrencyId, 'amount_currency' => $amounts['transfer'], 'fx_rate' => 1,
             'debit_base' => $amounts['transfer'], 'credit_base' => 0,
-            'notes' => GeneralExchange::LINE_TRANSFER, 'created_by' => $uid, 'updated_by' => $uid,
+            'notes' => GeneralExchange::LINE_TRANSFER,
+            'line_role' => TransactionLineRole::TransferFee->value,
+            'created_by' => $uid, 'updated_by' => $uid,
         ]);
 
         TransactionLine::create([
             'transaction_id' => $transactionId, 'account_id' => $data['destination_account_id'],
             'currency_id' => $disbCurrencyId, 'amount_currency' => $amounts['final'], 'fx_rate' => $amounts['fx'],
             'debit_base' => $amounts['final'], 'credit_base' => 0,
-            'notes' => GeneralExchange::LINE_DESTINATION, 'created_by' => $uid, 'updated_by' => $uid,
+            'notes' => GeneralExchange::LINE_DESTINATION,
+            'line_role' => TransactionLineRole::Destination->value,
+            'created_by' => $uid, 'updated_by' => $uid,
         ]);
     }
 

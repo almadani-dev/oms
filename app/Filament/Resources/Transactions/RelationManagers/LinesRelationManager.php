@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Transactions\RelationManagers;
 
+use App\Enums\TransactionLineRole;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -38,10 +39,22 @@ class LinesRelationManager extends RelationManager
             ->columns([
                 TextColumn::make('account.name')->label('الحساب')->sortable(),
                 TextColumn::make('currency.code')->label('العملة')->badge(),
+                TextColumn::make('line_role')
+                    ->label('دور السطر')
+                    ->badge()
+                    ->formatStateUsing(fn ($state) => TransactionLineRole::labelFor($state) ?? $state)
+                    ->placeholder('—'),
                 TextColumn::make('amount_currency')->label('المبلغ بالعملة')->formatStateUsing(fn($state) => \App\Helpers\NumberHelper::bigComma($state))->html(),
                 TextColumn::make('fx_rate')->label('سعر الصرف')->formatStateUsing(fn($state) => \App\Helpers\NumberHelper::bigComma($state, 6))->html(),
                 TextColumn::make('debit_base')->label('مدين')->formatStateUsing(fn($state) => \App\Helpers\NumberHelper::bigComma($state))->html(),
                 TextColumn::make('credit_base')->label('دائن')->formatStateUsing(fn($state) => \App\Helpers\NumberHelper::bigComma($state))->html(),
+                TextColumn::make('description')
+                    ->label('وصف السطر')
+                    ->searchable()
+                    ->limit(60)
+                    ->tooltip(fn ($record) => $record->description)
+                    ->placeholder('—')
+                    ->toggleable(),
             ])
             ->defaultSort('id', 'desc');
     }

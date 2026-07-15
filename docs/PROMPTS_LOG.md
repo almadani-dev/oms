@@ -135,3 +135,17 @@ Prevent any path — form field, direct URL, or raw CRUD — from creating or mu
 
 ### Result
 `description` made `disabled()->dehydrated(false)` on `TransactionForm` (same pattern as `current_balance` on `AccountForm`). Read-only audit answered all 6 questions directly from code (confirmed: bare/line-less/unbalanced create, independent header edits, no balance updates) — implemented as described in TASKS_LOG.md and DECISIONS_LOG.md (2026-07-14, second and third entries). `create`/`edit` routes removed, `CreateTransaction.php`/`EditTransaction.php` deleted (confirmed unreferenced), 8 `can*` methods hardcoded `false` on both `TransactionResource` and `LinesRelationManager`, all mutation actions removed from `ListTransactions`/`ViewTransaction`/`TransactionsTable`/`LinesRelationManager`, `defaultSort('id','desc')` added to both tables. Verified headlessly via reflection (real `Table` objects, `getFlatActions()`/`getDefaultSortColumn()`) rather than a full Livewire/HTTP mount, plus a full re-run of the six-flow tinker verification confirming zero impact on the 6 legitimate flows and `TransactionDescriptionBuilder`.
+
+---
+
+### Date
+2026-07-14
+
+### Prompt
+User requested the line-level counterpart of the transaction-description feature: add nullable system-generated `transaction_lines.description` (exact format `{مدين|دائن}: حساب {name} ({line currency}) — {posted amount} | الغرض: {purpose}.`) and `transaction_lines.line_role` (stable English machine value from one centralized vocabulary, assigned explicitly by the authoritative flow — never inferred from account/side/order/description/notes), across all 6 financial flows, preserving `transaction_lines.notes`/`LINE_*` tags untouched, no historical backfill, no report/export changes, plus a mandated read-only impact report first (delivered and approved), then implementation including hardening the standalone raw `TransactionLineResource` (a line-level CRUD bypass the audit surfaced) into a read-only audit resource.
+
+### Purpose
+Make each individual ledger line self-explanatory for audit/search (which account moved and why) and give future reports a reliable machine-readable role instead of parsing Arabic notes tags — without touching any accounting amount, balance, or existing tag.
+
+### Result
+Implemented as described in TASKS_LOG.md and DECISIONS_LOG.md (2026-07-14 line-description entries). One mid-implementation deviation was raised and user-approved before proceeding: legitimately zero-amount deduction lines (0% admin/transfer) are skipped with NULL description instead of throwing, since the flows always create them and the literal "both sides zero → throw" rule would have rolled back every 0%-deduction disbursement/exchange. 33/33 unit tests passing; all 6 create + 5 edit flows verified against real dev data in a rolled-back transaction with zero residue.

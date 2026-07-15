@@ -365,3 +365,46 @@ Implemented and verified. `TransactionResource::getPages()` now only registers `
 
 ### Commit Hash
 (not committed yet)
+
+---
+
+### Date
+2026-07-14
+
+### Task
+Add automatic per-line Arabic `transaction_lines.description` and structured machine-readable `transaction_lines.line_role` across all 6 financial write flows (the line-level counterpart of the same-day `transactions.description` feature), with one centralized role vocabulary, a shared text formatter, no changes to accounting logic/notes/LINE_* tags, no historical backfill — plus hardening the standalone raw `TransactionLineResource` into a read-only audit resource (a line-level integrity bypass surfaced by this task's audit).
+
+### Result
+Implemented and verified. New migration adds `description` (nullable text) + `line_role` (nullable string(50)) after `notes` — ran cleanly on the dev DB (single ALTER, no data touched). New `App\Enums\TransactionLineRole` (11 string-backed roles + `arabicLabel()`/`labelFor()`). New `App\Services\Transactions\TransactionLineDescriptionBuilder::buildAndSaveForTransaction()` builds `{مدين|دائن}: حساب {name} ({line currency}) — {posted amount} | الغرض: {purpose}.` per active line, ordered by id, eager-loading account (withTrashed) + currency, throwing inside the caller's DB::transaction() on missing/unknown role, missing purpose, both-sides-positive, negative side, or missing account/currency; zero-amount lines (0% deduction placeholders) are skipped with NULL description (user-approved). Shared trait `FormatsTransactionText` now backs both description builders; `TransactionDescriptionBuilder` output stayed byte-identical. All 6 create + 5 edit flows assign `line_role` explicitly at every line write and call the line builder just before the parent description builder; the receipt edit flow's in-place line updates also set roles (self-heal for pre-feature receipts). `TransactionLineResource` is now read-only: index/view routes only, Create/Edit page classes deleted (confirmed unreferenced), 8 `can*` → false, no mutation actions, `defaultSort('id','desc')`, new columns: line_role Arabic-label badge + searchable/limited description (+notes toggleable); the view form shows both new fields disabled. `LinesRelationManager` gained the same two read-only columns (mutation hardening untouched). Reports/exports/snapshots untouched.
+
+### Changed Files
+- `database/migrations/2026_07_14_120000_add_description_and_line_role_to_transaction_lines_table.php` (new)
+- `app/Enums/TransactionLineRole.php` (new)
+- `app/Services/Transactions/Support/FormatsTransactionText.php` (new trait)
+- `app/Services/Transactions/TransactionLineDescriptionBuilder.php` (new)
+- `app/Services/Transactions/TransactionDescriptionBuilder.php` (uses the trait; API/output unchanged)
+- `app/Models/TransactionLine.php` (fillable += description, line_role)
+- `app/Filament/Resources/ProjectCostReceipts/Pages/CreateProjectCostReceipt.php` + `EditProjectCostReceipt.php`
+- `app/Filament/Resources/ProjectCostBudgetsPayments/Pages/CreateProjectCostBudgetsPayment.php` + `EditProjectCostBudgetsPayment.php`
+- `app/Filament/Resources/ExecutionPayments/Pages/CreateExecutionPayment.php` + `EditExecutionPayment.php`
+- `app/Filament/Resources/GeneralExpenses/Pages/CreateGeneralExpense.php` + `EditGeneralExpense.php`
+- `app/Filament/Resources/GeneralExchanges/Pages/CreateGeneralExchange.php` + `EditGeneralExchange.php`
+- `app/Filament/Resources/Accounts/Pages/CreateAccount.php`
+- `app/Filament/Resources/TransactionLines/TransactionLineResource.php` (read-only hardening)
+- `app/Filament/Resources/TransactionLines/Pages/ListTransactionLines.php` + `ViewTransactionLine.php` (header actions removed)
+- `app/Filament/Resources/TransactionLines/Pages/CreateTransactionLine.php` + `EditTransactionLine.php` (deleted)
+- `app/Filament/Resources/TransactionLines/Tables/TransactionLinesTable.php` (ViewAction only, defaultSort, new columns)
+- `app/Filament/Resources/TransactionLines/Schemas/TransactionLineForm.php` (view-only line_role/description fields)
+- `app/Filament/Resources/Transactions/RelationManagers/LinesRelationManager.php` (2 new read-only columns)
+- `tests/Unit/Services/TransactionLineDescriptionBuilderTest.php` (new)
+
+### Verification
+- `php -l` on all changed PHP files: no syntax errors.
+- `php artisan test tests/Unit/Services`: 33/33 passing (15 existing TransactionDescriptionBuilder exact-string tests — proves byte-identical parent output — + 18 new TransactionLineDescriptionBuilder tests covering both side formats, line-vs-account currency, prefix dedup, digits/separators/decimals, one-final-period + whitespace normalization, soft-deleted account label, soft-deleted line exclusion, zero-line skip, both-positive/negative/missing-role/unknown-role/missing-purpose throws, all 11 roles, notes+parent-description untouched, cross-currency disbursement and exchange).
+- Rolled-back tinker verification against real dev-DB data (reflection-invoked real `handleRecordCreation`/`handleRecordUpdate`): all 6 create flows + all 5 edit flows produced correct roles and descriptions (verified side label, `حساب`-prefixed account name, line currency code, posted amount 2dp/thousands, approved purpose wording, one final period, one line); receipt edit self-heal from deliberately-NULLed roles confirmed; disbursement edit with 0% transfer confirmed the zero line keeps NULL description while the other 3 lines render; cross-currency disbursement (USD→ILS) and exchange (USD→EUR) show each line's own currency. Zero residue after rollback: transaction/line/account counts, all account balances, all line notes, and all existing transaction descriptions byte-identical before/after.
+- `php artisan route:list --path=transaction-lines`: only `index` + `view` remain (create/edit routes gone).
+- `php artisan optimize:clear` + `graphify update .` run after implementation.
+- Known limitation (pre-existing, unchanged): full `RefreshDatabase` still blocked by the MySQL-only `2026_06_24_000005_backfill_denormalized_currency_and_amounts.php`; both unit suites use the schema-only SQLite pattern instead. The pre-existing `Tests\Feature\ExampleTest` welcome-page failure also remains (unrelated scaffold test).
+
+### Commit Hash
+(not committed yet)

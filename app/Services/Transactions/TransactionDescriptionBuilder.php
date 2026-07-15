@@ -4,8 +4,8 @@ namespace App\Services\Transactions;
 
 use App\Models\Transaction;
 use App\Models\TransactionLine;
+use App\Services\Transactions\Support\FormatsTransactionText;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
@@ -18,6 +18,8 @@ use RuntimeException;
  */
 class TransactionDescriptionBuilder
 {
+    use FormatsTransactionText;
+
     public function buildAndSave(Transaction $transaction, string $summary): Transaction
     {
         $transaction->description = $this->build($transaction, $summary);
@@ -68,20 +70,14 @@ class TransactionDescriptionBuilder
 
     protected function formatEntry(TransactionLine $line, float $amount): string
     {
-        $accountName = trim((string) ($line->account?->name ?? ''));
-        $label       = Str::startsWith($accountName, 'حساب') ? $accountName : 'حساب ' . $accountName;
+        $label        = $this->formatAccountLabel((string) ($line->account?->name ?? ''));
         $currencyCode = (string) ($line->currency?->code ?? '');
-        $formattedAmount = number_format($amount, 2, '.', ',');
 
-        return "{$label} ({$currencyCode}) — {$formattedAmount}";
+        return "{$label} ({$currencyCode}) — {$this->formatAmount($amount)}";
     }
 
     protected function normalizeSummary(string $summary): string
     {
-        $normalized = preg_replace('/\s+/u', ' ', trim($summary)) ?? trim($summary);
-        $normalized = rtrim($normalized);
-        $normalized = rtrim($normalized, '.');
-
-        return $normalized . '.';
+        return $this->normalizeArabicText($summary);
     }
 }

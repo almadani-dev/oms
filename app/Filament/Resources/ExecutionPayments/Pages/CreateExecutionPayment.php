@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ExecutionPayments\Pages;
 
+use App\Enums\TransactionLineRole;
 use App\Filament\Resources\ExecutionPayments\ExecutionPaymentResource;
 use App\Filament\Resources\ExecutionPayments\Schemas\ExecutionPaymentForm;
 use App\Models\Account;
@@ -11,6 +12,7 @@ use App\Models\ProjectCostBudgetsPayment;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
+use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
@@ -84,7 +86,13 @@ class CreateExecutionPayment extends CreateRecord
                 Account::find($creditAccountId)?->decrement('current_balance', $amount);            // دائن
             }
 
-            // STEP 5b - Generate & save the Arabic transaction description
+            // STEP 5b - Generate & save the Arabic line descriptions, then the
+            // parent transaction description (both from the final saved lines)
+            app(TransactionLineDescriptionBuilder::class)->buildAndSaveForTransaction(
+                $transaction,
+                $this->buildExecutionPaymentLinePurposes($budget)
+            );
+
             app(TransactionDescriptionBuilder::class)->buildAndSave(
                 $transaction,
                 $this->buildExecutionPaymentSummary($budget)
@@ -142,6 +150,24 @@ class CreateExecutionPayment extends CreateRecord
     }
 
     /**
+     * Per-line purposes keyed by line_role, with a graceful fallback when the
+     * budget's project is unavailable. Never exposes beneficiary details.
+     *
+     * @return array<string, string>
+     */
+    protected function buildExecutionPaymentLinePurposes(?ProjectCostBudget $budget): array
+    {
+        $projectName = $budget?->projectCost?->project?->name;
+
+        return [
+            TransactionLineRole::Beneficiary->value => $projectName
+                ? "إثبات مبلغ التنفيذ ضمن مشروع {$projectName}"
+                : 'إثبات مبلغ التنفيذ ضمن المشروع',
+            TransactionLineRole::ExecutionSource->value => 'تخفيض رصيد مبلغ المشروع المتاح للتنفيذ',
+        ];
+    }
+
+    /**
      * Line 1: مدين - المستفيد. Line 2: دائن - الوجهة التلقائية.
      */
     protected function createLines(int $transactionId, $beneficiaryAccountId, $creditAccountId, ?int $currencyId, float $amount): void
@@ -157,6 +183,7 @@ class CreateExecutionPayment extends CreateRecord
             'debit_base'      => $amount,
             'credit_base'     => 0,
             'notes'           => ProjectCostBudgetsPayment::LINE_BENEFICIARY,
+            'line_role'       => TransactionLineRole::Beneficiary->value,
             'created_by'      => $uid,
             'updated_by'      => $uid,
         ]);
@@ -170,6 +197,7 @@ class CreateExecutionPayment extends CreateRecord
             'debit_base'      => 0,
             'credit_base'     => $amount,
             'notes'           => ProjectCostBudgetsPayment::LINE_CREDIT,
+            'line_role'       => TransactionLineRole::ExecutionSource->value,
             'created_by'      => $uid,
             'updated_by'      => $uid,
         ]);
