@@ -1,16 +1,16 @@
 # Graph Report - oms  (2026-07-18)
 
 ## Corpus Check
-- 529 files · ~287,919 words
+- 535 files · ~293,824 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 7795 nodes · 19886 edges · 436 communities (403 shown, 33 thin omitted)
-- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 276 edges (avg confidence: 0.8)
+- 7838 nodes · 20291 edges · 432 communities (400 shown, 32 thin omitted)
+- Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 346 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `1cd6e4a8`
+- Built from commit: `1b53389a`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -226,12 +226,8 @@
 - [[_COMMUNITY_Community 427|Community 427]]
 - [[_COMMUNITY_Community 428|Community 428]]
 - [[_COMMUNITY_Community 429|Community 429]]
-- [[_COMMUNITY_Community 430|Community 430]]
 - [[_COMMUNITY_Community 431|Community 431]]
 - [[_COMMUNITY_Community 432|Community 432]]
-- [[_COMMUNITY_Community 433|Community 433]]
-- [[_COMMUNITY_Community 434|Community 434]]
-- [[_COMMUNITY_Community 435|Community 435]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `update()` - 136 edges
@@ -246,16 +242,16 @@
 10. `of()` - 77 edges
 
 ## Surprising Connections (you probably didn't know these)
+- `FinancialAccountGuardTest` --references--> `Currency`  [EXTRACTED]
+  tests/Unit/Services/Validation/FinancialAccountGuardTest.php → app/Models/Currency.php
 - `TransactionDescriptionBuilderTest` --references--> `TransactionDescriptionBuilder`  [EXTRACTED]
   tests/Unit/Services/TransactionDescriptionBuilderTest.php → app/Services/Transactions/TransactionDescriptionBuilder.php
 - `TransactionLineDescriptionBuilderTest` --references--> `TransactionLineDescriptionBuilder`  [EXTRACTED]
   tests/Unit/Services/TransactionLineDescriptionBuilderTest.php → app/Services/Transactions/TransactionLineDescriptionBuilder.php
 - `robots.txt Crawler Rules` --conceptually_related_to--> `OMS Project`  [INFERRED]
   public/robots.txt → README.md
-- `markProjectSnapshotDirty()` --calls--> `ProjectFinancialSnapshot`  [INFERRED]
-  app/Observers/Concerns/MarksProjectSnapshotDirty.php → app/Models/Reports/ProjectFinancialSnapshot.php
-- `includeOptions()` --calls--> `Fs()`  [INFERRED]
-  public/js/filament/widgets/components/stats-overview/stat/chart.js → public/js/filament/forms/components/code-editor.js
+- `FinancialAccountGuardTest` --references--> `AccountType`  [EXTRACTED]
+  tests/Unit/Services/Validation/FinancialAccountGuardTest.php → app/Models/AccountType.php
 
 ## Import Cycles
 - None detected.
@@ -263,26 +259,26 @@
 ## Hyperedges (group relationships)
 - **Laravel Core Features** — readme_eloquent_orm, readme_schema_migrations, readme_queues, readme_event_broadcasting [EXTRACTED 0.75]
 
-## Communities (436 total, 33 thin omitted)
+## Communities (432 total, 32 thin omitted)
 
 ### Community 0 - "Project Cost Budget Payments"
-Cohesion: 0.13
-Nodes (7): Schema, ViewProjectCostBudgetsPayment, BelongsTo, HasMany, MorphMany, ProjectCostBudget, ProjectCostBudgetObserver
+Cohesion: 0.07
+Nodes (13): CreateExecutionPayment, Model, Schema, ViewProjectCostBudgetsPayment, BelongsTo, HasMany, MorphMany, ProjectCostBudget (+5 more)
 
 ### Community 1 - "Exchange Rate History Resource"
 Cohesion: 0.04
-Nodes (121): aa(), acceptToken(), addComposition(), allows(), aP(), AQ(), atLastNode(), au() (+113 more)
+Nodes (116): aa(), acceptToken(), addComposition(), allows(), aP(), AQ(), au(), ch() (+108 more)
 
 ### Community 2 - "Currency & Fiscal Year Editing"
-Cohesion: 0.07
-Nodes (15): GeneralExchangeResource, BackedEnum, Builder, Schema, Table, UnitEnum, EditGeneralExchange, GeneralExchange (+7 more)
+Cohesion: 0.14
+Nodes (6): EditGeneralExchange, Model, GeneralExchangeForm, Get, Schema, Set
 
 ### Community 3 - "Relation Managers (Payments/Rates)"
-Cohesion: 0.07
-Nodes (45): afterAutoSkip(), ah(), at(), Ba(), Bf(), buildLookupTable(), buildTicks(), contains() (+37 more)
+Cohesion: 0.05
+Nodes (67): afterDatasetsUpdate(), As(), Ba(), buildOrUpdateControllers(), buildOrUpdateElements(), clear(), clearCache(), _dataCheck() (+59 more)
 
 ### Community 4 - "Eloquent Models & Relations"
-Cohesion: 0.20
+Cohesion: 0.12
 Nodes (7): User, Authenticatable, DatabaseSeeder, HasFactory, HasRoles, Notifiable, Seeder
 
 ### Community 5 - "Project Super Pages"
@@ -290,56 +286,52 @@ Cohesion: 0.08
 Nodes (16): CreateProjectSuper, EditProjectSuper, ListProjectSupers, ViewProjectSuper, BackedEnum, Builder, Schema, Table (+8 more)
 
 ### Community 6 - "Partner CRUD Pages"
-Cohesion: 0.07
-Nodes (18): CreateFiscalYear, CreateGeneralExchange, GeneralExchange, Model, CreatePartner, EditPartner, PartnerResource, BackedEnum (+10 more)
+Cohesion: 0.09
+Nodes (14): CreatePartner, EditPartner, ListPartners, ViewPartner, PartnerResource, BackedEnum, Builder, Schema (+6 more)
 
 ### Community 7 - "Project Cost Pages"
 Cohesion: 0.06
-Nodes (16): GeneralExpenseResource, BackedEnum, Builder, Schema, Table, UnitEnum, EditGeneralExpense, GeneralExpense (+8 more)
+Nodes (16): GeneralExpenseResource, BackedEnum, Builder, Schema, Table, UnitEnum, EditGeneralExpense, Model (+8 more)
 
 ### Community 8 - "Transaction CRUD Pages"
 Cohesion: 0.09
 Nodes (14): AccountTypeResource, BackedEnum, Builder, Schema, Table, UnitEnum, CreateAccountType, EditAccountType (+6 more)
 
 ### Community 9 - "Account Type Resource"
-Cohesion: 0.05
-Nodes (61): after(), baseDirAt(), before(), bidiIn(), bidiSpansAt(), blockTiles(), bP(), Ci() (+53 more)
+Cohesion: 0.07
+Nodes (43): after(), before(), blockTiles(), bP(), coordsAt(), coordsIn(), coordsInWidget(), domAtPos() (+35 more)
 
 ### Community 11 - "Bank Type Resource"
 Cohesion: 0.09
 Nodes (14): BankTypeResource, BackedEnum, Builder, Schema, Table, UnitEnum, CreateBankType, EditBankType (+6 more)
 
-### Community 12 - "Partner Type Pages"
-Cohesion: 0.11
-Nodes (3): FinancialAmountGuard, TestCase, FinancialAmountGuardTest
-
 ### Community 13 - "Project Resource & Pages"
-Cohesion: 0.06
-Nodes (58): addChanges(), addRange(), Ah(), applyTransaction(), asSingle(), be(), changeByRange(), compose() (+50 more)
+Cohesion: 0.07
+Nodes (45): addChanges(), Ah(), applyTransaction(), asSingle(), be(), changeByRange(), compose(), composeDesc() (+37 more)
 
 ### Community 14 - "Project Status Pages"
 Cohesion: 0.09
 Nodes (14): CreateProjectStatus, EditProjectStatus, ListProjectStatuses, ViewProjectStatus, BackedEnum, Builder, Schema, Table (+6 more)
 
 ### Community 15 - "Transaction Line Pages"
-Cohesion: 0.06
-Nodes (17): ListTransactionLines, ViewTransactionLine, Schema, TransactionLineForm, Table, TransactionLinesTable, BackedEnum, Builder (+9 more)
+Cohesion: 0.10
+Nodes (11): Schema, TransactionLineForm, Table, TransactionLinesTable, BackedEnum, Builder, Model, Schema (+3 more)
 
 ### Community 16 - "Transaction Super Type Pages"
 Cohesion: 0.09
 Nodes (14): CreateTransactionSuperType, EditTransactionSuperType, ListTransactionSuperTypes, ViewTransactionSuperType, Schema, TransactionSuperTypeForm, Table, TransactionSuperTypesTable (+6 more)
 
 ### Community 17 - "Transaction Type Pages"
-Cohesion: 0.10
-Nodes (13): CreateProjectCost, EditProjectCost, ViewProjectCost, BackedEnum, Builder, Schema, Table, UnitEnum (+5 more)
+Cohesion: 0.09
+Nodes (14): CreateProjectCost, EditProjectCost, ListProjectCosts, ViewProjectCost, BackedEnum, Builder, Schema, Table (+6 more)
 
 ### Community 18 - "Settings Pages"
-Cohesion: 0.04
-Nodes (94): addNode(), ag(), Ao(), append(), applyInitialSize(), Bn(), Cc(), cg() (+86 more)
+Cohesion: 0.03
+Nodes (109): add(), addInner(), addNode(), applyInitialSize(), attachHandles(), b0(), Bn(), Cc() (+101 more)
 
 ### Community 19 - "User Management Pages"
 Cohesion: 0.01
-Nodes (147): $(), $0(), Ab(), ac(), accepts(), addAttributes(), addExtensions(), addGlobalAttributes() (+139 more)
+Nodes (155): $(), $0(), Ab(), ac(), accepts(), addAttributes(), addExtensions(), addGlobalAttributes() (+147 more)
 
 ### Community 20 - "Financial Report Refresh Command"
 Cohesion: 0.09
@@ -351,7 +343,7 @@ Nodes (14): CreatePartnerType, EditPartnerType, ListPartnerTypes, ViewPartnerTyp
 
 ### Community 22 - "Projects Report Tables"
 Cohesion: 0.01
-Nodes (80): _$(), addSelection(), Ag(), allowsNesting(), attrs(), b0(), bi(), cc() (+72 more)
+Nodes (93): a$(), addSelection(), Ag(), allowsNesting(), attrs(), b0(), bi(), blank() (+85 more)
 
 ### Community 24 - "Payment & Receipt Proof Images"
 Cohesion: 0.10
@@ -359,35 +351,35 @@ Nodes (20): Program Activity Photo (Women's Hoop Game Session), Amount 79,200, D
 
 ### Community 25 - "Community 25"
 Cohesion: 0.01
-Nodes (103): aa(), addControllers(), addPlugins(), addScales(), bd(), bindResponsiveEvents(), bm(), Bt() (+95 more)
+Nodes (96): aa(), addControllers(), addPlugins(), addScales(), bd(), bindResponsiveEvents(), bm(), Bt() (+88 more)
 
 ### Community 26 - "Community 26"
-Cohesion: 0.20
-Nodes (3): CreateProject, EditProject, ListProjects
+Cohesion: 0.12
+Nodes (7): ListAccounts, ListGeneralExchanges, ListProjectCostReceipts, ListProjects, ListTransactionLines, ListTransactions, ListRecords
 
 ### Community 27 - "Community 27"
 Cohesion: 0.22
 Nodes (5): ComprehensiveFinancialTransactionsWordExportService, PhpWord, Section, StreamedResponse, Table
 
 ### Community 28 - "Community 28"
-Cohesion: 0.04
-Nodes (31): FiscalYearResource, BackedEnum, Builder, Schema, Table, UnitEnum, EditFiscalYear, ListFiscalYears (+23 more)
+Cohesion: 0.09
+Nodes (14): FiscalYearResource, BackedEnum, Builder, Schema, Table, UnitEnum, CreateFiscalYear, EditFiscalYear (+6 more)
 
 ### Community 29 - "Community 29"
-Cohesion: 0.02
-Nodes (162): accept(), add(), addChunk(), addEventListener(), addInfoPane(), addInner(), addMapping(), addWindowListeners() (+154 more)
+Cohesion: 0.03
+Nodes (123): _$(), accept(), add(), addEventListener(), addInfoPane(), addRange(), addWindowListeners(), atLastNode() (+115 more)
 
 ### Community 30 - "Community 30"
 Cohesion: 0.02
-Nodes (112): acquireContext(), addControllers(), addEventListener(), addPlugins(), addScales(), as(), bc(), beforeLayout() (+104 more)
+Nodes (120): addControllers(), addElements(), addEventListener(), addPlugins(), addScales(), as(), bc(), beforeLayout() (+112 more)
 
 ### Community 31 - "Community 31"
-Cohesion: 0.04
-Nodes (104): adjustHitBoxes(), af(), Ao(), aspectRatio(), au(), B(), bh(), _calculateBarIndexPixels() (+96 more)
+Cohesion: 0.03
+Nodes (122): acquireContext(), adjustHitBoxes(), afterDraw(), Ao(), aspectRatio(), bh(), bu(), buildTicks() (+114 more)
 
 ### Community 32 - "Community 32"
-Cohesion: 0.05
-Nodes (19): BelongsTo, HasMany, Project, BelongsTo, HasMany, ProjectCost, BelongsTo, MorphMany (+11 more)
+Cohesion: 0.17
+Nodes (5): BelongsTo, MorphMany, ProjectCostReceipt, ProjectCostReceiptObserver, ProjectCostReceiptAccountValidationTest
 
 ### Community 33 - "Community 33"
 Cohesion: 0.06
@@ -395,11 +387,11 @@ Nodes (118): _a(), ad(), after(), Ay(), before(), between(), blockRange(), by() 
 
 ### Community 34 - "Community 34"
 Cohesion: 0.11
-Nodes (27): bh(), calculateLabelRotation(), _computeLabelItems(), fit(), _fitCols(), _fitRows(), getIndexAngle(), getLabelItems() (+19 more)
+Nodes (26): buildTicks(), cn(), _computeLabelItems(), _computeLabelSizes(), computeTickLimit(), Do(), _generate(), _getLabelCapacity() (+18 more)
 
 ### Community 35 - "Community 35"
-Cohesion: 0.04
-Nodes (41): Schema, Schema, Schema, Schema, AccountType, HasMany, BankType, BelongsTo (+33 more)
+Cohesion: 0.05
+Nodes (37): Table, ExchangeRateHistory, BelongsTo, FiscalYear, BelongsTo, HasMany, Partner, BelongsTo (+29 more)
 
 ### Community 36 - "Community 36"
 Cohesion: 0.18
@@ -411,95 +403,95 @@ Nodes (12): devDependencies, concurrently, laravel-vite-plugin, tailwindcss, @ta
 
 ### Community 38 - "Community 38"
 Cohesion: 0.05
-Nodes (23): ExecutionPaymentResource, BackedEnum, Builder, Schema, Table, UnitEnum, CreateExecutionPayment, Model (+15 more)
+Nodes (16): ExecutionPaymentResource, BackedEnum, Builder, Schema, Table, UnitEnum, EditExecutionPayment, Model (+8 more)
 
 ### Community 39 - "Community 39"
 Cohesion: 0.04
-Nodes (70): acquireContext(), ag(), apply(), Bc(), bg(), bo(), bs(), ca() (+62 more)
+Nodes (76): ag(), apply(), B(), Bc(), bg(), bo(), bs(), ca() (+68 more)
 
 ### Community 40 - "Community 40"
 Cohesion: 0.09
-Nodes (12): ViewTransaction, Schema, TransactionForm, Table, TransactionsTable, BackedEnum, Builder, Model (+4 more)
+Nodes (11): Schema, TransactionForm, Table, TransactionsTable, BackedEnum, Builder, Model, Schema (+3 more)
 
 ### Community 41 - "Community 41"
-Cohesion: 0.15
-Nodes (23): _a(), ar(), bc(), ci(), cl(), df(), fl(), gi() (+15 more)
+Cohesion: 0.10
+Nodes (13): CreateSetting, EditSetting, ListSettings, ViewSetting, Schema, SettingForm, BackedEnum, Schema (+5 more)
 
 ### Community 42 - "Community 42"
 Cohesion: 0.09
 Nodes (14): AttachmentResource, BackedEnum, Builder, Schema, Table, UnitEnum, CreateAttachment, EditAttachment (+6 more)
 
 ### Community 43 - "Community 43"
-Cohesion: 0.19
-Nodes (4): GeneralExpense, BelongsTo, MorphMany, BackfillTransactionDescriptionsCommandTest
+Cohesion: 0.15
+Nodes (5): Currency, BelongsTo, HasMany, TrialBalanceReportService, BackfillTransactionDescriptionsCommandTest
 
 ### Community 44 - "Community 44"
 Cohesion: 0.11
-Nodes (23): af(), bm(), du(), Fd(), fg(), $g(), hl(), injectCSS() (+15 more)
+Nodes (23): af(), bm(), coordsAtPos(), du(), fg(), hl(), injectCSS(), _l() (+15 more)
 
 ### Community 45 - "Community 45"
-Cohesion: 0.03
-Nodes (116): ac(), add(), ae(), after(), Al(), Am(), before(), bl() (+108 more)
+Cohesion: 0.04
+Nodes (109): ac(), add(), ae(), after(), Al(), Am(), before(), bl() (+101 more)
 
 ### Community 46 - "Community 46"
-Cohesion: 0.16
-Nodes (12): ProjectStatus, ExecutionPaymentCreditAccountTest, Account, AccountType, Currency, FiscalYear, Partner, Project (+4 more)
+Cohesion: 0.13
+Nodes (5): BelongsTo, MorphMany, ProjectCostBudgetsPayment, ProjectCostBudgetsPaymentObserver, ExecutionPaymentCreditAccountTest
 
 ### Community 47 - "Community 47"
-Cohesion: 0.03
-Nodes (116): addChild(), addElement(), addGaps(), addLeafElement(), addNode(), advance(), ATXHeading(), balance() (+108 more)
+Cohesion: 0.04
+Nodes (105): addActive(), addChild(), addElement(), addGaps(), addLeafElement(), addNode(), Ar(), as() (+97 more)
 
 ### Community 48 - "Community 48"
 Cohesion: 0.06
-Nodes (90): addNodeMark(), ak(), Ap(), atEnd(), atStart(), bk(), bl(), bp() (+82 more)
+Nodes (86): ak(), Ap(), atEnd(), atStart(), bk(), bl(), bp(), Ce() (+78 more)
 
 ### Community 49 - "Community 49"
-Cohesion: 0.08
-Nodes (65): allowsMarks(), am(), as(), au(), bc(), canAppend(), canReplace(), canReplaceWith() (+57 more)
+Cohesion: 0.06
+Nodes (83): addNodeMark(), allowedMarks(), allowsMarks(), allowsMarkType(), am(), as(), au(), bc() (+75 more)
 
 ### Community 50 - "Community 50"
-Cohesion: 0.06
-Nodes (59): addActions(), advanceFully(), advanceStack(), allActions(), build(), c0(), canShift(), close() (+51 more)
+Cohesion: 0.05
+Nodes (75): Ac(), addActions(), advance(), advanceFully(), advanceStack(), allActions(), break(), c0() (+67 more)
 
 ### Community 51 - "Community 51"
-Cohesion: 0.06
-Nodes (43): $a(), add(), br(), ca(), ci(), color(), da(), darken() (+35 more)
+Cohesion: 0.05
+Nodes (53): $a(), _a(), add(), alpha(), br(), ca(), ci(), color() (+45 more)
 
 ### Community 53 - "Community 53"
-Cohesion: 0.07
-Nodes (61): $(), adjustHitBoxes(), afterDraw(), At(), beforeDatasetDraw(), beforeDatasetsDraw(), beforeDraw(), bi() (+53 more)
+Cohesion: 0.06
+Nodes (71): $(), adjustHitBoxes(), afterDraw(), At(), bh(), bi(), bo(), calculateLabelRotation() (+63 more)
 
 ### Community 54 - "Community 54"
-Cohesion: 0.03
-Nodes (89): active(), addToSet(), B(), baseTheme(), between(), bu(), buildDeco(), childString() (+81 more)
+Cohesion: 0.04
+Nodes (80): active(), addTree(), baseTheme(), between(), buildDeco(), checkAsyncSchedule(), commit(), compute() (+72 more)
 
 ### Community 55 - "Community 55"
-Cohesion: 0.05
-Nodes (65): afterBuildTicks(), afterCalculateLabelRotation(), afterDataLimits(), afterDatasetsUpdate(), afterFit(), afterSetDimensions(), afterTickToLabelConversion(), afterUpdate() (+57 more)
+Cohesion: 0.06
+Nodes (53): afterBuildTicks(), afterCalculateLabelRotation(), afterDataLimits(), afterFit(), afterSetDimensions(), afterTickToLabelConversion(), afterUpdate(), beforeBuildTicks() (+45 more)
 
 ### Community 56 - "Community 56"
 Cohesion: 0.22
 Nodes (17): Ae(), Ai(), De(), fn(), Ft(), ht(), ii(), Le() (+9 more)
 
 ### Community 57 - "Community 57"
-Cohesion: 0.04
-Nodes (78): activateHover(), aO(), balanced(), baseIndent(), baseIndentFor(), bidiSpans(), blockAt(), cd() (+70 more)
+Cohesion: 0.03
+Nodes (105): activateHover(), aO(), balanced(), baseDirAt(), baseIndent(), baseIndentFor(), bidiIn(), bidiSpans() (+97 more)
 
 ### Community 58 - "Community 58"
-Cohesion: 0.03
-Nodes (107): addBox(), addElements(), afterBuildTicks(), afterCalculateLabelRotation(), afterDataLimits(), afterDraw(), afterFit(), afterSetDimensions() (+99 more)
+Cohesion: 0.05
+Nodes (70): addBox(), addElements(), afterBuildTicks(), afterCalculateLabelRotation(), afterDataLimits(), afterFit(), afterSetDimensions(), afterTickToLabelConversion() (+62 more)
 
 ### Community 59 - "Community 59"
-Cohesion: 0.05
-Nodes (35): ae(), as(), bo(), bs(), close(), closeQuietly(), Dr(), es() (+27 more)
+Cohesion: 0.04
+Nodes (39): ae(), as(), bo(), bs(), close(), closeQuietly(), co(), Dr() (+31 more)
 
 ### Community 60 - "Community 60"
 Cohesion: 0.13
 Nodes (27): af(), as(), Ba(), En(), es(), Fc(), gd(), hl() (+19 more)
 
 ### Community 61 - "Community 61"
-Cohesion: 0.09
-Nodes (33): addBox(), beforeUpdate(), _cachedScopes(), configure(), datasetAnimationScopeKeys(), datasetElementScopeKeys(), datasetScopeKeys(), Dr() (+25 more)
+Cohesion: 0.06
+Nodes (55): acquireContext(), addBox(), apply(), beforeUpdate(), Bt(), _cachedScopes(), chartOptionScopes(), configure() (+47 more)
 
 ### Community 62 - "Community 62"
 Cohesion: 0.22
@@ -514,48 +506,48 @@ Cohesion: 0.09
 Nodes (62): $(), A(), ae(), areRecordsSelected(), areRecordsToggleable(), B(), be(), C() (+54 more)
 
 ### Community 65 - "Community 65"
-Cohesion: 0.05
-Nodes (65): an(), Ar(), buildTicks(), ch(), cn(), _computeLabelSizes(), computeTickLimit(), D() (+57 more)
+Cohesion: 0.07
+Nodes (50): an(), Ar(), buildOrUpdateElements(), ch(), D(), dc(), determineDataLimits(), dh() (+42 more)
 
 ### Community 66 - "Community 66"
-Cohesion: 0.03
-Nodes (78): ad(), addEventListener(), An(), applyStack(), ar(), average(), beforeDatasetDraw(), beforeDatasetsDraw() (+70 more)
+Cohesion: 0.05
+Nodes (56): ad(), applyStack(), ar(), beforeDatasetDraw(), beforeDatasetsDraw(), beforeDraw(), beforeLayout(), cf() (+48 more)
 
 ### Community 67 - "Community 67"
-Cohesion: 0.08
-Nodes (46): _(), Ae(), ai(), ao(), bf(), da(), di(), fd() (+38 more)
+Cohesion: 0.10
+Nodes (40): _(), Ae(), ai(), ao(), bf(), di(), fd(), fi() (+32 more)
 
 ### Community 68 - "Community 68"
 Cohesion: 0.25
 Nodes (8): require-dev, fakerphp/faker, laravel/pail, laravel/pao, laravel/pint, mockery/mockery, nunomaduro/collision, phpunit/phpunit
 
 ### Community 70 - "Community 70"
-Cohesion: 0.05
-Nodes (70): Ar(), Bd(), coordsAtPos(), dl(), domAfterPos(), domAtPos(), domFromPos(), domSelection() (+62 more)
+Cohesion: 0.04
+Nodes (72): ag(), Ar(), Bd(), cg(), dg(), disconnectSelection(), dl(), domAfterPos() (+64 more)
 
 ### Community 71 - "Community 71"
-Cohesion: 0.09
-Nodes (65): at(), b(), Be(), $c(), ca(), Ct(), D(), de() (+57 more)
+Cohesion: 0.10
+Nodes (62): at(), b(), Be(), $c(), ca(), Ct(), D(), de() (+54 more)
 
 ### Community 72 - "Community 72"
-Cohesion: 0.07
-Nodes (40): _calculateBarValuePixels(), calculateCircumference(), calculateTotal(), _circumference(), _computeAngle(), countVisibleElements(), datasetAnimationScopeKeys(), df() (+32 more)
+Cohesion: 0.04
+Nodes (67): addEventListener(), afterAutoSkip(), au(), br(), buildLookupTable(), _calculateBarIndexPixels(), _calculateBarValuePixels(), calculateCircumference() (+59 more)
 
 ### Community 73 - "Community 73"
-Cohesion: 0.06
-Nodes (51): cg(), clone(), create(), dtFormatter(), Ec(), En(), eras(), expandFormat() (+43 more)
+Cohesion: 0.05
+Nodes (54): cg(), clone(), create(), dtFormatter(), Ec(), er(), eras(), expandFormat() (+46 more)
 
 ### Community 74 - "Community 74"
-Cohesion: 0.05
-Nodes (67): addStoredMark(), Bo(), br(), childAfter(), childBefore(), Cu(), cy(), deleteNode() (+59 more)
+Cohesion: 0.08
+Nodes (38): Ao(), br(), cy(), $d(), deleteSelection(), deselectNode(), done(), forceFlush() (+30 more)
 
 ### Community 75 - "Community 75"
 Cohesion: 0.05
 Nodes (12): Bi(), Bn(), br(), Id(), ji(), on(), qd(), qi() (+4 more)
 
 ### Community 76 - "Community 76"
-Cohesion: 0.18
-Nodes (7): BackedEnum, StreamedResponse, Table, UnitEnum, ProjectsGeneralFinancialPage, HasTable, InteractsWithTable
+Cohesion: 0.05
+Nodes (16): Collection, RefreshProjectsFinancialReport, StreamedResponse, ProjectFinancialDetailsPage, BackedEnum, StreamedResponse, Table, UnitEnum (+8 more)
 
 ### Community 77 - "Community 77"
 Cohesion: 0.06
@@ -575,15 +567,15 @@ Nodes (30): actions(), button(), c(), configureAnimations(), configureTransition
 
 ### Community 82 - "Community 82"
 Cohesion: 0.05
-Nodes (65): Aa(), ad(), Bt(), Cc(), cf(), Cn(), Cr(), dd() (+57 more)
+Nodes (65): Aa(), ad(), Bt(), Cc(), cf(), ci(), Cn(), Cr() (+57 more)
 
 ### Community 84 - "Community 84"
 Cohesion: 0.07
 Nodes (31): Ae(), ar(), Bt(), De(), _e(), Ee(), et(), Fe() (+23 more)
 
 ### Community 85 - "Community 85"
-Cohesion: 0.09
-Nodes (13): AccountResource, BackedEnum, Builder, Schema, Table, UnitEnum, EditAccount, ListAccounts (+5 more)
+Cohesion: 0.06
+Nodes (20): AccountResource, BackedEnum, Builder, Schema, Table, UnitEnum, EditAccount, AccountForm (+12 more)
 
 ### Community 86 - "Community 86"
 Cohesion: 0.47
@@ -594,8 +586,8 @@ Cohesion: 0.60
 Nodes (5): addIndex(), down(), dropIndex(), indexExists(), up()
 
 ### Community 88 - "Community 88"
-Cohesion: 0.07
-Nodes (44): afterAutoSkip(), Ao(), applyStack(), buildLookupTable(), _calculateBarIndexPixels(), _calculateBarValuePixels(), calculateCircumference(), _calculatePadding() (+36 more)
+Cohesion: 0.06
+Nodes (48): afterAutoSkip(), Ao(), applyStack(), buildLookupTable(), _calculateBarIndexPixels(), _calculateBarValuePixels(), calculateCircumference(), _calculatePadding() (+40 more)
 
 ### Community 89 - "Community 89"
 Cohesion: 0.08
@@ -618,8 +610,8 @@ Cohesion: 0.13
 Nodes (42): At(), b(), bi(), bn(), Ce(), ci(), cn(), ct() (+34 more)
 
 ### Community 94 - "Community 94"
-Cohesion: 0.04
-Nodes (56): alpha(), Be(), $c(), color(), darken(), desaturate(), ef(), Es() (+48 more)
+Cohesion: 0.07
+Nodes (39): alpha(), Be(), $c(), color(), darken(), desaturate(), Gc(), greyscale() (+31 more)
 
 ### Community 95 - "Community 95"
 Cohesion: 0.67
@@ -634,16 +626,16 @@ Cohesion: 0.67
 Nodes (3): extra, laravel, dont-discover
 
 ### Community 154 - "Community 154"
-Cohesion: 0.06
-Nodes (20): SetLocale, ComprehensiveFinancialTransactionsExcelExportService, Spreadsheet, StreamedResponse, Worksheet, DonorFinancialReportWordExportService, PhpWord, Section (+12 more)
+Cohesion: 0.22
+Nodes (4): PhpWord, Section, StreamedResponse, ProjectFinancialDetailsWordExportService
 
 ### Community 155 - "Community 155"
 Cohesion: 0.10
 Nodes (13): ExchangeRateHistoryResource, BackedEnum, Schema, Table, UnitEnum, CreateExchangeRateHistory, EditExchangeRateHistory, ListExchangeRateHistories (+5 more)
 
 ### Community 168 - "Community 168"
-Cohesion: 0.05
-Nodes (64): activeForPoint(), addBlock(), addBlockWidget(), addBreak(), addDelimiter(), addInlineWidget(), addLine(), addLineDeco() (+56 more)
+Cohesion: 0.06
+Nodes (57): activeForPoint(), addBlock(), addBlockWidget(), addBreak(), addDelimiter(), addInlineWidget(), addLine(), addLineDeco() (+49 more)
 
 ### Community 205 - "Community 205"
 Cohesion: 0.21
@@ -654,32 +646,32 @@ Cohesion: 0.26
 Nodes (4): PhpWord, Section, StreamedResponse, TrialBalanceWordExportService
 
 ### Community 208 - "Community 208"
-Cohesion: 0.06
-Nodes (46): a$(), bd(), Bh(), charCategorizer(), cS(), De(), delayAndroidKey(), Dg() (+38 more)
+Cohesion: 0.07
+Nodes (43): bd(), Bh(), charCategorizer(), cS(), De(), delayAndroidKey(), Dg(), E$() (+35 more)
 
 ### Community 209 - "Community 209"
-Cohesion: 0.17
-Nodes (31): _a(), aa(), ba(), br(), Bt(), ca(), ct(), ei() (+23 more)
+Cohesion: 0.15
+Nodes (35): $(), _a(), aa(), ba(), br(), Bt(), ca(), Cn() (+27 more)
 
 ### Community 210 - "Community 210"
 Cohesion: 0.20
 Nodes (14): active(), _animateOptions(), cancel(), _createAnimations(), _createDescriptors(), _descriptors(), _notify(), _notifyStateChanges() (+6 more)
 
 ### Community 211 - "Community 211"
-Cohesion: 0.15
-Nodes (11): CleanOperationalDataCommandTest, Account, AccountType, Currency, FiscalYear, Partner, Project, ProjectCost (+3 more)
+Cohesion: 0.11
+Nodes (5): BelongsTo, HasMany, Project, ProjectObserver, CleanOperationalDataCommandTest
 
 ### Community 212 - "Community 212"
-Cohesion: 0.06
-Nodes (48): _a(), ae(), alpha(), apply(), ba(), Bt(), chartOptionScopes(), constructor() (+40 more)
+Cohesion: 0.09
+Nodes (32): ae(), ba(), cc(), _e(), fc(), first(), ga(), getRange() (+24 more)
 
 ### Community 213 - "Community 213"
 Cohesion: 0.25
 Nodes (4): DonorFinancialReportExcelExportService, Spreadsheet, StreamedResponse, Worksheet
 
 ### Community 214 - "Community 214"
-Cohesion: 0.27
-Nodes (4): CleanOperationalData, Collection, RefreshProjectsFinancialReport, Command
+Cohesion: 0.14
+Nodes (7): AccountType, HasMany, BankType, BelongsTo, HasMany, FinancialAccountGuard, FinancialAccountGuardTest
 
 ### Community 215 - "Community 215"
 Cohesion: 0.08
@@ -688,6 +680,10 @@ Nodes (8): constructor(), define(), dm(), lm(), om(), qe(), registerListeners(),
 ### Community 216 - "Community 216"
 Cohesion: 0.17
 Nodes (23): closeDropdown(), createOptionElement(), deferPositionDropdown(), destroy(), filterOptions(), focusNextOption(), focusPreviousOption(), getVisibleOptions() (+15 more)
+
+### Community 217 - "Community 217"
+Cohesion: 0.15
+Nodes (3): CleanOperationalData, OperationalCleanupReport, OperationalDataCleanupService
 
 ### Community 218 - "Community 218"
 Cohesion: 0.08
@@ -698,20 +694,20 @@ Cohesion: 0.23
 Nodes (4): AccountStatementWordExportService, PhpWord, Section, StreamedResponse
 
 ### Community 220 - "Community 220"
-Cohesion: 0.11
-Nodes (31): addAll(), addDOM(), addElement(), addElementByRule(), addTextNode(), allowedMarks(), allowsMarkType(), clearIncompatible() (+23 more)
+Cohesion: 0.12
+Nodes (27): addAll(), addDOM(), addElement(), addElementByRule(), addTextNode(), closeExtra(), currentPos(), enter() (+19 more)
 
 ### Community 221 - "Community 221"
-Cohesion: 0.08
-Nodes (32): check(), checkAttrs(), endIndex(), getObj(), hasProtocol(), iy(), join(), Lr() (+24 more)
+Cohesion: 0.09
+Nodes (27): Bo(), childAfter(), childBefore(), Cu(), endIndex(), findIndex(), getObj(), hasProtocol() (+19 more)
 
 ### Community 222 - "Community 222"
-Cohesion: 0.12
-Nodes (27): $(), ar(), c(), de(), f(), fe(), g(), Gt() (+19 more)
+Cohesion: 0.13
+Nodes (24): ar(), c(), de(), f(), fe(), Gt(), $i(), ir() (+16 more)
 
 ### Community 223 - "Community 223"
-Cohesion: 0.18
-Nodes (21): Dn(), fn(), Ii(), Jr(), jt(), Kr(), Li(), mr() (+13 more)
+Cohesion: 0.16
+Nodes (24): Dn(), fn(), Gi(), ia(), Ii(), Jr(), jt(), Kr() (+16 more)
 
 ### Community 224 - "Community 224"
 Cohesion: 0.12
@@ -722,12 +718,12 @@ Cohesion: 0.17
 Nodes (23): closeDropdown(), createOptionElement(), deferPositionDropdown(), destroy(), filterOptions(), focusNextOption(), focusPreviousOption(), getVisibleOptions() (+15 more)
 
 ### Community 226 - "Community 226"
-Cohesion: 0.16
-Nodes (20): Ac(), bl(), ce(), Dc(), dl(), Do(), el(), ff() (+12 more)
+Cohesion: 0.15
+Nodes (22): Ac(), bl(), ce(), Dc(), df(), dl(), Do(), el() (+14 more)
 
 ### Community 227 - "Community 227"
-Cohesion: 0.15
-Nodes (25): At(), Cn(), Da(), dt(), Ee(), En(), fr(), Ge() (+17 more)
+Cohesion: 0.16
+Nodes (22): At(), dt(), Ee(), En(), fr(), g(), Ge(), h() (+14 more)
 
 ### Community 228 - "Community 228"
 Cohesion: 0.18
@@ -737,21 +733,25 @@ Nodes (19): al(), bo(), co(), Dn(), Eo(), er(), hi(), il() (+11 more)
 Cohesion: 0.14
 Nodes (9): close(), E(), G(), init(), P(), Q(), setUpResizeObserver(), X() (+1 more)
 
-### Community 231 - "Community 231"
+### Community 230 - "Community 230"
 Cohesion: 0.10
-Nodes (13): EditProjectCostBudgetsPayment, Model, ProjectCost, ProjectCostBudget, EditProjectCostReceipt, Model, ProjectCost, Transaction (+5 more)
+Nodes (28): ah(), An(), average(), bi(), contains(), Dt(), getCenterPoint(), _getLegendItemAt() (+20 more)
+
+### Community 231 - "Community 231"
+Cohesion: 0.04
+Nodes (22): CreateProjectCostBudgetsPayment, Model, EditProjectCostBudgetsPayment, Model, CreateProjectCostReceipt, Model, EditProjectCostReceipt, Model (+14 more)
 
 ### Community 232 - "Community 232"
-Cohesion: 0.08
-Nodes (16): CreateProjectCostReceipt, Model, ProjectCost, Transaction, ListProjectCostReceipts, BackedEnum, Builder, Schema (+8 more)
+Cohesion: 0.20
+Nodes (5): Schema, Get, Schema, Set, ProjectCostReceiptForm
 
 ### Community 235 - "Community 235"
-Cohesion: 0.06
-Nodes (18): BackfillTransactionDescriptions, CreateGeneralExpense, GeneralExpense, Model, BelongsTo, HasMany, Transaction, BelongsTo (+10 more)
+Cohesion: 0.11
+Nodes (9): BackfillTransactionDescriptions, BelongsTo, HasMany, Transaction, ClassifiedTransaction, Collection, TransactionFlowClassifier, Collection (+1 more)
 
 ### Community 236 - "Community 236"
 Cohesion: 0.08
-Nodes (16): CreateProjectCostBudgetsPayment, Model, ProjectCost, ProjectCostBudget, ListProjectCostBudgetsPayments, BackedEnum, Builder, Schema (+8 more)
+Nodes (13): ListProjectCostBudgetsPayments, BackedEnum, Builder, Schema, Table, UnitEnum, ProjectCostBudgetsPaymentResource, Get (+5 more)
 
 ### Community 237 - "Community 237"
 Cohesion: 0.22
@@ -794,12 +794,12 @@ Cohesion: 0.21
 Nodes (3): e(), i(), r()
 
 ### Community 247 - "Community 247"
-Cohesion: 0.17
-Nodes (20): An(), cd(), dr(), hf(), _i(), Ie(), kt(), lr() (+12 more)
+Cohesion: 0.10
+Nodes (38): _a(), An(), ar(), bc(), cd(), cl(), dr(), fl() (+30 more)
 
 ### Community 248 - "Community 248"
-Cohesion: 0.08
-Nodes (12): Schema, ViewGeneralExchange, ViewPartner, Schema, ViewProjectCostReceipt, ViewProject, ViewSetting, ViewUser (+4 more)
+Cohesion: 0.17
+Nodes (5): Schema, ViewGeneralExchange, GeneralExchange, BelongsTo, MorphMany
 
 ### Community 249 - "Community 249"
 Cohesion: 0.02
@@ -886,60 +886,64 @@ Cohesion: 0.67
 Nodes (4): c(), o(), p(), s()
 
 ### Community 289 - "Community 289"
-Cohesion: 0.09
-Nodes (31): addTree(), apply(), changes(), checkAsyncSchedule(), ff(), focus(), gu(), isDone() (+23 more)
+Cohesion: 0.04
+Nodes (77): addChunk(), addInner(), addMapping(), adjust(), annotation(), apply(), applyChanges(), applyEdits() (+69 more)
 
 ### Community 291 - "Community 291"
-Cohesion: 0.18
-Nodes (8): BackedEnum, Builder, Schema, Table, UnitEnum, ProjectResource, Table, ProjectsTable
+Cohesion: 0.09
+Nodes (14): CreateProject, EditProject, BackedEnum, Builder, Schema, Table, UnitEnum, ProjectResource (+6 more)
+
+### Community 292 - "Community 292"
+Cohesion: 0.24
+Nodes (4): DonorFinancialReportWordExportService, PhpWord, Section, StreamedResponse
 
 ### Community 293 - "Community 293"
-Cohesion: 0.04
-Nodes (58): add(), addInner(), addMaps(), addToSet(), addTransform(), apply(), applyInner(), applyTransaction() (+50 more)
+Cohesion: 0.05
+Nodes (57): addMaps(), addStoredMark(), addToSet(), addTransform(), append(), apply(), applyInner(), applyTransaction() (+49 more)
 
 ### Community 294 - "Community 294"
-Cohesion: 0.17
-Nodes (9): Schema, UserForm, Table, UsersTable, BackedEnum, Schema, Table, UnitEnum (+1 more)
+Cohesion: 0.10
+Nodes (13): CreateUser, EditUser, ListUsers, ViewUser, Schema, UserForm, Table, UsersTable (+5 more)
 
 ### Community 295 - "Community 295"
-Cohesion: 0.23
-Nodes (7): ExchangeRateHistoryRelationManager, Schema, Table, BudgetsRelationManager, Schema, Table, RelationManager
+Cohesion: 0.09
+Nodes (13): ExchangeRateHistoryRelationManager, Schema, Table, BudgetsRelationManager, Schema, Table, Schema, Table (+5 more)
 
 ### Community 296 - "Community 296"
-Cohesion: 0.32
-Nodes (8): _createItems(), Ea(), format(), getLabelAndValue(), getLabelForValue(), ne(), numeric(), Qc()
+Cohesion: 0.13
+Nodes (23): afterDatasetsUpdate(), _createItems(), Ea(), format(), getDatasetMeta(), getLabelAndValue(), getLabelForValue(), getMaxBorderWidth() (+15 more)
 
 ### Community 297 - "Community 297"
-Cohesion: 0.08
-Nodes (37): afterDatasetsUpdate(), Ea(), _f(), formatOffset(), getDatasetMeta(), getIndexAngle(), getMaxBorderWidth(), getMeta() (+29 more)
+Cohesion: 0.12
+Nodes (9): ViewAccount, Schema, ViewGeneralExpense, Schema, ViewProjectCostReceipt, ViewProject, ViewTransactionLine, ViewTransaction (+1 more)
 
 ### Community 298 - "Community 298"
 Cohesion: 0.22
 Nodes (17): Ae(), Ai(), De(), fn(), Ft(), ht(), ii(), Le() (+9 more)
 
 ### Community 300 - "Community 300"
-Cohesion: 0.23
-Nodes (4): BelongsTo, HasMany, ProjectFinancialSnapshot, markProjectSnapshotDirty()
+Cohesion: 0.29
+Nodes (4): ComprehensiveFinancialTransactionsExcelExportService, Spreadsheet, StreamedResponse, Worksheet
 
 ### Community 301 - "Community 301"
-Cohesion: 0.18
-Nodes (5): AccountStatementPage, BackedEnum, Schema, StreamedResponse, UnitEnum
+Cohesion: 0.04
+Nodes (28): AccountStatementPage, BackedEnum, Schema, StreamedResponse, UnitEnum, ComprehensiveFinancialTransactionsPage, BackedEnum, Schema (+20 more)
 
 ### Community 302 - "Community 302"
-Cohesion: 0.09
-Nodes (29): Ac(), addActive(), addCompletion(), addCompletions(), addNamespace(), addNamespaceObject(), Ar(), as() (+21 more)
+Cohesion: 0.13
+Nodes (18): addCompletion(), addCompletions(), addNamespace(), addNamespaceObject(), blur(), cg(), chunkEnd(), CY() (+10 more)
 
 ### Community 303 - "Community 303"
-Cohesion: 0.10
-Nodes (25): addElements(), buildOrUpdateControllers(), buildOrUpdateElements(), Ce(), clear(), clearCache(), _dataCheck(), _destroy() (+17 more)
+Cohesion: 0.30
+Nodes (4): Spreadsheet, StreamedResponse, Worksheet, TrialBalanceExcelExportService
 
 ### Community 305 - "Community 305"
 Cohesion: 0.52
 Nodes (4): closeModal(), generateModalId(), openModal(), syncActionModals()
 
 ### Community 308 - "Community 308"
-Cohesion: 0.09
-Nodes (33): average(), cc(), dataset(), ec(), fc(), first(), Ge(), getCenterPoint() (+25 more)
+Cohesion: 0.12
+Nodes (23): average(), dataset(), ec(), Ge(), getCenterPoint(), getPlugin(), getProps(), hasValue() (+15 more)
 
 ### Community 311 - "Community 311"
 Cohesion: 0.48
@@ -950,65 +954,45 @@ Cohesion: 0.33
 Nodes (5): Date, Prompt, Prompts Log, Purpose, Result
 
 ### Community 419 - "Community 419"
-Cohesion: 0.20
-Nodes (5): CreateAccount, Model, Account, BelongsTo, HasMany
+Cohesion: 0.18
+Nodes (14): addToSet(), childString(), flushIOSKey(), getRules(), join(), Mf(), newName(), ni() (+6 more)
 
 ### Community 420 - "Community 420"
-Cohesion: 0.14
-Nodes (16): br(), Di(), Gd(), If(), je(), K(), kd(), ki() (+8 more)
+Cohesion: 0.07
+Nodes (39): af(), at(), Bf(), determineDataLimits(), ef(), fc(), getAllParsedValues(), getDataTimestamps() (+31 more)
 
 ### Community 421 - "Community 421"
-Cohesion: 0.21
-Nodes (5): DonorFinancialReportPage, BackedEnum, Schema, StreamedResponse, UnitEnum
-
-### Community 422 - "Community 422"
-Cohesion: 0.21
-Nodes (4): Currency, BelongsTo, HasMany, TrialBalanceReportService
+Cohesion: 0.26
+Nodes (12): da(), Fn(), ga(), Gr(), no(), pa(), ro(), Tc() (+4 more)
 
 ### Community 423 - "Community 423"
-Cohesion: 0.23
-Nodes (5): ComprehensiveFinancialTransactionsPage, BackedEnum, Schema, StreamedResponse, UnitEnum
-
-### Community 424 - "Community 424"
-Cohesion: 0.23
-Nodes (5): BackedEnum, Schema, StreamedResponse, UnitEnum, TrialBalancePage
+Cohesion: 0.24
+Nodes (10): beforeDatasetDraw(), beforeDatasetsDraw(), beforeDraw(), co(), generateLabels(), _getSortedDatasetMetas(), getSortedVisibleDatasetMetas(), getVisibleDatasetCount() (+2 more)
 
 ### Community 425 - "Community 425"
-Cohesion: 0.21
-Nodes (3): LinesRelationManager, Model, Schema
+Cohesion: 0.36
+Nodes (4): SetLocale, Closure, Request, Response
 
 ### Community 426 - "Community 426"
-Cohesion: 0.38
-Nodes (3): PartnerType, GeneralExpenseAmountValidationTest, GeneralExpense
+Cohesion: 0.12
+Nodes (7): CreateGeneralExpense, Model, GeneralExpense, BelongsTo, MorphMany, GeneralExpenseAccountValidationTest, GeneralExpenseAmountValidationTest
 
 ### Community 427 - "Community 427"
-Cohesion: 0.24
-Nodes (4): bootHasUserTracking(), UserFactory, Factory, static
-
-### Community 429 - "Community 429"
-Cohesion: 0.28
-Nodes (4): BaseTestCase, ExampleTest, TestCase, ExampleTest
-
-### Community 430 - "Community 430"
-Cohesion: 0.38
-Nodes (3): Schema, Table, ReceiptsRelationManager
+Cohesion: 0.15
+Nodes (7): BelongsTo, HasMany, ProjectSuper, bootHasUserTracking(), UserFactory, Factory, static
 
 ### Community 431 - "Community 431"
-Cohesion: 0.38
+Cohesion: 0.33
 Nodes (3): CostsRelationManager, Schema, Table
-
-### Community 433 - "Community 433"
-Cohesion: 0.40
-Nodes (5): co(), Ga(), lo(), qa(), xa()
 
 ## Ambiguous Edges - Review These
 - `Payment Proof pay_11 (2026-06-25, 52800)` → `Amount: 500 EGP (transferred)`  [AMBIGUOUS]
   storage/app/public/payments/pay_11_20260625_52800.jpeg · relation: conceptually_related_to
 
 ## Knowledge Gaps
-- **436 isolated node(s):** `Master Reference Document (Single Source of Truth)`, `What it is`, `Who it's for`, `Working method (IMPORTANT for future sessions)`, `Tech stack` (+431 more)
+- **436 isolated node(s):** `Controller`, `$schema`, `name`, `type`, `description` (+431 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **33 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **32 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
@@ -1016,14 +1000,14 @@ _Questions this graph is uniquely positioned to answer:_
 - **What is the exact relationship between `Payment Proof pay_11 (2026-06-25, 52800)` and `Amount: 500 EGP (transferred)`?**
   _Edge tagged AMBIGUOUS (relation: conceptually_related_to) - confidence is low._
 - **Why does `_c()` connect `Community 47` to `Community 82`, `Settings Pages`, `Projects Report Tables`, `Community 71`?**
-  _High betweenness centrality (0.043) - this node is a cross-community bridge._
-- **Why does `_update()` connect `Community 58` to `Community 66`, `Relation Managers (Payments/Rates)`, `Community 420`, `Community 39`, `Community 72`, `Community 297`, `Community 45`, `Community 238`, `User Management Pages`, `Community 51`, `Community 25`, `Community 94`, `Community 31`?**
-  _High betweenness centrality (0.030) - this node is a cross-community bridge._
-- **Why does `$n()` connect `User Management Pages` to `Community 58`?**
-  _High betweenness centrality (0.029) - this node is a cross-community bridge._
-- **What connects `Master Reference Document (Single Source of Truth)`, `What it is`, `Who it's for` to the rest of the system?**
+  _High betweenness centrality (0.044) - this node is a cross-community bridge._
+- **Why does `$a()` connect `Community 51` to `Community 25`, `Community 82`, `Community 58`?**
+  _High betweenness centrality (0.026) - this node is a cross-community bridge._
+- **Why does `_update()` connect `Community 58` to `Community 66`, `Relation Managers (Payments/Rates)`, `Community 420`, `Community 230`, `Community 39`, `Community 72`, `Community 45`, `Community 238`, `User Management Pages`, `Community 51`, `Community 25`, `Community 31`?**
+  _High betweenness centrality (0.026) - this node is a cross-community bridge._
+- **What connects `Controller`, `$schema`, `name` to the rest of the system?**
   _436 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Project Cost Budget Payments` be split into smaller, more focused modules?**
-  _Cohesion score 0.12615384615384614 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.0677555958862674 - nodes in this community are weakly interconnected._
 - **Should `Exchange Rate History Resource` be split into smaller, more focused modules?**
-  _Cohesion score 0.0371900826446281 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.03943028485757121 - nodes in this community are weakly interconnected._

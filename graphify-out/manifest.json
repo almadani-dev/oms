@@ -1880,23 +1880,23 @@
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
-    "mtime": 1784359332.3555875,
-    "ast_hash": "93f90d186407bfd06b7f103de5b72757",
+    "mtime": 1784363034.2182822,
+    "ast_hash": "136b107eed1412f9031cf8eec891475e",
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1784359343.7087772,
-    "ast_hash": "20138195c1c98ed8403f99e09a5d902a",
+    "mtime": 1784363051.2889352,
+    "ast_hash": "5da7bf83e211d6df5568a4ed283a763e",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
-    "mtime": 1784359357.2782495,
-    "ast_hash": "e46ecb34d5cde13b2aabad604a1eeab1",
+    "mtime": 1784363069.9174922,
+    "ast_hash": "cc9608ac35d6762ef09d13d4d7d6968e",
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1784362986.5901237,
-    "ast_hash": "da9b74954bf58ce160753b81b403f9e6",
+    "mtime": 1784363324.9149072,
+    "ast_hash": "e1975c90e7a16a792bccb2cee2eb8603",
     "semantic_hash": ""
   },
   "app/Services/Reports/ProjectFinancialDetailsWordExportService.php": {
@@ -2130,12 +2130,12 @@
     "semantic_hash": ""
   },
   "storage/framework/testing/disks/public/receipts/orphan.pdf": {
-    "mtime": 1784362846.3687575,
+    "mtime": 1784363613.5385287,
     "ast_hash": "c91ca4ad2ff792df795c3bab362f7a28",
     "semantic_hash": ""
   },
   "storage/framework/testing/disks/public/logo.png": {
-    "mtime": 1784362846.3728433,
+    "mtime": 1784363613.5422502,
     "ast_hash": "24555cfd25ae5e76b92aeb464d2a50de",
     "semantic_hash": ""
   },
