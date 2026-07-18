@@ -58,6 +58,12 @@ Changed 3 files: `ExecutionPaymentForm.php` (section reorder, new `credit_accoun
 - `graphify-out/**` (regenerated via `graphify update .`)
 - `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md`, `docs/NEXT_STEPS.md`, `docs/PROMPTS_LOG.md` (this entry set)
 
+### Verification
+`php -l` clean on all 4 changed/new PHP files. New test suite: 7/7 passing (32 assertions) against a selectively-migrated SQLite `:memory:` schema (same pattern as `CleanOperationalDataCommandTest`), covering untouched-default create, manual-override create, cross-currency rejection (zero mutation), Edit hydration from the saved line (not the drifted budget destination), Edit-with-unrelated-field-change preserving the historical account, Edit manual account change (single active `LINE_CREDIT` line, correct balance reversal/reapplication, updated descriptions), and the reactive default on a genuine budget change. Existing description/line-description/financial regression suites (`TransactionDescriptionBuilderTest`, `TransactionLineDescriptionBuilderTest`, `BackfillTransactionDescriptionsCommandTest`, `CleanOperationalDataCommandTest`): 70/70 passing, unaffected. Full `php artisan test`: 78/79 (the 1 failure, `ExampleTest`, is pre-existing/unrelated — hits `/`, a route this Filament app never defines). `route:list` confirmed the 4 execution-payments routes (index/create/view/edit) are unchanged. `php artisan optimize:clear` ran clean. `graphify update .` ran clean (AST-only, no API cost).
+
+### Commit Hash
+Not committed — per task instructions, no commit was requested.
+
 ---
 
 ### Date
