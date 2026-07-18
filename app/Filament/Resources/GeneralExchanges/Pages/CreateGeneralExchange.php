@@ -12,6 +12,7 @@ use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
+use App\Services\Validation\FinancialAmountGuard;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
@@ -34,9 +35,11 @@ class CreateGeneralExchange extends CreateRecord
         $original    = (float) $data['original_amount'];
         $adminPct    = (float) ($data['administrative_percentage'] ?? 0);
         $transferPct = (float) ($data['transfer_percentage'] ?? 0);
-        $fxRate      = (float) ($data['fx_rate'] ?: 1);
+        $fxRate      = (float) ($data['fx_rate'] ?? 1);
 
-        [$adminAmount, $transferAmount, , $finalAmount] = GeneralExchangeForm::deriveAmounts($original, $adminPct, $transferPct, $fxRate);
+        [$adminAmount, $transferAmount, $afterDeduct, $finalAmount] = GeneralExchangeForm::deriveAmounts($original, $adminPct, $transferPct, $fxRate);
+
+        FinancialAmountGuard::assertDisbursementInputs($original, $adminPct, $transferPct, $fxRate, $afterDeduct, $finalAmount);
 
         $sourceCurrencyId = (int) $data['source_currency_id'];
         $disbCurrencyId   = (int) $data['disbursement_currency_id'];

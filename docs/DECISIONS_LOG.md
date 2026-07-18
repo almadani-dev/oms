@@ -13,6 +13,104 @@
 ---
 
 ### Date
+2026-07-15
+
+### Decision
+For the operational-data cleanup tool, partner/donor classification uses only the authoritative `partners.is_donor` boolean. All non-donor partners are treated as a single `unknown_unclassified` bucket, preserved and reported — never a deletion candidate in this phase, even though the task description anticipated separate association/beneficiary/vendor categories.
+
+### Reason
+Auditing the actual schema (`partners`/`partners_types` migrations, `Partner`/`PartnerType` models, `PartnerForm`) found no field distinguishing an association/system entity, operational beneficiary, or operational vendor from any other non-donor partner — `partner_type_id` only points to free-text business categories (e.g. "جمعية"/"فرد"/"وزارة") that the task instructions explicitly forbid inferring semantics from. Currently both existing partners are donors, so this is moot today, but the code must not guess a classification the schema doesn't support.
+
+### Impact
+No partner row is ever deleted by this tool, in dry-run or apply. If beneficiary/vendor entity types are added to the schema later (e.g. a new `entity_category` field), the service's `buildEntityClassification()` method is the single place to update.
+
+---
+
+### Date
+2026-07-15
+
+### Decision
+Bulk operational-table deletion in `OperationalDataCleanupService` uses `DB::table()->delete()` / `->whereIn(...)->delete()` (query builder) instead of Eloquent `forceDelete()`.
+
+### Reason
+Two independent benefits: (1) the query builder ignores the SoftDeletes global scope, so one statement removes both active and soft-deleted rows without a separate `withTrashed()` pass; (2) it never fires the `Project`/`ProjectCost`/`ProjectCostBudget`/`ProjectCostBudgetsPayment`/`ProjectCostReceipt` Eloquent observers, whose only job is flipping `project_financial_snapshots.is_dirty` — pointless churn here since those snapshot rows are deleted in the same operation. Per task instructions to avoid firing business observers unnecessarily during mass maintenance deletion, without changing the observers' behavior for normal application use.
+
+### Impact
+Deletion order must be fully explicit and FK-verified by hand (documented in the service's `DELETION_ORDER` constant and the dry-run report), since it can no longer rely on Eloquent relationship cascades or model events to keep data consistent mid-deletion.
+
+---
+
+### Date
+2026-07-18
+
+### Decision
+Approved business rules for positive-amount validation, confirmed by the user before implementation: (1) every financial amount must be ≥ 0.01; (2) `fx_rate` must be > 0, rejected (not silently converted to 1) when submitted as 0 or negative — the existing `?: 1` fallback is only safe for a genuinely-missing key, not an explicit 0; (3) each of the administrative/transfer percentages must be in [0, 100], and their **combined** total must be strictly < 100 (exactly 100 is invalid) — because a 100% combined deduction makes `amount_after_deductions` and `final_amount` zero, which must never post; (4) execution-payment over-budget submission stays a non-blocking warning, unchanged by this task; (5) server-side account/currency/type revalidation for the 4 workflows other than execution payments is a separate, later task.
+
+### Reason
+The same-day read-only audit found these 5 workflows had `numeric()`/`required()` as their only Filament-level protection, with **zero** independent server-side check — a directly-submitted Livewire request (or a future UI regression) could post a zero, negative, or percentage-annihilated financial entry into a double-entry ledger. The combined-percentage-strictly-less-than-100 rule specifically closes the "0 remaining amount posted as valid" edge case the audit flagged.
+
+### Impact
+`App\Services\Validation\FinancialAmountGuard` is now the single authoritative place these 6 rules live; any future financial write flow (or a rewrite of an existing one) must call it before its `DB::transaction()`, not just rely on Filament's `minValue()`/`maxValue()`. Historical rows already in the database were not validated retroactively and are unaffected.
+
+---
+
+### Date
+2026-07-16
+
+### Decision
+Execution Payment's editable credit-account replacement is restricted to the **same currency** as the execution payment (the selected budget's disbursement/destination currency). No exchange-rate/fx fields were added. No new database column was added — the actually-selected credit account continues to be stored only via `transaction_lines.account_id` on the line tagged `notes = ProjectCostBudgetsPayment::LINE_CREDIT` / `line_role = TransactionLineRole::ExecutionSource`.
+
+### Reason
+The audit found that `CreateExecutionPayment`/`EditExecutionPayment` write both the beneficiary and credit lines with one shared `$currencyId` and `fx_rate = 1` — there is no per-line currency-conversion story in this flow (unlike the disbursement flow's source→destination fx conversion). Allowing a different-currency replacement account would require introducing a second currency, a real `fx_rate`, and a second `amount_currency` per line — a materially larger redesign explicitly out of scope for "make the credit account editable." It would also violate the project-wide "never mix currencies" rule and the account-currency filter already enforced on the beneficiary side. Since `transaction_lines.account_id` on the `LINE_CREDIT` line is already a normal, mutable FK column, no migration is needed to make the account itself editable — only the currency restriction stops it from becoming a currency-mixing risk.
+
+### Impact
+`ExecutionPaymentForm::validateCreditAccount()` hard-rejects (via `ValidationException`, not just via Select filtering) any submitted `credit_account_id` whose `currency_id` doesn't equal `ExecutionPaymentForm::budgetCurrencyId($budgetId)`. If the business later genuinely needs a cross-currency temporary credit account (per the "later transfer back" scenario in the original request), that requires a separate, explicitly-approved fx-handling redesign of this flow — not a follow-up to this task.
+
+---
+
+### Date
+2026-07-16
+
+### Decision
+Fixed the pre-existing Execution Payment Edit drift bug as part of the credit-account editability task, rather than treating it as a separate follow-up: `EditExecutionPayment::mutateFormDataBeforeFill()` now hydrates the credit-account cascade from the payment's own saved `LINE_CREDIT` transaction line, and `handleRecordUpdate()` no longer recomputes the credit account from `ExecutionPaymentForm::budgetDestinationLine()` at all.
+
+### Reason
+The same-day audit found that both methods previously re-derived the credit account from the *budget's current* destination line on every Edit — so editing an execution payment for any unrelated reason (e.g. only the date) after the underlying budget's destination account had been changed elsewhere would silently move the historical credit line onto a different account, with the balance reversal/reapplication following it. This is exactly the historical-account-preservation requirement in the approved business requirement (#8), and leaving the bug in place while adding a user-facing "override the credit account" feature would have made the drift risk worse, not better — the form's own reactive default (on a genuine `project_cost_budget_id` change) already provides the correct "apply new default only on real budget change" behavior, so no separate mechanism was needed once hydration stopped reading from the budget.
+
+### Impact
+Saving an Edit without touching the credit account (or the budget) now always preserves the exact historically-used account, regardless of what happens to the budget afterwards. Covered by `test_edit_initial_hydration_loads_saved_credit_line_not_current_budget_destination` and `test_edit_date_only_after_budget_destination_changed_elsewhere_preserves_historical_credit_account` in the new test file.
+
+---
+
+### Date
+2026-07-16
+
+### Decision
+Adopted a project-wide OMS financial-form UI convention for credit/debit account section layout: on desktop/wide screens (≥`lg`), the creditor account section renders on the right and the debtor account section on the left, side by side in equal-width columns; on narrow/mobile/tablet screens (<`lg`), they stack vertically with the creditor section above the debtor section. Implemented via a plain `Filament\Schemas\Components\Grid::make(['default' => 1, 'lg' => 2])` wrapping the two account `Section`s, with the credit section placed first in source order — relying on native CSS Grid right-to-left auto-placement (the app already renders `dir="rtl"`) rather than any custom CSS.
+
+### Reason
+`GeneralExpenseForm.php` and `ProjectCostReceiptForm.php` previously rendered the debit and credit account sections as two separate full-width `Section`s stacked vertically, in debit-then-credit order — visually unbalanced and inconsistent with `ExecutionPaymentForm.php`'s already-corrected (same-day) credit-first order. The task explicitly required a native-Filament, CSS-Grid-based responsive solution (no bespoke CSS) and RTL-correct right/left placement verified against real rendering behavior, not just source order. CSS Grid's auto-placement algorithm places the first grid item on the right when the container's computed `direction` is `rtl`, which this app's `dir="rtl"` root already provides — so simply grouping the two sections into one 2-column grid, credit first, satisfies the requirement with zero custom styling.
+
+### Impact
+Applied to `GeneralExpenseForm.php`, `ProjectCostReceiptForm.php`, and `ExecutionPaymentForm.php` (all three already have a clear, unambiguous single credit/debit pair). **Deliberately not applied** to `ProjectCostBudgetsPaymentForm.php` (صرف مبلغ المشروع) and `GeneralExchangeForm.php` (التحويلات العامة): both have one credit/source account plus three debit/deduction/destination accounts (12–16 form fields) inside a single unified `Section::make('الحسابات')->columns(2)`, where each account's own type/bank-type/currency/account fields already rely on that shared 2-column auto-flow layout. Splitting that block apart into a distinct "credit right, debits following" grid would require restructuring the internal column flow of a Section that several *other* fields' positions implicitly depend on — a nontrivial layout rewrite with real visual-regression risk for a cosmetic-only task. Both forms already satisfy the substantive rule (source/credit account first in reading order, therefore already above all debit sections on mobile) through their existing field order, so the risk of a rewrite was judged to outweigh the purely cosmetic benefit of an explicit right/left split. If a future task wants this, it should be scoped and tested on its own, not bundled into a general layout-standardization pass.
+
+---
+
+### Date
+2026-07-15 (execution)
+
+### Decision
+When the user-specified backup file (`storage/app/backups/oms_before_operational_cleanup.sql`) turned out not to exist at apply time, stopped and asked rather than substituting the older unrelated 2026-07-06 backup or proceeding without one. Once the user explicitly chose "create a fresh mysqldump now," created it with `mysqldump --routines --triggers --single-transaction`, passing the password only via the `MYSQL_PWD` environment variable (never as a command-line argument or in any printed output).
+
+### Reason
+The task's own mandatory rule ("If the file is missing or empty, STOP") and the standing rule against proceeding around a failed safety precondition. An old, unrelated backup would not actually protect today's data, and printing/echoing DB credentials would violate the "do not expose credentials" requirement even during a self-directed remediation step.
+
+### Impact
+None going forward — the backup now exists at the exact path required, is verified non-empty (120,266 bytes), and the apply proceeded only after that verification passed.
+
+---
+
+### Date
 2026-07-05
 
 ### Decision

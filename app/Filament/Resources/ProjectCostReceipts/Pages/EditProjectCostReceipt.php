@@ -13,6 +13,7 @@ use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
+use App\Services\Validation\FinancialAmountGuard;
 use Carbon\Carbon;
 use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
@@ -72,6 +73,8 @@ class EditProjectCostReceipt extends EditRecord
 
     protected function handleRecordUpdate(Model $record, array $data): Model
     {
+        FinancialAmountGuard::assertSimpleAmount((float) $data['amount'], 'amount', 'مبلغ الاستلام');
+
         return DB::transaction(function () use ($record, $data) {
             // STEP 1 - Get old lines
             $oldDebitLine  = $record->transaction?->lines()->with('account')->where('debit_base', '>', 0)->first();

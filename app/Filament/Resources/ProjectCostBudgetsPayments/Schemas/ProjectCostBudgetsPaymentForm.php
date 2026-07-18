@@ -114,6 +114,7 @@ class ProjectCostBudgetsPaymentForm
                     ->label('المبلغ بالعملة الأصلية')
                     ->numeric()
                     ->required()
+                    ->minValue(0.01)
                     ->hint(fn (Get $get) => $get('cost_currency'))
                     ->live(onBlur: true)
                     ->afterStateUpdated(fn (Set $set) => self::clearAmounts($set))
@@ -123,6 +124,8 @@ class ProjectCostBudgetsPaymentForm
                     ->label('النسبة الإدارية %')
                     ->numeric()
                     ->default(0)
+                    ->minValue(0)
+                    ->maxValue(100)
                     ->live(onBlur: true)
                     ->afterStateUpdated(fn (Set $set) => self::clearAmounts($set)),
 
@@ -130,6 +133,8 @@ class ProjectCostBudgetsPaymentForm
                     ->label('نسبة التحويل %')
                     ->numeric()
                     ->default(0)
+                    ->minValue(0)
+                    ->maxValue(100)
                     ->live(onBlur: true)
                     ->afterStateUpdated(fn (Set $set) => self::clearAmounts($set)),
 
@@ -150,6 +155,7 @@ class ProjectCostBudgetsPaymentForm
                     ->numeric()
                     ->default(1)
                     ->required()
+                    ->minValue(0.000001)
                     ->helperText('ضع 1 إذا نفس العملة')
                     ->live(onBlur: true)
                     ->afterStateUpdated(fn (Set $set) => self::clearAmounts($set)),

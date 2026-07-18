@@ -1870,33 +1870,33 @@
     "semantic_hash": ""
   },
   "OMS_Master_Reference.md": {
-    "mtime": 1784096729.397903,
-    "ast_hash": "cb5e38905837cf6b85387883f027a0fb",
+    "mtime": 1784101392.6454883,
+    "ast_hash": "71d941180ce8a30f9fc74f0c5df7707f",
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1784019511.144358,
-    "ast_hash": "a69af8c59bb5603d62589b0c2de03913",
+    "mtime": 1784101311.7237377,
+    "ast_hash": "fdd8c9a5ffff46c0a8d61454108f7782",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
-    "mtime": 1784019535.3060305,
-    "ast_hash": "117a0732e254aec747511d10e627c59e",
+    "mtime": 1784101246.0542994,
+    "ast_hash": "7fcf6d65195a80633a6ef93f813ef1ae",
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1784019613.9220917,
-    "ast_hash": "bde7c2f723dd21d3c0ed0be89b390e5a",
+    "mtime": 1784101347.1868117,
+    "ast_hash": "52cfd7d3357e2abe32e07590e63ac374",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
-    "mtime": 1784019588.9341047,
-    "ast_hash": "925f44cc9ee1a8d5bccf7fbba31b2287",
+    "mtime": 1784101367.376798,
+    "ast_hash": "35062e75cb8ef3c7dcbebd158cc2dcb5",
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1784019572.1614373,
-    "ast_hash": "31a40f2efb0d7ccdf286a6c862ac72f8",
+    "mtime": 1784101211.170364,
+    "ast_hash": "77357974cf56f4a25983abc275956741",
     "semantic_hash": ""
   },
   "app/Services/Reports/ProjectFinancialDetailsWordExportService.php": {
@@ -2090,12 +2090,12 @@
     "semantic_hash": ""
   },
   "bootstrap/cache/packages.php": {
-    "mtime": 1784100853.8122318,
+    "mtime": 1784104597.2135396,
     "ast_hash": "7c6e5b9781b4e14d1487b9a8e92c61f5",
     "semantic_hash": ""
   },
   "bootstrap/cache/services.php": {
-    "mtime": 1784100853.932199,
+    "mtime": 1784104597.2479355,
     "ast_hash": "204033b0b676e45abe90b0ca88778141",
     "semantic_hash": ""
   },
@@ -2147,6 +2147,36 @@
   "tests/Feature/Commands/BackfillTransactionDescriptionsCommandTest.php": {
     "mtime": 1784100845.7073953,
     "ast_hash": "ff65ebd54268a70701765fa4a23a7e8a",
+    "semantic_hash": ""
+  },
+  "app/Console/Commands/CleanOperationalData.php": {
+    "mtime": 1784104202.7524128,
+    "ast_hash": "5bbce043fd02af9da0ee8ce56c320221",
+    "semantic_hash": ""
+  },
+  "app/Services/Maintenance/OperationalCleanupReport.php": {
+    "mtime": 1784104007.6658688,
+    "ast_hash": "f6d0b9a2983389c7a3fa4d4a0bde0451",
+    "semantic_hash": ""
+  },
+  "app/Services/Maintenance/OperationalDataCleanupService.php": {
+    "mtime": 1784104179.6252756,
+    "ast_hash": "793dcb8fc73ce334bd00e3ffaf1280a8",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Commands/CleanOperationalDataCommandTest.php": {
+    "mtime": 1784104465.6150868,
+    "ast_hash": "5ab8f73b746f9104cea534328b40934c",
+    "semantic_hash": ""
+  },
+  "storage/framework/testing/disks/public/receipts/orphan.pdf": {
+    "mtime": 1784104562.61113,
+    "ast_hash": "c91ca4ad2ff792df795c3bab362f7a28",
+    "semantic_hash": ""
+  },
+  "storage/framework/testing/disks/public/logo.png": {
+    "mtime": 1784104562.6141229,
+    "ast_hash": "24555cfd25ae5e76b92aeb464d2a50de",
     "semantic_hash": ""
   }
 }

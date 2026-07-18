@@ -1,5 +1,19 @@
 # Prompts Log
 
+### Date
+2026-07-18 (positive-amount validation)
+
+### Prompt
+User requested a focused read-only audit of positive-amount validation across the 5 financial workflows (receipts, disbursements, execution payments, general expenses, general exchanges), asking for confirmed affected files, a per-field UI/server validation table, edge cases needing business decisions, a minimal implementation plan, tests, and risk sizing — no changes yet. After reviewing the plan, user approved specific business rules (amount ≥ 0.01; fx_rate > 0, no silent 0→1 fallback; percentages in [0,100] with combined < 100; derived amounts > 0; execution-payment over-budget behavior unchanged; other workflows' account/currency revalidation out of scope) and requested implementation: Filament form constraints, one reusable `FinancialAmountGuard` service, wiring it into all 10 Create/Edit pages before any mutation, removing the unsafe `fx_rate ?: 1` fallback in the two deduction/FX workflows only, focused tests, and a `git diff --stat` + summary before any commit (no commit without approval).
+
+### Purpose
+Close a real financial-integrity gap (zero/negative amounts, FX rates, and percentages could previously post into the double-entry ledger with no server-side check) with the smallest safe, fully-tested change, in two phases (audit-then-approve) so the exact business rules were confirmed before any code changed.
+
+### Result
+Audit phase produced the affected-files/validation table cited above (see `docs/TASKS_LOG.md` 2026-07-18 audit summary, not separately logged as a task since no code changed in that phase). Implementation phase added `App\Services\Validation\FinancialAmountGuard`, `minValue()`/`maxValue()` constraints on 5 Forms, guard calls in all 10 Create/Edit handlers before `DB::transaction()`, replaced the 4 unsafe `?: 1` fx_rate fallbacks on submitted data with `?? 1`, and added 33 new/targeted tests (104/105 full suite, 1 pre-existing unrelated failure). See `docs/TASKS_LOG.md`, `docs/AI_PROJECT_MEMORY.md`, and `docs/DECISIONS_LOG.md` (2026-07-18 entries) for full detail. Not committed, per instructions — diff shown for approval first.
+
+---
+
 ## Prompt Template
 
 ### Date
@@ -9,6 +23,90 @@
 ### Purpose
 
 ### Result
+
+---
+
+### Date
+2026-07-16 (General Exchange rearrangement)
+
+### Prompt
+User requested a UI-layout-only rearrangement of the General Exchange form (previously left unchanged by the general layout-standard task as a multi-account form): move "تفاصيل المعاملة" and "النسب والمبالغ" to a top row (تفاصيل المعاملة right, النسب والمبالغ left on desktop, تفاصيل المعاملة first on mobile), move the full "الحسابات" section underneath (full width, internal order/fields untouched), and keep "المرفقات" last. Explicit no-touch list (accounting logic, calculations, percentages, currencies, validation, live callbacks, account filtering, transaction lines, balances, descriptions, models, migrations, reports, exports) and explicit instruction not to modify `CreateGeneralExchange.php`/`EditGeneralExchange.php`.
+
+### Purpose
+Fix the General Exchange form's visual imbalance (large accounts section previously sitting beside/between the transaction sections) using the same RTL-aware native-Grid approach already applied to the other financial forms, without touching any of its multi-account calculation/deduction/fx logic.
+
+### Result
+Wrapped "تفاصيل المعاملة" (first, renders right) and "النسب والمبالغ" (second, renders left) in a `Grid::make(['default' => 1, 'lg' => 2])`; moved the unchanged "الحسابات" section underneath, full width; "المرفقات" stays last. Every field, callback, option query, and helper method in `GeneralExchangeForm.php` is byte-identical to before — only the top-level component tree was rearranged. 70 relevant existing tests pass; no dedicated form test exists for this page. See TASKS_LOG.md and AI_PROJECT_MEMORY.md (2026-07-16 General Exchange entries) for full detail. Not committed, per instructions.
+
+---
+
+### Date
+2026-07-16 (UI layout standard)
+
+### Prompt
+User requested implementation of an approved responsive UI layout standard for credit/debit account sections across the OMS financial forms: desktop shows creditor right / debtor left side by side with equal width, mobile stacks creditor above debtor, using native Filament v5 responsive Grid columns (no custom CSS unless unavoidable) and verified against real RTL rendering rather than source order alone. Named General Expenses as the primary page to fix (currently debit-before-credit and visually unbalanced), plus Project Cost Receipts and Execution Payments (preserving the just-implemented editable credit-account cascade exactly), with an explicit multi-account-forms rule for the disbursement and general-exchange forms (source/credit first, don't force a two-column split, leave unchanged and report the reason if restructuring would be risky). Required the same mandatory pre-read/git-check/Graphify-first workflow, no commit/push, and a full verification + visual checklist.
+
+### Purpose
+Make the credit/debit account sections visually balanced and consistent across the financial forms without touching any accounting calculation, saved data, or field behavior.
+
+### Result
+Wrapped the credit and debit `Section`s of `GeneralExpenseForm.php` and `ProjectCostReceiptForm.php` in a shared `Grid::make(['default' => 1, 'lg' => 2])`, credit section reordered first (both were debit-first before); `ExecutionPaymentForm.php` only needed the `Grid` wrap since its credit section was already first. Multi-account forms (`ProjectCostBudgetsPaymentForm.php`, `GeneralExchangeForm.php`) were left unchanged with the reasoning documented, per the task's own escape hatch. 40 targeted tests + full suite (78/79, same pre-existing unrelated failure) confirm zero behavioral regression. See TASKS_LOG.md, AI_PROJECT_MEMORY.md, and DECISIONS_LOG.md (2026-07-16 layout entries) for full detail. Not committed, per instructions.
+
+---
+
+### Date
+2026-07-16 (implementation)
+
+### Prompt
+Following a read-only audit of the Execution Payment credit-account flow (same-day, prior prompt), user approved implementation with explicit constraints: smallest safe change set, mandatory pre-read of CLAUDE.md/Master Reference/memory docs, `git status`/`migrate:status` checks first, stop-and-ask if code differed materially from the audit, no commit/push, exact field names and behavior for the new credit-account cascade, mandatory server-side re-validation independent of Select options (with Arabic `ValidationException` messages), exact Create/Edit handler responsibilities, 7 named required test scenarios with a specific list of assertions each, and a full verification checklist (lint, new tests, existing description/financial tests, full suite with pre-existing-failure separation, route inspection, `optimize:clear`, `graphify update .`, explicit list of commands NOT to run).
+
+### Purpose
+Implement the approved future behavior for `/admin/execution-payments/create`: move "الحساب الدائن" above "الحساب المدين (المستفيد)", make the credit account a real editable same-currency cascade (still auto-defaulting from the budget's destination account), and fix the pre-existing Edit drift bug identified during the audit — without a migration and without touching any of the explicitly listed protected files (models/enum/builders/disbursement flow/reports/snapshots).
+
+### Result
+Implemented exactly as scoped in 3 files (`ExecutionPaymentForm.php`, `CreateExecutionPayment.php`, `EditExecutionPayment.php`), no migration, no protected file touched. 7 new tests added and passing; existing description/financial suites (70/70) and the full suite (78/79, 1 pre-existing unrelated failure) confirmed unaffected. Routes unchanged. `optimize:clear` and `graphify update .` run. See TASKS_LOG.md, AI_PROJECT_MEMORY.md, and DECISIONS_LOG.md (2026-07-16 entries) for full detail. Not committed, per instructions.
+
+---
+
+### Date
+2026-07-16 (audit)
+
+### Prompt
+User requested a read-only discovery and impact audit (no edits, no migrations, no commits, lowest-token-consumption, Graphify-first) of the Execution Payment (`صرف مبالغ التنفيذ`, `/admin/execution-payments/create`) credit/debit account flow, ahead of a planned change to move the credit-account section above the debit section and make the credit account user-editable (defaulting from the budget's destination account, same-currency only) while preserving balanced double-entry accounting and historical accuracy on Edit. Required a specific mandatory output format answering 27 numbered questions with direct code evidence, exact file paths, and a minimal-change recommendation — explicitly not to implement anything.
+
+### Purpose
+Establish, with verified code evidence rather than assumptions, exactly where the credit account is currently auto-selected, where (if anywhere) it is authoritatively stored, whether a migration would be needed to make it editable, and the safest currency-restriction rule — before any implementation prompt was issued.
+
+### Result
+Delivered the 13-section audit report: confirmed the credit account is currently a display-only, non-dehydrated field recomputed from `ProjectCostBudget::LINE_DESTINATION` on every Create/Edit save (not stored on the domain record); confirmed no migration is required since `transaction_lines.account_id` on the `LINE_CREDIT`/`execution_source` line is already the authoritative, mutable store; discovered a pre-existing Edit drift bug (historical credit account silently recomputed from the budget's *current* destination on every edit); recommended same-currency-only for the replacement account. This audit directly informed the same-day approved implementation prompt above.
+
+---
+
+### Date
+2026-07-15
+
+### Prompt
+User requested a safe cleanup of the OMS development database: remove all operational/transactional/project/test data while preserving system configuration, donors, accounts (balances reset to 0), currencies, exchange-rate history, and users/roles/permissions. Explicit two-phase instructions: implement a dedicated `oms:clean-operational-data` Artisan command + service, run dry-run/audit only in this phase, and STOP for explicit approval before any `--apply` execution. Extensive mandatory safety rules: environment guard (local/development/testing only), confirmation-token + verified-backup-file requirements for apply, FK-safe explicit deletion order, soft-delete-aware (active+trashed) deletion, attachment file safety (only delete files deterministically linked to deleted DB rows, report orphans separately), no identity/AUTO_INCREMENT reset, and "stop and ask" if any relationship/classification is unclear rather than guessing.
+
+### Purpose
+Prepare the dev database for clean real-data entry without risking donor, accounting-configuration, or historical exchange-rate data, and without ever touching production/staging.
+
+### Result
+Implemented `OperationalDataCleanupService` + `OperationalCleanupReport` DTO + `CleanOperationalData` console command, all schema relationships verified by reading actual migrations/models (not guessed), 20 new tests, full test suite run, dry-run executed against the real dev DB confirming zero writes. Apply was not run. See TASKS_LOG.md and DECISIONS_LOG.md (2026-07-15 entries) for full detail.
+
+---
+
+### Date
+2026-07-15 (execution)
+
+### Prompt
+User approved execution of the previously-designed cleanup, restating the full mandatory-preservation list, attachment-safety rules, exact preconditions to check, the exact backup file path to use, the exact apply command, a 21-point post-apply verification checklist, a required second idempotence run, and full documentation/reporting requirements. When the specified backup file was found missing, a follow-up prompt explicitly chose "create a fresh mysqldump now" at that exact path, with explicit sub-requirements (create directory if missing, use the configured connection without exposing credentials, verify success and non-empty size, stop if verification fails, then continue with the approved apply).
+
+### Purpose
+Actually execute the approved, previously dry-run-only cleanup against the real dev database, with a fresh pre-cleanup backup and full independent verification.
+
+### Result
+Backup created and verified (120,266 bytes). Apply executed successfully; post-apply verification (both the command's own and an independent 21-point manual check) passed. Second apply run confirmed idempotence (zero additional changes). See TASKS_LOG.md and AI_PROJECT_MEMORY.md (2026-07-15 execution entries) for full detail.
 
 ---
 

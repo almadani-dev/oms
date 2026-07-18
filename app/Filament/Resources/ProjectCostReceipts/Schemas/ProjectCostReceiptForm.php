@@ -17,6 +17,7 @@ use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
@@ -125,7 +126,8 @@ class ProjectCostReceiptForm
                 TextInput::make('amount')
                     ->label('المبلغ')
                     ->numeric()
-                    ->required(),
+                    ->required()
+                    ->minValue(0.01),
 
                 Textarea::make('notes')
                     ->label('ملاحظات')
@@ -133,87 +135,96 @@ class ProjectCostReceiptForm
 
             ]),
 
-            Section::make('الحساب المدين')->columns(2)->schema([
+            /* =====================================================
+             | الحسابات (الحساب الدائن يمين، الحساب المدين يسار)
+             | Stacks to one column on narrow screens (credit above debit,
+             | matching RTL source order); side by side from lg and up.
+             ===================================================== */
+            Grid::make(['default' => 1, 'lg' => 2])->schema([
 
-                Select::make('debit_account_type_id')
-                    ->label('نوع الحساب المدين')
-                    ->options(fn () => AccountType::orderBy('name')->pluck('name', 'id'))
-                    ->required()
-                    ->live()
-                    ->afterStateUpdated(function (Set $set) {
-                        $set('debit_bank_type_id', null);
-                        $set('debit_account_id', null);
-                    }),
+                Section::make('الحساب الدائن')->columns(2)->schema([
 
-                Select::make('debit_bank_type_id')
-                    ->label('نوع البنك المدين')
-                    ->options(fn () => BankType::orderBy('name')->pluck('name', 'id'))
-                    ->required()
-                    ->live()
-                    ->disabled(fn (Get $get) => blank($get('debit_account_type_id')))
-                    ->afterStateUpdated(fn (Set $set) => $set('debit_account_id', null)),
+                    Select::make('credit_account_type_id')
+                        ->label('نوع الحساب الدائن')
+                        ->options(fn () => AccountType::orderBy('name')->pluck('name', 'id'))
+                        ->required()
+                        ->live()
+                        ->afterStateUpdated(function (Set $set) {
+                            $set('credit_bank_type_id', null);
+                            $set('credit_account_id', null);
+                        }),
 
-                TextInput::make('debit_currency')
-                    ->label('العملة')
-                    ->disabled()
-                    ->dehydrated(false),
+                    Select::make('credit_bank_type_id')
+                        ->label('نوع البنك الدائن')
+                        ->options(fn () => BankType::orderBy('name')->pluck('name', 'id'))
+                        ->required()
+                        ->live()
+                        ->disabled(fn (Get $get) => blank($get('credit_account_type_id')))
+                        ->afterStateUpdated(fn (Set $set) => $set('credit_account_id', null)),
 
-                Select::make('debit_account_id')
-                    ->label('الحساب المدين')
-                    ->options(fn (Get $get) => self::accountOptions(
-                        $get('debit_account_type_id'),
-                        $get('debit_bank_type_id'),
-                        self::costCurrencyId($get)
-                    ))
-                    ->required()
-                    ->live()
-                    ->searchable()
-                    ->disabled(fn (Get $get) => blank($get('debit_bank_type_id')))
-                    ->helperText('حساب بعملة التكلفة')
-                    ->columnSpanFull(),
+                    TextInput::make('credit_currency')
+                        ->label('العملة')
+                        ->disabled()
+                        ->dehydrated(false),
 
-            ]),
+                    Select::make('credit_account_id')
+                        ->label('الحساب الدائن')
+                        ->options(fn (Get $get) => self::accountOptions(
+                            $get('credit_account_type_id'),
+                            $get('credit_bank_type_id'),
+                            self::costCurrencyId($get)
+                        ))
+                        ->required()
+                        ->live()
+                        ->searchable()
+                        ->disabled(fn (Get $get) => blank($get('credit_bank_type_id')))
+                        ->helperText('حساب بعملة التكلفة')
+                        ->columnSpanFull(),
 
-            Section::make('الحساب الدائن')->columns(2)->schema([
+                ]),
 
-                Select::make('credit_account_type_id')
-                    ->label('نوع الحساب الدائن')
-                    ->options(fn () => AccountType::orderBy('name')->pluck('name', 'id'))
-                    ->required()
-                    ->live()
-                    ->afterStateUpdated(function (Set $set) {
-                        $set('credit_bank_type_id', null);
-                        $set('credit_account_id', null);
-                    }),
+                Section::make('الحساب المدين')->columns(2)->schema([
 
-                Select::make('credit_bank_type_id')
-                    ->label('نوع البنك الدائن')
-                    ->options(fn () => BankType::orderBy('name')->pluck('name', 'id'))
-                    ->required()
-                    ->live()
-                    ->disabled(fn (Get $get) => blank($get('credit_account_type_id')))
-                    ->afterStateUpdated(fn (Set $set) => $set('credit_account_id', null)),
+                    Select::make('debit_account_type_id')
+                        ->label('نوع الحساب المدين')
+                        ->options(fn () => AccountType::orderBy('name')->pluck('name', 'id'))
+                        ->required()
+                        ->live()
+                        ->afterStateUpdated(function (Set $set) {
+                            $set('debit_bank_type_id', null);
+                            $set('debit_account_id', null);
+                        }),
 
-                TextInput::make('credit_currency')
-                    ->label('العملة')
-                    ->disabled()
-                    ->dehydrated(false),
+                    Select::make('debit_bank_type_id')
+                        ->label('نوع البنك المدين')
+                        ->options(fn () => BankType::orderBy('name')->pluck('name', 'id'))
+                        ->required()
+                        ->live()
+                        ->disabled(fn (Get $get) => blank($get('debit_account_type_id')))
+                        ->afterStateUpdated(fn (Set $set) => $set('debit_account_id', null)),
 
-                Select::make('credit_account_id')
-                    ->label('الحساب الدائن')
-                    ->options(fn (Get $get) => self::accountOptions(
-                        $get('credit_account_type_id'),
-                        $get('credit_bank_type_id'),
-                        self::costCurrencyId($get)
-                    ))
-                    ->required()
-                    ->live()
-                    ->searchable()
-                    ->disabled(fn (Get $get) => blank($get('credit_bank_type_id')))
-                    ->helperText('حساب بعملة التكلفة')
-                    ->columnSpanFull(),
+                    TextInput::make('debit_currency')
+                        ->label('العملة')
+                        ->disabled()
+                        ->dehydrated(false),
 
-            ]),
+                    Select::make('debit_account_id')
+                        ->label('الحساب المدين')
+                        ->options(fn (Get $get) => self::accountOptions(
+                            $get('debit_account_type_id'),
+                            $get('debit_bank_type_id'),
+                            self::costCurrencyId($get)
+                        ))
+                        ->required()
+                        ->live()
+                        ->searchable()
+                        ->disabled(fn (Get $get) => blank($get('debit_bank_type_id')))
+                        ->helperText('حساب بعملة التكلفة')
+                        ->columnSpanFull(),
+
+                ]),
+
+            ])->columnSpanFull(),
 
             Section::make('المرفقات')->schema([
 

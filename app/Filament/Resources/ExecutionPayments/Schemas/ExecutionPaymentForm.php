@@ -20,10 +20,12 @@ use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
+use Illuminate\Validation\ValidationException;
 
 class ExecutionPaymentForm
 {
@@ -94,7 +96,9 @@ class ExecutionPaymentForm
                         $set('remaining_amount', $budgetId ? number_format(self::budgetRemaining($budgetId), 2, '.', '') : null);
                         $set('budget_currency', self::budgetCurrencyName($budgetId));
                         $set('beneficiary_currency', self::budgetCurrencyName($budgetId));
-                        $set('credit_account_display', self::creditAccountLabel($budgetId));
+                        // Credit account defaults to the budget's destination account; the
+                        // user may still replace it before saving (see Section 3 below).
+                        self::applyCreditDefaults($set, $budgetId);
                         // The beneficiary account is filtered by the budget currency.
                         $set('beneficiary_account_id', null);
                     })
@@ -121,6 +125,7 @@ class ExecutionPaymentForm
                     ->label('مبلغ التنفيذ')
                     ->numeric()
                     ->required()
+                    ->minValue(0.01)
                     ->live(onBlur: true)
                     ->hint(fn (Get $get) => $get('budget_currency'))
                     ->columnSpanFull(),
@@ -163,54 +168,93 @@ class ExecutionPaymentForm
             ]),
 
             /* =====================================================
-             | SECTION 3 - الحساب المدين (المستفيد)
+             | SECTION 3 - الحسابات (الحساب الدائن يمين، الحساب المدين يسار)
+             | Stacks to one column on narrow screens (credit above debit,
+             | matching RTL source order); side by side from lg and up.
              ===================================================== */
-            Section::make('الحساب المدين (المستفيد)')->columns(2)->schema([
+            Grid::make(['default' => 1, 'lg' => 2])->schema([
 
-                Select::make('beneficiary_account_type_id')
-                    ->label('نوع الحساب')
-                    ->options(fn () => AccountType::orderBy('name')->pluck('name', 'id'))
-                    ->required()
-                    ->live()
-                    ->afterStateUpdated(function (Set $set) {
-                        $set('beneficiary_bank_type_id', null);
-                        $set('beneficiary_account_id', null);
-                    }),
+                Section::make('الحساب الدائن')->columns(2)->schema([
 
-                Select::make('beneficiary_bank_type_id')
-                    ->label('نوع البنك')
-                    ->options(fn () => BankType::orderBy('name')->pluck('name', 'id'))
-                    ->required()
-                    ->live()
-                    ->disabled(fn (Get $get) => blank($get('beneficiary_account_type_id')))
-                    ->afterStateUpdated(fn (Set $set) => $set('beneficiary_account_id', null)),
+                    Select::make('credit_account_type_id')
+                        ->label('نوع الحساب')
+                        ->options(fn () => AccountType::orderBy('name')->pluck('name', 'id'))
+                        ->required()
+                        ->live()
+                        ->afterStateUpdated(function (Set $set) {
+                            $set('credit_bank_type_id', null);
+                            $set('credit_account_id', null);
+                        }),
 
-                TextInput::make('beneficiary_currency')
-                    ->label('العملة')
-                    ->disabled()
-                    ->dehydrated(false),
+                    Select::make('credit_bank_type_id')
+                        ->label('نوع البنك')
+                        ->options(fn () => BankType::orderBy('name')->pluck('name', 'id'))
+                        ->required()
+                        ->live()
+                        ->disabled(fn (Get $get) => blank($get('credit_account_type_id')))
+                        ->afterStateUpdated(fn (Set $set) => $set('credit_account_id', null)),
 
-                Select::make('beneficiary_account_id')
-                    ->label('الحساب المدين (المستفيد)')
-                    ->options(fn (Get $get) => self::accountOptions(
-                        $get('beneficiary_account_type_id'),
-                        $get('beneficiary_bank_type_id'),
-                        self::budgetCurrencyId($get('project_cost_budget_id'))
-                    ))
-                    ->required()
-                    ->searchable()
-                    ->disabled(fn (Get $get) => blank($get('beneficiary_bank_type_id')))
-                    ->helperText('حساب المستفيد بعملة المبلغ المرصود')
-                    ->columnSpanFull(),
+                    TextInput::make('credit_currency')
+                        ->label('العملة')
+                        ->disabled()
+                        ->dehydrated(false),
 
-                TextInput::make('credit_account_display')
-                    ->label('الحساب الدائن (تلقائي)')
-                    ->disabled()
-                    ->dehydrated(false)
-                    ->helperText('حساب الوجهة الذي استلم مبلغ الصرف - يُحدد تلقائيًا')
-                    ->columnSpanFull(),
+                    Select::make('credit_account_id')
+                        ->label('الحساب الدائن')
+                        ->options(fn (Get $get) => self::accountOptions(
+                            $get('credit_account_type_id'),
+                            $get('credit_bank_type_id'),
+                            self::budgetCurrencyId($get('project_cost_budget_id'))
+                        ))
+                        ->required()
+                        ->searchable()
+                        ->disabled(fn (Get $get) => blank($get('credit_bank_type_id')))
+                        ->helperText('يُحدد تلقائيًا من حساب وجهة المبلغ المرصود، ويمكن اختيار حساب آخر بنفس العملة قبل الحفظ')
+                        ->columnSpanFull(),
 
-            ]),
+                ]),
+
+                Section::make('الحساب المدين (المستفيد)')->columns(2)->schema([
+
+                    Select::make('beneficiary_account_type_id')
+                        ->label('نوع الحساب')
+                        ->options(fn () => AccountType::orderBy('name')->pluck('name', 'id'))
+                        ->required()
+                        ->live()
+                        ->afterStateUpdated(function (Set $set) {
+                            $set('beneficiary_bank_type_id', null);
+                            $set('beneficiary_account_id', null);
+                        }),
+
+                    Select::make('beneficiary_bank_type_id')
+                        ->label('نوع البنك')
+                        ->options(fn () => BankType::orderBy('name')->pluck('name', 'id'))
+                        ->required()
+                        ->live()
+                        ->disabled(fn (Get $get) => blank($get('beneficiary_account_type_id')))
+                        ->afterStateUpdated(fn (Set $set) => $set('beneficiary_account_id', null)),
+
+                    TextInput::make('beneficiary_currency')
+                        ->label('العملة')
+                        ->disabled()
+                        ->dehydrated(false),
+
+                    Select::make('beneficiary_account_id')
+                        ->label('الحساب المدين (المستفيد)')
+                        ->options(fn (Get $get) => self::accountOptions(
+                            $get('beneficiary_account_type_id'),
+                            $get('beneficiary_bank_type_id'),
+                            self::budgetCurrencyId($get('project_cost_budget_id'))
+                        ))
+                        ->required()
+                        ->searchable()
+                        ->disabled(fn (Get $get) => blank($get('beneficiary_bank_type_id')))
+                        ->helperText('حساب المستفيد بعملة المبلغ المرصود')
+                        ->columnSpanFull(),
+
+                ]),
+
+            ])->columnSpanFull(),
 
             /* =====================================================
              | SECTION 4 - المرفقات
@@ -239,8 +283,8 @@ class ExecutionPaymentForm
         $set('remaining_amount', null);
         $set('budget_currency', null);
         $set('beneficiary_currency', null);
-        $set('credit_account_display', null);
         $set('beneficiary_account_id', null);
+        self::applyCreditDefaults($set, null);
     }
 
     /**
@@ -269,14 +313,78 @@ class ExecutionPaymentForm
         return self::budgetDestinationLine($budgetId)?->currency?->name;
     }
 
-    public static function creditAccountLabel($budgetId): ?string
+    /**
+     * Populate the credit-account cascade from the budget's destination line.
+     * This is only ever called on a genuine budget selection/change (via the
+     * project_cost_budget_id Select's afterStateUpdated) - never during form
+     * hydration on Edit, so it never overwrites a payment's historical saved
+     * credit account. Passing a null $budgetId clears all four fields.
+     */
+    protected static function applyCreditDefaults(Set $set, $budgetId): void
     {
-        $account = self::budgetDestinationLine($budgetId)?->account;
-        if (! $account) {
-            return null;
+        $line    = self::budgetDestinationLine($budgetId);
+        $account = $line?->account;
+
+        $set('credit_account_type_id', $account?->account_type_id);
+        $set('credit_bank_type_id', $account?->bank_type_id);
+        $set('credit_currency', $line?->currency?->name);
+        $set('credit_account_id', $account?->id);
+    }
+
+    /**
+     * Server-side re-validation of the submitted credit account (and, defensively,
+     * the beneficiary account), independent of the form's Select options. The
+     * credit account must belong to the submitted type/bank-type and must be in
+     * the execution payment's currency (the budget's disbursement currency) -
+     * cross-currency replacement accounts are out of scope. Throws with Arabic
+     * messages on any mismatch; callers must call this before mutating anything.
+     */
+    public static function validateCreditAccount(array $data): Account
+    {
+        $budgetId   = $data['project_cost_budget_id'] ?? null;
+        $currencyId = self::budgetCurrencyId($budgetId);
+
+        if (blank($budgetId) || blank($currencyId)) {
+            throw ValidationException::withMessages([
+                'project_cost_budget_id' => 'تعذر تحديد عملة التنفيذ: المبلغ المرصود المحدد لا يملك سطر وجهة صرف صالح.',
+            ]);
         }
 
-        return trim(($account->account_code ? $account->account_code . ' - ' : '') . $account->name);
+        $creditAccount = Account::find($data['credit_account_id'] ?? null);
+
+        if (! $creditAccount) {
+            throw ValidationException::withMessages([
+                'credit_account_id' => 'الحساب الدائن المحدد غير موجود أو غير نشط.',
+            ]);
+        }
+
+        if ((int) $creditAccount->account_type_id !== (int) ($data['credit_account_type_id'] ?? 0)) {
+            throw ValidationException::withMessages([
+                'credit_account_id' => 'نوع الحساب الدائن المحدد لا يطابق نوع الحساب المختار.',
+            ]);
+        }
+
+        if ((int) $creditAccount->bank_type_id !== (int) ($data['credit_bank_type_id'] ?? 0)) {
+            throw ValidationException::withMessages([
+                'credit_account_id' => 'نوع بنك الحساب الدائن المحدد لا يطابق نوع البنك المختار.',
+            ]);
+        }
+
+        if ((int) $creditAccount->currency_id !== (int) $currencyId) {
+            throw ValidationException::withMessages([
+                'credit_account_id' => 'يجب أن يكون الحساب الدائن بنفس عملة مبلغ التنفيذ (عملة المبلغ المرصود).',
+            ]);
+        }
+
+        $beneficiaryAccount = Account::find($data['beneficiary_account_id'] ?? null);
+
+        if (! $beneficiaryAccount || (int) $beneficiaryAccount->currency_id !== (int) $currencyId) {
+            throw ValidationException::withMessages([
+                'beneficiary_account_id' => 'يجب أن يكون حساب المستفيد بنفس عملة مبلغ التنفيذ.',
+            ]);
+        }
+
+        return $creditAccount;
     }
 
     /**

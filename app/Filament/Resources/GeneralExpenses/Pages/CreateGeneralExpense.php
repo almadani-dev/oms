@@ -11,6 +11,7 @@ use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
+use App\Services\Validation\FinancialAmountGuard;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
@@ -31,6 +32,8 @@ class CreateGeneralExpense extends CreateRecord
     {
         $amount     = (float) $data['amount'];
         $currencyId = (int) $data['currency_id'];
+
+        FinancialAmountGuard::assertSimpleAmount($amount, 'amount', 'مبلغ المصروف');
 
         return DB::transaction(function () use ($data, $amount, $currencyId) {
             // STEP 1 - Create the transaction (GEN-YYYY-XXXX)

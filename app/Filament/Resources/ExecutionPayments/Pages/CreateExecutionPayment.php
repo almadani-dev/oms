@@ -13,6 +13,7 @@ use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
+use App\Services\Validation\FinancialAmountGuard;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
@@ -35,9 +36,14 @@ class CreateExecutionPayment extends CreateRecord
         $amount      = (float) $data['amount'];
         $currencyId  = ExecutionPaymentForm::budgetCurrencyId($budget?->id);
 
-        // STEP 1 - Determine the credit account (the disbursement destination).
-        $destinationLine = ExecutionPaymentForm::budgetDestinationLine($budget?->id);
-        $creditAccountId = $destinationLine?->account_id;
+        FinancialAmountGuard::assertSimpleAmount($amount, 'amount', 'مبلغ التنفيذ');
+
+        // STEP 1 - Validate the submitted credit account server-side (the form's
+        // Select options can be bypassed); the user-selected account - which
+        // defaults to the budget's destination account but may be replaced
+        // with another same-currency account - is authoritative from here on.
+        $creditAccount   = ExecutionPaymentForm::validateCreditAccount($data);
+        $creditAccountId = $creditAccount->id;
 
         // Non-blocking warning if the execution amount exceeds the budget remaining.
         $remaining = ExecutionPaymentForm::budgetRemaining($budget?->id);

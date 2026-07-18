@@ -13,6 +13,7 @@ use App\Models\ProjectCostBudgetsPayment;
 use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
+use App\Services\Validation\FinancialAmountGuard;
 use Carbon\Carbon;
 use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
@@ -48,8 +49,9 @@ class EditExecutionPayment extends EditRecord
         $budgetId = $record->project_cost_budget_id;
 
         // Lines (identified by their role tag)
-        $lines           = $record->transaction?->lines()->with('account')->get();
+        $lines           = $record->transaction?->lines()->with('account', 'currency')->get();
         $beneficiaryLine = $lines?->firstWhere('notes', ProjectCostBudgetsPayment::LINE_BENEFICIARY);
+        $creditLine      = $lines?->firstWhere('notes', ProjectCostBudgetsPayment::LINE_CREDIT);
 
         // Section 1 - project cascade + budget
         $budget      = ProjectCostBudget::find($budgetId);
@@ -77,7 +79,16 @@ class EditExecutionPayment extends EditRecord
         $data['beneficiary_account_type_id'] = $beneficiaryLine?->account?->account_type_id;
         $data['beneficiary_bank_type_id']    = $beneficiaryLine?->account?->bank_type_id;
         $data['beneficiary_currency']        = ExecutionPaymentForm::budgetCurrencyName($budgetId);
-        $data['credit_account_display']      = ExecutionPaymentForm::creditAccountLabel($budgetId);
+
+        // Historical credit account: hydrate from THIS payment's own saved line,
+        // never from the budget's current destination (which may have drifted
+        // since creation if the budget was edited afterwards). A genuine budget
+        // change during this Edit session is handled separately by the form's
+        // own project_cost_budget_id afterStateUpdated callback, not here.
+        $data['credit_account_id']      = $creditLine?->account_id;
+        $data['credit_account_type_id'] = $creditLine?->account?->account_type_id;
+        $data['credit_bank_type_id']    = $creditLine?->account?->bank_type_id;
+        $data['credit_currency']        = $creditLine?->currency?->name;
 
         // Section 4 - attachment
         $data['payment_image'] = $record->attachments()->first()?->file_path;
@@ -92,6 +103,15 @@ class EditExecutionPayment extends EditRecord
         $budget    = ProjectCostBudget::with(['transaction', 'projectCost.project'])->find($data['project_cost_budget_id']);
         $currencyId = ExecutionPaymentForm::budgetCurrencyId($budget?->id);
 
+        FinancialAmountGuard::assertSimpleAmount($amount, 'amount', 'مبلغ التنفيذ');
+
+        // Validate the submitted credit account server-side before any mutation.
+        // If the budget was genuinely changed during this Edit session, $data
+        // already carries the new budget's default (applied by the form's own
+        // afterStateUpdated); otherwise this is still the historical saved account.
+        $creditAccount   = ExecutionPaymentForm::validateCreditAccount($data);
+        $creditAccountId = $creditAccount->id;
+
         // Non-blocking warning if the new amount exceeds the remaining (excluding this row).
         $remaining = ExecutionPaymentForm::budgetRemaining($budget?->id, $record->id);
         if ($amount > $remaining) {
@@ -102,7 +122,7 @@ class EditExecutionPayment extends EditRecord
                 ->send();
         }
 
-        return DB::transaction(function () use ($record, $data, $amount, $budget, $currencyId) {
+        return DB::transaction(function () use ($record, $data, $amount, $budget, $currencyId, $creditAccountId) {
             $transaction = $record->transaction;
             $lines       = $transaction?->lines()->with('account')->get();
 
@@ -113,10 +133,7 @@ class EditExecutionPayment extends EditRecord
             $oldBeneficiary?->account?->decrement('current_balance', (float) $oldBeneficiary->debit_base);
             $oldCredit?->account?->increment('current_balance', (float) $oldCredit->credit_base);
 
-            // STEP 2 - Recompute the credit account from the (possibly new) budget
-            $creditAccountId = ExecutionPaymentForm::budgetDestinationLine($budget?->id)?->account_id;
-
-            // STEP 3 - Update the transaction
+            // STEP 2 - Update the transaction
             $transaction?->update([
                 'fiscal_year_id'      => $data['fiscal_year_id'],
                 'transaction_type_id' => $data['transaction_type_id'],
@@ -126,14 +143,14 @@ class EditExecutionPayment extends EditRecord
                 'updated_by'          => auth()->id(),
             ]);
 
-            // STEP 4 - Replace the two transaction lines (hard delete: these are being
+            // STEP 3 - Replace the two transaction lines (hard delete: these are being
             // immediately recreated, so no soft-deleted duplicates should accumulate)
             $transaction?->lines()->forceDelete();
             if ($transaction) {
                 $this->rebuildLines($transaction->id, $data['beneficiary_account_id'], $creditAccountId, $currencyId, $amount);
             }
 
-            // STEP 5 - Update the execution payment row
+            // STEP 4 - Update the execution payment row
             $record->update([
                 'project_cost_budget_id' => $budget?->id,
                 'amount'                 => $amount,
@@ -143,13 +160,13 @@ class EditExecutionPayment extends EditRecord
                 'updated_by'             => auth()->id(),
             ]);
 
-            // STEP 6 - Apply new balances
+            // STEP 5 - Apply new balances
             Account::find($data['beneficiary_account_id'])?->increment('current_balance', $amount); // مدين
             if ($creditAccountId) {
                 Account::find($creditAccountId)?->decrement('current_balance', $amount);            // دائن
             }
 
-            // STEP 6b - Regenerate the Arabic line descriptions and the parent
+            // STEP 5b - Regenerate the Arabic line descriptions and the parent
             // transaction description from the final saved state
             if ($transaction) {
                 app(TransactionLineDescriptionBuilder::class)->buildAndSaveForTransaction(
@@ -163,7 +180,7 @@ class EditExecutionPayment extends EditRecord
                 );
             }
 
-            // STEP 7 - Handle file swap
+            // STEP 6 - Handle file swap
             $existing    = $record->attachments()->first();
             $newFilePath = $data['payment_image'] ?? null;
             $isNewFile   = $newFilePath && $newFilePath !== $existing?->file_path;
@@ -177,7 +194,7 @@ class EditExecutionPayment extends EditRecord
                 $existing->delete();
             }
 
-            // STEP 8 - Success
+            // STEP 7 - Success
             Notification::make()
                 ->title('تم تعديل مبلغ التنفيذ بنجاح')
                 ->success()

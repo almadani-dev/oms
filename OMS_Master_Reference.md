@@ -280,6 +280,16 @@ All other rules deleted. (Advisor flagged that deleting accounting-integrity ale
 - Removed **المؤشر المالي** and **السلامة المالية** entirely (latest task; kept the risk-only filter + criticals-first sort, dropped `has_notes`).
 - Alerts reduced to the **2 critical rules** (عجز في المبلغ المستلم؛ مبلغ التنفيذ أكبر من مبلغ الصرف).
 
+### Operational data cleanup tool — implemented, dry-run only (2026-07-15)
+- New `php artisan oms:clean-operational-data {--dry-run|--apply --confirmation=DELETE-OMS-OPERATIONAL-DATA --backup-file=... [--skip-files]}` + `App\Services\Maintenance\OperationalDataCleanupService` (+ `OperationalCleanupReport` DTO). Purpose: permanently wipe operational/transactional/project data from the **development** database so it can start clean, while preserving system configuration, donors, accounts (balances reset to 0, definitions untouched), currencies, full exchange-rate history, fiscal years, and users/roles/permissions.
+- Environment guard: refuses outside `local`/`development`/`testing`. Apply additionally refuses without the exact confirmation token and a verified non-empty `--backup-file`. No production-force bypass exists.
+- Deletes, active + soft-deleted (force), FK-safe child-before-parent, in one `DB::transaction()`: `project_financial_alerts` → `project_financial_snapshot_currency_totals` → `project_financial_snapshots` → `transaction_lines` → `project_cost_budgets_payments` → `project_cost_receipts` → `project_cost_budgets` → `general_expenses` → `general_exchanges` → `transactions` → `projects_costs` → `projects` → linked attachments → resets every `accounts.current_balance` to 0.
+- Uses `DB::table()->delete()` (not Eloquent) for the bulk deletes — covers active+trashed in one statement and avoids firing the `Project`/`ProjectCost`/`ProjectCostBudget`/`ProjectCostBudgetsPayment`/`ProjectCostReceipt` observers unnecessarily (they only flip `project_financial_snapshots.is_dirty`, moot since those rows are deleted in the same operation).
+- Donor classification is strictly `partners.is_donor` — no other field distinguishes association/beneficiary/vendor entities in this schema, so every non-donor partner is preserved and reported as unclassified (see DECISIONS_LOG.md 2026-07-15).
+- Attachment files: DB rows deleted in-transaction; physical files (on the `public` disk) deleted only after commit, matched by exact `file_path`. Files with no matching row are reported as orphans, never deleted.
+- Numbering (`transaction_number`, project codes) is derived from `MAX()`/`count()` over existing rows, not AUTO_INCREMENT or a sequence table — naturally restarts at 001 per prefix once rows are gone; no explicit reset implemented.
+- **Status: EXECUTED 2026-07-15.** `--apply` ran successfully (backup: `storage/app/backups/oms_before_operational_cleanup.sql`), re-run a second time to confirm idempotence (zero additional changes). All 12 operational tables now empty (active+trashed); all 15 accounts reset to a 0.00 balance with definitions unchanged; 2 donors, users/roles/permissions, currencies, exchange-rate history, all reference tables, `bank_accounts`, and `migrations` all confirmed unchanged. Exactly 6 attachment files were deleted; the 6 pre-existing orphan files (706,133 bytes) remain untouched, as does the `public/storage` symlink. Full detail in TASKS_LOG.md / AI_PROJECT_MEMORY.md (2026-07-15 execution entries).
+
 ### Daily Arabic reports produced (for the manager)
 - `/mnt/user-data/outputs/report_wed_thu_20260610_11.txt`
 - `/mnt/user-data/outputs/report_sat_sun_mon_20260614_16.txt`
@@ -296,6 +306,7 @@ All other rules deleted. (Advisor flagged that deleting accounting-integrity ale
 - **Double-entry bookkeeping issue noted earlier:** a receipt was generating only one transaction line (debit only) instead of two (debit + credit). Possible resolution: add a revenue/credit account field to the form, or configure a default credit account in system settings. (Open.)
 - **Decide whether to physically rename the `remaining_to_receive` DB column** (it now holds الفائض/العجز values). Currently only the display labels were renamed; the physical column kept its name to avoid a wide ripple through the JSON map, currency-totals table, and code references. Functional-only — rename optional.
 - **Possibly retire the old live "تقارير المشاريع" report** if the new general report fully supersedes it (left in place for now).
+- **Operational data cleanup — DONE (2026-07-15).** `oms:clean-operational-data --apply` executed successfully against the real dev DB with full 21-point verification passing (see WHAT'S DONE above). The database is now empty of operational data and ready for real data entry. Next: visually verify empty-state pages and fresh-record creation in the browser (see NEXT_STEPS.md), and decide the fate of the 6 orphan attachment files and the `bank_accounts` legacy table (both report-only, untouched).
 
 ---
 

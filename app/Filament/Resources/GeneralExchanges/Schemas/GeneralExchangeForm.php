@@ -17,6 +17,7 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Actions;
+use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
@@ -29,102 +30,156 @@ class GeneralExchangeForm
         return $schema->components([
 
             /* =====================================================
-             | SECTION 1 - النسب والمبالغ
+             | SECTION 1 - معلومات المعاملة (تفاصيل المعاملة يمين، النسب والمبالغ يسار)
+             | Stacks to one column on narrow screens (تفاصيل المعاملة above
+             | النسب والمبالغ, matching RTL source order); side by side from lg up.
              ===================================================== */
-            Section::make('النسب والمبالغ')->columns(2)->schema([
+            Grid::make(['default' => 1, 'lg' => 2])->schema([
 
-                TextInput::make('original_amount')
-                    ->label('المبلغ بالعملة الأصلية')
-                    ->numeric()
-                    ->required()
-                    ->live(onBlur: true)
-                    ->afterStateUpdated(fn (Set $set) => self::clearAmounts($set))
-                    ->columnSpanFull(),
+                Section::make('تفاصيل المعاملة')->columns(2)->schema([
 
-                Select::make('source_currency_id')
-                    ->label('العملة الأصلية')
-                    ->options(fn () => Currency::orderBy('name')->pluck('name', 'id'))
-                    ->preload()
-                    ->required()
-                    ->live()
-                    ->afterStateUpdated(function (Get $get, Set $set) {
-                        // The source currency drives the source/admin/transfer accounts.
-                        $name = self::currencyName($get('source_currency_id'));
-                        $set('source_currency', $name);
-                        $set('admin_currency', $name);
-                        $set('transfer_currency', $name);
-                        $set('source_account_id', null);
-                        $set('admin_account_id', null);
-                        $set('transfer_account_id', null);
-                        self::clearAmounts($set);
-                    }),
+                    Select::make('transaction_super_type_id')
+                        ->label('تصنيف المعاملة')
+                        ->options(fn () => TransactionSuperType::orderBy('name')->pluck('name', 'id'))
+                        ->preload()
+                        ->required()
+                        ->live()
+                        ->afterStateUpdated(fn (Set $set) => $set('transaction_type_id', null)),
 
-                TextInput::make('administrative_percentage')
-                    ->label('النسبة الإدارية %')
-                    ->numeric()
-                    ->suffix('%')
-                    ->default(0)
-                    ->live(onBlur: true)
-                    ->afterStateUpdated(fn (Set $set) => self::clearAmounts($set)),
+                    Select::make('transaction_type_id')
+                        ->label('نوع المعاملة')
+                        ->options(fn (Get $get) => TransactionType::where('transaction_super_type_id', $get('transaction_super_type_id'))
+                            ->orderBy('name')
+                            ->pluck('name', 'id'))
+                        ->required()
+                        ->disabled(fn (Get $get) => blank($get('transaction_super_type_id'))),
 
-                TextInput::make('transfer_percentage')
-                    ->label('نسبة التحويل / العمولة %')
-                    ->numeric()
-                    ->suffix('%')
-                    ->default(0)
-                    ->live(onBlur: true)
-                    ->afterStateUpdated(fn (Set $set) => self::clearAmounts($set)),
+                    Select::make('fiscal_year_id')
+                        ->label('السنة المالية')
+                        ->options(fn () => FiscalYear::where('is_active', true)->orderBy('name')->pluck('name', 'id'))
+                        ->preload()
+                        ->required(),
 
-                Select::make('disbursement_currency_id')
-                    ->label('عملة الصرف')
-                    ->options(fn () => Currency::orderBy('name')->pluck('name', 'id'))
-                    ->preload()
-                    ->required()
-                    ->live()
-                    ->afterStateUpdated(function (Get $get, Set $set) {
-                        // The disbursement currency drives the destination account.
-                        $set('destination_currency', self::currencyName($get('disbursement_currency_id')));
-                        $set('destination_account_id', null);
-                        self::clearAmounts($set);
-                    }),
+                    Select::make('partner_id')
+                        ->label('الجهة')
+                        ->options(fn () => Partner::orderBy('name')->pluck('name', 'id'))
+                        ->searchable()
+                        ->preload(false)
+                        ->optionsLimit(50),
 
-                TextInput::make('fx_rate')
-                    ->label('سعر الصرف')
-                    ->numeric()
-                    ->default(1)
-                    ->required()
-                    ->helperText('ضع 1 إذا نفس العملة')
-                    ->live(onBlur: true)
-                    ->afterStateUpdated(fn (Set $set) => self::clearAmounts($set)),
+                    DatePicker::make('date')
+                        ->label('تاريخ التحويل')
+                        ->default(today())
+                        ->required(),
 
-                Actions::make([
-                    Action::make('calculate')
-                        ->label('احسب')
-                        ->button()
-                        ->action(fn (Get $get, Set $set) => self::calculate($get, $set)),
-                ])->columnSpanFull(),
+                    Textarea::make('notes')
+                        ->label('ملاحظات')
+                        ->columnSpanFull(),
 
-                TextInput::make('administrative_amount')
-                    ->label('مبلغ النسبة الإدارية')
-                    ->disabled()
-                    ->dehydrated(false),
+                ]),
 
-                TextInput::make('transfer_amount')
-                    ->label('مبلغ نسبة التحويل')
-                    ->disabled()
-                    ->dehydrated(false),
+                Section::make('النسب والمبالغ')->columns(2)->schema([
 
-                TextInput::make('amount_after_deductions')
-                    ->label('المبلغ بعد الخصومات')
-                    ->disabled()
-                    ->dehydrated(false),
+                    TextInput::make('original_amount')
+                        ->label('المبلغ بالعملة الأصلية')
+                        ->numeric()
+                        ->required()
+                        ->minValue(0.01)
+                        ->live(onBlur: true)
+                        ->afterStateUpdated(fn (Set $set) => self::clearAmounts($set))
+                        ->columnSpanFull(),
 
-                TextInput::make('final_amount')
-                    ->label('المبلغ النهائي (بعملة الصرف)')
-                    ->disabled()
-                    ->dehydrated(false),
+                    Select::make('source_currency_id')
+                        ->label('العملة الأصلية')
+                        ->options(fn () => Currency::orderBy('name')->pluck('name', 'id'))
+                        ->preload()
+                        ->required()
+                        ->live()
+                        ->afterStateUpdated(function (Get $get, Set $set) {
+                            // The source currency drives the source/admin/transfer accounts.
+                            $name = self::currencyName($get('source_currency_id'));
+                            $set('source_currency', $name);
+                            $set('admin_currency', $name);
+                            $set('transfer_currency', $name);
+                            $set('source_account_id', null);
+                            $set('admin_account_id', null);
+                            $set('transfer_account_id', null);
+                            self::clearAmounts($set);
+                        }),
 
-            ]),
+                    TextInput::make('administrative_percentage')
+                        ->label('النسبة الإدارية %')
+                        ->numeric()
+                        ->suffix('%')
+                        ->default(0)
+                        ->minValue(0)
+                        ->maxValue(100)
+                        ->live(onBlur: true)
+                        ->afterStateUpdated(fn (Set $set) => self::clearAmounts($set)),
+
+                    TextInput::make('transfer_percentage')
+                        ->label('نسبة التحويل / العمولة %')
+                        ->numeric()
+                        ->suffix('%')
+                        ->default(0)
+                        ->minValue(0)
+                        ->maxValue(100)
+                        ->live(onBlur: true)
+                        ->afterStateUpdated(fn (Set $set) => self::clearAmounts($set)),
+
+                    Select::make('disbursement_currency_id')
+                        ->label('عملة الصرف')
+                        ->options(fn () => Currency::orderBy('name')->pluck('name', 'id'))
+                        ->preload()
+                        ->required()
+                        ->live()
+                        ->afterStateUpdated(function (Get $get, Set $set) {
+                            // The disbursement currency drives the destination account.
+                            $set('destination_currency', self::currencyName($get('disbursement_currency_id')));
+                            $set('destination_account_id', null);
+                            self::clearAmounts($set);
+                        }),
+
+                    TextInput::make('fx_rate')
+                        ->label('سعر الصرف')
+                        ->numeric()
+                        ->default(1)
+                        ->required()
+                        ->minValue(0.000001)
+                        ->helperText('ضع 1 إذا نفس العملة')
+                        ->live(onBlur: true)
+                        ->afterStateUpdated(fn (Set $set) => self::clearAmounts($set)),
+
+                    Actions::make([
+                        Action::make('calculate')
+                            ->label('احسب')
+                            ->button()
+                            ->action(fn (Get $get, Set $set) => self::calculate($get, $set)),
+                    ])->columnSpanFull(),
+
+                    TextInput::make('administrative_amount')
+                        ->label('مبلغ النسبة الإدارية')
+                        ->disabled()
+                        ->dehydrated(false),
+
+                    TextInput::make('transfer_amount')
+                        ->label('مبلغ نسبة التحويل')
+                        ->disabled()
+                        ->dehydrated(false),
+
+                    TextInput::make('amount_after_deductions')
+                        ->label('المبلغ بعد الخصومات')
+                        ->disabled()
+                        ->dehydrated(false),
+
+                    TextInput::make('final_amount')
+                        ->label('المبلغ النهائي (بعملة الصرف)')
+                        ->disabled()
+                        ->dehydrated(false),
+
+                ]),
+
+            ])->columnSpanFull(),
 
             /* =====================================================
              | SECTION 2 - الحسابات
@@ -298,52 +353,7 @@ class GeneralExchangeForm
             ]),
 
             /* =====================================================
-             | SECTION 3 - تفاصيل المعاملة
-             ===================================================== */
-            Section::make('تفاصيل المعاملة')->columns(2)->schema([
-
-                Select::make('transaction_super_type_id')
-                    ->label('تصنيف المعاملة')
-                    ->options(fn () => TransactionSuperType::orderBy('name')->pluck('name', 'id'))
-                    ->preload()
-                    ->required()
-                    ->live()
-                    ->afterStateUpdated(fn (Set $set) => $set('transaction_type_id', null)),
-
-                Select::make('transaction_type_id')
-                    ->label('نوع المعاملة')
-                    ->options(fn (Get $get) => TransactionType::where('transaction_super_type_id', $get('transaction_super_type_id'))
-                        ->orderBy('name')
-                        ->pluck('name', 'id'))
-                    ->required()
-                    ->disabled(fn (Get $get) => blank($get('transaction_super_type_id'))),
-
-                Select::make('fiscal_year_id')
-                    ->label('السنة المالية')
-                    ->options(fn () => FiscalYear::where('is_active', true)->orderBy('name')->pluck('name', 'id'))
-                    ->preload()
-                    ->required(),
-
-                Select::make('partner_id')
-                    ->label('الجهة')
-                    ->options(fn () => Partner::orderBy('name')->pluck('name', 'id'))
-                    ->searchable()
-                    ->preload(false)
-                    ->optionsLimit(50),
-
-                DatePicker::make('date')
-                    ->label('تاريخ التحويل')
-                    ->default(today())
-                    ->required(),
-
-                Textarea::make('notes')
-                    ->label('ملاحظات')
-                    ->columnSpanFull(),
-
-            ]),
-
-            /* =====================================================
-             | SECTION 4 - المرفقات
+             | SECTION 3 - المرفقات
              ===================================================== */
             Section::make('المرفقات')->schema([
 

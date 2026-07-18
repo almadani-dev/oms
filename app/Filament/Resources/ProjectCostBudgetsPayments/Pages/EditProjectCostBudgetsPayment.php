@@ -11,6 +11,7 @@ use App\Models\ProjectCost;
 use App\Models\ProjectCostBudget;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
+use App\Services\Validation\FinancialAmountGuard;
 use Carbon\Carbon;
 use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
@@ -128,12 +129,14 @@ class EditProjectCostBudgetsPayment extends EditRecord
         $original    = (float) $data['original_amount'];
         $adminPct    = (float) ($data['administrative_percentage'] ?? 0);
         $transferPct = (float) ($data['transfer_percentage'] ?? 0);
-        $fxRate      = (float) ($data['fx_rate'] ?: 1);
+        $fxRate      = (float) ($data['fx_rate'] ?? 1);
 
         $adminAmount    = round($original * $adminPct / 100, 2);
         $transferAmount = round($original * $transferPct / 100, 2);
         $afterDeduct    = round($original - $adminAmount - $transferAmount, 2);
         $finalAmount    = round($afterDeduct * $fxRate, 2);
+
+        FinancialAmountGuard::assertDisbursementInputs($original, $adminPct, $transferPct, $fxRate, $afterDeduct, $finalAmount);
 
         return DB::transaction(function () use (
             $record, $data, $projectCost, $projectCostId, $costCurrencyId,

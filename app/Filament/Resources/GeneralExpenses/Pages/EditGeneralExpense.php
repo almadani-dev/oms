@@ -12,6 +12,7 @@ use App\Models\GeneralExpense;
 use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
+use App\Services\Validation\FinancialAmountGuard;
 use Carbon\Carbon;
 use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
@@ -87,6 +88,8 @@ class EditGeneralExpense extends EditRecord
         /** @var GeneralExpense $record */
         $amount     = (float) $data['amount'];
         $currencyId = (int) $data['currency_id'];
+
+        FinancialAmountGuard::assertSimpleAmount($amount, 'amount', 'مبلغ المصروف');
 
         return DB::transaction(function () use ($record, $data, $amount, $currencyId) {
             $transaction = $record->transaction;

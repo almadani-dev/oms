@@ -17,6 +17,172 @@
 ---
 
 ### Date
+2026-07-15
+
+### Task
+Build a safe, environment-gated Artisan command + service to permanently wipe operational/transactional data from the OMS development database while preserving system configuration, donors, accounts, currencies, exchange-rate history, and users/roles/permissions. Phase 1 only: implement, test, and dry-run — apply must not run without explicit approval.
+
+### Result
+Implemented `App\Services\Maintenance\OperationalDataCleanupService` (+ `OperationalCleanupReport` DTO) and `php artisan oms:clean-operational-data --dry-run` / `--apply --confirmation=... --backup-file=...` / `--skip-files`. Environment guard restricts to `local`/`development`/`testing`; apply refuses without the exact confirmation token `DELETE-OMS-OPERATIONAL-DATA` and a verified non-empty backup file. Deletion is child-before-parent (12 tables + linked attachments + account-balance reset to 0), inside one `DB::transaction()`, using `DB::table()->delete()` to cover active+soft-deleted rows in one statement and to avoid firing the 5 project-snapshot-dirtying Eloquent observers unnecessarily. Donor classification uses only `partners.is_donor` (no other authoritative field exists); all non-donor partners are preserved and reported as unclassified. Attachment files are deleted only by exact `file_path` match to a deleted attachment row, after the DB transaction commits; unmatched files in known attachment directories are reported as orphans, never deleted. Ran `--dry-run` against the real dev DB: 20 preserved tables/2 users/5 roles/24 permissions/15 accounts (11 non-zero balances)/2 donors/0 exchange-rate-history rows untouched; 13 operational tables with rows (10+2 transactions, 24+4 transaction_lines, 1+1 projects, etc.) proposed for deletion; 8 linked attachment DB rows (6 files present, 2 missing), 6 orphan files (706133 bytes, likely leftovers from the 2026-07-06 manual TRUNCATE reset) reported only; found and reported one unexpected legacy table `bank_accounts` (0 rows, no model) — confirmed zero writes via before/after row-count and balance comparison.
+
+### Changed Files
+- `app/Services/Maintenance/OperationalDataCleanupService.php` (new)
+- `app/Services/Maintenance/OperationalCleanupReport.php` (new)
+- `app/Console/Commands/CleanOperationalData.php` (new)
+- `tests/Feature/Commands/CleanOperationalDataCommandTest.php` (new, 20 tests)
+- `graphify-out/**` (regenerated via `graphify update .`)
+- `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md`, `docs/NEXT_STEPS.md` (this entry set)
+
+### Verification
+`php -l` clean on all 4 new/changed PHP files. New test suite: 20/20 passing (67 assertions) against a selectively-migrated SQLite `:memory:` schema. Full `php artisan test`: 71/72 (the 1 failure, `ExampleTest`, is pre-existing/unrelated — hits `/`, a route this Filament app never defines). `php artisan optimize:clear` ran clean. `php artisan oms:clean-operational-data --dry-run` run against the real dev DB and confirmed zero writes (row counts and account balances identical before/after via direct tinker query). `--apply` was never run against the real dev DB, per instructions.
+
+### Commit Hash
+Not committed — awaiting explicit approval for the apply phase before any commit.
+
+---
+
+### Date
+2026-07-16
+
+### Task
+Following the same-day read-only audit of the Execution Payment (`صرف مبالغ التنفيذ`) credit-account flow, implement the approved enhancement: move the "الحساب الدائن" section above "الحساب المدين (المستفيد)" on `/admin/execution-payments/create`, replace the display-only credit account with a real editable account-type → bank-type → currency → account cascade (defaulting from the selected budget's destination account, but user-overridable to any same-currency account before saving), and fix the pre-existing Edit drift bug where the historical credit account could be silently overwritten by the budget's current destination account.
+
+### Result
+Changed 3 files: `ExecutionPaymentForm.php` (section reorder, new `credit_account_type_id`/`credit_bank_type_id`/`credit_currency`/`credit_account_id` cascade replacing `credit_account_display`, new `applyCreditDefaults()` helper wired into the `project_cost_budget_id` Select's `afterStateUpdated`, new `validateCreditAccount()` server-side guard throwing `ValidationException` with Arabic messages), `CreateExecutionPayment.php` (uses the validated submitted credit account instead of always recomputing from the budget destination), `EditExecutionPayment.php` (hydrates the credit cascade from the payment's own saved `LINE_CREDIT` line instead of the budget's current destination — fixing the drift bug — and no longer recomputes the credit account from the budget in `handleRecordUpdate()`). No migration, no model change: the actually-selected account is still persisted only via `transaction_lines.account_id` on the `LINE_CREDIT`/`execution_source` line, exactly as before. Cross-currency replacement accounts are rejected server-side, not just hidden by Select options. `TransactionLineRole`, `TransactionDescriptionBuilder`, `TransactionLineDescriptionBuilder`, the disbursement flow, reports, and financial snapshots were not touched. See `docs/AI_PROJECT_MEMORY.md` (2026-07-16 entry) for full detail and `docs/DECISIONS_LOG.md` for the currency-restriction and drift-fix reasoning.
+
+### Changed Files
+- `app/Filament/Resources/ExecutionPayments/Schemas/ExecutionPaymentForm.php`
+- `app/Filament/Resources/ExecutionPayments/Pages/CreateExecutionPayment.php`
+- `app/Filament/Resources/ExecutionPayments/Pages/EditExecutionPayment.php`
+- `tests/Feature/ExecutionPayments/ExecutionPaymentCreditAccountTest.php` (new, 7 tests)
+- `graphify-out/**` (regenerated via `graphify update .`)
+- `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md`, `docs/NEXT_STEPS.md`, `docs/PROMPTS_LOG.md` (this entry set)
+
+---
+
+### Date
+2026-07-18
+
+### Task
+Implement the approved positive-amount validation change, following the same-day read-only audit of all 5 financial workflows (project cost receipts, project cost budget disbursements, execution payments, general expenses, general exchanges) that found no server-side protection against zero/negative amounts, FX rates, or deduction percentages. Add matching Filament UI constraints, a reusable independent server-side guard, wire it into all 10 Create/Edit page handlers before any mutation, remove the unsafe silent `fx_rate ?: 1` fallback on submitted data in the two deduction/FX workflows, and add targeted tests.
+
+### Result
+Added `->minValue(0.01)` to all 5 amount fields (`ProjectCostReceiptForm.amount`, `ExecutionPaymentForm.amount`, `GeneralExpenseForm.amount`, `ProjectCostBudgetsPaymentForm.original_amount`, `GeneralExchangeForm.original_amount`), `->minValue(0)->maxValue(100)` to both percentage fields in `ProjectCostBudgetsPaymentForm`/`GeneralExchangeForm`, and `->minValue(0.000001)` to both `fx_rate` fields. New `App\Services\Validation\FinancialAmountGuard` (static methods, Arabic `ValidationException` messages) is called in all 10 Create/Edit `handleRecordCreation`/`handleRecordUpdate` methods, before `DB::transaction()` opens in every case — simple workflows call `assertSimpleAmount()`, the two deduction/FX workflows call the composed `assertDisbursementInputs()` covering the original amount, both percentages (individually and combined < 100), the FX rate, and both derived amounts. Replaced `(float) ($data['fx_rate'] ?: 1)` with `(float) ($data['fx_rate'] ?? 1)` at the 4 submitted-data sites in `CreateProjectCostBudgetsPayment`/`EditProjectCostBudgetsPayment`/`CreateGeneralExchange`/`EditGeneralExchange` handlers — an explicitly-submitted `0` now reaches the guard and is rejected instead of silently becoming `1`. Display-only `?: 1` fallbacks (Edit hydration reading saved records, the forms' "احسب" live-preview button) and `deriveAmounts()`'s own internal formula were deliberately left untouched, per instructions. Execution-payment over-budget behavior stays a non-blocking warning; account/currency/type revalidation for the other 4 workflows stays out of scope.
+
+### Changed Files
+- `app/Services/Validation/FinancialAmountGuard.php` (new)
+- `app/Filament/Resources/ProjectCostReceipts/Schemas/ProjectCostReceiptForm.php`
+- `app/Filament/Resources/ProjectCostReceipts/Pages/CreateProjectCostReceipt.php`
+- `app/Filament/Resources/ProjectCostReceipts/Pages/EditProjectCostReceipt.php`
+- `app/Filament/Resources/ExecutionPayments/Schemas/ExecutionPaymentForm.php`
+- `app/Filament/Resources/ExecutionPayments/Pages/CreateExecutionPayment.php`
+- `app/Filament/Resources/ExecutionPayments/Pages/EditExecutionPayment.php`
+- `app/Filament/Resources/GeneralExpenses/Schemas/GeneralExpenseForm.php`
+- `app/Filament/Resources/GeneralExpenses/Pages/CreateGeneralExpense.php`
+- `app/Filament/Resources/GeneralExpenses/Pages/EditGeneralExpense.php`
+- `app/Filament/Resources/ProjectCostBudgetsPayments/Schemas/ProjectCostBudgetsPaymentForm.php`
+- `app/Filament/Resources/ProjectCostBudgetsPayments/Pages/CreateProjectCostBudgetsPayment.php`
+- `app/Filament/Resources/ProjectCostBudgetsPayments/Pages/EditProjectCostBudgetsPayment.php`
+- `app/Filament/Resources/GeneralExchanges/Schemas/GeneralExchangeForm.php`
+- `app/Filament/Resources/GeneralExchanges/Pages/CreateGeneralExchange.php`
+- `app/Filament/Resources/GeneralExchanges/Pages/EditGeneralExchange.php`
+- `tests/Unit/Services/Validation/FinancialAmountGuardTest.php` (new, 19 tests)
+- `tests/Feature/GeneralExpenses/GeneralExpenseAmountValidationTest.php` (new, 3 tests)
+- `tests/Feature/GeneralExchanges/GeneralExchangeAmountValidationTest.php` (new, 4 tests)
+- `graphify-out/**` (regenerated via `graphify update .`)
+- `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md`, `docs/NEXT_STEPS.md`, `docs/PROMPTS_LOG.md` (this entry set)
+
+### Verification
+New targeted tests: 33/33 passing (74 assertions) — `FinancialAmountGuardTest` (19: zero/negative/valid amount, fx_rate, individual and combined percentages, derived amounts) + `GeneralExpenseAmountValidationTest` (3: zero/negative amount rejected before any DB write, valid amount accepted — representative simple workflow) + `GeneralExchangeAmountValidationTest` (4: combined percentages = 100 rejected, zero/negative fx_rate rejected, valid values accepted — representative deduction/FX workflow, all rejections confirmed zero-mutation via before/after `Transaction`/`TransactionLine`/model counts and unchanged account balances) + existing `ExecutionPaymentCreditAccountTest` (7, unaffected). Full `php artisan test`: 104/105 (the 1 failure, `ExampleTest`, is pre-existing/unrelated — hits `/`, a route this Filament app never defines).
+
+### Commit Hash
+Not committed — awaiting explicit approval.
+
+### Verification
+`php -l` clean on all 4 changed/new PHP files. New test suite: 7/7 passing (32 assertions) against a selectively-migrated SQLite `:memory:` schema (same pattern as `CleanOperationalDataCommandTest`), covering untouched-default create, manual-override create, cross-currency rejection (zero mutation), Edit hydration from the saved line (not the drifted budget destination), Edit-with-unrelated-field-change preserving the historical account, Edit manual account change (single active `LINE_CREDIT` line, correct balance reversal/reapplication, updated descriptions), and the reactive default on a genuine budget change. Existing description/line-description/financial regression suites (`TransactionDescriptionBuilderTest`, `TransactionLineDescriptionBuilderTest`, `BackfillTransactionDescriptionsCommandTest`, `CleanOperationalDataCommandTest`): 70/70 passing, unaffected. Full `php artisan test`: 78/79 (the 1 failure, `ExampleTest`, is pre-existing/unrelated — hits `/`, a route this Filament app never defines). `route:list` confirmed the 4 execution-payments routes (index/create/view/edit) are unchanged. `php artisan optimize:clear` ran clean. `graphify update .` ran clean (AST-only, no API cost).
+
+### Commit Hash
+Not committed — per task instructions, no commit was requested.
+
+---
+
+### Date
+2026-07-16
+
+### Task
+Implement the approved responsive UI layout standard for credit/debit account sections across the OMS financial forms: desktop/wide screens show the creditor section on the right and the debtor section on the left, side by side with equal widths; narrow/mobile screens stack them vertically with the creditor section above the debtor section. Apply to General Expenses (primary page, currently debit-before-credit and visually unbalanced), Project Cost Receipts, and Execution Payments (preserving the recently-implemented editable credit-account cascade exactly). Assess the two multi-account forms (disbursement, general exchange) and only restructure them if it can be done without a risky rewrite.
+
+### Result
+Wrapped the credit and debit `Section`s of `GeneralExpenseForm.php` and `ProjectCostReceiptForm.php` in a shared `Grid::make(['default' => 1, 'lg' => 2])`, reordering the credit section to appear first in source order (both previously had debit first, stacked as two separate full-width cards). `ExecutionPaymentForm.php` already had the credit section first from the same-day credit-account-editable task, so only the `Grid` wrap was added. On desktop (≥lg breakpoint) this produces two equal-width columns; because the app renders `dir="rtl"`, native CSS Grid RTL auto-placement puts the first schema child (credit) on the right and the second (debit) on the left with no custom CSS. On narrow screens (<lg) the grid collapses to one column, preserving credit-above-debit source order. `ProjectCostBudgetsPaymentForm.php` (صرف مبلغ المشروع) and `GeneralExchangeForm.php` (التحويلات العامة) were left unchanged — see Decisions Log. No field names, options queries, live/afterStateUpdated callbacks, dehydration flags, validation, Create/Edit handlers, models, or migrations were touched in any file.
+
+### Changed Files
+- `app/Filament/Resources/GeneralExpenses/Schemas/GeneralExpenseForm.php`
+- `app/Filament/Resources/ProjectCostReceipts/Schemas/ProjectCostReceiptForm.php`
+- `app/Filament/Resources/ExecutionPayments/Schemas/ExecutionPaymentForm.php`
+- `graphify-out/**` (regenerated via `graphify update .`)
+- `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md`, `docs/NEXT_STEPS.md` (this entry set)
+
+### Verification
+`php -l` clean on all 3 changed files. `php artisan view:cache` compiled all Blade templates with no errors, then `php artisan view:clear`. Targeted regression: `ExecutionPaymentCreditAccountTest` + `TransactionDescriptionBuilderTest` + `TransactionLineDescriptionBuilderTest` — 40/40 passing, confirming the credit-account cascade, defaults, validation, and description generation are all unaffected by the layout change. Full `php artisan test`: 78/79 (the 1 failure, `ExampleTest`, is the same pre-existing/unrelated failure as before this task — hits `/`, a route this Filament app never defines). `php artisan optimize:clear` ran clean. `graphify update .` ran clean (AST-only). No migration was run.
+
+### Commit Hash
+Not committed — per task instructions, no commit was requested.
+
+---
+
+### Date
+2026-07-16
+
+### Task
+Rearrange the General Exchange form (`التحويلات العامة`, `/admin/general-exchanges/create`/`{record}/edit`) layout only: top area with "تفاصيل المعاملة" (right) and "النسب والمبالغ" (left) side by side on desktop / stacked (تفاصيل المعاملة first) on mobile; full-width "الحسابات" section underneath, internally unchanged; "المرفقات" last. No accounting logic, calculations, validation, or field behavior changes.
+
+### Result
+In `GeneralExchangeForm.php`: wrapped "تفاصيل المعاملة" and "النسب والمبالغ" in a new top-level `Grid::make(['default' => 1, 'lg' => 2])`, with "تفاصيل المعاملة" placed first in source order (renders on the right on desktop via native RTL CSS Grid auto-placement, since the app already renders `dir="rtl"`; stacks first/above on narrow screens). Moved "الحسابات" (full width, 4-account block: مصدر دائن، نسبة إدارية مدين، تحويل مدين، وجهة مدين) to sit underneath that row — its 16 fields, options queries, `afterStateUpdated`/`live()` callbacks, and `dehydrated()` flags are byte-identical to before, just relocated as a whole block. "المرفقات" remains last, unchanged. Old order was النسب والمبالغ → الحسابات → تفاصيل المعاملة → المرفقات (with الحسابات sitting between/beside the two transaction sections); new order is [تفاصيل المعاملة | النسب والمبالغ] → الحسابات → المرفقات. Only the top-level component tree changed; every field name, calculation, validation rule, currency/account filter, and helper method (`calculate()`, `deriveAmounts()`, `clearAmounts()`, `currencyName()`, `accountOptions()`) is untouched. `CreateGeneralExchange.php`/`EditGeneralExchange.php` were not modified.
+
+### Changed Files
+- `app/Filament/Resources/GeneralExchanges/Schemas/GeneralExchangeForm.php`
+- `graphify-out/**` (regenerated via `graphify update .`)
+- `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/NEXT_STEPS.md` (this entry set)
+
+### Verification
+`php -l` clean. `php artisan view:cache` compiled all Blade templates with no errors, then `php artisan view:clear`. No dedicated `GeneralExchangeForm` test exists, so ran the closest relevant existing coverage: `CleanOperationalDataCommandTest` (exercises General Exchange rows), `BackfillTransactionDescriptionsCommandTest`, `TransactionDescriptionBuilderTest`, `TransactionLineDescriptionBuilderTest` — 70/70 passing. `php artisan optimize:clear` ran clean. `graphify update .` ran clean (AST-only). No migration was run.
+
+### Commit Hash
+Not committed — per task instructions, no commit was requested.
+
+---
+
+### Date
+2026-07-15 (execution)
+
+### Task
+Execute the previously approved operational-data cleanup apply against the real dev database, per explicit user approval.
+
+### Result
+Precondition re-check: git clean (only prior implementation work unstaged), all 61 migrations `Ran`, dry-run counts matched the approved report exactly. The specified backup file did not exist yet — created it via `mysqldump --routines --triggers --single-transaction` (credentials passed only via `MYSQL_PWD` env var, never printed) to `storage/app/backups/oms_before_operational_cleanup.sql` (120,266 bytes), verified non-empty, then proceeded per the user's explicit instruction.
+
+Ran `php artisan oms:clean-operational-data --apply --confirmation=DELETE-OMS-OPERATIONAL-DATA --backup-file="C:\laragon\www\oms\storage\app\backups\oms_before_operational_cleanup.sql"` at 12:21:16. Deleted (all now 0 active+trashed): 2 projects, 3 projects_costs, 1 project_cost_budget, 1 project_cost_budgets_payment, 3 project_cost_receipts, 2 general_expenses, 1 general_exchange, 12 transactions, 28 transaction_lines, 8 attachments, 1 project_financial_snapshot, 2 project_financial_snapshot_currency_totals, 0 project_financial_alerts. Reset all 15 accounts' `current_balance` to 0.00 (was 11 non-zero). Deleted exactly 6 physical attachment files (1,474,023 bytes), 0 failures; left the 6 pre-existing orphan files (706,133 bytes) untouched; `receipts/`/`general-expenses/` directories now empty but not removed; `public/storage` symlink untouched. Post-apply verification (service-internal fingerprint diff): **PASSED**. Independently re-verified all 21 checklist items via tinker + filesystem inspection: donors=2, accounts=15 (definitions unchanged), non-zero balances=0, users=2, roles=5, permissions=24, currencies=3, exchange_rate_histories=0 (unchanged), all reference tables unchanged, migrations=61, `bank_accounts`=0/untouched — all matched exactly.
+
+Re-ran the identical `--apply` command a second time at 12:22:27 to verify idempotence: 0 additional files deleted, all counts identical, verification PASSED again. Confirmed via filesystem: still exactly 6 orphan files totaling 706,133 bytes, byte-identical to the first run.
+
+Ran `php artisan optimize:clear` and `graphify update .` afterward (no further app-code changes).
+
+### Changed Files
+- Database only (`oms` MySQL database — not git-tracked): 12 operational tables emptied, 15 account balances reset to 0, 8 attachment rows removed.
+- Filesystem: 6 attachment files deleted under `storage/app/public/{receipts,general-expenses,payments,execution-payments}/`.
+- New: `storage/app/backups/oms_before_operational_cleanup.sql` (backup, git-ignored, not committed).
+- `graphify-out/**` (regenerated).
+- `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md`, `docs/NEXT_STEPS.md`, `docs/PROMPTS_LOG.md`, `OMS_Master_Reference.md` (this entry set).
+
+### Verification
+21-point manual checklist (donors, accounts, balances, users/roles/permissions, currencies, exchange-rate history, reference tables, migrations, bank_accounts, operational-table zero counts, orphan-file preservation) all confirmed independently, in addition to the command's own built-in post-apply verification (PASSED on both runs). Second apply run confirmed full idempotence (zero additional changes).
+
+### Commit Hash
+Not committed — no commit was requested for this data-only operation.
+
+---
+
+### Date
 2026-07-05
 
 ### Task

@@ -12,6 +12,7 @@ use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
+use App\Services\Validation\FinancialAmountGuard;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
@@ -30,6 +31,8 @@ class CreateProjectCostReceipt extends CreateRecord
 
     protected function handleRecordCreation(array $data): Model
     {
+        FinancialAmountGuard::assertSimpleAmount((float) $data['amount'], 'amount', 'مبلغ الاستلام');
+
         return DB::transaction(function () use ($data) {
             // STEP 1 - Create transaction
             $year              = Carbon::parse($data['date'])->format('Y');
