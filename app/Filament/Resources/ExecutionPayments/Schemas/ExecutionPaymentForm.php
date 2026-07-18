@@ -338,9 +338,19 @@ class ExecutionPaymentForm
      * the execution payment's currency (the budget's disbursement currency) -
      * cross-currency replacement accounts are out of scope. Throws with Arabic
      * messages on any mismatch; callers must call this before mutating anything.
+     *
+     * $requireActiveCredit/$requireActiveBeneficiary default to true (Create
+     * semantics: every selected account must be active). Edit pages should pass
+     * false for a role whose submitted account_id is unchanged from the record's
+     * historical saved account, so a historical account that was active at
+     * creation time but has since been deactivated remains usable as long as it
+     * isn't being replaced - see FinancialAccountGuard::requireActiveOnChange().
      */
-    public static function validateCreditAccount(array $data): Account
-    {
+    public static function validateCreditAccount(
+        array $data,
+        bool $requireActiveCredit = true,
+        bool $requireActiveBeneficiary = true,
+    ): Account {
         $budgetId   = $data['project_cost_budget_id'] ?? null;
         $currencyId = self::budgetCurrencyId($budgetId);
 
@@ -376,11 +386,23 @@ class ExecutionPaymentForm
             ]);
         }
 
+        if ($requireActiveCredit && ! $creditAccount->is_active) {
+            throw ValidationException::withMessages([
+                'credit_account_id' => 'الحساب الدائن المحدد غير نشط.',
+            ]);
+        }
+
         $beneficiaryAccount = Account::find($data['beneficiary_account_id'] ?? null);
 
         if (! $beneficiaryAccount || (int) $beneficiaryAccount->currency_id !== (int) $currencyId) {
             throw ValidationException::withMessages([
                 'beneficiary_account_id' => 'يجب أن يكون حساب المستفيد بنفس عملة مبلغ التنفيذ.',
+            ]);
+        }
+
+        if ($requireActiveBeneficiary && ! $beneficiaryAccount->is_active) {
+            throw ValidationException::withMessages([
+                'beneficiary_account_id' => 'حساب المستفيد المحدد غير نشط.',
             ]);
         }
 

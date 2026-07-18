@@ -12,6 +12,7 @@ use App\Models\GeneralExchange;
 use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
+use App\Services\Validation\FinancialAccountGuard;
 use App\Services\Validation\FinancialAmountGuard;
 use Carbon\Carbon;
 use Filament\Actions\DeleteAction;
@@ -129,17 +130,59 @@ class EditGeneralExchange extends EditRecord
         $sourceCurrencyId = (int) $data['source_currency_id'];
         $disbCurrencyId   = (int) $data['disbursement_currency_id'];
 
+        // Old lines fetched before the account guard so an unchanged historical
+        // account may remain inactive; see FinancialAccountGuard::requireActiveOnChange().
+        $lines       = $record->transaction?->lines()->with('account')->get();
+        $oldSource   = $lines?->firstWhere('notes', GeneralExchange::LINE_SOURCE);
+        $oldAdmin    = $lines?->firstWhere('notes', GeneralExchange::LINE_ADMIN);
+        $oldTransfer = $lines?->firstWhere('notes', GeneralExchange::LINE_TRANSFER);
+        $oldDest     = $lines?->firstWhere('notes', GeneralExchange::LINE_DESTINATION);
+
+        $accounts = FinancialAccountGuard::assertAccounts([
+            'source' => [
+                'account_id'      => $data['source_account_id'] ?? null,
+                'account_type_id' => $data['source_account_type_id'] ?? null,
+                'bank_type_id'    => $data['source_bank_type_id'] ?? null,
+                'currency_id'     => $sourceCurrencyId,
+                'field'           => 'source_account_id',
+                'label'           => 'حساب المصدر',
+                'require_active'  => FinancialAccountGuard::requireActiveOnChange($oldSource?->account_id, $data['source_account_id'] ?? null),
+            ],
+            'admin' => [
+                'account_id'      => $data['admin_account_id'] ?? null,
+                'account_type_id' => $data['admin_account_type_id'] ?? null,
+                'bank_type_id'    => $data['admin_bank_type_id'] ?? null,
+                'currency_id'     => $sourceCurrencyId,
+                'field'           => 'admin_account_id',
+                'label'           => 'حساب النسبة الإدارية',
+                'require_active'  => FinancialAccountGuard::requireActiveOnChange($oldAdmin?->account_id, $data['admin_account_id'] ?? null),
+            ],
+            'transfer' => [
+                'account_id'      => $data['transfer_account_id'] ?? null,
+                'account_type_id' => $data['transfer_account_type_id'] ?? null,
+                'bank_type_id'    => $data['transfer_bank_type_id'] ?? null,
+                'currency_id'     => $sourceCurrencyId,
+                'field'           => 'transfer_account_id',
+                'label'           => 'حساب التحويل',
+                'require_active'  => FinancialAccountGuard::requireActiveOnChange($oldTransfer?->account_id, $data['transfer_account_id'] ?? null),
+            ],
+            'destination' => [
+                'account_id'      => $data['destination_account_id'] ?? null,
+                'account_type_id' => $data['destination_account_type_id'] ?? null,
+                'bank_type_id'    => $data['destination_bank_type_id'] ?? null,
+                'currency_id'     => $disbCurrencyId,
+                'field'           => 'destination_account_id',
+                'label'           => 'حساب الوجهة',
+                'require_active'  => FinancialAccountGuard::requireActiveOnChange($oldDest?->account_id, $data['destination_account_id'] ?? null),
+            ],
+        ]);
+
         return DB::transaction(function () use (
             $record, $data, $original, $adminPct, $transferPct, $fxRate,
-            $adminAmount, $transferAmount, $finalAmount, $sourceCurrencyId, $disbCurrencyId
+            $adminAmount, $transferAmount, $finalAmount, $sourceCurrencyId, $disbCurrencyId,
+            $oldSource, $oldAdmin, $oldTransfer, $oldDest, $accounts
         ) {
             $transaction = $record->transaction;
-            $lines       = $transaction?->lines()->with('account')->get();
-
-            $oldSource   = $lines?->firstWhere('notes', GeneralExchange::LINE_SOURCE);
-            $oldAdmin    = $lines?->firstWhere('notes', GeneralExchange::LINE_ADMIN);
-            $oldTransfer = $lines?->firstWhere('notes', GeneralExchange::LINE_TRANSFER);
-            $oldDest     = $lines?->firstWhere('notes', GeneralExchange::LINE_DESTINATION);
 
             // STEP 1 - Reverse all old account balances
             $oldSource?->account?->increment('current_balance', (float) $oldSource->credit_base);
@@ -186,10 +229,10 @@ class EditGeneralExchange extends EditRecord
             ]);
 
             // STEP 5 - Apply new account balances
-            Account::find($data['source_account_id'])?->decrement('current_balance', $original);
-            Account::find($data['admin_account_id'])?->increment('current_balance', $adminAmount);
-            Account::find($data['transfer_account_id'])?->increment('current_balance', $transferAmount);
-            Account::find($data['destination_account_id'])?->increment('current_balance', $finalAmount);
+            $accounts['source']->decrement('current_balance', $original);
+            $accounts['admin']->increment('current_balance', $adminAmount);
+            $accounts['transfer']->increment('current_balance', $transferAmount);
+            $accounts['destination']->increment('current_balance', $finalAmount);
 
             // STEP 5b - Regenerate the Arabic line descriptions and the parent
             // transaction description from the final saved state

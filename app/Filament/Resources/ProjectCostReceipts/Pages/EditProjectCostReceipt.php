@@ -5,7 +5,6 @@ namespace App\Filament\Resources\ProjectCostReceipts\Pages;
 use App\Enums\TransactionLineRole;
 use App\Filament\Resources\ProjectCostReceipts\ProjectCostReceiptResource;
 use App\Filament\Resources\ProjectCostReceipts\Tables\ProjectCostReceiptsTable;
-use App\Models\Account;
 use App\Models\Attachment;
 use App\Models\ProjectCost;
 use App\Models\ProjectCostReceipt;
@@ -13,6 +12,7 @@ use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
+use App\Services\Validation\FinancialAccountGuard;
 use App\Services\Validation\FinancialAmountGuard;
 use Carbon\Carbon;
 use Filament\Actions\DeleteAction;
@@ -75,17 +75,43 @@ class EditProjectCostReceipt extends EditRecord
     {
         FinancialAmountGuard::assertSimpleAmount((float) $data['amount'], 'amount', 'مبلغ الاستلام');
 
-        return DB::transaction(function () use ($record, $data) {
-            // STEP 1 - Get old lines
-            $oldDebitLine  = $record->transaction?->lines()->with('account')->where('debit_base', '>', 0)->first();
-            $oldCreditLine = $record->transaction?->lines()->with('account')->where('credit_base', '>', 0)->first();
-            $oldAmount     = $record->amount;
+        // Old lines fetched before the account guard so an unchanged historical
+        // account may remain inactive; see FinancialAccountGuard::requireActiveOnChange().
+        $oldDebitLine  = $record->transaction?->lines()->with('account')->where('debit_base', '>', 0)->first();
+        $oldCreditLine = $record->transaction?->lines()->with('account')->where('credit_base', '>', 0)->first();
 
-            // STEP 2 - Reverse old balances
+        $projectCost    = ProjectCost::find($data['project_cost_id']);
+        $costCurrencyId = $projectCost?->currency_id;
+
+        $accounts = FinancialAccountGuard::assertAccounts([
+            'debit' => [
+                'account_id'      => $data['debit_account_id'] ?? null,
+                'account_type_id' => $data['debit_account_type_id'] ?? null,
+                'bank_type_id'    => $data['debit_bank_type_id'] ?? null,
+                'currency_id'     => $costCurrencyId,
+                'field'           => 'debit_account_id',
+                'label'           => 'الحساب المدين',
+                'require_active'  => FinancialAccountGuard::requireActiveOnChange($oldDebitLine?->account_id, $data['debit_account_id'] ?? null),
+            ],
+            'credit' => [
+                'account_id'      => $data['credit_account_id'] ?? null,
+                'account_type_id' => $data['credit_account_type_id'] ?? null,
+                'bank_type_id'    => $data['credit_bank_type_id'] ?? null,
+                'currency_id'     => $costCurrencyId,
+                'field'           => 'credit_account_id',
+                'label'           => 'الحساب الدائن',
+                'require_active'  => FinancialAccountGuard::requireActiveOnChange($oldCreditLine?->account_id, $data['credit_account_id'] ?? null),
+            ],
+        ]);
+
+        return DB::transaction(function () use ($record, $data, $oldDebitLine, $oldCreditLine, $projectCost, $accounts) {
+            $oldAmount = $record->amount;
+
+            // STEP 1 - Reverse old balances
             $oldDebitLine?->account?->decrement('current_balance', $oldAmount);
             $oldCreditLine?->account?->increment('current_balance', $oldAmount);
 
-            // STEP 3 - Update transaction
+            // STEP 2 - Update transaction
             $record->transaction?->update([
                 'transaction_type_id' => $data['transaction_type_id'],
                 'transaction_time'    => Carbon::parse($data['date']),
@@ -95,9 +121,7 @@ class EditProjectCostReceipt extends EditRecord
                 'updated_by'          => auth()->id(),
             ]);
 
-            $projectCost = ProjectCost::find($data['project_cost_id']);
-
-            // STEP 4 - Update debit transaction_line (line_role set explicitly so
+            // STEP 3 - Update debit transaction_line (line_role set explicitly so
             // receipts created before the line_role feature self-heal on edit)
             $oldDebitLine?->update([
                 'account_id'      => $data['debit_account_id'],
@@ -108,7 +132,7 @@ class EditProjectCostReceipt extends EditRecord
                 'updated_by'      => auth()->id(),
             ]);
 
-            // STEP 5 - Update credit transaction_line
+            // STEP 4 - Update credit transaction_line
             $oldCreditLine?->update([
                 'account_id'      => $data['credit_account_id'],
                 'currency_id'     => $projectCost?->currency_id,
@@ -118,7 +142,7 @@ class EditProjectCostReceipt extends EditRecord
                 'updated_by'      => auth()->id(),
             ]);
 
-            // STEP 6 - Update project_cost_receipts
+            // STEP 5 - Update project_cost_receipts
             $record->update([
                 'project_cost_id' => $data['project_cost_id'],
                 'amount'          => $data['amount'],
@@ -128,11 +152,11 @@ class EditProjectCostReceipt extends EditRecord
                 'updated_by'      => auth()->id(),
             ]);
 
-            // STEP 7 - Apply new balances
-            Account::find($data['debit_account_id'])?->increment('current_balance', $data['amount']);
-            Account::find($data['credit_account_id'])?->decrement('current_balance', $data['amount']);
+            // STEP 6 - Apply new balances
+            $accounts['debit']->increment('current_balance', $data['amount']);
+            $accounts['credit']->decrement('current_balance', $data['amount']);
 
-            // STEP 7b - Regenerate the Arabic line descriptions and the parent
+            // STEP 6b - Regenerate the Arabic line descriptions and the parent
             // transaction description from the final saved state
             if ($record->transaction) {
                 app(TransactionLineDescriptionBuilder::class)->buildAndSaveForTransaction(
@@ -146,7 +170,7 @@ class EditProjectCostReceipt extends EditRecord
                 );
             }
 
-            // STEP 8 - Handle file upload
+            // STEP 7 - Handle file upload
             $existingAttachment = $record->attachments()->first();
             $newFilePath        = $data['receipt_image'] ?? null;
             $isNewFile          = $newFilePath && $newFilePath !== $existingAttachment?->file_path;
@@ -189,7 +213,7 @@ class EditProjectCostReceipt extends EditRecord
                 $existingAttachment->delete();
             }
 
-            // STEP 9 - Success notification
+            // STEP 8 - Success notification
             Notification::make()
                 ->title('تم تعديل الاستلام بنجاح')
                 ->success()

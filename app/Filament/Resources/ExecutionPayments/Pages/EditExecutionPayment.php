@@ -13,6 +13,7 @@ use App\Models\ProjectCostBudgetsPayment;
 use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
+use App\Services\Validation\FinancialAccountGuard;
 use App\Services\Validation\FinancialAmountGuard;
 use Carbon\Carbon;
 use Filament\Actions\DeleteAction;
@@ -105,11 +106,21 @@ class EditExecutionPayment extends EditRecord
 
         FinancialAmountGuard::assertSimpleAmount($amount, 'amount', 'مبلغ التنفيذ');
 
+        // Old lines fetched before validation so an unchanged historical account
+        // may remain inactive; see FinancialAccountGuard::requireActiveOnChange().
+        $lines          = $record->transaction?->lines()->with('account')->get();
+        $oldBeneficiary = $lines?->firstWhere('notes', ProjectCostBudgetsPayment::LINE_BENEFICIARY);
+        $oldCredit      = $lines?->firstWhere('notes', ProjectCostBudgetsPayment::LINE_CREDIT);
+
         // Validate the submitted credit account server-side before any mutation.
         // If the budget was genuinely changed during this Edit session, $data
         // already carries the new budget's default (applied by the form's own
         // afterStateUpdated); otherwise this is still the historical saved account.
-        $creditAccount   = ExecutionPaymentForm::validateCreditAccount($data);
+        $creditAccount   = ExecutionPaymentForm::validateCreditAccount(
+            $data,
+            requireActiveCredit: FinancialAccountGuard::requireActiveOnChange($oldCredit?->account_id, $data['credit_account_id'] ?? null),
+            requireActiveBeneficiary: FinancialAccountGuard::requireActiveOnChange($oldBeneficiary?->account_id, $data['beneficiary_account_id'] ?? null),
+        );
         $creditAccountId = $creditAccount->id;
 
         // Non-blocking warning if the new amount exceeds the remaining (excluding this row).
@@ -122,12 +133,8 @@ class EditExecutionPayment extends EditRecord
                 ->send();
         }
 
-        return DB::transaction(function () use ($record, $data, $amount, $budget, $currencyId, $creditAccountId) {
+        return DB::transaction(function () use ($record, $data, $amount, $budget, $currencyId, $creditAccountId, $oldBeneficiary, $oldCredit) {
             $transaction = $record->transaction;
-            $lines       = $transaction?->lines()->with('account')->get();
-
-            $oldBeneficiary = $lines?->firstWhere('notes', ProjectCostBudgetsPayment::LINE_BENEFICIARY);
-            $oldCredit      = $lines?->firstWhere('notes', ProjectCostBudgetsPayment::LINE_CREDIT);
 
             // STEP 1 - Reverse old balances
             $oldBeneficiary?->account?->decrement('current_balance', (float) $oldBeneficiary->debit_base);

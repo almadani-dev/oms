@@ -98,11 +98,45 @@ New targeted tests: 33/33 passing (74 assertions) — `FinancialAmountGuardTest`
 ### Commit Hash
 Not committed — awaiting explicit approval.
 
+---
+
+### Date
+2026-07-18
+
+### Task
+Implement the approved server-side financial account validation change, following the same-day read-only audit of the 4 workflows that relied only on Filament Select filtering for account validity (project cost receipts, project cost budget disbursements, general expenses, general exchanges — execution payments already had `ExecutionPaymentForm::validateCreditAccount()`). Add a reusable `FinancialAccountGuard`, wire it into all 8 Create/Edit page handlers before any mutation, extend the execution-payment validator with the same active-account behavior for consistency, and add targeted tests.
+
+### Result
+New `App\Services\Validation\FinancialAccountGuard`: `assertAccountMatches()` (existence/not-trashed, account_type_id, bank_type_id, currency, optional `$requireActive`), batch `assertAccounts(array $specs): array` (verified `Account` models keyed by role), and `requireActiveOnChange(?int $original, $submitted): bool`. Called in all 8 Create/Edit handlers before `DB::transaction()` opens. Edit pages now fetch the record's pre-mutation saved lines *before* the guard call (moved out of the transaction closure) specifically to compute, per account role, whether the submitted account_id differs from the historically-saved one — `require_active` is `true` only when it does, so an untouched historical account may stay inactive while a newly-selected replacement must be active; every account is required active on Create. Every `Account::find($data['xxx_account_id'])?->increment/decrement(...)` balance-update call was replaced with the guard-verified `Account` instance (no `?->` needed). Approved rule confirmed and preserved: the same account may be used on multiple roles (debit=credit, source=destination, etc.) — no distinct-account check exists or was added. `ExecutionPaymentForm::validateCreditAccount()` gained two new optional named parameters (`$requireActiveCredit`/`$requireActiveBeneficiary`, default `true`) purely additively — its existing 4 checks and messages are untouched; `CreateExecutionPayment.php` needed no change (defaults match Create semantics), `EditExecutionPayment.php` now computes the same old-line-based flags. No migration, no accounting-formula change, no historical data touched.
+
+### Changed Files
+- `app/Services/Validation/FinancialAccountGuard.php` (new)
+- `app/Filament/Resources/ProjectCostReceipts/Pages/CreateProjectCostReceipt.php`
+- `app/Filament/Resources/ProjectCostReceipts/Pages/EditProjectCostReceipt.php`
+- `app/Filament/Resources/GeneralExpenses/Pages/CreateGeneralExpense.php`
+- `app/Filament/Resources/GeneralExpenses/Pages/EditGeneralExpense.php`
+- `app/Filament/Resources/ProjectCostBudgetsPayments/Pages/CreateProjectCostBudgetsPayment.php`
+- `app/Filament/Resources/ProjectCostBudgetsPayments/Pages/EditProjectCostBudgetsPayment.php`
+- `app/Filament/Resources/GeneralExchanges/Pages/CreateGeneralExchange.php`
+- `app/Filament/Resources/GeneralExchanges/Pages/EditGeneralExchange.php`
+- `app/Filament/Resources/ExecutionPayments/Schemas/ExecutionPaymentForm.php`
+- `app/Filament/Resources/ExecutionPayments/Pages/EditExecutionPayment.php`
+- `tests/Unit/Services/Validation/FinancialAccountGuardTest.php` (new, 15 tests)
+- `tests/Feature/GeneralExpenses/GeneralExpenseAccountValidationTest.php` (new, 9 tests)
+- `tests/Feature/GeneralExchanges/GeneralExchangeAccountValidationTest.php` (new, 7 tests)
+- `tests/Feature/ProjectCostReceipts/ProjectCostReceiptAccountValidationTest.php` (new, 6 tests)
+- `tests/Feature/ProjectCostBudgetsPayments/ProjectCostBudgetsPaymentAccountValidationTest.php` (new, 6 tests)
+- `tests/Feature/ExecutionPayments/ExecutionPaymentCreditAccountTest.php` (extended, +4 tests)
+- `tests/Feature/GeneralExpenses/GeneralExpenseAmountValidationTest.php` (fixture fix: added account_type_id/bank_type_id to baseData, now required by the new guard)
+- `tests/Feature/GeneralExchanges/GeneralExchangeAmountValidationTest.php` (same fixture fix)
+- `graphify-out/**` (regenerated via `graphify update .`)
+- `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md`, `docs/NEXT_STEPS.md`, `docs/PROMPTS_LOG.md` (this entry set)
+
 ### Verification
-`php -l` clean on all 4 changed/new PHP files. New test suite: 7/7 passing (32 assertions) against a selectively-migrated SQLite `:memory:` schema (same pattern as `CleanOperationalDataCommandTest`), covering untouched-default create, manual-override create, cross-currency rejection (zero mutation), Edit hydration from the saved line (not the drifted budget destination), Edit-with-unrelated-field-change preserving the historical account, Edit manual account change (single active `LINE_CREDIT` line, correct balance reversal/reapplication, updated descriptions), and the reactive default on a genuine budget change. Existing description/line-description/financial regression suites (`TransactionDescriptionBuilderTest`, `TransactionLineDescriptionBuilderTest`, `BackfillTransactionDescriptionsCommandTest`, `CleanOperationalDataCommandTest`): 70/70 passing, unaffected. Full `php artisan test`: 78/79 (the 1 failure, `ExampleTest`, is pre-existing/unrelated — hits `/`, a route this Filament app never defines). `route:list` confirmed the 4 execution-payments routes (index/create/view/edit) are unchanged. `php artisan optimize:clear` ran clean. `graphify update .` ran clean (AST-only, no API cost).
+New/updated targeted tests: 60/60 passing — `FinancialAccountGuardTest` (15, unit-level: existence/soft-delete/type/bank/currency/active mismatches, batch validation, same-account-both-sides, `requireActiveOnChange`), `GeneralExpenseAccountValidationTest` (9), `GeneralExchangeAccountValidationTest` (7, dual-currency destination + same-account-all-4-roles), `ProjectCostReceiptAccountValidationTest` (6), `ProjectCostBudgetsPaymentAccountValidationTest` (6), plus 4 new tests added to `ExecutionPaymentCreditAccountTest` (now 11 total) covering the active-account behavior. Full `php artisan test`: 150/151 (the 1 failure, `ExampleTest`, is pre-existing/unrelated — hits `/`, a route this Filament app never defines).
 
 ### Commit Hash
-Not committed — per task instructions, no commit was requested.
+Not committed — awaiting explicit approval.
 
 ---
 

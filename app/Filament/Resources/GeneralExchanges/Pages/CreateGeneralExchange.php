@@ -12,6 +12,7 @@ use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
+use App\Services\Validation\FinancialAccountGuard;
 use App\Services\Validation\FinancialAmountGuard;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
@@ -44,9 +45,44 @@ class CreateGeneralExchange extends CreateRecord
         $sourceCurrencyId = (int) $data['source_currency_id'];
         $disbCurrencyId   = (int) $data['disbursement_currency_id'];
 
+        $accounts = FinancialAccountGuard::assertAccounts([
+            'source' => [
+                'account_id'      => $data['source_account_id'] ?? null,
+                'account_type_id' => $data['source_account_type_id'] ?? null,
+                'bank_type_id'    => $data['source_bank_type_id'] ?? null,
+                'currency_id'     => $sourceCurrencyId,
+                'field'           => 'source_account_id',
+                'label'           => 'حساب المصدر',
+            ],
+            'admin' => [
+                'account_id'      => $data['admin_account_id'] ?? null,
+                'account_type_id' => $data['admin_account_type_id'] ?? null,
+                'bank_type_id'    => $data['admin_bank_type_id'] ?? null,
+                'currency_id'     => $sourceCurrencyId,
+                'field'           => 'admin_account_id',
+                'label'           => 'حساب النسبة الإدارية',
+            ],
+            'transfer' => [
+                'account_id'      => $data['transfer_account_id'] ?? null,
+                'account_type_id' => $data['transfer_account_type_id'] ?? null,
+                'bank_type_id'    => $data['transfer_bank_type_id'] ?? null,
+                'currency_id'     => $sourceCurrencyId,
+                'field'           => 'transfer_account_id',
+                'label'           => 'حساب التحويل',
+            ],
+            'destination' => [
+                'account_id'      => $data['destination_account_id'] ?? null,
+                'account_type_id' => $data['destination_account_type_id'] ?? null,
+                'bank_type_id'    => $data['destination_bank_type_id'] ?? null,
+                'currency_id'     => $disbCurrencyId,
+                'field'           => 'destination_account_id',
+                'label'           => 'حساب الوجهة',
+            ],
+        ]);
+
         return DB::transaction(function () use (
             $data, $original, $adminPct, $transferPct, $fxRate,
-            $adminAmount, $transferAmount, $finalAmount, $sourceCurrencyId, $disbCurrencyId
+            $adminAmount, $transferAmount, $finalAmount, $sourceCurrencyId, $disbCurrencyId, $accounts
         ) {
             // STEP 1 - Create transaction (EXT-YYYY-XXXX)
             $year              = Carbon::parse($data['date'])->format('Y');
@@ -90,10 +126,10 @@ class CreateGeneralExchange extends CreateRecord
             ]);
 
             // STEP 4 - Update account balances
-            Account::find($data['source_account_id'])?->decrement('current_balance', $original);
-            Account::find($data['admin_account_id'])?->increment('current_balance', $adminAmount);
-            Account::find($data['transfer_account_id'])?->increment('current_balance', $transferAmount);
-            Account::find($data['destination_account_id'])?->increment('current_balance', $finalAmount);
+            $accounts['source']->decrement('current_balance', $original);
+            $accounts['admin']->increment('current_balance', $adminAmount);
+            $accounts['transfer']->increment('current_balance', $transferAmount);
+            $accounts['destination']->increment('current_balance', $finalAmount);
 
             // STEP 4b - Generate & save the Arabic line descriptions, then the
             // parent transaction description (both from the final saved lines)

@@ -1,6 +1,20 @@
 # Prompts Log
 
 ### Date
+2026-07-18 (server-side financial account validation)
+
+### Prompt
+User requested a focused read-only audit of server-side financial account validation across the 4 workflows that still relied mainly on Filament Select filtering (receipts, project cost budget payments, general expenses, general exchanges — execution payments already had a guard), asking for confirmed affected files, a per-field validation matrix, confirmed vulnerabilities with file/line references, business decisions needing confirmation, a minimal implementation plan, tests, and risk sizing — no changes yet. After reviewing the audit, user approved specific business rules (same account legally allowed on both sides of any operation, always; every account must exist/not-be-trashed/match type-bank-currency; Create requires every account active; Edit allows an unchanged historical account to stay inactive but requires a newly-selected replacement to be active; no historical data touched) and requested implementation: one reusable `FinancialAccountGuard` service with a focused `assertAccountMatches()` base method, wiring it into all 8 Create/Edit pages before any mutation, extending `ExecutionPaymentForm::validateCreditAccount()` only for active-account consistency, focused tests, and no staging/committing.
+
+### Purpose
+Close a real financial-integrity gap (a submitted account_id could bypass the rendered Select options entirely, and every balance-update call silently skipped on a missing/deleted account while still writing the transaction line) with the smallest safe, fully-tested change, in two phases (audit-then-approve) so the exact business rules — especially the Create-vs-Edit active-account split — were confirmed before any code changed.
+
+### Result
+Audit phase produced the affected-files/validation-matrix/vulnerabilities cited above (see `docs/TASKS_LOG.md` 2026-07-18 entry, not separately logged as its own task since no code changed in that phase). Implementation phase added `App\Services\Validation\FinancialAccountGuard` (`assertAccountMatches()`, batch `assertAccounts()`, `requireActiveOnChange()`), wired it into all 8 Create/Edit handlers before `DB::transaction()` (Edit pages restructured to fetch pre-mutation saved lines before the guard call, to compute per-role active requirements), replaced every `Account::find($data[...])?->increment/decrement()` with the guard-verified `Account` instance, and additively extended `ExecutionPaymentForm::validateCreditAccount()` with two optional active-account parameters. Added 60 new/targeted tests (150/151 full suite, 1 pre-existing unrelated failure), including a same-account-on-both-sides acceptance test per the approved rule. See `docs/TASKS_LOG.md`, `docs/AI_PROJECT_MEMORY.md`, and `docs/DECISIONS_LOG.md` (2026-07-18 entries) for full detail. Not committed, per instructions — diff shown for approval first.
+
+---
+
+### Date
 2026-07-18 (positive-amount validation)
 
 ### Prompt

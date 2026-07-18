@@ -4,7 +4,6 @@ namespace App\Filament\Resources\ProjectCostBudgetsPayments\Pages;
 
 use App\Enums\TransactionLineRole;
 use App\Filament\Resources\ProjectCostBudgetsPayments\ProjectCostBudgetsPaymentResource;
-use App\Models\Account;
 use App\Models\Attachment;
 use App\Models\ProjectCost;
 use App\Models\ProjectCostBudget;
@@ -12,6 +11,7 @@ use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
+use App\Services\Validation\FinancialAccountGuard;
 use App\Services\Validation\FinancialAmountGuard;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
@@ -49,9 +49,45 @@ class CreateProjectCostBudgetsPayment extends CreateRecord
 
         FinancialAmountGuard::assertDisbursementInputs($original, $adminPct, $transferPct, $fxRate, $afterDeduct, $finalAmount);
 
+        $accounts = FinancialAccountGuard::assertAccounts([
+            'source' => [
+                'account_id'      => $data['source_account_id'] ?? null,
+                'account_type_id' => $data['source_account_type_id'] ?? null,
+                'bank_type_id'    => $data['source_bank_type_id'] ?? null,
+                'currency_id'     => $costCurrencyId,
+                'field'           => 'source_account_id',
+                'label'           => 'حساب المصدر',
+            ],
+            'admin' => [
+                'account_id'      => $data['admin_account_id'] ?? null,
+                'account_type_id' => $data['admin_account_type_id'] ?? null,
+                'bank_type_id'    => $data['admin_bank_type_id'] ?? null,
+                'currency_id'     => $costCurrencyId,
+                'field'           => 'admin_account_id',
+                'label'           => 'حساب النسبة الإدارية',
+            ],
+            'transfer' => [
+                'account_id'      => $data['transfer_account_id'] ?? null,
+                'account_type_id' => $data['transfer_account_type_id'] ?? null,
+                'bank_type_id'    => $data['transfer_bank_type_id'] ?? null,
+                'currency_id'     => $costCurrencyId,
+                'field'           => 'transfer_account_id',
+                'label'           => 'حساب التحويل',
+            ],
+            'destination' => [
+                'account_id'      => $data['destination_account_id'] ?? null,
+                'account_type_id' => $data['destination_account_type_id'] ?? null,
+                'bank_type_id'    => $data['destination_bank_type_id'] ?? null,
+                'currency_id'     => $data['disbursement_currency_id'] ?? null,
+                'field'           => 'destination_account_id',
+                'label'           => 'حساب الوجهة',
+            ],
+        ]);
+
         return DB::transaction(function () use (
             $data, $projectCost, $projectCostId, $costCurrencyId,
-            $original, $adminPct, $transferPct, $adminAmount, $transferAmount, $afterDeduct, $finalAmount, $fxRate
+            $original, $adminPct, $transferPct, $adminAmount, $transferAmount, $afterDeduct, $finalAmount, $fxRate,
+            $accounts
         ) {
             // STEP 1 - Create transaction
             $year              = Carbon::parse($data['date'])->format('Y');
@@ -102,10 +138,10 @@ class CreateProjectCostBudgetsPayment extends CreateRecord
             Log::info('Disbursement STEP 3: created project_cost_budgets row', ['id' => $budget->id]);
 
             // STEP 4 - Update account balances
-            Account::find($data['source_account_id'])?->decrement('current_balance', $original);
-            Account::find($data['admin_account_id'])?->increment('current_balance', $adminAmount);
-            Account::find($data['transfer_account_id'])?->increment('current_balance', $transferAmount);
-            Account::find($data['destination_account_id'])?->increment('current_balance', $finalAmount);
+            $accounts['source']->decrement('current_balance', $original);
+            $accounts['admin']->increment('current_balance', $adminAmount);
+            $accounts['transfer']->increment('current_balance', $transferAmount);
+            $accounts['destination']->increment('current_balance', $finalAmount);
 
             // STEP 4b - Generate & save the Arabic line descriptions, then the
             // parent transaction description (both from the final saved lines)

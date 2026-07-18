@@ -6,12 +6,12 @@ use App\Enums\TransactionLineRole;
 use App\Filament\Resources\GeneralExpenses\GeneralExpenseResource;
 use App\Filament\Resources\GeneralExpenses\Schemas\GeneralExpenseForm;
 use App\Filament\Resources\GeneralExpenses\Tables\GeneralExpensesTable;
-use App\Models\Account;
 use App\Models\Attachment;
 use App\Models\GeneralExpense;
 use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
+use App\Services\Validation\FinancialAccountGuard;
 use App\Services\Validation\FinancialAmountGuard;
 use Carbon\Carbon;
 use Filament\Actions\DeleteAction;
@@ -91,12 +91,35 @@ class EditGeneralExpense extends EditRecord
 
         FinancialAmountGuard::assertSimpleAmount($amount, 'amount', 'مبلغ المصروف');
 
-        return DB::transaction(function () use ($record, $data, $amount, $currencyId) {
-            $transaction = $record->transaction;
-            $lines       = $transaction?->lines()->with('account')->get();
+        // Old lines fetched before the account guard so an unchanged historical
+        // account may remain inactive; see FinancialAccountGuard::requireActiveOnChange().
+        $lines     = $record->transaction?->lines()->with('account')->get();
+        $oldDebit  = $lines?->first(fn ($l) => (float) $l->debit_base > 0);
+        $oldCredit = $lines?->first(fn ($l) => (float) $l->credit_base > 0);
 
-            $oldDebit  = $lines?->first(fn ($l) => (float) $l->debit_base > 0);
-            $oldCredit = $lines?->first(fn ($l) => (float) $l->credit_base > 0);
+        $accounts = FinancialAccountGuard::assertAccounts([
+            'debit' => [
+                'account_id'      => $data['debit_account_id'] ?? null,
+                'account_type_id' => $data['debit_account_type_id'] ?? null,
+                'bank_type_id'    => $data['debit_bank_type_id'] ?? null,
+                'currency_id'     => $currencyId,
+                'field'           => 'debit_account_id',
+                'label'           => 'الحساب المدين',
+                'require_active'  => FinancialAccountGuard::requireActiveOnChange($oldDebit?->account_id, $data['debit_account_id'] ?? null),
+            ],
+            'credit' => [
+                'account_id'      => $data['credit_account_id'] ?? null,
+                'account_type_id' => $data['credit_account_type_id'] ?? null,
+                'bank_type_id'    => $data['credit_bank_type_id'] ?? null,
+                'currency_id'     => $currencyId,
+                'field'           => 'credit_account_id',
+                'label'           => 'الحساب الدائن',
+                'require_active'  => FinancialAccountGuard::requireActiveOnChange($oldCredit?->account_id, $data['credit_account_id'] ?? null),
+            ],
+        ]);
+
+        return DB::transaction(function () use ($record, $data, $amount, $currencyId, $oldDebit, $oldCredit, $accounts) {
+            $transaction = $record->transaction;
 
             // STEP 1 - Reverse old balances (old debit decrement, old credit increment)
             $oldDebit?->account?->decrement('current_balance', (float) $oldDebit->debit_base);
@@ -131,8 +154,8 @@ class EditGeneralExpense extends EditRecord
             ]);
 
             // STEP 5 - Apply new balances
-            Account::find($data['debit_account_id'])?->increment('current_balance', $amount);  // مدين
-            Account::find($data['credit_account_id'])?->decrement('current_balance', $amount);  // دائن
+            $accounts['debit']->increment('current_balance', $amount);  // مدين
+            $accounts['credit']->decrement('current_balance', $amount);  // دائن
 
             // STEP 5b - Regenerate the Arabic line descriptions and the parent
             // transaction description from the final saved state

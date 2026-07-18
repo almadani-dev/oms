@@ -55,6 +55,20 @@ The same-day read-only audit found these 5 workflows had `numeric()`/`required()
 ---
 
 ### Date
+2026-07-18
+
+### Decision
+Approved business rules for server-side financial account validation, confirmed by the user before implementation: (1) the same account is explicitly allowed on both sides of an operation (debit=credit, source=destination, etc.) across all 5 financial workflows — no distinct-account check exists or will be added, anywhere; (2) every submitted account must exist, not be soft-deleted, and match the expected account type/bank type/currency — always, on both Create and Edit; (3) on **Create**, every selected account must additionally be `is_active = true`; (4) on **Edit**, an account unchanged from the record's originally-saved account_id may remain inactive (a historical record may reference an account that was active when created but has since been deactivated), but if the user replaces it with a different account, that new account must be active — accounts are never silently swapped or reactivated by this validation; (5) existing historical data (including any currently-inactive or otherwise "invalid" account already referenced by a saved record) must not be modified, repaired, restored, reactivated, or deleted by this task.
+
+### Reason
+The same-day read-only audit found the 4 non-execution-payment workflows had zero independent server-side account validation — `account_type_id`/`bank_type_id` submitted alongside an `account_id` are pure Livewire UI state, never persisted, so a directly-submitted request could pair a real `account_id` with a mismatched type/bank/currency that the rendered Select would never have offered. The audit also found every balance-update call used `Account::find($id)?->increment/decrement(...)`, silently skipping the balance update (while still writing the transaction line) whenever `$id` pointed at a missing or soft-deleted account — closed by using the already-guard-verified `Account` object instead. The Create-vs-Edit active-account split specifically avoids two failure modes: allowing brand-new operations against a deliberately-deactivated account (Create), and breaking the ability to edit an old, still-valid record for an unrelated reason (date, notes) just because the real world account it references was closed sometime after creation (Edit).
+
+### Impact
+`App\Services\Validation\FinancialAccountGuard` is now the single authoritative place these rules live; any future financial write flow must call `assertAccounts()` before its `DB::transaction()` and use the returned `Account` objects for balance updates, not a fresh `Account::find($data[...])?->`. `ExecutionPaymentForm::validateCreditAccount()` (previously the only such guard in the codebase, with no active-account check at all) now accepts the same active-account behavior via two additive optional parameters, so all 5 financial workflows are consistent on this rule going forward. No historical data was touched — any currently-inactive account already referenced by a saved record remains exactly as-is and stays editable as long as it isn't replaced.
+
+---
+
+### Date
 2026-07-16
 
 ### Decision

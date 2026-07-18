@@ -414,4 +414,76 @@ class ExecutionPaymentCreditAccountTest extends TestCase
         $this->assertSame($newDestination->bank_type_id, $captured['credit_bank_type_id']);
         $this->assertSame($currency2->name, $captured['credit_currency']);
     }
+
+    // ---- active-account behavior (server-side account validation phase) ----
+
+    public function test_create_rejects_inactive_credit_account(): void
+    {
+        $fx = $this->baseFixture();
+        $fx['creditA']->update(['is_active' => false]);
+
+        try {
+            $this->invokeCreate($this->baseData($fx));
+            $this->fail('Expected a ValidationException for an inactive credit account on Create.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('credit_account_id', $e->errors());
+        }
+
+        $this->assertSame(0, ProjectCostBudgetsPayment::count());
+    }
+
+    public function test_create_rejects_inactive_beneficiary_account(): void
+    {
+        $fx = $this->baseFixture();
+        $fx['beneficiary']->update(['is_active' => false]);
+
+        try {
+            $this->invokeCreate($this->baseData($fx));
+            $this->fail('Expected a ValidationException for an inactive beneficiary account on Create.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('beneficiary_account_id', $e->errors());
+        }
+    }
+
+    public function test_edit_allows_unchanged_historical_credit_account_even_if_now_inactive(): void
+    {
+        $fx      = $this->baseFixture();
+        $payment = $this->invokeCreate($this->baseData($fx));
+
+        // The credit account is deactivated after the payment was created.
+        $fx['creditA']->update(['is_active' => false]);
+
+        $hydrated = $this->invokeMutateBeforeFill($payment->fresh());
+        $hydrated['notes'] = 'ملاحظة محدثة فقط';
+
+        $updated = $this->invokeUpdate($payment->fresh(), $hydrated);
+
+        $this->assertSame('ملاحظة محدثة فقط', $updated->notes);
+        $this->assertEquals(4900, (float) $fx['creditA']->fresh()->current_balance); // unchanged net effect
+    }
+
+    public function test_edit_rejects_switching_to_a_newly_selected_inactive_credit_account(): void
+    {
+        $fx      = $this->baseFixture();
+        $payment = $this->invokeCreate($this->baseData($fx));
+
+        $inactiveCredit = $this->makeAccount('دائن-غير-نشط', $fx['currency'], $fx['accountType'], $fx['bankType'], 1000);
+        $inactiveCredit->update(['is_active' => false]);
+
+        $hydrated = $this->invokeMutateBeforeFill($payment->fresh());
+        $hydrated['credit_account_id']      = $inactiveCredit->id;
+        $hydrated['credit_account_type_id'] = $inactiveCredit->account_type_id;
+        $hydrated['credit_bank_type_id']    = $inactiveCredit->bank_type_id;
+
+        try {
+            $this->invokeUpdate($payment->fresh(), $hydrated);
+            $this->fail('Expected a ValidationException for switching to a newly-selected inactive credit account.');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('credit_account_id', $e->errors());
+        }
+
+        // Nothing was reversed or reapplied.
+        $this->assertEquals(4900, (float) $fx['creditA']->fresh()->current_balance);
+        $this->assertEquals(1000, (float) $inactiveCredit->fresh()->current_balance);
+    }
 }

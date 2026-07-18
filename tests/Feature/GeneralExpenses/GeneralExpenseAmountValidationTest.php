@@ -91,7 +91,11 @@ class GeneralExpenseAmountValidationTest extends TestCase
             'description'                => null,
             'notes'                      => null,
             'debit_account_id'           => $fx['debitAccount']->id,
+            'debit_account_type_id'      => $fx['debitAccount']->account_type_id,
+            'debit_bank_type_id'         => $fx['debitAccount']->bank_type_id,
             'credit_account_id'          => $fx['creditAccount']->id,
+            'credit_account_type_id'     => $fx['creditAccount']->account_type_id,
+            'credit_bank_type_id'        => $fx['creditAccount']->bank_type_id,
             'expense_image'              => null,
         ];
     }

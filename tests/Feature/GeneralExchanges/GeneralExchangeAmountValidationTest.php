@@ -95,9 +95,17 @@ class GeneralExchangeAmountValidationTest extends TestCase
             'date'                       => '2026-07-18',
             'notes'                      => null,
             'source_account_id'          => $fx['sourceAccount']->id,
+            'source_account_type_id'     => $fx['sourceAccount']->account_type_id,
+            'source_bank_type_id'        => $fx['sourceAccount']->bank_type_id,
             'admin_account_id'           => $fx['adminAccount']->id,
+            'admin_account_type_id'      => $fx['adminAccount']->account_type_id,
+            'admin_bank_type_id'         => $fx['adminAccount']->bank_type_id,
             'transfer_account_id'        => $fx['transferAccount']->id,
+            'transfer_account_type_id'   => $fx['transferAccount']->account_type_id,
+            'transfer_bank_type_id'      => $fx['transferAccount']->bank_type_id,
             'destination_account_id'     => $fx['destinationAccount']->id,
+            'destination_account_type_id' => $fx['destinationAccount']->account_type_id,
+            'destination_bank_type_id'   => $fx['destinationAccount']->bank_type_id,
             'exchange_image'             => null,
         ], $overrides);
     }

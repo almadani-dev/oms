@@ -4,13 +4,13 @@ namespace App\Filament\Resources\GeneralExpenses\Pages;
 
 use App\Enums\TransactionLineRole;
 use App\Filament\Resources\GeneralExpenses\GeneralExpenseResource;
-use App\Models\Account;
 use App\Models\Attachment;
 use App\Models\GeneralExpense;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
+use App\Services\Validation\FinancialAccountGuard;
 use App\Services\Validation\FinancialAmountGuard;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
@@ -35,7 +35,26 @@ class CreateGeneralExpense extends CreateRecord
 
         FinancialAmountGuard::assertSimpleAmount($amount, 'amount', 'مبلغ المصروف');
 
-        return DB::transaction(function () use ($data, $amount, $currencyId) {
+        $accounts = FinancialAccountGuard::assertAccounts([
+            'debit' => [
+                'account_id'      => $data['debit_account_id'] ?? null,
+                'account_type_id' => $data['debit_account_type_id'] ?? null,
+                'bank_type_id'    => $data['debit_bank_type_id'] ?? null,
+                'currency_id'     => $currencyId,
+                'field'           => 'debit_account_id',
+                'label'           => 'الحساب المدين',
+            ],
+            'credit' => [
+                'account_id'      => $data['credit_account_id'] ?? null,
+                'account_type_id' => $data['credit_account_type_id'] ?? null,
+                'bank_type_id'    => $data['credit_bank_type_id'] ?? null,
+                'currency_id'     => $currencyId,
+                'field'           => 'credit_account_id',
+                'label'           => 'الحساب الدائن',
+            ],
+        ]);
+
+        return DB::transaction(function () use ($data, $amount, $currencyId, $accounts) {
             // STEP 1 - Create the transaction (GEN-YYYY-XXXX)
             $year              = Carbon::parse($data['date'])->format('Y');
             $transactionNumber = $this->generateTransactionNumber('GEN-' . $year . '-');
@@ -68,8 +87,8 @@ class CreateGeneralExpense extends CreateRecord
             ]);
 
             // STEP 4 - Update account balances
-            Account::find($data['debit_account_id'])?->increment('current_balance', $amount);  // مدين
-            Account::find($data['credit_account_id'])?->decrement('current_balance', $amount);  // دائن
+            $accounts['debit']->increment('current_balance', $amount);  // مدين
+            $accounts['credit']->decrement('current_balance', $amount);  // دائن
 
             // STEP 4b - Generate & save the Arabic line descriptions, then the
             // parent transaction description (both from the final saved lines)

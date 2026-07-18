@@ -4,7 +4,6 @@ namespace App\Filament\Resources\ProjectCostReceipts\Pages;
 
 use App\Enums\TransactionLineRole;
 use App\Filament\Resources\ProjectCostReceipts\ProjectCostReceiptResource;
-use App\Models\Account;
 use App\Models\Attachment;
 use App\Models\ProjectCost;
 use App\Models\ProjectCostReceipt;
@@ -12,6 +11,7 @@ use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
+use App\Services\Validation\FinancialAccountGuard;
 use App\Services\Validation\FinancialAmountGuard;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
@@ -33,7 +33,29 @@ class CreateProjectCostReceipt extends CreateRecord
     {
         FinancialAmountGuard::assertSimpleAmount((float) $data['amount'], 'amount', 'مبلغ الاستلام');
 
-        return DB::transaction(function () use ($data) {
+        $projectCost    = ProjectCost::find($data['project_cost_id']);
+        $costCurrencyId = $projectCost?->currency_id;
+
+        $accounts = FinancialAccountGuard::assertAccounts([
+            'debit' => [
+                'account_id'      => $data['debit_account_id'] ?? null,
+                'account_type_id' => $data['debit_account_type_id'] ?? null,
+                'bank_type_id'    => $data['debit_bank_type_id'] ?? null,
+                'currency_id'     => $costCurrencyId,
+                'field'           => 'debit_account_id',
+                'label'           => 'الحساب المدين',
+            ],
+            'credit' => [
+                'account_id'      => $data['credit_account_id'] ?? null,
+                'account_type_id' => $data['credit_account_type_id'] ?? null,
+                'bank_type_id'    => $data['credit_bank_type_id'] ?? null,
+                'currency_id'     => $costCurrencyId,
+                'field'           => 'credit_account_id',
+                'label'           => 'الحساب الدائن',
+            ],
+        ]);
+
+        return DB::transaction(function () use ($data, $projectCost, $accounts) {
             // STEP 1 - Create transaction
             $year              = Carbon::parse($data['date'])->format('Y');
             $transactionNumber = $this->generateTransactionNumber('REC-' . $year . '-');
@@ -48,8 +70,6 @@ class CreateProjectCostReceipt extends CreateRecord
                 'created_by'          => auth()->id(),
                 'updated_by'          => auth()->id(),
             ]);
-
-            $projectCost = ProjectCost::find($data['project_cost_id']);
 
             // STEP 2 - Create debit transaction_line (مدين)
             TransactionLine::create([
@@ -92,8 +112,8 @@ class CreateProjectCostReceipt extends CreateRecord
             ]);
 
             // STEP 5 - Update account balances
-            Account::find($data['debit_account_id'])?->increment('current_balance', $data['amount']);
-            Account::find($data['credit_account_id'])?->decrement('current_balance', $data['amount']);
+            $accounts['debit']->increment('current_balance', $data['amount']);
+            $accounts['credit']->decrement('current_balance', $data['amount']);
 
             // STEP 5b - Generate & save the Arabic line descriptions, then the
             // parent transaction description (both from the final saved lines)
