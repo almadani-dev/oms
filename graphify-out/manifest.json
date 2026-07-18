@@ -1875,28 +1875,28 @@
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1784194948.6787972,
-    "ast_hash": "e3adfa900cf4fa5b386c4dcfe6858a52",
+    "mtime": 1784359296.8537414,
+    "ast_hash": "711ab11154267210b8ca1939e2fea7c9",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
-    "mtime": 1784193020.117161,
-    "ast_hash": "6a67fcdc774357a040f2a4e1baa24f22",
+    "mtime": 1784359332.3555875,
+    "ast_hash": "93f90d186407bfd06b7f103de5b72757",
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1784195119.1839561,
-    "ast_hash": "b558f7a7dfed560751ccebfa6882c750",
+    "mtime": 1784359343.7087772,
+    "ast_hash": "20138195c1c98ed8403f99e09a5d902a",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
-    "mtime": 1784195133.9468894,
-    "ast_hash": "e46a66783fc8005688b6736563f03c8a",
+    "mtime": 1784359357.2782495,
+    "ast_hash": "e46ecb34d5cde13b2aabad604a1eeab1",
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1784195076.139341,
-    "ast_hash": "5ed43c54a7de4eb692004e381f503c9a",
+    "mtime": 1784359320.3601875,
+    "ast_hash": "9087753cd015d7823bad9b3c89403180",
     "semantic_hash": ""
   },
   "app/Services/Reports/ProjectFinancialDetailsWordExportService.php": {
