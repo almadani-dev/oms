@@ -13,6 +13,7 @@ use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
 use App\Services\Validation\FinancialAmountGuard;
+use App\Services\Validation\FinancialTransactionBalanceGuard;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
@@ -55,7 +56,12 @@ class CreateProjectCostReceipt extends CreateRecord
             ],
         ]);
 
-        return DB::transaction(function () use ($data, $projectCost, $accounts) {
+        $lines = $this->buildReceiptLines($data, $projectCost);
+
+        FinancialTransactionBalanceGuard::assertValidLinePayload($lines);
+        FinancialTransactionBalanceGuard::assertBalancedSingleCurrencyLines($lines, (int) $costCurrencyId);
+
+        return DB::transaction(function () use ($data, $projectCost, $accounts, $lines) {
             // STEP 1 - Create transaction
             $year              = Carbon::parse($data['date'])->format('Y');
             $transactionNumber = $this->generateTransactionNumber('REC-' . $year . '-');
@@ -71,33 +77,11 @@ class CreateProjectCostReceipt extends CreateRecord
                 'updated_by'          => auth()->id(),
             ]);
 
-            // STEP 2 - Create debit transaction_line (مدين)
-            TransactionLine::create([
-                'transaction_id'  => $transaction->id,
-                'account_id'      => $data['debit_account_id'],
-                'currency_id'     => $projectCost?->currency_id,
-                'amount_currency' => $data['amount'],
-                'fx_rate'         => 1,
-                'debit_base'      => $data['amount'],
-                'credit_base'     => 0,
-                'line_role'       => TransactionLineRole::ReceiptDestination->value,
-                'created_by'      => auth()->id(),
-                'updated_by'      => auth()->id(),
-            ]);
-
-            // STEP 3 - Create credit transaction_line (دائن)
-            TransactionLine::create([
-                'transaction_id'  => $transaction->id,
-                'account_id'      => $data['credit_account_id'],
-                'currency_id'     => $projectCost?->currency_id,
-                'amount_currency' => $data['amount'],
-                'fx_rate'         => 1,
-                'debit_base'      => 0,
-                'credit_base'     => $data['amount'],
-                'line_role'       => TransactionLineRole::FundingSource->value,
-                'created_by'      => auth()->id(),
-                'updated_by'      => auth()->id(),
-            ]);
+            // STEP 2 - Insert the validated debit/credit transaction_lines
+            // unchanged, exactly as built and validated above.
+            foreach ($lines as $line) {
+                TransactionLine::create($line + ['transaction_id' => $transaction->id]);
+            }
 
             // STEP 4 - Create project_cost_receipts
             $receipt = ProjectCostReceipt::create([
@@ -192,6 +176,46 @@ class CreateProjectCostReceipt extends CreateRecord
         }
 
         return $prefix . str_pad($max + 1, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Build the exact two-line TransactionLine payload (debit destination +
+     * credit funding source) in memory, without transaction_id, so it can be
+     * validated by FinancialTransactionBalanceGuard before DB::transaction()
+     * opens. The transaction_id is merged in at insert time; nothing else is
+     * recalculated.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    protected function buildReceiptLines(array $data, ?ProjectCost $projectCost): array
+    {
+        $uid        = auth()->id();
+        $currencyId = $projectCost?->currency_id;
+
+        return [
+            [
+                'account_id'      => $data['debit_account_id'],
+                'currency_id'     => $currencyId,
+                'amount_currency' => $data['amount'],
+                'fx_rate'         => 1,
+                'debit_base'      => $data['amount'],
+                'credit_base'     => 0,
+                'line_role'       => TransactionLineRole::ReceiptDestination->value,
+                'created_by'      => $uid,
+                'updated_by'      => $uid,
+            ],
+            [
+                'account_id'      => $data['credit_account_id'],
+                'currency_id'     => $currencyId,
+                'amount_currency' => $data['amount'],
+                'fx_rate'         => 1,
+                'debit_base'      => 0,
+                'credit_base'     => $data['amount'],
+                'line_role'       => TransactionLineRole::FundingSource->value,
+                'created_by'      => $uid,
+                'updated_by'      => $uid,
+            ],
+        ];
     }
 
     /**

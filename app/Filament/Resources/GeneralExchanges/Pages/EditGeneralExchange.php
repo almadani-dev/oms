@@ -14,6 +14,7 @@ use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
 use App\Services\Validation\FinancialAmountGuard;
+use App\Services\Validation\FinancialTransactionBalanceGuard;
 use Carbon\Carbon;
 use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
@@ -177,10 +178,24 @@ class EditGeneralExchange extends EditRecord
             ],
         ]);
 
+        $lines = $this->buildLines($data, $sourceCurrencyId, $disbCurrencyId, [
+            'original' => $original,
+            'admin'    => $adminAmount,
+            'transfer' => $transferAmount,
+            'final'    => $finalAmount,
+            'fx'       => $fxRate,
+        ]);
+
+        FinancialTransactionBalanceGuard::assertValidLinePayload($lines);
+        FinancialTransactionBalanceGuard::assertBalancedMultiCurrencyLines(
+            $lines[0], $lines[1], $lines[2], $lines[3],
+            $sourceCurrencyId, $disbCurrencyId
+        );
+
         return DB::transaction(function () use (
             $record, $data, $original, $adminPct, $transferPct, $fxRate,
             $adminAmount, $transferAmount, $finalAmount, $sourceCurrencyId, $disbCurrencyId,
-            $oldSource, $oldAdmin, $oldTransfer, $oldDest, $accounts
+            $oldSource, $oldAdmin, $oldTransfer, $oldDest, $accounts, $lines
         ) {
             $transaction = $record->transaction;
 
@@ -202,15 +217,12 @@ class EditGeneralExchange extends EditRecord
 
             // STEP 3 - Replace the four transaction lines (hard delete: these are being
             // immediately recreated, so no soft-deleted duplicates should accumulate)
+            // with the validated payload built above, unchanged.
             $transaction?->lines()->forceDelete();
             if ($transaction) {
-                $this->buildLines($transaction->id, $data, $sourceCurrencyId, $disbCurrencyId, [
-                    'original' => $original,
-                    'admin'    => $adminAmount,
-                    'transfer' => $transferAmount,
-                    'final'    => $finalAmount,
-                    'fx'       => $fxRate,
-                ]);
+                foreach ($lines as $line) {
+                    TransactionLine::create($line + ['transaction_id' => $transaction->id]);
+                }
             }
 
             // STEP 4 - Update the general exchange row
@@ -302,48 +314,53 @@ class EditGeneralExchange extends EditRecord
     }
 
     /**
-     * Four lines: 1 credit (source) + 3 debit (admin, transfer, destination),
-     * each tagged via notes for later identification.
+     * Build the exact four-line TransactionLine payload — 1 credit (source) +
+     * 3 debit (admin, transfer, destination), in this fixed order — in
+     * memory, without transaction_id, so it can be validated by
+     * FinancialTransactionBalanceGuard before DB::transaction() opens. The
+     * transaction_id is merged in at insert time; nothing else is
+     * recalculated. Each line is tagged via notes for later identification.
+     *
+     * @return array<int, array<string, mixed>>
      */
-    protected function buildLines(int $transactionId, array $data, int $sourceCurrencyId, int $disbCurrencyId, array $amounts): void
+    protected function buildLines(array $data, int $sourceCurrencyId, int $disbCurrencyId, array $amounts): array
     {
         $uid = auth()->id();
 
-        TransactionLine::create([
-            'transaction_id' => $transactionId, 'account_id' => $data['source_account_id'],
-            'currency_id' => $sourceCurrencyId, 'amount_currency' => $amounts['original'], 'fx_rate' => 1,
-            'debit_base' => 0, 'credit_base' => $amounts['original'],
-            'notes' => GeneralExchange::LINE_SOURCE,
-            'line_role' => TransactionLineRole::Source->value,
-            'created_by' => $uid, 'updated_by' => $uid,
-        ]);
-
-        TransactionLine::create([
-            'transaction_id' => $transactionId, 'account_id' => $data['admin_account_id'],
-            'currency_id' => $sourceCurrencyId, 'amount_currency' => $amounts['admin'], 'fx_rate' => 1,
-            'debit_base' => $amounts['admin'], 'credit_base' => 0,
-            'notes' => GeneralExchange::LINE_ADMIN,
-            'line_role' => TransactionLineRole::AdministrativeDeduction->value,
-            'created_by' => $uid, 'updated_by' => $uid,
-        ]);
-
-        TransactionLine::create([
-            'transaction_id' => $transactionId, 'account_id' => $data['transfer_account_id'],
-            'currency_id' => $sourceCurrencyId, 'amount_currency' => $amounts['transfer'], 'fx_rate' => 1,
-            'debit_base' => $amounts['transfer'], 'credit_base' => 0,
-            'notes' => GeneralExchange::LINE_TRANSFER,
-            'line_role' => TransactionLineRole::TransferFee->value,
-            'created_by' => $uid, 'updated_by' => $uid,
-        ]);
-
-        TransactionLine::create([
-            'transaction_id' => $transactionId, 'account_id' => $data['destination_account_id'],
-            'currency_id' => $disbCurrencyId, 'amount_currency' => $amounts['final'], 'fx_rate' => $amounts['fx'],
-            'debit_base' => $amounts['final'], 'credit_base' => 0,
-            'notes' => GeneralExchange::LINE_DESTINATION,
-            'line_role' => TransactionLineRole::Destination->value,
-            'created_by' => $uid, 'updated_by' => $uid,
-        ]);
+        return [
+            [
+                'account_id' => $data['source_account_id'],
+                'currency_id' => $sourceCurrencyId, 'amount_currency' => $amounts['original'], 'fx_rate' => 1,
+                'debit_base' => 0, 'credit_base' => $amounts['original'],
+                'notes' => GeneralExchange::LINE_SOURCE,
+                'line_role' => TransactionLineRole::Source->value,
+                'created_by' => $uid, 'updated_by' => $uid,
+            ],
+            [
+                'account_id' => $data['admin_account_id'],
+                'currency_id' => $sourceCurrencyId, 'amount_currency' => $amounts['admin'], 'fx_rate' => 1,
+                'debit_base' => $amounts['admin'], 'credit_base' => 0,
+                'notes' => GeneralExchange::LINE_ADMIN,
+                'line_role' => TransactionLineRole::AdministrativeDeduction->value,
+                'created_by' => $uid, 'updated_by' => $uid,
+            ],
+            [
+                'account_id' => $data['transfer_account_id'],
+                'currency_id' => $sourceCurrencyId, 'amount_currency' => $amounts['transfer'], 'fx_rate' => 1,
+                'debit_base' => $amounts['transfer'], 'credit_base' => 0,
+                'notes' => GeneralExchange::LINE_TRANSFER,
+                'line_role' => TransactionLineRole::TransferFee->value,
+                'created_by' => $uid, 'updated_by' => $uid,
+            ],
+            [
+                'account_id' => $data['destination_account_id'],
+                'currency_id' => $disbCurrencyId, 'amount_currency' => $amounts['final'], 'fx_rate' => $amounts['fx'],
+                'debit_base' => $amounts['final'], 'credit_base' => 0,
+                'notes' => GeneralExchange::LINE_DESTINATION,
+                'line_role' => TransactionLineRole::Destination->value,
+                'created_by' => $uid, 'updated_by' => $uid,
+            ],
+        ];
     }
 
     protected function storeAttachment(GeneralExchange $exchange, string $tempPath, float $finalAmount): void

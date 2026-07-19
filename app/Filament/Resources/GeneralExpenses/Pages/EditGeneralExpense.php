@@ -13,6 +13,7 @@ use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
 use App\Services\Validation\FinancialAmountGuard;
+use App\Services\Validation\FinancialTransactionBalanceGuard;
 use Carbon\Carbon;
 use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
@@ -118,7 +119,12 @@ class EditGeneralExpense extends EditRecord
             ],
         ]);
 
-        return DB::transaction(function () use ($record, $data, $amount, $currencyId, $oldDebit, $oldCredit, $accounts) {
+        $lines = $this->buildLines($data['debit_account_id'], $data['credit_account_id'], $currencyId, $amount);
+
+        FinancialTransactionBalanceGuard::assertValidLinePayload($lines);
+        FinancialTransactionBalanceGuard::assertBalancedSingleCurrencyLines($lines, $currencyId);
+
+        return DB::transaction(function () use ($record, $data, $amount, $currencyId, $oldDebit, $oldCredit, $accounts, $lines) {
             $transaction = $record->transaction;
 
             // STEP 1 - Reverse old balances (old debit decrement, old credit increment)
@@ -137,9 +143,12 @@ class EditGeneralExpense extends EditRecord
 
             // STEP 3 - Replace the two transaction lines (hard delete: these are being
             // immediately recreated, so no soft-deleted duplicates should accumulate)
+            // with the validated payload built above, unchanged.
             $transaction?->lines()->forceDelete();
             if ($transaction) {
-                $this->rebuildLines($transaction->id, $data['debit_account_id'], $data['credit_account_id'], $currencyId, $amount);
+                foreach ($lines as $line) {
+                    TransactionLine::create($line + ['transaction_id' => $transaction->id]);
+                }
             }
 
             // STEP 4 - Update the general expense row
@@ -228,35 +237,43 @@ class EditGeneralExpense extends EditRecord
         ];
     }
 
-    protected function rebuildLines(int $transactionId, $debitAccountId, $creditAccountId, int $currencyId, float $amount): void
+    /**
+     * Build the exact two-line TransactionLine payload (debit expense +
+     * credit source) in memory, without transaction_id, so it can be
+     * validated by FinancialTransactionBalanceGuard before DB::transaction()
+     * opens. The transaction_id is merged in at insert time; nothing else is
+     * recalculated.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    protected function buildLines($debitAccountId, $creditAccountId, int $currencyId, float $amount): array
     {
         $uid = auth()->id();
 
-        TransactionLine::create([
-            'transaction_id'  => $transactionId,
-            'account_id'      => $debitAccountId,
-            'currency_id'     => $currencyId,
-            'amount_currency' => $amount,
-            'fx_rate'         => 1,
-            'debit_base'      => $amount,
-            'credit_base'     => 0,
-            'line_role'       => TransactionLineRole::Expense->value,
-            'created_by'      => $uid,
-            'updated_by'      => $uid,
-        ]);
-
-        TransactionLine::create([
-            'transaction_id'  => $transactionId,
-            'account_id'      => $creditAccountId,
-            'currency_id'     => $currencyId,
-            'amount_currency' => $amount,
-            'fx_rate'         => 1,
-            'debit_base'      => 0,
-            'credit_base'     => $amount,
-            'line_role'       => TransactionLineRole::Source->value,
-            'created_by'      => $uid,
-            'updated_by'      => $uid,
-        ]);
+        return [
+            [
+                'account_id'      => $debitAccountId,
+                'currency_id'     => $currencyId,
+                'amount_currency' => $amount,
+                'fx_rate'         => 1,
+                'debit_base'      => $amount,
+                'credit_base'     => 0,
+                'line_role'       => TransactionLineRole::Expense->value,
+                'created_by'      => $uid,
+                'updated_by'      => $uid,
+            ],
+            [
+                'account_id'      => $creditAccountId,
+                'currency_id'     => $currencyId,
+                'amount_currency' => $amount,
+                'fx_rate'         => 1,
+                'debit_base'      => 0,
+                'credit_base'     => $amount,
+                'line_role'       => TransactionLineRole::Source->value,
+                'created_by'      => $uid,
+                'updated_by'      => $uid,
+            ],
+        ];
     }
 
     protected function storeAttachment(GeneralExpense $expense, string $tempPath, float $amount): void

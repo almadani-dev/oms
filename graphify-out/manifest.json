@@ -240,13 +240,13 @@
     "semantic_hash": "29311ab3afc95f6742f156d2f8d7aa26"
   },
   "app/Filament/Resources/ExecutionPayments/Pages/CreateExecutionPayment.php": {
-    "mtime": 1784358349.6408026,
-    "ast_hash": "f23ca8f366f1aafb2a9f1c058523e559",
+    "mtime": 1784365468.6841924,
+    "ast_hash": "1bf7062612e56c3fbfdfc50b76cecfbd",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ExecutionPayments/Pages/EditExecutionPayment.php": {
-    "mtime": 1784361996.7549253,
-    "ast_hash": "136f5751d41ca046473cc43e31cdbe15",
+    "mtime": 1784365519.5799706,
+    "ast_hash": "29d4165d96f79aaa2b2caf0527e45fd7",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ExecutionPayments/Pages/ListExecutionPayments.php": {
@@ -310,13 +310,13 @@
     "semantic_hash": "9dce3eb798ff9b0e145c62679239c0d0"
   },
   "app/Filament/Resources/GeneralExchanges/Pages/CreateGeneralExchange.php": {
-    "mtime": 1784361904.6567051,
-    "ast_hash": "6af05d481e234d04af554054681ad7ba",
+    "mtime": 1784365724.4881313,
+    "ast_hash": "922e6d5c7401099286503b8594744ef0",
     "semantic_hash": ""
   },
   "app/Filament/Resources/GeneralExchanges/Pages/EditGeneralExchange.php": {
-    "mtime": 1784361943.5047605,
-    "ast_hash": "ca0036e9f9d90348d30e094bcdef2a9d",
+    "mtime": 1784365765.8493495,
+    "ast_hash": "b591db1a108b1e21e4d316af9f4dc8da",
     "semantic_hash": ""
   },
   "app/Filament/Resources/GeneralExchanges/Pages/ListGeneralExchanges.php": {
@@ -345,13 +345,13 @@
     "semantic_hash": "6d89dac283200a22d5e8f6b1f1464506"
   },
   "app/Filament/Resources/GeneralExpenses/Pages/CreateGeneralExpense.php": {
-    "mtime": 1784361784.4978385,
-    "ast_hash": "4824496fb1703e8e17919b2237b0e4be",
+    "mtime": 1784365555.1800785,
+    "ast_hash": "a6f3176ee2e83072a7acba21ac142200",
     "semantic_hash": ""
   },
   "app/Filament/Resources/GeneralExpenses/Pages/EditGeneralExpense.php": {
-    "mtime": 1784361812.909182,
-    "ast_hash": "97e2f6cbd79925bcd820d25ed7decefa",
+    "mtime": 1784365579.4403095,
+    "ast_hash": "2de69e5a91a9d12958fe118b583b6802",
     "semantic_hash": ""
   },
   "app/Filament/Resources/GeneralExpenses/Pages/ListGeneralExpenses.php": {
@@ -445,13 +445,13 @@
     "semantic_hash": "ab0cca345e09999d26404e931bf9aebc"
   },
   "app/Filament/Resources/ProjectCostBudgetsPayments/Pages/CreateProjectCostBudgetsPayment.php": {
-    "mtime": 1784361841.1832707,
-    "ast_hash": "9b220804ae1dcbf717a5b823cf68582a",
+    "mtime": 1784365626.6516876,
+    "ast_hash": "94822437ed6127d930e13e4e91bd73e4",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectCostBudgetsPayments/Pages/EditProjectCostBudgetsPayment.php": {
-    "mtime": 1784361876.2081716,
-    "ast_hash": "c27fc3349767454f16ebc891a6bb40ba",
+    "mtime": 1784365679.3430836,
+    "ast_hash": "e7e5628e759082ab0c7006829f16c019",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectCostBudgetsPayments/Pages/ListProjectCostBudgetsPayments.php": {
@@ -480,13 +480,13 @@
     "semantic_hash": "7294b6c2af217f99210c70f19f39e220"
   },
   "app/Filament/Resources/ProjectCostReceipts/Pages/CreateProjectCostReceipt.php": {
-    "mtime": 1784361713.0493298,
-    "ast_hash": "62cfd304f153909ff42fcc610d0d59e4",
+    "mtime": 1784365382.0176575,
+    "ast_hash": "9bb20cd06f9907627c5acd97b3ddc6fa",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectCostReceipts/Pages/EditProjectCostReceipt.php": {
-    "mtime": 1784361762.7134683,
-    "ast_hash": "1a4834082ac6b471321846b8f49b6488",
+    "mtime": 1784440896.2961185,
+    "ast_hash": "0f13e5af63c56bb6fede25d959c7c9ad",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectCostReceipts/Pages/ListProjectCostReceipts.php": {
@@ -1875,28 +1875,28 @@
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1784362942.2434652,
-    "ast_hash": "95eff709963162669b89c13c975c1eed",
+    "mtime": 1784441798.1753552,
+    "ast_hash": "403ab121bbd87670ffc232571c969e07",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
-    "mtime": 1784363034.2182822,
-    "ast_hash": "136b107eed1412f9031cf8eec891475e",
+    "mtime": 1784441822.9518344,
+    "ast_hash": "ae98c70b3d79b5c832f8533cf863e7f8",
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1784363051.2889352,
-    "ast_hash": "5da7bf83e211d6df5568a4ed283a763e",
+    "mtime": 1784441860.1269314,
+    "ast_hash": "997701dc65a12b39f417a97eadf4dc9e",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
-    "mtime": 1784363069.9174922,
-    "ast_hash": "cc9608ac35d6762ef09d13d4d7d6968e",
+    "mtime": 1784441839.8499026,
+    "ast_hash": "0c601f67cd200fdef40b9ba99692744e",
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1784363324.9149072,
-    "ast_hash": "e1975c90e7a16a792bccb2cee2eb8603",
+    "mtime": 1784441751.3098605,
+    "ast_hash": "897b9a66bd7b619c07209bb8d43ce33a",
     "semantic_hash": ""
   },
   "app/Services/Reports/ProjectFinancialDetailsWordExportService.php": {
@@ -2130,12 +2130,12 @@
     "semantic_hash": ""
   },
   "storage/framework/testing/disks/public/receipts/orphan.pdf": {
-    "mtime": 1784363613.5385287,
+    "mtime": 1784441275.5466294,
     "ast_hash": "c91ca4ad2ff792df795c3bab362f7a28",
     "semantic_hash": ""
   },
   "storage/framework/testing/disks/public/logo.png": {
-    "mtime": 1784363613.5422502,
+    "mtime": 1784441275.549748,
     "ast_hash": "24555cfd25ae5e76b92aeb464d2a50de",
     "semantic_hash": ""
   },
@@ -2717,6 +2717,111 @@
   "tests/Unit/Services/Validation/FinancialAccountGuardTest.php": {
     "mtime": 1784362377.5263853,
     "ast_hash": "1209a88c963585a8b82ce942bba260bc",
+    "semantic_hash": ""
+  },
+  "app/Services/Validation/FinancialTransactionBalanceGuard.php": {
+    "mtime": 1784367629.6447496,
+    "ast_hash": "e376e33f1d40647c77b4e519c7bb061a",
+    "semantic_hash": ""
+  },
+  "tests/Feature/ExecutionPayments/BalanceGuardIntegrationTest.php": {
+    "mtime": 1784366787.348559,
+    "ast_hash": "014b7733ad8ad47f2ee56feee11301ff",
+    "semantic_hash": ""
+  },
+  "tests/Feature/GeneralExchanges/BalanceGuardIntegrationTest.php": {
+    "mtime": 1784366932.6538756,
+    "ast_hash": "90f8d2dec56bb989ab1114995a1ba9fe",
+    "semantic_hash": ""
+  },
+  "tests/Feature/GeneralExpenses/BalanceGuardIntegrationTest.php": {
+    "mtime": 1784366831.2953403,
+    "ast_hash": "c382d02d2fa820d44550f8ef88a72a8c",
+    "semantic_hash": ""
+  },
+  "tests/Feature/ProjectCostBudgetsPayments/BalanceGuardIntegrationTest.php": {
+    "mtime": 1784366884.5427341,
+    "ast_hash": "3e5421925c4094ead0e307df45f7a07f",
+    "semantic_hash": ""
+  },
+  "tests/Feature/ProjectCostReceipts/BalanceGuardIntegrationTest.php": {
+    "mtime": 1784441013.3663251,
+    "ast_hash": "c20faee46a5377a3cb9e7707dd61e88c",
+    "semantic_hash": ""
+  },
+  "tests/Unit/Services/Validation/FinancialTransactionBalanceGuardTest.php": {
+    "mtime": 1784440961.8553255,
+    "ast_hash": "40f2c56dd056bdeeab1389c2be52606d",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/0634e82025d2c86eee3b2cf3196b9cac.php": {
+    "mtime": 1784369002.1001012,
+    "ast_hash": "624744240e5819996a1a8c289233e24e",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/1c156daae48a5630868170df83449c91.php": {
+    "mtime": 1784369002.7205205,
+    "ast_hash": "44c724987e2cfe1616d0c3e7cd0c0a98",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/387f5dadc9e7600680ac262db8103a3b.php": {
+    "mtime": 1784368145.8055923,
+    "ast_hash": "ad2b6e722ae6361e0aaa2cbdd317e2a0",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/49242cb09d8358d273f0175804f6ea71.php": {
+    "mtime": 1784369003.764902,
+    "ast_hash": "86d9b125b6c97a9465d54950873e6123",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/5f8ca401aa14745b6f50bd7fbc23089f.php": {
+    "mtime": 1784368148.2056577,
+    "ast_hash": "e65485be60dd11e65ebd99a124e2a044",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/7b98eb75b14d99e94ff161e93fcc2bee.php": {
+    "mtime": 1784369443.199815,
+    "ast_hash": "ebd9818bae4f0cff249532ab253d6ce6",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/8ec7d349008eecc113774a4d504cd14a.php": {
+    "mtime": 1784368144.6763048,
+    "ast_hash": "c077a89ec0b1a618780920185227fd01",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/992f2fe83c4a843af85e4d12115a1909.php": {
+    "mtime": 1784368143.0442467,
+    "ast_hash": "5ade88a120ddf186c639e214e3c5b3e0",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/9b0aa906eb507785d5e713f2ff316d37.blade.php": {
+    "mtime": 1784368145.095882,
+    "ast_hash": "4211d507b1dbddb69c59162f3083083f",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/a676787bddeda7ece15a079319e8cc86.php": {
+    "mtime": 1784369001.8347259,
+    "ast_hash": "71b49e12180fcfe019b959ab35e9f817",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/cb66e92d699a9f396038547f2e3d3c7b.php": {
+    "mtime": 1784368145.1527543,
+    "ast_hash": "bb92b78f3a1351df8acad6b2abe22984",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/d34a57d8640449e0b02f694ecfc26c65.php": {
+    "mtime": 1784369001.5204594,
+    "ast_hash": "3125cb40c8228af452e2897975547885",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/ebd0fd66ca69bbb468c77f0c3c28173d.php": {
+    "mtime": 1784369448.133585,
+    "ast_hash": "99389eb927a0a547c312b28ff057bf9a",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/f10fab8c7390efafe1a5e2a8efa92fff.php": {
+    "mtime": 1784368146.5839484,
+    "ast_hash": "5946d604c5cd7699b4ad2accf7175362",
     "semantic_hash": ""
   }
 }

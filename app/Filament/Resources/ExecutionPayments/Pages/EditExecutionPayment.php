@@ -15,6 +15,7 @@ use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
 use App\Services\Validation\FinancialAmountGuard;
+use App\Services\Validation\FinancialTransactionBalanceGuard;
 use Carbon\Carbon;
 use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
@@ -133,7 +134,12 @@ class EditExecutionPayment extends EditRecord
                 ->send();
         }
 
-        return DB::transaction(function () use ($record, $data, $amount, $budget, $currencyId, $creditAccountId, $oldBeneficiary, $oldCredit) {
+        $lines = $this->buildLines($data['beneficiary_account_id'], $creditAccountId, $currencyId, $amount);
+
+        FinancialTransactionBalanceGuard::assertValidLinePayload($lines);
+        FinancialTransactionBalanceGuard::assertBalancedSingleCurrencyLines($lines, (int) $currencyId);
+
+        return DB::transaction(function () use ($record, $data, $amount, $budget, $currencyId, $creditAccountId, $oldBeneficiary, $oldCredit, $lines) {
             $transaction = $record->transaction;
 
             // STEP 1 - Reverse old balances
@@ -152,9 +158,12 @@ class EditExecutionPayment extends EditRecord
 
             // STEP 3 - Replace the two transaction lines (hard delete: these are being
             // immediately recreated, so no soft-deleted duplicates should accumulate)
+            // with the validated payload built above, unchanged.
             $transaction?->lines()->forceDelete();
             if ($transaction) {
-                $this->rebuildLines($transaction->id, $data['beneficiary_account_id'], $creditAccountId, $currencyId, $amount);
+                foreach ($lines as $line) {
+                    TransactionLine::create($line + ['transaction_id' => $transaction->id]);
+                }
             }
 
             // STEP 4 - Update the execution payment row
@@ -242,37 +251,45 @@ class EditExecutionPayment extends EditRecord
         ];
     }
 
-    protected function rebuildLines(int $transactionId, $beneficiaryAccountId, $creditAccountId, ?int $currencyId, float $amount): void
+    /**
+     * Build the exact two-line TransactionLine payload (debit beneficiary +
+     * credit destination) in memory, without transaction_id, so it can be
+     * validated by FinancialTransactionBalanceGuard before DB::transaction()
+     * opens. The transaction_id is merged in at insert time; nothing else is
+     * recalculated.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    protected function buildLines($beneficiaryAccountId, $creditAccountId, ?int $currencyId, float $amount): array
     {
         $uid = auth()->id();
 
-        TransactionLine::create([
-            'transaction_id'  => $transactionId,
-            'account_id'      => $beneficiaryAccountId,
-            'currency_id'     => $currencyId,
-            'amount_currency' => $amount,
-            'fx_rate'         => 1,
-            'debit_base'      => $amount,
-            'credit_base'     => 0,
-            'notes'           => ProjectCostBudgetsPayment::LINE_BENEFICIARY,
-            'line_role'       => TransactionLineRole::Beneficiary->value,
-            'created_by'      => $uid,
-            'updated_by'      => $uid,
-        ]);
-
-        TransactionLine::create([
-            'transaction_id'  => $transactionId,
-            'account_id'      => $creditAccountId,
-            'currency_id'     => $currencyId,
-            'amount_currency' => $amount,
-            'fx_rate'         => 1,
-            'debit_base'      => 0,
-            'credit_base'     => $amount,
-            'notes'           => ProjectCostBudgetsPayment::LINE_CREDIT,
-            'line_role'       => TransactionLineRole::ExecutionSource->value,
-            'created_by'      => $uid,
-            'updated_by'      => $uid,
-        ]);
+        return [
+            [
+                'account_id'      => $beneficiaryAccountId,
+                'currency_id'     => $currencyId,
+                'amount_currency' => $amount,
+                'fx_rate'         => 1,
+                'debit_base'      => $amount,
+                'credit_base'     => 0,
+                'notes'           => ProjectCostBudgetsPayment::LINE_BENEFICIARY,
+                'line_role'       => TransactionLineRole::Beneficiary->value,
+                'created_by'      => $uid,
+                'updated_by'      => $uid,
+            ],
+            [
+                'account_id'      => $creditAccountId,
+                'currency_id'     => $currencyId,
+                'amount_currency' => $amount,
+                'fx_rate'         => 1,
+                'debit_base'      => 0,
+                'credit_base'     => $amount,
+                'notes'           => ProjectCostBudgetsPayment::LINE_CREDIT,
+                'line_role'       => TransactionLineRole::ExecutionSource->value,
+                'created_by'      => $uid,
+                'updated_by'      => $uid,
+            ],
+        ];
     }
 
     protected function storeAttachment(ProjectCostBudgetsPayment $payment, string $tempPath, float $amount): void

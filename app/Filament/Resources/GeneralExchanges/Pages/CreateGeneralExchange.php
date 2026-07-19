@@ -14,6 +14,7 @@ use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
 use App\Services\Validation\FinancialAmountGuard;
+use App\Services\Validation\FinancialTransactionBalanceGuard;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
@@ -80,9 +81,23 @@ class CreateGeneralExchange extends CreateRecord
             ],
         ]);
 
+        $lines = $this->buildLines($data, $sourceCurrencyId, $disbCurrencyId, [
+            'original' => $original,
+            'admin'    => $adminAmount,
+            'transfer' => $transferAmount,
+            'final'    => $finalAmount,
+            'fx'       => $fxRate,
+        ]);
+
+        FinancialTransactionBalanceGuard::assertValidLinePayload($lines);
+        FinancialTransactionBalanceGuard::assertBalancedMultiCurrencyLines(
+            $lines[0], $lines[1], $lines[2], $lines[3],
+            $sourceCurrencyId, $disbCurrencyId
+        );
+
         return DB::transaction(function () use (
             $data, $original, $adminPct, $transferPct, $fxRate,
-            $adminAmount, $transferAmount, $finalAmount, $sourceCurrencyId, $disbCurrencyId, $accounts
+            $adminAmount, $transferAmount, $finalAmount, $sourceCurrencyId, $disbCurrencyId, $accounts, $lines
         ) {
             // STEP 1 - Create transaction (EXT-YYYY-XXXX)
             $year              = Carbon::parse($data['date'])->format('Y');
@@ -99,14 +114,11 @@ class CreateGeneralExchange extends CreateRecord
                 'updated_by'          => auth()->id(),
             ]);
 
-            // STEP 2 - Create the four transaction lines
-            $this->buildLines($transaction->id, $data, $sourceCurrencyId, $disbCurrencyId, [
-                'original' => $original,
-                'admin'    => $adminAmount,
-                'transfer' => $transferAmount,
-                'final'    => $finalAmount,
-                'fx'       => $fxRate,
-            ]);
+            // STEP 2 - Insert the four validated transaction lines unchanged,
+            // exactly as built and validated above.
+            foreach ($lines as $line) {
+                TransactionLine::create($line + ['transaction_id' => $transaction->id]);
+            }
 
             // STEP 3 - Create the general exchange row
             $exchange = GeneralExchange::create([
@@ -211,72 +223,74 @@ class CreateGeneralExchange extends CreateRecord
     }
 
     /**
-     * Four lines: 1 credit (source) + 3 debit (admin, transfer, destination),
-     * each tagged via notes for later identification on edit / view / delete.
+     * Build the exact four-line TransactionLine payload — 1 credit (source) +
+     * 3 debit (admin, transfer, destination), in this fixed order — in
+     * memory, without transaction_id, so it can be validated by
+     * FinancialTransactionBalanceGuard before DB::transaction() opens. The
+     * transaction_id is merged in at insert time; nothing else is
+     * recalculated. Each line is tagged via notes for later identification
+     * on edit / view / delete.
+     *
+     * @return array<int, array<string, mixed>>
      */
-    protected function buildLines(int $transactionId, array $data, int $sourceCurrencyId, int $disbCurrencyId, array $amounts): void
+    protected function buildLines(array $data, int $sourceCurrencyId, int $disbCurrencyId, array $amounts): array
     {
         $uid = auth()->id();
 
-        // Line 1 - دائن - المصدر (بعملة المصدر)
-        TransactionLine::create([
-            'transaction_id'  => $transactionId,
-            'account_id'      => $data['source_account_id'],
-            'currency_id'     => $sourceCurrencyId,
-            'amount_currency' => $amounts['original'],
-            'fx_rate'         => 1,
-            'debit_base'      => 0,
-            'credit_base'     => $amounts['original'],
-            'notes'           => GeneralExchange::LINE_SOURCE,
-            'line_role'       => TransactionLineRole::Source->value,
-            'created_by'      => $uid,
-            'updated_by'      => $uid,
-        ]);
-
-        // Line 2 - مدين - النسبة الإدارية (بعملة المصدر)
-        TransactionLine::create([
-            'transaction_id'  => $transactionId,
-            'account_id'      => $data['admin_account_id'],
-            'currency_id'     => $sourceCurrencyId,
-            'amount_currency' => $amounts['admin'],
-            'fx_rate'         => 1,
-            'debit_base'      => $amounts['admin'],
-            'credit_base'     => 0,
-            'notes'           => GeneralExchange::LINE_ADMIN,
-            'line_role'       => TransactionLineRole::AdministrativeDeduction->value,
-            'created_by'      => $uid,
-            'updated_by'      => $uid,
-        ]);
-
-        // Line 3 - مدين - التحويل (بعملة المصدر)
-        TransactionLine::create([
-            'transaction_id'  => $transactionId,
-            'account_id'      => $data['transfer_account_id'],
-            'currency_id'     => $sourceCurrencyId,
-            'amount_currency' => $amounts['transfer'],
-            'fx_rate'         => 1,
-            'debit_base'      => $amounts['transfer'],
-            'credit_base'     => 0,
-            'notes'           => GeneralExchange::LINE_TRANSFER,
-            'line_role'       => TransactionLineRole::TransferFee->value,
-            'created_by'      => $uid,
-            'updated_by'      => $uid,
-        ]);
-
-        // Line 4 - مدين - الوجهة (بعملة الصرف)
-        TransactionLine::create([
-            'transaction_id'  => $transactionId,
-            'account_id'      => $data['destination_account_id'],
-            'currency_id'     => $disbCurrencyId,
-            'amount_currency' => $amounts['final'],
-            'fx_rate'         => $amounts['fx'],
-            'debit_base'      => $amounts['final'],
-            'credit_base'     => 0,
-            'notes'           => GeneralExchange::LINE_DESTINATION,
-            'line_role'       => TransactionLineRole::Destination->value,
-            'created_by'      => $uid,
-            'updated_by'      => $uid,
-        ]);
+        return [
+            // Line 1 - دائن - المصدر (بعملة المصدر)
+            [
+                'account_id'      => $data['source_account_id'],
+                'currency_id'     => $sourceCurrencyId,
+                'amount_currency' => $amounts['original'],
+                'fx_rate'         => 1,
+                'debit_base'      => 0,
+                'credit_base'     => $amounts['original'],
+                'notes'           => GeneralExchange::LINE_SOURCE,
+                'line_role'       => TransactionLineRole::Source->value,
+                'created_by'      => $uid,
+                'updated_by'      => $uid,
+            ],
+            // Line 2 - مدين - النسبة الإدارية (بعملة المصدر)
+            [
+                'account_id'      => $data['admin_account_id'],
+                'currency_id'     => $sourceCurrencyId,
+                'amount_currency' => $amounts['admin'],
+                'fx_rate'         => 1,
+                'debit_base'      => $amounts['admin'],
+                'credit_base'     => 0,
+                'notes'           => GeneralExchange::LINE_ADMIN,
+                'line_role'       => TransactionLineRole::AdministrativeDeduction->value,
+                'created_by'      => $uid,
+                'updated_by'      => $uid,
+            ],
+            // Line 3 - مدين - التحويل (بعملة المصدر)
+            [
+                'account_id'      => $data['transfer_account_id'],
+                'currency_id'     => $sourceCurrencyId,
+                'amount_currency' => $amounts['transfer'],
+                'fx_rate'         => 1,
+                'debit_base'      => $amounts['transfer'],
+                'credit_base'     => 0,
+                'notes'           => GeneralExchange::LINE_TRANSFER,
+                'line_role'       => TransactionLineRole::TransferFee->value,
+                'created_by'      => $uid,
+                'updated_by'      => $uid,
+            ],
+            // Line 4 - مدين - الوجهة (بعملة الصرف)
+            [
+                'account_id'      => $data['destination_account_id'],
+                'currency_id'     => $disbCurrencyId,
+                'amount_currency' => $amounts['final'],
+                'fx_rate'         => $amounts['fx'],
+                'debit_base'      => $amounts['final'],
+                'credit_base'     => 0,
+                'notes'           => GeneralExchange::LINE_DESTINATION,
+                'line_role'       => TransactionLineRole::Destination->value,
+                'created_by'      => $uid,
+                'updated_by'      => $uid,
+            ],
+        ];
     }
 
     protected function storeAttachment(GeneralExchange $exchange, string $tempPath, float $finalAmount): void

@@ -8,10 +8,12 @@ use App\Filament\Resources\ProjectCostBudgetsPayments\Tables\ProjectCostBudgetsP
 use App\Models\Attachment;
 use App\Models\ProjectCost;
 use App\Models\ProjectCostBudget;
+use App\Models\TransactionLine;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
 use App\Services\Validation\FinancialAmountGuard;
+use App\Services\Validation\FinancialTransactionBalanceGuard;
 use Carbon\Carbon;
 use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
@@ -185,10 +187,24 @@ class EditProjectCostBudgetsPayment extends EditRecord
             ],
         ]);
 
+        $lines = $this->buildLines($projectCostId, $costCurrencyId, $data, [
+            'original' => $original,
+            'admin'    => $adminAmount,
+            'transfer' => $transferAmount,
+            'final'    => $finalAmount,
+            'fx'       => $fxRate,
+        ]);
+
+        FinancialTransactionBalanceGuard::assertValidLinePayload($lines);
+        FinancialTransactionBalanceGuard::assertBalancedMultiCurrencyLines(
+            $lines[0], $lines[1], $lines[2], $lines[3],
+            (int) $costCurrencyId, (int) $data['disbursement_currency_id']
+        );
+
         return DB::transaction(function () use (
             $record, $data, $projectCost, $projectCostId, $costCurrencyId,
             $original, $adminPct, $transferPct, $adminAmount, $transferAmount, $afterDeduct, $finalAmount, $fxRate,
-            $oldSource, $oldAdmin, $oldTransfer, $oldDest, $accounts
+            $oldSource, $oldAdmin, $oldTransfer, $oldDest, $accounts, $lines
         ) {
             $transaction = $record->transaction;
 
@@ -210,16 +226,13 @@ class EditProjectCostBudgetsPayment extends EditRecord
 
             // STEP 3 - Replace old transaction_lines, create new ones (hard delete: these are
             // being immediately recreated, so no soft-deleted duplicates should accumulate)
+            // with the validated payload built above, unchanged.
             $transaction?->lines()->forceDelete();
 
             if ($transaction) {
-                $this->rebuildLines($transaction->id, $projectCostId, $costCurrencyId, $data, [
-                    'original' => $original,
-                    'admin'    => $adminAmount,
-                    'transfer' => $transferAmount,
-                    'final'    => $finalAmount,
-                    'fx'       => $fxRate,
-                ]);
+                foreach ($lines as $line) {
+                    TransactionLine::create($line + ['transaction_id' => $transaction->id]);
+                }
             }
 
             // STEP 4 - Update project_cost_budgets row
@@ -310,49 +323,58 @@ class EditProjectCostBudgetsPayment extends EditRecord
         ];
     }
 
-    protected function rebuildLines(int $transactionId, ?int $projectCostId, ?int $costCurrencyId, array $data, array $amounts): void
+    /**
+     * Build the exact four-line TransactionLine payload (source, admin,
+     * transfer, destination — in this fixed order) in memory, without
+     * transaction_id, so it can be validated by
+     * FinancialTransactionBalanceGuard before DB::transaction() opens. The
+     * transaction_id is merged in at insert time; nothing else is
+     * recalculated.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    protected function buildLines(?int $projectCostId, ?int $costCurrencyId, array $data, array $amounts): array
     {
         $uid = auth()->id();
 
-        \App\Models\TransactionLine::create([
-            'transaction_id' => $transactionId, 'account_id' => $data['source_account_id'],
-            'project_cost_id' => $projectCostId, 'currency_id' => $costCurrencyId,
-            'amount_currency' => $amounts['original'], 'fx_rate' => 1,
-            'debit_base' => 0, 'credit_base' => $amounts['original'],
-            'notes' => ProjectCostBudget::LINE_SOURCE,
-            'line_role' => TransactionLineRole::Source->value,
-            'created_by' => $uid, 'updated_by' => $uid,
-        ]);
-
-        \App\Models\TransactionLine::create([
-            'transaction_id' => $transactionId, 'account_id' => $data['admin_account_id'],
-            'project_cost_id' => $projectCostId, 'currency_id' => $costCurrencyId,
-            'amount_currency' => $amounts['admin'], 'fx_rate' => 1,
-            'debit_base' => $amounts['admin'], 'credit_base' => 0,
-            'notes' => ProjectCostBudget::LINE_ADMIN,
-            'line_role' => TransactionLineRole::AdministrativeDeduction->value,
-            'created_by' => $uid, 'updated_by' => $uid,
-        ]);
-
-        \App\Models\TransactionLine::create([
-            'transaction_id' => $transactionId, 'account_id' => $data['transfer_account_id'],
-            'project_cost_id' => $projectCostId, 'currency_id' => $costCurrencyId,
-            'amount_currency' => $amounts['transfer'], 'fx_rate' => 1,
-            'debit_base' => $amounts['transfer'], 'credit_base' => 0,
-            'notes' => ProjectCostBudget::LINE_TRANSFER,
-            'line_role' => TransactionLineRole::TransferFee->value,
-            'created_by' => $uid, 'updated_by' => $uid,
-        ]);
-
-        \App\Models\TransactionLine::create([
-            'transaction_id' => $transactionId, 'account_id' => $data['destination_account_id'],
-            'project_cost_id' => $projectCostId, 'currency_id' => $data['disbursement_currency_id'],
-            'amount_currency' => $amounts['final'], 'fx_rate' => $amounts['fx'],
-            'debit_base' => $amounts['final'], 'credit_base' => 0,
-            'notes' => ProjectCostBudget::LINE_DESTINATION,
-            'line_role' => TransactionLineRole::Destination->value,
-            'created_by' => $uid, 'updated_by' => $uid,
-        ]);
+        return [
+            [
+                'account_id' => $data['source_account_id'],
+                'project_cost_id' => $projectCostId, 'currency_id' => $costCurrencyId,
+                'amount_currency' => $amounts['original'], 'fx_rate' => 1,
+                'debit_base' => 0, 'credit_base' => $amounts['original'],
+                'notes' => ProjectCostBudget::LINE_SOURCE,
+                'line_role' => TransactionLineRole::Source->value,
+                'created_by' => $uid, 'updated_by' => $uid,
+            ],
+            [
+                'account_id' => $data['admin_account_id'],
+                'project_cost_id' => $projectCostId, 'currency_id' => $costCurrencyId,
+                'amount_currency' => $amounts['admin'], 'fx_rate' => 1,
+                'debit_base' => $amounts['admin'], 'credit_base' => 0,
+                'notes' => ProjectCostBudget::LINE_ADMIN,
+                'line_role' => TransactionLineRole::AdministrativeDeduction->value,
+                'created_by' => $uid, 'updated_by' => $uid,
+            ],
+            [
+                'account_id' => $data['transfer_account_id'],
+                'project_cost_id' => $projectCostId, 'currency_id' => $costCurrencyId,
+                'amount_currency' => $amounts['transfer'], 'fx_rate' => 1,
+                'debit_base' => $amounts['transfer'], 'credit_base' => 0,
+                'notes' => ProjectCostBudget::LINE_TRANSFER,
+                'line_role' => TransactionLineRole::TransferFee->value,
+                'created_by' => $uid, 'updated_by' => $uid,
+            ],
+            [
+                'account_id' => $data['destination_account_id'],
+                'project_cost_id' => $projectCostId, 'currency_id' => $data['disbursement_currency_id'],
+                'amount_currency' => $amounts['final'], 'fx_rate' => $amounts['fx'],
+                'debit_base' => $amounts['final'], 'credit_base' => 0,
+                'notes' => ProjectCostBudget::LINE_DESTINATION,
+                'line_role' => TransactionLineRole::Destination->value,
+                'created_by' => $uid, 'updated_by' => $uid,
+            ],
+        ];
     }
 
     protected function storeAttachment(ProjectCostBudget $budget, string $tempPath, float $amount): void

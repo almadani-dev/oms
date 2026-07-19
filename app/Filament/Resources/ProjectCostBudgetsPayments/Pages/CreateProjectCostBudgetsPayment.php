@@ -13,6 +13,7 @@ use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
 use App\Services\Validation\FinancialAmountGuard;
+use App\Services\Validation\FinancialTransactionBalanceGuard;
 use Carbon\Carbon;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
@@ -84,10 +85,24 @@ class CreateProjectCostBudgetsPayment extends CreateRecord
             ],
         ]);
 
+        $lines = $this->buildLines($projectCostId, $costCurrencyId, $data, [
+            'original' => $original,
+            'admin'    => $adminAmount,
+            'transfer' => $transferAmount,
+            'final'    => $finalAmount,
+            'fx'       => $fxRate,
+        ]);
+
+        FinancialTransactionBalanceGuard::assertValidLinePayload($lines);
+        FinancialTransactionBalanceGuard::assertBalancedMultiCurrencyLines(
+            $lines[0], $lines[1], $lines[2], $lines[3],
+            (int) $costCurrencyId, (int) $data['disbursement_currency_id']
+        );
+
         return DB::transaction(function () use (
             $data, $projectCost, $projectCostId, $costCurrencyId,
             $original, $adminPct, $transferPct, $adminAmount, $transferAmount, $afterDeduct, $finalAmount, $fxRate,
-            $accounts
+            $accounts, $lines
         ) {
             // STEP 1 - Create transaction
             $year              = Carbon::parse($data['date'])->format('Y');
@@ -104,14 +119,11 @@ class CreateProjectCostBudgetsPayment extends CreateRecord
                 'updated_by'          => auth()->id(),
             ]);
 
-            // STEP 2 - Create transaction_lines
-            $this->createLines($transaction->id, $projectCostId, $costCurrencyId, $data, [
-                'original' => $original,
-                'admin'    => $adminAmount,
-                'transfer' => $transferAmount,
-                'final'    => $finalAmount,
-                'fx'       => $fxRate,
-            ]);
+            // STEP 2 - Insert the four validated transaction_lines unchanged,
+            // exactly as built and validated above.
+            foreach ($lines as $line) {
+                TransactionLine::create($line + ['transaction_id' => $transaction->id]);
+            }
 
             // STEP 3 - Create row in project_cost_budgets (each disbursement = 1 row)
             $budgetData = [
@@ -223,75 +235,77 @@ class CreateProjectCostBudgetsPayment extends CreateRecord
     }
 
     /**
-     * Create the four disbursement lines, tagged via notes for later identification.
+     * Build the exact four-line TransactionLine payload (source, admin,
+     * transfer, destination — in this fixed order) in memory, without
+     * transaction_id, so it can be validated by
+     * FinancialTransactionBalanceGuard before DB::transaction() opens. The
+     * transaction_id is merged in at insert time; nothing else is
+     * recalculated. Each line is tagged via notes for later identification.
+     *
+     * @return array<int, array<string, mixed>>
      */
-    protected function createLines(int $transactionId, ?int $projectCostId, ?int $costCurrencyId, array $data, array $amounts): void
+    protected function buildLines(?int $projectCostId, ?int $costCurrencyId, array $data, array $amounts): array
     {
         $uid = auth()->id();
 
-        // Line 1 - دائن - المصدر (بعملة التكلفة)
-        TransactionLine::create([
-            'transaction_id'  => $transactionId,
-            'account_id'      => $data['source_account_id'],
-            'project_cost_id' => $projectCostId,
-            'currency_id'     => $costCurrencyId,
-            'amount_currency' => $amounts['original'],
-            'fx_rate'         => 1,
-            'debit_base'      => 0,
-            'credit_base'     => $amounts['original'],
-            'notes'           => ProjectCostBudget::LINE_SOURCE,
-            'line_role'       => TransactionLineRole::Source->value,
-            'created_by'      => $uid,
-            'updated_by'      => $uid,
-        ]);
-
-        // Line 2 - مدين - النسبة الإدارية
-        TransactionLine::create([
-            'transaction_id'  => $transactionId,
-            'account_id'      => $data['admin_account_id'],
-            'project_cost_id' => $projectCostId,
-            'currency_id'     => $costCurrencyId,
-            'amount_currency' => $amounts['admin'],
-            'fx_rate'         => 1,
-            'debit_base'      => $amounts['admin'],
-            'credit_base'     => 0,
-            'notes'           => ProjectCostBudget::LINE_ADMIN,
-            'line_role'       => TransactionLineRole::AdministrativeDeduction->value,
-            'created_by'      => $uid,
-            'updated_by'      => $uid,
-        ]);
-
-        // Line 3 - مدين - التحويل
-        TransactionLine::create([
-            'transaction_id'  => $transactionId,
-            'account_id'      => $data['transfer_account_id'],
-            'project_cost_id' => $projectCostId,
-            'currency_id'     => $costCurrencyId,
-            'amount_currency' => $amounts['transfer'],
-            'fx_rate'         => 1,
-            'debit_base'      => $amounts['transfer'],
-            'credit_base'     => 0,
-            'notes'           => ProjectCostBudget::LINE_TRANSFER,
-            'line_role'       => TransactionLineRole::TransferFee->value,
-            'created_by'      => $uid,
-            'updated_by'      => $uid,
-        ]);
-
-        // Line 4 - مدين - الوجهة (بعملة الصرف)
-        TransactionLine::create([
-            'transaction_id'  => $transactionId,
-            'account_id'      => $data['destination_account_id'],
-            'project_cost_id' => $projectCostId,
-            'currency_id'     => $data['disbursement_currency_id'],
-            'amount_currency' => $amounts['final'],
-            'fx_rate'         => $amounts['fx'],
-            'debit_base'      => $amounts['final'],
-            'credit_base'     => 0,
-            'notes'           => ProjectCostBudget::LINE_DESTINATION,
-            'line_role'       => TransactionLineRole::Destination->value,
-            'created_by'      => $uid,
-            'updated_by'      => $uid,
-        ]);
+        return [
+            // Line 1 - دائن - المصدر (بعملة التكلفة)
+            [
+                'account_id'      => $data['source_account_id'],
+                'project_cost_id' => $projectCostId,
+                'currency_id'     => $costCurrencyId,
+                'amount_currency' => $amounts['original'],
+                'fx_rate'         => 1,
+                'debit_base'      => 0,
+                'credit_base'     => $amounts['original'],
+                'notes'           => ProjectCostBudget::LINE_SOURCE,
+                'line_role'       => TransactionLineRole::Source->value,
+                'created_by'      => $uid,
+                'updated_by'      => $uid,
+            ],
+            // Line 2 - مدين - النسبة الإدارية
+            [
+                'account_id'      => $data['admin_account_id'],
+                'project_cost_id' => $projectCostId,
+                'currency_id'     => $costCurrencyId,
+                'amount_currency' => $amounts['admin'],
+                'fx_rate'         => 1,
+                'debit_base'      => $amounts['admin'],
+                'credit_base'     => 0,
+                'notes'           => ProjectCostBudget::LINE_ADMIN,
+                'line_role'       => TransactionLineRole::AdministrativeDeduction->value,
+                'created_by'      => $uid,
+                'updated_by'      => $uid,
+            ],
+            // Line 3 - مدين - التحويل
+            [
+                'account_id'      => $data['transfer_account_id'],
+                'project_cost_id' => $projectCostId,
+                'currency_id'     => $costCurrencyId,
+                'amount_currency' => $amounts['transfer'],
+                'fx_rate'         => 1,
+                'debit_base'      => $amounts['transfer'],
+                'credit_base'     => 0,
+                'notes'           => ProjectCostBudget::LINE_TRANSFER,
+                'line_role'       => TransactionLineRole::TransferFee->value,
+                'created_by'      => $uid,
+                'updated_by'      => $uid,
+            ],
+            // Line 4 - مدين - الوجهة (بعملة الصرف)
+            [
+                'account_id'      => $data['destination_account_id'],
+                'project_cost_id' => $projectCostId,
+                'currency_id'     => $data['disbursement_currency_id'],
+                'amount_currency' => $amounts['final'],
+                'fx_rate'         => $amounts['fx'],
+                'debit_base'      => $amounts['final'],
+                'credit_base'     => 0,
+                'notes'           => ProjectCostBudget::LINE_DESTINATION,
+                'line_role'       => TransactionLineRole::Destination->value,
+                'created_by'      => $uid,
+                'updated_by'      => $uid,
+            ],
+        ];
     }
 
     protected function storeAttachment(ProjectCostBudget $budget, string $tempPath, float $amount): void

@@ -14,6 +14,7 @@ use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
 use App\Services\Validation\FinancialAmountGuard;
+use App\Services\Validation\FinancialTransactionBalanceGuard;
 use Carbon\Carbon;
 use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
@@ -104,7 +105,12 @@ class EditProjectCostReceipt extends EditRecord
             ],
         ]);
 
-        return DB::transaction(function () use ($record, $data, $oldDebitLine, $oldCreditLine, $projectCost, $accounts) {
+        $lineUpdates = $this->buildReceiptLineUpdates($data, $projectCost);
+
+        FinancialTransactionBalanceGuard::assertValidLinePayload(array_values($lineUpdates));
+        FinancialTransactionBalanceGuard::assertBalancedSingleCurrencyLines(array_values($lineUpdates), (int) $costCurrencyId);
+
+        return DB::transaction(function () use ($record, $data, $oldDebitLine, $oldCreditLine, $projectCost, $accounts, $lineUpdates) {
             $oldAmount = $record->amount;
 
             // STEP 1 - Reverse old balances
@@ -121,26 +127,11 @@ class EditProjectCostReceipt extends EditRecord
                 'updated_by'          => auth()->id(),
             ]);
 
-            // STEP 3 - Update debit transaction_line (line_role set explicitly so
-            // receipts created before the line_role feature self-heal on edit)
-            $oldDebitLine?->update([
-                'account_id'      => $data['debit_account_id'],
-                'currency_id'     => $projectCost?->currency_id,
-                'amount_currency' => $data['amount'],
-                'debit_base'      => $data['amount'],
-                'line_role'       => TransactionLineRole::ReceiptDestination->value,
-                'updated_by'      => auth()->id(),
-            ]);
-
-            // STEP 4 - Update credit transaction_line
-            $oldCreditLine?->update([
-                'account_id'      => $data['credit_account_id'],
-                'currency_id'     => $projectCost?->currency_id,
-                'amount_currency' => $data['amount'],
-                'credit_base'     => $data['amount'],
-                'line_role'       => TransactionLineRole::FundingSource->value,
-                'updated_by'      => auth()->id(),
-            ]);
+            // STEP 3 - Apply the validated debit/credit transaction_line updates
+            // unchanged, exactly as built and validated above. (line_role is set
+            // explicitly so receipts created before the line_role feature self-heal.)
+            $oldDebitLine?->update($lineUpdates['debit']);
+            $oldCreditLine?->update($lineUpdates['credit']);
 
             // STEP 5 - Update project_cost_receipts
             $record->update([
@@ -221,6 +212,42 @@ class EditProjectCostReceipt extends EditRecord
 
             return $record;
         });
+    }
+
+    /**
+     * Build the exact debit/credit ->update() payloads in memory so they can
+     * be validated by FinancialTransactionBalanceGuard before DB::transaction()
+     * opens and before any old balance is reversed. Applied unchanged, with
+     * no recalculation, once validation succeeds.
+     *
+     * @return array{debit: array<string, mixed>, credit: array<string, mixed>}
+     */
+    protected function buildReceiptLineUpdates(array $data, ?ProjectCost $projectCost): array
+    {
+        $currencyId = $projectCost?->currency_id;
+
+        return [
+            'debit' => [
+                'account_id'      => $data['debit_account_id'],
+                'currency_id'     => $currencyId,
+                'amount_currency' => $data['amount'],
+                'fx_rate'         => 1,
+                'debit_base'      => $data['amount'],
+                'credit_base'     => 0,
+                'line_role'       => TransactionLineRole::ReceiptDestination->value,
+                'updated_by'      => auth()->id(),
+            ],
+            'credit' => [
+                'account_id'      => $data['credit_account_id'],
+                'currency_id'     => $currencyId,
+                'amount_currency' => $data['amount'],
+                'fx_rate'         => 1,
+                'debit_base'      => 0,
+                'credit_base'     => $data['amount'],
+                'line_role'       => TransactionLineRole::FundingSource->value,
+                'updated_by'      => auth()->id(),
+            ],
+        ];
     }
 
     /**

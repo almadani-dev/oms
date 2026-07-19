@@ -1,6 +1,22 @@
 # Prompts Log
 
 ### Date
+2026-07-18 (financial transaction balance guard — automated verification completion)
+
+### Prompt
+User requested completing the missing automated verification for the previously-implemented `FinancialTransactionBalanceGuard` (approved structure, not yet committed) without changing the approved accounting implementation: unit tests for the guard directly (an extensive named list of COMMON PAYLOAD / SINGLE-CURRENCY / MULTI-CURRENCY cases), focused integration tests for all 5 workflows (valid Create/Edit succeed; invalid payload rejected before mutation; counts/balances unchanged; Edit rejection leaves old lines/balances unchanged; an explicit `EditProjectCostReceipt` update-in-place regression), a specified 6-step test-run order with exact reported counts, targeted-search confirmation of 6 specific invariants (no naive cross-currency sum, validate-before-transaction in all 10 paths, exact-payload insert/update with no recalculation, no `<= 0.01` tolerance, no formula change, no delete/reversal change), documentation updates required by CLAUDE.md only, and an explicit "do not stage, do not commit, wait for approval" constraint.
+
+### Purpose
+Turn the previously-approved-but-unverified guard implementation into a fully test-backed, independently-confirmed change before it is ever committed — closing the gap between "the design is approved" and "the code actually does what was approved, provably, with tests that could not have been satisfied by weakening production code."
+
+### Result
+Writing the requested unit tests surfaced that the guard (as implemented in the prior pass) did not yet check several things the test matrix required — see `docs/DECISIONS_LOG.md` for why closing those gaps by extending the guard (not the workflow files) was the correct call. Added 34 unit tests + 22 integration tests (all passing), ran the 6-step sequence exactly as specified (34/34 → 22/22 → 26/26 → 53/53 → 69/69 → 206/207, the 1 full-suite failure being the same pre-existing unrelated `ExampleTest` seen in every prior task), and confirmed all 6 targeted-search invariants hold. See `docs/TASKS_LOG.md` (2026-07-18, this entry's task) for the exact commands and `docs/AI_PROJECT_MEMORY.md` for the full guard description (this pass also backfilled memory/task documentation for the two prior undocumented passes — the read-only discovery/design and the initial guard implementation — since neither had been logged yet). Not staged, not committed at this point — diff and full test results shown for approval first.
+
+**Follow-up correction (same day, before commit):** the reviewer flagged that the guard let a *missing* `fx_rate` silently default to `1.0` — needed because `EditProjectCostReceipt`'s in-place update payload never set that key — as conflicting with the "no financial value silently assumed" requirement, and as capable of hiding a historically-corrupted stored `fx_rate`. Required correction: make `fx_rate` genuinely required everywhere with no fallback, and fix the one file with the actual gap (`EditProjectCostReceipt`) to explicitly write `fx_rate = 1`, plus tests proving the guard now rejects a missing `fx_rate`, proving a valid receipt Edit normalizes a corrupted stored `fx_rate` to `1`, and proving a rejected Edit still leaves it untouched. Implemented exactly as scoped — 2 more guard unit tests, 1 more integration test, both existing final counts re-verified (209/210, same 1 pre-existing unrelated failure) — approved, staged, and committed as `validate transaction balance with multi-currency support`. See `docs/DECISIONS_LOG.md` and `docs/TASKS_LOG.md` (both 2026-07-18 correction entries) for full detail.
+
+---
+
+### Date
 2026-07-18 (server-side financial account validation)
 
 ### Prompt
