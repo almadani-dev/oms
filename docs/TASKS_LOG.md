@@ -706,3 +706,140 @@ Exact command sequence and final results, in the requested order (after the corr
 
 ### Commit Hash
 `validate transaction balance with multi-currency support` — see `git log` for the hash.
+
+---
+
+### Date
+2026-07-19
+
+### Task
+Implement OMS permissions foundation (Task 1 of the roles-and-permissions phase, following the 2026-07-19 read-only audit — see PROMPTS_LOG). Build the permission registry, `Gate::before` Super Admin bypass, an idempotent `oms:sync-permissions` command, and immediately restrict the currently wide-open `UserResource` to Super Admin only, as an emergency lockdown pending the full safe user-management phase (Task 3). Explicitly out of scope: RoleResource/PermissionResource, protecting the other 24 resources, Filament Shield, any migration, last-Super-Admin deletion logic.
+
+### Result
+Added `App\Support\Permissions\PermissionRegistry` — the single source of truth for all 154 permission names (`module.action` convention), their Arabic labels, module grouping, and `defaultPermissionsForRole()` for the 5 system roles, built strictly from the confirmed inventory (19 SoftDelete-CRUD modules + `users` = 20, 2 CRUD-without-SoftDelete modules, 3 read-only modules including `permissions`, `roles` module, 6 report pages × view/export, `users.assign_super_admin`). Added `App\Services\Permissions\PermissionSyncService` + `php artisan oms:sync-permissions`: creates missing permissions and the 5 system roles inside one `DB::transaction()`, reconciles each system role's permissions to the registry's defaults on every run, never deletes a permission, never touches any role outside the 5 system-role names, clears the Spatie permission cache at the end. Added a central `Gate::before` in `AppServiceProvider::boot()` — bypasses only for `hasRole('Super Admin')`, returns `null` (not `false`) otherwise so normal Spatie checks still run, never bypasses a guest, calls only `hasRole()` (no `can()`) to avoid recursion. Added `App\Policies\UserPolicy` — every ability hardcoded `false` (an explicit temporary lockdown, not a real permission check); Laravel auto-discovers it for `App\Models\User` via the standard `App\Models\X` → `App\Policies\XPolicy` convention, so `UserResource` and its 4 Pages needed **zero code changes** — confirmed by reading Filament's own `HasAuthorization`/`CanAuthorizeResourceAccess` source: `canViewAny()`/`canCreate()`/`canEdit()`/`canView()` all delegate to the policy once one exists, and every resource page's `mount()` already calls `abort_unless(canX(), 403)`. Refactored `DatabaseSeeder` to call `PermissionSyncService::sync()` instead of its old inline coarse `"{action} {module}"` grid + per-role `syncPermissions()` calls; the old coarse permissions (e.g. `"view finance"`) are left in the database untouched — confirmed via tinker against the real local DB after running the command (178 total permissions = 154 new + 24 old coarse ones still present, 0 deleted). `TransactionResource`/`TransactionLineResource`'s hardcoded `canCreate()/canEdit()/canDelete() = false` overrides never call `Gate`, so they are unaffected by the bypass — added a regression test proving this explicitly for a Super Admin.
+
+A real environment issue was hit and resolved during test-writing (documented in AI_PROJECT_MEMORY.md): full HTTP round-trips via `$this->get('/admin/users')` don't preserve `actingAs()` in this environment (traced to `Filament\Http\Middleware\Authenticate` seeing the panel guard as unauthenticated on the fresh kernel dispatch, via `withoutExceptionHandling()`), and separately `route()`/`url()` bake the local `APP_URL` (`.../oms/public`) into generated URLs that the test client then mis-resolves. This is pre-existing and unrelated to this change — the entire prior 209-test suite never issues a real HTTP GET against a Filament panel route, for the same reason. `UserResourceLockdownTest` instead asserts directly against `UserResource::canViewAny()/canCreate()/canEdit()/canView()/canDelete()` — the exact same authorization decision Filament's `abort_unless(canX(), 403)` uses in production.
+
+### Changed Files
+- `app/Support/Permissions/PermissionRegistry.php` (new)
+- `app/Services/Permissions/PermissionSyncService.php` (new)
+- `app/Console/Commands/SyncPermissions.php` (new — `oms:sync-permissions`)
+- `app/Policies/UserPolicy.php` (new — temporary Super-Admin-only lockdown)
+- `app/Providers/AppServiceProvider.php` (added `Gate::before` Super Admin bypass in `boot()`)
+- `database/seeders/DatabaseSeeder.php` (refactored: old coarse permission/role seeding replaced with `PermissionSyncService::sync()`; old permissions not deleted)
+- `tests/Feature/Permissions/SuperAdminGateBypassTest.php` (new, 4 tests)
+- `tests/Feature/Permissions/SyncPermissionsCommandTest.php` (new, 6 tests)
+- `tests/Feature/Permissions/SystemRoleDefaultPermissionsTest.php` (new, 5 tests)
+- `tests/Feature/Users/UserResourceLockdownTest.php` (new, 4 tests)
+- `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md`, `docs/PROMPTS_LOG.md`, `docs/NEXT_STEPS.md` (this entry set)
+- No migration added. No existing Filament Resource/Page other than `UserResource`'s authorization (via the new Policy, not a file edit) was touched.
+
+### Verification
+1. New permission-foundation tests: `php artisan test --filter="SuperAdminGateBypassTest|SyncPermissionsCommandTest|SystemRoleDefaultPermissionsTest|UserResourceLockdownTest"` → **19/19 passed, 420 assertions**.
+2. Full suite: `php artisan test` → **228/229 passed, 974 assertions; 1 failure**: `Tests\Feature\ExampleTest::test_the_application_returns_a_successful_response` — confirmed pre-existing/unrelated, the same single failure recorded in every prior task's log entry back to 2026-07-15.
+3. `php artisan oms:sync-permissions` run against the real local database (after tests passed): 1st run — 154 permissions created, 0 found, 5 roles found (0 created — already present from an earlier partial seed), permissions assigned: Super Admin 154, Admin 140, Accountant 48, Project Manager 20, Viewer 46. 2nd run (idempotency check) — 0 permissions created / 154 found, 0 roles created / 5 found, identical per-role counts.
+4. Post-sync tinker check against the real local DB: 178 total permissions (154 new + 24 pre-existing coarse ones, 0 deleted); 5 roles total; noted the local DB has no actual `superadmin@oms.com` user yet (the 5 roles pre-existed from an earlier partial seed run, but `DatabaseSeeder::run()` — which creates that user — has not been executed here) — informational only, out of this task's scope.
+5. `php -l` clean on all 8 new/changed PHP files.
+
+### Commit Hash
+Not committed — awaiting explicit approval, per instructions.
+
+---
+
+### Date
+2026-07-19 (correction — real admin email + completed real HTTP authorization tests)
+
+### Task
+Correction to the same-day permissions-foundation task, before commit. The prior pass's local-DB check for a seeded Super Admin user searched for `superadmin@oms.com` (the seeder's hardcoded email) and reported "no" — user corrected this: the actual administrator account is `oms@oms.com`, and the earlier negative result must not be treated as proof no Super Admin exists. Requested: (1) a read-only re-check of `oms@oms.com` (existence, not-soft-deleted, exact `Super Admin` role, `Gate::before` recognition, `UserResource` access) against the real local DB, with no writes and no new admin account; (2) inspect and report `DatabaseSeeder`'s current admin-seeding behavior without changing it unless clearly required (and report first if so); (3) a useful `oms:sync-permissions` warning when zero users hold the Super Admin role, without ever creating a user from that command; (4) completing the previously-punted real HTTP-level 403/200 tests for `UserResource` (the prior pass had substituted direct `canX()` assertions after hitting an environment quirk) — not staged, not committed.
+
+### Result
+Read-only tinker check against the real local DB (zero writes: only `User::withTrashed()->where(...)->first()`, `hasRole()`, `Gate::allows()`, `UserResource::canViewAny()/canCreate()`, `Auth::setUser()`/`forgetUser()` — the latter two are in-process only, no DB/session write) confirmed all 4 requested facts: `oms@oms.com` exists and is not soft-deleted; it holds the exact role `Super Admin` (and only that role); `Gate::before` recognizes it (an arbitrary, unregistered permission string was allowed — proof the bypass, not a coincidental real permission, is what granted it); `UserResource::canViewAny()`/`canCreate()` both return true for it. `DatabaseSeeder::seedSuperAdmin()` was inspected and found unchanged from before this task's first pass (only the `assignRole()` argument was ever a constant-reference change, same value) — it hardcodes `User::firstOrCreate(['email' => 'superadmin@oms.com'], ...)`, a **different** email than the real `oms@oms.com` admin. This is a pre-existing mismatch, not introduced by this task: running the seeder as-is today would create a second, independent Super Admin account rather than recognizing `oms@oms.com`. Per instructions, this was **not changed** — reported only (see the new DECISIONS_LOG entry for the proposed fix, pending approval).
+
+Found the real root cause of the earlier HTTP-testing environment quirk (previously worked around, not fixed): `Filament\Http\Middleware\Authenticate::authenticate()` has a hardcoded rule, independent of any role/permission — if the user model doesn't implement `Filament\Models\Contracts\FilamentUser`, the panel is only reachable when `config('app.env') === 'local'` (vendor source: `abort_if($user instanceof FilamentUser ? ... : (config('app.env') !== 'local'), 403)`). `App\Models\User` doesn't implement that interface, and PHPUnit runs with `APP_ENV=testing`, so *every* request — including an authenticated Super Admin — was 403ing before Gate/Policy ever ran; this had nothing to do with sessions or `actingAs()`. Forcing `config(['app.env' => 'local'])` in the test's `setUp()` (test-only, zero production files touched) reaches the actual authorization layer. Rewrote `UserResourceLockdownTest` to issue real `$this->get('/admin/users')` /`/create`/`/{id}`/`/{id}/edit` requests and assert `assertForbidden()`/`assertOk()` directly, replacing the prior `canX()`-only assertions. Added the requested sync-command warning: `PermissionSyncService::sync()` now also returns a read-only `super_admin_user_count` (via `Role::where('name', 'Super Admin')->first()?->users()->count()`, no write), and `oms:sync-permissions` prints an Arabic warning when it's 0 — the command still never creates or assigns a user.
+
+### Changed Files
+- `app/Services/Permissions/PermissionSyncService.php` (added read-only `super_admin_user_count` to `sync()`'s return; no new writes)
+- `app/Console/Commands/SyncPermissions.php` (prints a warning when `super_admin_user_count === 0`)
+- `tests/Feature/Users/UserResourceLockdownTest.php` (rewritten: real HTTP `$this->get()` + `assertForbidden()`/`assertOk()` instead of direct `canX()` assertions, with the `app.env`/`URL::forceRootUrl` fix documented in its class docblock)
+- `tests/Feature/Permissions/SyncPermissionsCommandTest.php` (2 new tests: warns when 0 Super Admin users and creates none; no warning once one exists)
+- `graphify-out/**` (regenerated via `graphify update .`)
+- `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md`, `docs/PROMPTS_LOG.md` (this entry set)
+- `database/seeders/DatabaseSeeder.php` — **not changed** in this correction (inspected and reported only, per instructions)
+- No migration added. No administrator credentials added, changed, or exposed. No write to the real local database.
+
+### Verification
+1. Read-only tinker check against the real local DB (see Result above) — all 4 requested facts confirmed, zero writes.
+2. Permission-foundation + UserResource suite: `php artisan test --filter="SuperAdminGateBypassTest|SyncPermissionsCommandTest|SystemRoleDefaultPermissionsTest|UserResourceLockdownTest"` → **21/21 passed, 416 assertions** (19 from the first pass + 2 new warning tests), including the 3 now-real-HTTP `UserResourceLockdownTest` cases (non-Super-Admin 403 on list/create/view/edit; Super Admin 200 on all 4).
+3. Full suite: `php artisan test` → **230/231 passed, 970 assertions; 1 failure** — the same pre-existing/unrelated `ExampleTest` failure recorded in every prior task's log entry back to 2026-07-15.
+4. Post-run tinker re-check against the real local DB: user count, `oms@oms.com`/`superadmin@oms.com` presence, permission count (178), and role count (5) all identical to before this correction — confirms no write occurred (all new HTTP tests run against the isolated `:memory:` SQLite test schema, never the real database).
+5. `php -l` clean on all changed/new PHP files.
+
+### Commit Hash
+Not committed — awaiting explicit approval, per instructions.
+
+---
+
+### Date
+2026-07-19 (correction 2 — FilamentUser panel access + duplicate-Super-Admin-safe seeder)
+
+### Task
+Two focused corrections to the same-day permissions-foundation work, before commit. (1) The prior correction's real HTTP tests required a test-only `config(['app.env' => 'local'])` because `App\Models\User` doesn't implement `Filament\Models\Contracts\FilamentUser` — flagged as masking a real production issue (Filament rejects every user in any non-`local` environment without that interface). Required implementing `FilamentUser::canAccessPanel()` on `User` (entry-only, no permission logic, no hardcoded emails/IDs/roles, equivalent to `! $this->trashed()`) and removing the test workaround, with the real HTTP tests still passing under normal `APP_ENV=testing`. (2) `DatabaseSeeder::seedSuperAdmin()` still targets `superadmin@oms.com` while the real admin is `oms@oms.com` — required the smallest safe fix: skip bootstrap-user creation entirely when any non-soft-deleted user already holds the `Super Admin` role, never modify an existing administrator, preserve clean-install behavior otherwise, and keep `oms:sync-permissions` creating zero users. No migrations, no redesign, no staging/commit.
+
+### Result
+`App\Models\User` now `implements Filament\Models\Contracts\FilamentUser` with `canAccessPanel(Panel $panel): bool { return ! $this->trashed(); }` — panel entry no longer depends on `config('app.env')` in any environment; all actual authorization (who can do what once inside) remains entirely with `Gate::before` + `App\Policies\UserPolicy` + future Resource/Page policies, unchanged. Removed `config(['app.env' => 'local'])` from `UserResourceLockdownTest::setUp()`; all 4 of its real-HTTP tests (403 for a normal user on list/create/view/edit, 200 for Super Admin) pass unmodified under the suite's normal `APP_ENV=testing`. `DatabaseSeeder::seedSuperAdmin()` now opens with `if (User::role(PermissionRegistry::SUPER_ADMIN)->exists()) { return; }` — `User::role()` is Spatie's query scope and inherits the model's default SoftDeletes scope, so a soft-deleted former Super Admin correctly does **not** block bootstrap creation, while any active one (regardless of email) does. When no Super Admin exists, behavior is byte-identical to before (same `firstOrCreate(['email' => 'superadmin@oms.com'], ...)`, same `Hash::make('password123')`, same `assignRole()`) — no new credentials introduced. Confirmed via a dedicated test that an existing `oms@oms.com` Super Admin is left completely untouched (email, name, password hash, `updated_at`, and role set all unchanged) after running the full seeder.
+
+### Changed Files
+- `app/Models/User.php` (implements `FilamentUser`, adds `canAccessPanel()`)
+- `database/seeders/DatabaseSeeder.php` (`seedSuperAdmin()` now skips bootstrap creation if any non-soft-deleted Super Admin already exists)
+- `tests/Feature/Users/UserResourceLockdownTest.php` (removed the `app.env` workaround; docblock rewritten to explain the real fix)
+- `tests/Feature/Users/UserFilamentAccessTest.php` (new, 4 tests — implements-contract, panel access across 4 environments, soft-deleted rejection, confirms `app.env` stays `testing`)
+- `tests/Feature/Permissions/DatabaseSeederSuperAdminTest.php` (new, 8 tests — empty-DB bootstrap, hashed password, idempotent re-run, existing-admin-blocks-bootstrap, existing-admin-untouched, soft-deleted-doesn't-block, sync-permissions warning behavior both ways)
+- `graphify-out/**` (regenerated via `graphify update .`)
+- `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md`, `docs/PROMPTS_LOG.md` (this entry set)
+- No migration added. No real database user created, modified, or deleted. No credentials exposed.
+
+### Verification
+1. `UserResourceLockdownTest` alone → **4/4 passed, 10 assertions** (no `app.env` override, normal `APP_ENV=testing`).
+2. `DatabaseSeederSuperAdminTest` alone → **8/8 passed, 20 assertions**.
+3. `SyncPermissionsCommandTest` alone → unchanged, still passing (covered in the combined run below).
+4. All permissions-related tests together (`SuperAdminGateBypassTest|SyncPermissionsCommandTest|SystemRoleDefaultPermissionsTest|UserResourceLockdownTest|UserFilamentAccessTest|DatabaseSeederSuperAdminTest`) → **33/33 passed, 444 assertions**.
+5. Full suite: `php artisan test` → **242/243 passed, 998 assertions; 1 failure** — the same pre-existing/unrelated `ExampleTest` failure recorded in every prior task's log entry back to 2026-07-15.
+6. Post-run tinker re-check against the real local DB: user count (2), `oms@oms.com` present with `Super Admin` role, `superadmin@oms.com` absent, 178 permissions, 5 roles — all identical to before this correction, confirming zero writes to the real database.
+7. `grep -rn "app.env.*local" tests/` confirms the only remaining match is the explanatory docblock comment in `UserResourceLockdownTest.php`, not a config override.
+8. `php -l` clean on all changed/new PHP files.
+
+### Commit Hash
+Not committed — awaiting explicit approval, per instructions.
+
+---
+
+### Date
+2026-07-19 (correction 3 — no hardcoded bootstrap credential + soft-delete-safe seeding)
+
+### Task
+Final focused security correction to the same-day permissions-foundation work, before commit. Flagged: `DatabaseSeeder` still contained a hardcoded bootstrap administrator email/password (`superadmin@oms.com` / `password123`) — unacceptable in source control for a permissions/security task — plus an unhandled soft-delete edge case (`users.email` is unique; if the bootstrap email already existed as a soft-deleted user, `firstOrCreate()` would hit a duplicate-email constraint instead of recovering it). Required: a small config-backed bootstrap-admin setting (email/name/password, all from environment variables, no default password), reading env through config rather than directly; when an active Super Admin already exists, skip entirely; when none exists, require the config (fail with a clear `RuntimeException`, no password exposed, no partial user) and handle three cases via `withTrashed()` lookup by the configured email — no existing row (create), active existing row (promote only, no credential overwrite), soft-deleted existing row (restore + reset password, no duplicate row). 12 specific tests requested. No migrations, no redesign, no staging/commit.
+
+### Result
+Added `config/oms.php` with a single `bootstrap_admin` array (`email`/`name`/`password`, all `env()`-sourced, `password` has no default — `name` defaults to `'Super Admin'` since it isn't sensitive). `DatabaseSeeder::seedSuperAdmin()` rewritten: (1) unchanged early-exit guard when any active Super Admin already exists; (2) reads `config('oms.bootstrap_admin.*')`, throws `RuntimeException` with a message naming only the required env var names (never a value) if email or password is blank, before touching the database; (3) `User::withTrashed()->where('email', $email)->first()` to find any prior row under that email; (4) no row → `User::create()` + `Hash::make($password)` + `assignRole()`; (5) active row → `assignRole()` only, zero field writes (name/email/password/`updated_at` all untouched — confirmed by test); (6) soft-deleted row → `restore()` + reassign `password` (freshly hashed) + `save()` + `assignRole()`, never a second `INSERT`. Confirmed via `grep -rn "password123|superadmin@oms.com" app/ database/seeders/ config/` → zero matches. `.env.example` documents the three new optional `OMS_BOOTSTRAP_ADMIN_*` variables (all blank placeholders, no real value, matching the existing pattern for other optional/sensitive vars like `AWS_SECRET_ACCESS_KEY`). `DatabaseSeederSuperAdminTest` fully rewritten around a synthetic `bootstrap-admin@test.local` / `Correct-Horse-Battery-Staple-1` test fixture (13 tests, none touching the real database) covering every required case, including a dedicated test that the exception message never contains the configured password string.
+
+### Changed Files
+- `config/oms.php` (new — `bootstrap_admin.{email,name,password}`, all `env()`-sourced)
+- `database/seeders/DatabaseSeeder.php` (`seedSuperAdmin()` rewritten: config-driven, `withTrashed()` lookup, restore-not-duplicate, `RuntimeException` on missing config)
+- `.env.example` (added `OMS_BOOTSTRAP_ADMIN_EMAIL`/`_NAME`/`_PASSWORD`, all blank)
+- `tests/Feature/Permissions/DatabaseSeederSuperAdminTest.php` (rewritten, 13 tests — was 8)
+- `graphify-out/**` (regenerated via `graphify update .`)
+- `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md`, `docs/PROMPTS_LOG.md` (this entry set)
+- No migration added. `.env` (the real local environment file) was **not** read or modified — only `.env.example`, a template with no real values. No real database user created, modified, or deleted. No credential exposed anywhere (source, test output, or exception messages).
+
+### Verification
+1. `DatabaseSeederSuperAdminTest` alone → **13/13 passed, 42 assertions**.
+2. `SyncPermissionsCommandTest` alone → **8/8 passed, 171 assertions**.
+3. `UserResourceLockdownTest` alone → **4/4 passed, 10 assertions**.
+4. All permissions-related tests together (`SuperAdminGateBypassTest|SyncPermissionsCommandTest|SystemRoleDefaultPermissionsTest|UserResourceLockdownTest|UserFilamentAccessTest|DatabaseSeederSuperAdminTest`) → **38/38 passed, 466 assertions**.
+5. Full suite: `php artisan test` → **247/248 passed, 1020 assertions; 1 failure** — the same pre-existing/unrelated `ExampleTest` failure recorded in every prior task's log entry back to 2026-07-15.
+6. `grep -rn "password123|superadmin@oms.com" app/ database/seeders/ config/` → no matches (confirms no hardcoded bootstrap credential remains in source).
+7. Post-run tinker re-check against the real local DB: user count (2), `oms@oms.com` present with `Super Admin`, `superadmin@oms.com` absent, 178 permissions, 5 roles — all identical to before this correction, confirming zero writes to the real database.
+8. `php -l` clean on all changed/new PHP files.
+
+### Commit Hash
+Not committed — awaiting explicit approval, per instructions.

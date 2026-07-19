@@ -1020,13 +1020,13 @@
     "semantic_hash": "b3254ac16f0008e364fe8e36d4f2d83b"
   },
   "app/Models/User.php": {
-    "mtime": 1782037317.4141843,
-    "ast_hash": "06480ad12ce242e0ca17d539a8b7ac13",
-    "semantic_hash": "06480ad12ce242e0ca17d539a8b7ac13"
+    "mtime": 1784448443.1801896,
+    "ast_hash": "471ce15db906c185448625e7a4a5861d",
+    "semantic_hash": ""
   },
   "app/Providers/AppServiceProvider.php": {
-    "mtime": 1783240072.7025409,
-    "ast_hash": "d8a2c7060463f6e8e090657969e210b2",
+    "mtime": 1784444998.3205621,
+    "ast_hash": "9195b86b37baedf1314e1a4004787f1e",
     "semantic_hash": ""
   },
   "app/Providers/Filament/AdminPanelProvider.php": {
@@ -1415,9 +1415,9 @@
     "semantic_hash": "f3963dccd4c9adce84e62cf046c40813"
   },
   "database/seeders/DatabaseSeeder.php": {
-    "mtime": 1781009006.8279774,
-    "ast_hash": "ed3a739bfbee839665ae8d4789d15316",
-    "semantic_hash": "ed3a739bfbee839665ae8d4789d15316"
+    "mtime": 1784448465.626126,
+    "ast_hash": "284ab6339b1decead54f29023def6718",
+    "semantic_hash": ""
   },
   "package.json": {
     "mtime": 1779750712.0,
@@ -1875,28 +1875,28 @@
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1784441798.1753552,
-    "ast_hash": "403ab121bbd87670ffc232571c969e07",
+    "mtime": 1784448127.2502902,
+    "ast_hash": "130328b8f302664ab7d85dcaa633554a",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
-    "mtime": 1784441822.9518344,
-    "ast_hash": "ae98c70b3d79b5c832f8533cf863e7f8",
+    "mtime": 1784448098.6306777,
+    "ast_hash": "9221d5e0084931da771bb20438502ed0",
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1784441860.1269314,
-    "ast_hash": "997701dc65a12b39f417a97eadf4dc9e",
+    "mtime": 1784446483.2535975,
+    "ast_hash": "b50d8414410b31c8d5e47050ede67070",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
-    "mtime": 1784441839.8499026,
-    "ast_hash": "0c601f67cd200fdef40b9ba99692744e",
+    "mtime": 1784448143.660721,
+    "ast_hash": "c29d43fa4f2f85422fd95f0b1cf75ba6",
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1784441751.3098605,
-    "ast_hash": "897b9a66bd7b619c07209bb8d43ce33a",
+    "mtime": 1784447947.699758,
+    "ast_hash": "8622399cedce4e9af24ebedd1cc6714c",
     "semantic_hash": ""
   },
   "app/Services/Reports/ProjectFinancialDetailsWordExportService.php": {
@@ -2130,12 +2130,12 @@
     "semantic_hash": ""
   },
   "storage/framework/testing/disks/public/receipts/orphan.pdf": {
-    "mtime": 1784441275.5466294,
+    "mtime": 1784448730.5510604,
     "ast_hash": "c91ca4ad2ff792df795c3bab362f7a28",
     "semantic_hash": ""
   },
   "storage/framework/testing/disks/public/logo.png": {
-    "mtime": 1784441275.549748,
+    "mtime": 1784448730.5510604,
     "ast_hash": "24555cfd25ae5e76b92aeb464d2a50de",
     "semantic_hash": ""
   },
@@ -2822,6 +2822,61 @@
   "storage/framework/views/f10fab8c7390efafe1a5e2a8efa92fff.php": {
     "mtime": 1784368146.5839484,
     "ast_hash": "5946d604c5cd7699b4ad2accf7175362",
+    "semantic_hash": ""
+  },
+  "app/Console/Commands/SyncPermissions.php": {
+    "mtime": 1784447329.3613772,
+    "ast_hash": "c9cc2d989d80145e3ca5201b5c8a7c2f",
+    "semantic_hash": ""
+  },
+  "app/Policies/UserPolicy.php": {
+    "mtime": 1784444988.1677594,
+    "ast_hash": "acaa82fae3d9aa347d5c002a42d896c1",
+    "semantic_hash": ""
+  },
+  "app/Services/Permissions/PermissionSyncService.php": {
+    "mtime": 1784447320.3609047,
+    "ast_hash": "a1f48212777bae8f20dc7dad87761f10",
+    "semantic_hash": ""
+  },
+  "app/Support/Permissions/PermissionRegistry.php": {
+    "mtime": 1784444962.4424477,
+    "ast_hash": "6aecb0141c247211115ed1e94f8e0d2d",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/195d4e8dd894a342e21cb13125a73afe.php": {
+    "mtime": 1784445413.0000887,
+    "ast_hash": "bb53b81d2d39424bf79fa9c2352acd2b",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Permissions/SuperAdminGateBypassTest.php": {
+    "mtime": 1784445035.4151387,
+    "ast_hash": "334ab6232fc04c524206f3fd9b82209e",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Permissions/SyncPermissionsCommandTest.php": {
+    "mtime": 1784447346.0291176,
+    "ast_hash": "9c08007c71259f7c4792efb27ddc306d",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Permissions/SystemRoleDefaultPermissionsTest.php": {
+    "mtime": 1784445068.7922628,
+    "ast_hash": "728161e205d76b37405e89cf08adc303",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Users/UserResourceLockdownTest.php": {
+    "mtime": 1784448488.7539427,
+    "ast_hash": "2e92f84e534499be00812064d5029a27",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Permissions/DatabaseSeederSuperAdminTest.php": {
+    "mtime": 1784448606.069447,
+    "ast_hash": "70e03d9c818f0005ae75a0ee03074d7a",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Users/UserFilamentAccessTest.php": {
+    "mtime": 1784448522.4057126,
+    "ast_hash": "c87633cf2ed9e8f4b658605e564cab1a",
     "semantic_hash": ""
   }
 }

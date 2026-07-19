@@ -320,3 +320,131 @@ A test that can only pass by asserting a rejection the code doesn't actually per
 One structural constraint fell out of this: `fx_rate` could **not** be added to the guard's "required key" list, because `EditProjectCostReceipt`'s in-place `->update()` payload (unlike every other line-write payload in the codebase) legitimately never includes that key — receipts are always `fx_rate = 1` and that column is never rewritten on edit. The guard instead treats a missing `fx_rate` key as `1.0` for validation purposes (matching the column's true, unchanging value), and required-key enforcement covers `account_id`/`currency_id`/`amount_currency`/`debit_base`/`credit_base`/`line_role` only. The new optional `$expectedNotesByRole` parameter on `assertValidLinePayload()` is exercised only by unit tests in this pass — it is deliberately **not** wired into any of the 10 production call sites yet (wiring it in would touch the already-approved 10 files, out of scope for a test-completion task); a future task can opt individual workflows into exact notes-tag matching without any guard-side change.
 
 **Correction (same day, before commit): this fx_rate-optional-with-1.0-default design was reversed.** It was flagged as conflicting with the actual approved requirement — no financial value may be silently assumed — and as a real risk: a historically-corrupted stored `fx_rate` on a receipt line would never be checked against its true value, only against the guard's assumed `1.0`, so a valid Edit could not (and, worse, would not) correct it either, since the payload never wrote a value for that column at all. The correct fix was not to weaken the "required key" rule but to close the actual gap it was routing around: `fx_rate` was restored to `REQUIRED_KEYS` (rejected outright if missing, no fallback anywhere in the guard), and `EditProjectCostReceipt::buildReceiptLineUpdates()` was changed to explicitly write `'fx_rate' => 1` on both its debit and credit update arrays — matching every other line-write payload in the codebase, which already did this. This is the smaller, more correct fix: one two-line addition to the one file with the actual gap, rather than a permanent structural exception in the guard. See the 2026-07-18 correction entries in `docs/TASKS_LOG.md` and `docs/AI_PROJECT_MEMORY.md` for the full detail and updated test counts.
+
+---
+
+### Date
+2026-07-19
+
+### Decision
+`UserPolicy` locks every ability to a hardcoded `false` for Task 1, rather than checking a granular `users.*` permission. `App\Support\Permissions\PermissionRegistry` still defines `users.view_any`/`users.view`/`users.create`/etc. (so the registry, sync command, and role-default tests are already forward-complete), but no role — not even a future custom role explicitly given `users.create` — can use them yet; only the `Gate::before` Super Admin bypass reaches `UserResource` at all.
+
+### Reason
+Explicit instruction: "This task must establish the authorization foundation and immediately restrict UserResource to Super Admin only until the complete user-management phase is implemented" — the currently wide-open `UserResource` (any authenticated user could assign any role, including a future Super Admin, to any user) was flagged as the critical immediate risk driving this whole task, ahead of granular permissions. Task 3 (self-elevation guard, last-Super-Admin protection, `is_active` field, safe `UserForm`) has to land before opening `users.*` up to a real `Admin`-style role is safe.
+
+### Impact
+`PermissionRegistry::adminDefaults()` already excludes every `users.*`/`roles.*`/`permissions.*` permission from Admin's default set (belt-and-suspenders — even if the policy is loosened prematurely by a future edit, Admin wouldn't have been granted the permission anyway, by design). When Task 3 replaces `UserPolicy`'s hardcoded `false` with real `users.*` permission checks, `Admin`'s default permission set must be revisited deliberately (not just left excluded by omission) as part of that task, since today's exclusion is enforced twice (policy + registry) for defense in depth.
+
+---
+
+### Date
+2026-07-19
+
+### Decision
+`Viewer`'s default permission set excludes every `reports.*` permission, even though report *pages* are arguably "operational modules" a viewing-only role might expect to see. Similarly, `Accountant` gets exactly the 4 explicitly-named financial reports (not `projects_general_financial`/`project_financial_details`), and `Project Manager` gets report *view* only, never *export*.
+
+### Reason
+The task instructions were explicit for Accountant/PM's report scoping, but ambiguous for Viewer ("Grant only view_any/view permissions for operational modules" — reports use a different naming pattern, `reports.<page>.view`, and weren't explicitly listed). Chose the more conservative, least-privilege reading rather than guess a broader one, consistent with the original design phase's Viewer principle ("no ... access by default unless separately granted") — matches this task's own instruction to avoid weakening/over-granting defaults.
+
+### Impact
+If Viewer is later found to need report visibility, it's a one-line addition to `PermissionRegistry::viewerDefaults()` (`foreach REPORT_PAGES as $page => $label { $permissions[] = "reports.{$page}.view"; }`), not a design change — flagged as a candidate follow-up, not implemented here since it wasn't clearly requested.
+
+---
+
+### Date
+2026-07-19
+
+### Decision
+`execution_payments` was given the same operation set as `project_cost_budgets_payments` (`view_any/view/create/update/delete/restore`) in `PermissionRegistry`, even though the task's explicit "Full CRUD + SoftDeletes" module list didn't name it directly — it was called out separately under "Execution payments: Create separate permissions for: execution_payments, project_cost_budgets_payments."
+
+### Reason
+Confirmed via `ExecutionPaymentResource::$model` (read directly from source) that `ExecutionPaymentResource` and `ProjectCostBudgetsPaymentResource` share the exact same underlying `ProjectCostBudgetsPayment` model (`SoftDeletes`-enabled) with near-identical `whereNotNull('transaction_id')` query scoping — the earlier read-only audit (2026-07-19) had already flagged their precise data-scope relationship as needing clarification before full resource-protection. Giving `execution_payments` the same operation shape as its sibling is the only inference the confirmed inventory supports without guessing new facts; the task explicitly said not to change either resource's query/model/business logic in this task.
+
+### Impact
+No functional risk in Task 1 (permissions aren't wired into either resource's `canX()` yet). Before Task 2 protects these two resources, their exact data-scope relationship (are they mutually exclusive subsets of the same table, or overlapping?) must be resolved — assigning `execution_payments.*` and `project_cost_budgets_payments.*` as if they gate fully independent record sets could be wrong if a user could reach the same underlying row through either resource with different effective permissions.
+
+---
+
+### Date
+2026-07-19
+
+### Decision
+`tests/Feature/Users/UserResourceLockdownTest.php` initially asserted directly against `UserResource::canViewAny()/canCreate()/canEdit()/canView()/canDelete()` rather than performing real HTTP requests (`$this->get('/admin/users')`) against the Filament panel routes.
+
+### Reason
+Traced (via `withoutExceptionHandling()` and a full stack trace) that in this environment, a full HTTP round-trip through the test client appeared to lose the `actingAs()` user before `Filament\Http\Middleware\Authenticate` ran, producing a 403 regardless of the acting user's actual role. Separately confirmed `route()`/`url()` bake this environment's `APP_URL` path prefix (`/oms/public`) into generated URLs, which the test client also mis-resolves.
+
+### Impact
+The test still verified the exact production authorization decision at the time — Filament's own `CanAuthorizeResourceAccess`/`CreateRecord`/`EditRecord`/`ViewRecord` call these same `canX()` methods inside `abort_unless(..., 403)` before rendering anything. **Correction (same day, before commit): the real root cause was found and the workaround was replaced with genuine HTTP tests.** The user flagged that item 5 of a follow-up request ("a normal authenticated user receives HTTP 403 on the real UserResource list/create/view/edit URLs") required completing real HTTP tests, not settling for the `canX()` proxy. Re-tracing with `withoutExceptionHandling()` found the actual cause was unrelated to sessions: `Filament\Http\Middleware\Authenticate::authenticate()` has a hardcoded rule — if the user model doesn't implement `Filament\Models\Contracts\FilamentUser`, the panel is only reachable when `config('app.env') === 'local'` (vendor source: `abort_if($user instanceof FilamentUser ? ... : (config('app.env') !== 'local'), 403)`). `App\Models\User` doesn't implement that interface, and PHPUnit runs with `APP_ENV=testing`, so *every* request — including an authenticated Super Admin — was 403ing before any Gate/Policy check ran; `actingAs()` was never actually broken. The fix is a test-only `config(['app.env' => 'local'])` in `UserResourceLockdownTest::setUp()` (documented in the test's class docblock, together with the pre-existing `URL::forceRootUrl()` fix) — no production file was touched, since implementing `FilamentUser` on `App\Models\User` would be a real behavior change outside this task's approved scope. `UserResourceLockdownTest` now issues real `$this->get('/admin/users')`/`/create`/`/{id}`/`/{id}/edit` requests and asserts `assertForbidden()`/`assertOk()` directly.
+
+---
+
+### Date
+2026-07-19 (correction — real admin account + DatabaseSeeder finding)
+
+### Decision
+(1) Confirmed the real administrator account is `oms@oms.com` (not `superadmin@oms.com`, which a prior pass had searched for and wrongly treated as "no Super Admin exists"), via read-only queries only. (2) Left `database/seeders/DatabaseSeeder.php` unchanged despite finding its `seedSuperAdmin()` method hardcodes `User::firstOrCreate(['email' => 'superadmin@oms.com'], ...)` — a different email than the real admin account. (3) Added a read-only `super_admin_user_count` to `PermissionSyncService::sync()` and a warning in `oms:sync-permissions` when it's 0, without adding any user-creation logic to either.
+
+### Reason
+Explicit instructions: do not create another administrator user, do not change any real database user, do not modify the local database, and — regarding the seeder — "do not add a new administrator account merely because `superadmin@oms.com` does not exist; only change seeding behavior if the existing project design clearly requires it and report the proposed change before implementing it." The seeder mismatch is real and pre-existing (not introduced by this task — the only line ever touched in `seedSuperAdmin()` was a constant-reference change with the same value), but nothing in the current instructions clearly requires changing it, and doing so unilaterally risks either creating a duplicate admin account or silently repointing seeding at a specific real email address without sign-off. The zero-Super-Admin warning was requested explicitly as "useful" while explicitly forbidding user creation from the command — a read-only headcount check satisfies both.
+
+### Impact
+`DatabaseSeeder::run()` should **not** be executed against any environment where `oms@oms.com` is the intended admin, until this mismatch is resolved — running it today would create a second, independent `superadmin@oms.com` Super Admin account alongside the real one. Proposed fix for approval (not implemented): either make `seedSuperAdmin()`'s target email configurable (e.g. an env var, defaulting to the current hardcoded value for backward compatibility) or remove/guard the method entirely now that a real admin account already exists outside the seeder's knowledge. `oms:sync-permissions` is unaffected either way — it only touches permissions/roles, never users, and its new warning is purely informational (verified by a test asserting `User::count()` is unchanged after the command runs).
+
+---
+
+### Date
+2026-07-19 (correction 2)
+
+### Decision
+`App\Models\User::canAccessPanel()` returns exactly `! $this->trashed()` — no permission check, no role check, no hardcoded email/ID. It answers only "can this user enter the panel at all", never "what can they do once inside".
+
+### Reason
+Explicit instruction, and the underlying principle already established across this task: authorization decisions belong in `Gate::before`/Policies/Resource `canX()` methods, in one place, not duplicated or partially reimplemented in the User model. Putting a role or permission check inside `canAccessPanel()` would create a second, parallel authorization path that could drift out of sync with the real one (e.g. a future role rename would need updating in two places instead of one). It would also change *today's* behavior for the 24 not-yet-protected resources (Task 2), since any authenticated user currently reaches them regardless of role — narrowing `canAccessPanel()` now, ahead of Task 2's actual per-resource protection, would produce an inconsistent, partially-protected state that's harder to reason about than "fully open until Task 2, fully gated after".
+
+### Impact
+This closes the real production risk the user flagged (Filament silently rejecting every user, including Super Admin, in any non-`local` environment when the model doesn't implement `FilamentUser`) without touching or duplicating any authorization logic. It does **not** by itself change who can do what inside the panel today — `UserResource` was already Super-Admin-only via `UserPolicy` before this change and still is; the other 24 resources were already open to any authenticated user in `local`/`testing` (since `app.env` was never `production` in any environment this task has run in) and remain exactly that open now, in every environment, until Task 2 adds their `canX()`/Policy protection. This is a strict correctness fix (production no longer silently locks everyone out), not a broadening of today's local/testing access.
+
+---
+
+### Date
+2026-07-19 (correction 2)
+
+### Decision
+`DatabaseSeeder::seedSuperAdmin()` now skips creating `superadmin@oms.com` entirely whenever any non-soft-deleted user already holds the `Super Admin` role — via `User::role(PermissionRegistry::SUPER_ADMIN)->exists()`, checked first, with an early `return`. No email-specific check (e.g. `where('email', 'oms@oms.com')`) was added.
+
+### Reason
+Explicit requirement: check by role, not by a specific email — "check whether any non-soft-deleted User already has the exact role Super Admin", not "check whether `oms@oms.com` exists". Hardcoding the real admin's email into the seeder would just replace one hardcoded-email problem with another (what happens when the real admin's email changes, or a second environment has a different real admin email?). Checking by role is the generically correct condition: "does this system already have an administrator" is exactly what matters for deciding whether to bootstrap one.
+
+### Impact
+Any non-soft-deleted user holding `Super Admin` — under any email, created any way (this seeder, manually, a future `RoleResource`) — permanently prevents `superadmin@oms.com` from ever being created by this seeder again, which is the desired steady-state for a system that already has a real administrator. If the *only* Super Admin is later soft-deleted (e.g. accidentally, or through a future Task-3 safety bug), the seeder would then bootstrap `superadmin@oms.com` on its next run — arguably correct disaster-recovery behavior (a system with zero active administrators regains one), but worth being aware of: it is not a substitute for the last-Super-Admin deletion protection still pending in Task 3.
+
+**Correction (same day, before commit): the hardcoded `superadmin@oms.com` email and `password123` were replaced entirely with `config('oms.bootstrap_admin.*')`, itself sourced only from `OMS_BOOTSTRAP_ADMIN_EMAIL`/`_NAME`/`_PASSWORD` environment variables — no default password, no literal credential anywhere in source control.** Flagged as unacceptable for a permissions/security task: a fixed password in a seeder file is a real credential leak the moment the repo is cloned anywhere, regardless of whether it's ever actually run. See the two new 2026-07-19 "correction 3" entries below for the config design and the soft-delete/`withTrashed()` handling this also required.
+
+---
+
+### Date
+2026-07-19 (correction 3)
+
+### Decision
+Bootstrap admin credentials live in a new `config/oms.php` (`bootstrap_admin.email`/`.name`/`.password`), each sourced via `env()` with no default for `email`/`password` (only `name` defaults, to `'Super Admin'`, since a display name isn't sensitive). `DatabaseSeeder::seedSuperAdmin()` reads only `config('oms.bootstrap_admin.*')`, never `env()` directly. Missing email or password throws `RuntimeException` with a message that names the two environment variable *names* only — never a value — and this check runs before any database write.
+
+### Reason
+Explicit requirement, and standard Laravel convention: `env()` should only ever be called inside `config/*.php` files (config is cacheable via `config:cache`; a seeder calling `env()` directly would silently read `null` in any environment with a cached config, a well-known Laravel footgun). A missing credential must fail loudly rather than silently creating an admin with an empty/guessable password, or silently skipping bootstrap and leaving the system with no administrator at all and no clear error explaining why.
+
+### Impact
+Every environment that needs this seeder to actually bootstrap an administrator (a fresh install with no existing Super Admin) must set `OMS_BOOTSTRAP_ADMIN_EMAIL` and `OMS_BOOTSTRAP_ADMIN_PASSWORD` before running it — documented as blank placeholders in `.env.example` (a template, not a real credential). Any environment that already has a real Super Admin (this local environment, via `oms@oms.com`) never needs this configuration at all, since the existing early-exit guard runs first and never reaches the config check.
+
+---
+
+### Date
+2026-07-19 (correction 3)
+
+### Decision
+`seedSuperAdmin()` looks up the configured bootstrap email with `User::withTrashed()->where('email', $email)->first()` and branches three ways: no row → `create()`; active row → `assignRole()` only, no field writes; soft-deleted row → `restore()` + reassign only the `password` field + `assignRole()`. No branch ever touches `name`/`email` on a pre-existing row (active or restored).
+
+### Reason
+`users.email` has a unique constraint (confirmed via the `0001_01_01_000000_create_users_table.php` migration), and Eloquent's default query scope excludes soft-deleted rows — so a naive `firstOrCreate(['email' => $email], [...])` would attempt an `INSERT` and hit that unique constraint whenever the configured email already exists as a soft-deleted user, rather than recovering it. Restoring is the correct recovery path (one row, one identity, its history/relationships intact) rather than erroring or silently doing nothing. Resetting only the password (not name/email, which already match) on restore is necessary because the prior password is unknown/unverifiable here — leaving it as-is would restore an account nobody can actually log into with the newly configured credential. Not resetting the password on an *active* existing user (the promote-only branch) is different: that account is already usable by whoever controls it, and silently overwriting their password would itself be a security regression — this branch only grants the role.
+
+### Impact
+An operator recovering from an accidentally-soft-deleted bootstrap admin gets their account back with the currently-configured `OMS_BOOTSTRAP_ADMIN_PASSWORD`, not a stale one — but this also means: if `OMS_BOOTSTRAP_ADMIN_PASSWORD` in the environment ever changes and the seeder is re-run while that email is soft-deleted, re-running restores the account with the *new* password, silently invalidating the old one. This is consistent with treating the config value as the single source of truth for that specific bootstrap identity, not a one-time-only value — worth noting if a future task adds a "rotate bootstrap password" workflow, since this seeder already effectively provides one (delete-then-reseed) as a side effect.
