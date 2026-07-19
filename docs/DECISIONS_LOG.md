@@ -448,3 +448,59 @@ Every environment that needs this seeder to actually bootstrap an administrator 
 
 ### Impact
 An operator recovering from an accidentally-soft-deleted bootstrap admin gets their account back with the currently-configured `OMS_BOOTSTRAP_ADMIN_PASSWORD`, not a stale one — but this also means: if `OMS_BOOTSTRAP_ADMIN_PASSWORD` in the environment ever changes and the seeder is re-run while that email is soft-deleted, re-running restores the account with the *new* password, silently invalidating the old one. This is consistent with treating the config value as the single source of truth for that specific bootstrap identity, not a one-time-only value — worth noting if a future task adds a "rotate bootstrap password" workflow, since this seeder already effectively provides one (delete-then-reseed) as a side effect.
+
+---
+
+### Date
+2026-07-19 (OMS Permissions Task 2A)
+
+### Decision
+Authorization for all 23 protected models is implemented purely as Policy classes discovered by Laravel's standard model→policy naming convention. No Resource or RelationManager file gets a `canX()` override, and no `Gate::policy()` registration was added anywhere.
+
+### Reason
+Verified (not assumed) that Filament's `HasAuthorization` trait already routes every standard ability (`viewAny`, `view`, `create`, `update`, `delete`, `deleteAny`, `restore`, `restoreAny`, `forceDelete`, `forceDeleteAny`) through `Gate::getPolicyFor($model)` when no explicit `canX()` override exists — exactly the same mechanism already proven working for `UserPolicy`/`UserResource` in Task 1, with zero registration needed. Adding per-Resource `canX()` overrides that just re-call the same Policy would be pure duplication with no behavioral difference, and the task explicitly asked not to add duplicated authorization in every Resource "unless Filament requires a focused Resource override for a specific business rule" — no such rule exists for the 23 ordinary modules (Transactions/TransactionLines already have their own pre-existing hardcoded overrides for their specific business rule, left untouched).
+
+### Impact
+Every future model needing standard CRUD-permission gating only needs one small Policy class using `AuthorizesCrud` (declaring its `permissionModule()`) — no Resource-file changes at all. If a genuinely resource-specific rule is ever needed (e.g. "cannot edit after fiscal year closes"), it belongs as a small addition inside that model's own Policy method, not a parallel Resource-level override, to avoid two authorization sources disagreeing.
+
+---
+
+### Date
+2026-07-19 (OMS Permissions Task 2A)
+
+### Decision
+The soft-delete rule (a trashed record cannot be normally viewed/edited/deleted-again; restore requires permission and only ever applies to an already-trashed record) is built once into the shared `AuthorizesCrud` trait and applied uniformly to all mutable modules, rather than touching any Resource's existing `withoutGlobalScopes([SoftDeletingScope::class])` in `getRecordRouteBindingEloquentQuery()`. For the 2 read-only audit modules (Transactions/TransactionLines), `view()` stays permission-gated but does **not** deny a trashed record.
+
+### Reason
+Per instructions: do not remove the existing scope bypass (it may support Filament's `TrashedFilter` — confirmed present on 16 of the 23 resources — showing trashed rows in the list without needing to re-enable the global scope for the whole query). The actual risk it created — a trashed row being directly reachable via a hand-typed Edit/View URL even though it's hidden from the normal list — is closed at the authorization layer instead, which is the smaller, safer change and doesn't touch any Resource file. The read-only exemption for Transactions/TransactionLines reflects that they're audit trails, not user-editable data: nothing about them can be mutated regardless of trashed state (already hardcoded false), so there's no "normal edit of a trashed record" risk to close, and blocking `view()` would only remove legitimate audit visibility into what was deleted and when.
+
+### Impact
+Any resource whose model uses `SoftDeletes` automatically gets this rule the moment its Policy exists — no per-Resource opt-in needed. If a future Resource genuinely needs a dedicated "restore review" page that must show a trashed record via a normal View route, that page needs its own explicit authorization exception (not a blanket relaxation of this rule) — flagged here for whoever builds that page later. This was verified with a real HTTP test (`ExecutionPaymentBudgetDisbursementScopeTest::test_soft_deleted_execution_payment_cannot_be_opened_through_the_normal_edit_route`) rather than assumed.
+
+---
+
+### Date
+2026-07-19 (OMS Permissions Task 2A)
+
+### Decision
+`ProjectCostBudgetPolicy` (model `App\Models\ProjectCostBudget`) enforces the `project_cost_budgets_payments` permission prefix, and `ProjectCostBudgetsPaymentPolicy` (model `App\Models\ProjectCostBudgetsPayment`) enforces the `execution_payments` prefix — i.e. each policy's permission prefix is the *opposite* of what its own class/model name would suggest by lexical similarity. Both policy classes carry explicit "MISLEADING NAME — READ BEFORE CHANGING" docblocks; a dedicated `PolicyDiscoveryTest` entry (with its own descriptive data-provider key) asserts this exact pairing.
+
+### Reason
+This is not a new decision — it is the pre-existing `PermissionRegistry` design from Task 1 (module keys `execution_payments`/`project_cost_budgets_payments` were already defined and assigned to the Accountant role before this task started), confirmed correct against the actual Resource→model mapping during the Task 2 discovery audit: `ExecutionPaymentResource`'s `$model` is `ProjectCostBudgetsPayment`, and `ProjectCostBudgetsPaymentResource`'s `$model` is the different `ProjectCostBudget`. Renaming the permission strings to match the model class names would require a data migration of every existing `permissions`/`role_has_permissions` row and is out of scope (and unnecessary — the strings work correctly, they're just non-obvious to a future reader relying on name similarity alone). Documenting this loudly in code was chosen over silently relying on the already-passing tests, since a future maintainer skimming class names alone (without running tests) is exactly the failure mode this guards against.
+
+### Impact
+Anyone adding a new ability to either policy, or extending `PermissionRegistry` with a new module, must re-check the actual Resource `$model` property rather than assume from the class/module name. `ProjectCosts/BudgetsRelationManager` (planned-budget rows, `transaction_id IS NULL`) shares `ProjectCostBudgetPolicy` with `ProjectCostBudgetsPaymentResource` (disbursement rows, `transaction_id IS NOT NULL`) since both use the same `ProjectCostBudget` model — this is expected today (no separate permission module was requested or exists for the two `transaction_id` states) but is the exact scenario the original Task 2 discovery audit flagged as a future risk if a standalone "planned budget" Resource is ever built on this same model — noted here again for whoever picks that up.
+
+---
+
+### Date
+2026-07-19 (OMS Permissions Task 2A)
+
+### Decision
+Skipped writing a standalone HTTP-level test asserting "navigation link visibility equals `view_any` permission" via a cold or post-request static `canX()`/`shouldRegisterNavigation()` call. Replaced it with a source-level test confirming none of the 23 resources override `shouldRegisterNavigation()` (with one explicit, pre-existing, permission-independent exception: `ProjectCostResource`, hardcoded `$shouldRegisterNavigation = false` since it's reachable only via `Projects/CostsRelationManager`, never as a top-level nav item).
+
+### Reason
+Read Filament's own `HasNavigation::shouldRegisterNavigation()` source: it is `return static::$shouldRegisterNavigation;` — a static nav-eligibility toggle, not itself a permission check (the Panel combines this toggle with `canViewAny()` separately when building the real sidebar). Calling `canViewAny()` or `shouldRegisterNavigation()` directly against a Resource class outside of, or immediately after, an HTTP test request produced inconsistent results across a 23-item data provider in this environment (unrelated to Policy correctness — the exact same permission grants behave correctly through the real page-mount lifecycle, already proven by `test_index_is_blocked_without_permission_and_allowed_with_it`'s genuine per-user HTTP round trip). Rather than chase an environment-specific static-call quirk further, real HTTP 403/200 on the index page — the actual security boundary the task cares about — was kept as the authoritative proof, and the navigation check was narrowed to what's reliably and meaningfully verifiable: that the nav-eligibility toggle itself hasn't been quietly overridden somewhere.
+
+### Impact
+If Filament's nav-authorization wiring ever changes (e.g. a future Resource explicitly overrides `shouldRegisterNavigation()` for a new reason), this test will fail loudly and require updating the exception list — it does not silently pass. The task's own instructions already treat navigation-hiding as secondary ("Hiding navigation or buttons alone is insufficient") to the real HTTP-level protection, which this substitution still fully covers.

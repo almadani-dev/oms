@@ -1875,28 +1875,28 @@
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1784450295.500791,
-    "ast_hash": "720f9808420ed2f2fd72e9cbceff5bb0",
+    "mtime": 1784461945.0864568,
+    "ast_hash": "e6dfbcce4394559053083e31a8c4dbb8",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
-    "mtime": 1784450273.9694457,
-    "ast_hash": "4811e5c9973e439ba3231fd6c0ca1647",
+    "mtime": 1784461807.7679498,
+    "ast_hash": "60e535e04c312ac44660070be32f8861",
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1784450334.6183002,
-    "ast_hash": "261d994d1125832f54a970f799d5e17d",
+    "mtime": 1784461910.7955825,
+    "ast_hash": "4387ec7053ae53348502cbc088b3ff21",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
-    "mtime": 1784450310.7408724,
-    "ast_hash": "5d2511af33482efd2660f738789b8397",
+    "mtime": 1784461845.2350304,
+    "ast_hash": "74a16229591def898bc608687f0da78b",
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1784450237.4208868,
-    "ast_hash": "f21e40aee27bcc512f10f64f84667104",
+    "mtime": 1784461760.0115097,
+    "ast_hash": "1d716eb9d8a89df81032f69e7e5a4c2d",
     "semantic_hash": ""
   },
   "app/Services/Reports/ProjectFinancialDetailsWordExportService.php": {
@@ -2130,12 +2130,12 @@
     "semantic_hash": ""
   },
   "storage/framework/testing/disks/public/receipts/orphan.pdf": {
-    "mtime": 1784451050.3740835,
+    "mtime": 1784461430.9664948,
     "ast_hash": "c91ca4ad2ff792df795c3bab362f7a28",
     "semantic_hash": ""
   },
   "storage/framework/testing/disks/public/logo.png": {
-    "mtime": 1784451050.3765917,
+    "mtime": 1784461430.9664948,
     "ast_hash": "24555cfd25ae5e76b92aeb464d2a50de",
     "semantic_hash": ""
   },
@@ -2882,6 +2882,186 @@
   "config/oms.php": {
     "mtime": 1784449195.8971624,
     "ast_hash": "5bdafbd3404fe67642ee6e085b5f5d3d",
+    "semantic_hash": ""
+  },
+  "app/Policies/AccountPolicy.php": {
+    "mtime": 1784459405.220873,
+    "ast_hash": "af86266ac91724423e791fae64efece6",
+    "semantic_hash": ""
+  },
+  "app/Policies/AccountTypePolicy.php": {
+    "mtime": 1784459418.8389473,
+    "ast_hash": "aaa2dcc8ff5b005493d78d3edfdec93e",
+    "semantic_hash": ""
+  },
+  "app/Policies/AttachmentPolicy.php": {
+    "mtime": 1784459428.2050538,
+    "ast_hash": "77f9c4db522893c48fc047a1f9f97156",
+    "semantic_hash": ""
+  },
+  "app/Policies/BankTypePolicy.php": {
+    "mtime": 1784459416.4919956,
+    "ast_hash": "39c9c15d835265dd9a3b9d8d42d1c1df",
+    "semantic_hash": ""
+  },
+  "app/Policies/Concerns/AuthorizesCrud.php": {
+    "mtime": 1784459400.3400598,
+    "ast_hash": "c75104fb695e03a0955495f45b1eda4f",
+    "semantic_hash": ""
+  },
+  "app/Policies/CurrencyPolicy.php": {
+    "mtime": 1784459417.6435604,
+    "ast_hash": "71cdf7dd914da165ee524d55ca2af88f",
+    "semantic_hash": ""
+  },
+  "app/Policies/ExchangeRateHistoryPolicy.php": {
+    "mtime": 1784459419.9953508,
+    "ast_hash": "b952048bc448681da70a855fc2be47c5",
+    "semantic_hash": ""
+  },
+  "app/Policies/FiscalYearPolicy.php": {
+    "mtime": 1784459421.2341714,
+    "ast_hash": "0813229290a31285bf976e29ad16c122",
+    "semantic_hash": ""
+  },
+  "app/Policies/GeneralExchangePolicy.php": {
+    "mtime": 1784459407.4450788,
+    "ast_hash": "61da562fcd221a79bf54258a3f6dfe06",
+    "semantic_hash": ""
+  },
+  "app/Policies/GeneralExpensePolicy.php": {
+    "mtime": 1784459406.3320289,
+    "ast_hash": "6ed4b57c3fe87fb8f733c3c243ec5906",
+    "semantic_hash": ""
+  },
+  "app/Policies/PartnerPolicy.php": {
+    "mtime": 1784459414.2048683,
+    "ast_hash": "af7dc780c607e0f146e72e3c76cca1db",
+    "semantic_hash": ""
+  },
+  "app/Policies/PartnerTypePolicy.php": {
+    "mtime": 1784459422.405045,
+    "ast_hash": "a74c2cfde548207d270871e58ef59407",
+    "semantic_hash": ""
+  },
+  "app/Policies/ProjectCostBudgetPolicy.php": {
+    "mtime": 1784459437.367268,
+    "ast_hash": "cc8c3a722579ba8d20864b69d8452eb4",
+    "semantic_hash": ""
+  },
+  "app/Policies/ProjectCostBudgetsPaymentPolicy.php": {
+    "mtime": 1784459441.042731,
+    "ast_hash": "fff5a64576cd1615432d72e0fa2c6eaf",
+    "semantic_hash": ""
+  },
+  "app/Policies/ProjectCostPolicy.php": {
+    "mtime": 1784459411.8451948,
+    "ast_hash": "9889cd449cf21b84e56f3d2a2a475a1e",
+    "semantic_hash": ""
+  },
+  "app/Policies/ProjectCostReceiptPolicy.php": {
+    "mtime": 1784459408.625479,
+    "ast_hash": "89d87108928f1b3975dbf37dfcd6dd31",
+    "semantic_hash": ""
+  },
+  "app/Policies/ProjectPolicy.php": {
+    "mtime": 1784459409.7580614,
+    "ast_hash": "f8b4e7666361a5dcf8f91c44dc135084",
+    "semantic_hash": ""
+  },
+  "app/Policies/ProjectStatusPolicy.php": {
+    "mtime": 1784459425.8321111,
+    "ast_hash": "d964d8022b59cdd91849c14be8e9b4b1",
+    "semantic_hash": ""
+  },
+  "app/Policies/ProjectSuperPolicy.php": {
+    "mtime": 1784459412.9822197,
+    "ast_hash": "1d94d3d673a89b810db3185d3faba9e7",
+    "semantic_hash": ""
+  },
+  "app/Policies/SettingPolicy.php": {
+    "mtime": 1784459427.007831,
+    "ast_hash": "05f085cf69f71b6142fba4edafe0ba04",
+    "semantic_hash": ""
+  },
+  "app/Policies/TransactionLinePolicy.php": {
+    "mtime": 1784459447.4141715,
+    "ast_hash": "2da2977c9c09c7b21a35ca1eb7adc50f",
+    "semantic_hash": ""
+  },
+  "app/Policies/TransactionPolicy.php": {
+    "mtime": 1784459445.4113224,
+    "ast_hash": "40b40f82439d768a398074a800448c9f",
+    "semantic_hash": ""
+  },
+  "app/Policies/TransactionSuperTypePolicy.php": {
+    "mtime": 1784459424.6885667,
+    "ast_hash": "b2f7fef032a9791f5e619268c5e8b2ec",
+    "semantic_hash": ""
+  },
+  "app/Policies/TransactionTypePolicy.php": {
+    "mtime": 1784459423.5731642,
+    "ast_hash": "9977317494eb50175c640306099b33ae",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/05e52d4188ed3e88fea9d9025f0d1bdc.php": {
+    "mtime": 1784460453.6085303,
+    "ast_hash": "0e9a9ce4f933fad05d9a190d500189c1",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/0a1f87f60ea52f017240e98a6f7c9c2f.php": {
+    "mtime": 1784460453.7118921,
+    "ast_hash": "2b076082e4dde1888bab39e4cada662a",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/19ea8914ba950fef60d1a6f0fabc74c0.php": {
+    "mtime": 1784460478.961838,
+    "ast_hash": "ceb18dc75a898c643e83cc596a365240",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/447d1e55a3ce76905373be45ae48f1fd.php": {
+    "mtime": 1784460474.5524194,
+    "ast_hash": "f8de4726c774be777dbc36ab5b536fcd",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/884d3416ba71745f64da4c2f0e691b0f.blade.php": {
+    "mtime": 1784460474.5017736,
+    "ast_hash": "a152658f5dd0ca0354278d5f9a5721bd",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/a168b0ebcff266df6b662fc4b6d06e88.blade.php": {
+    "mtime": 1784460453.5732334,
+    "ast_hash": "bb6627df3974fb46dd5024b21df69c33",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/b7cafe7392c0e2ca2071fae5485a4d46.php": {
+    "mtime": 1784460473.0814688,
+    "ast_hash": "4d3ee636b0cd9df0e3023b5cd4131cdd",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Permissions/CrudPolicyBehaviorTest.php": {
+    "mtime": 1784459825.1100006,
+    "ast_hash": "88788447d5d5fcc6cb666e29df44ca36",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Permissions/ExecutionPaymentBudgetDisbursementScopeTest.php": {
+    "mtime": 1784460232.8483467,
+    "ast_hash": "31f5c67deebf5035ccd11c965e3dc6a6",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Permissions/RelationManagerAuthorizationTest.php": {
+    "mtime": 1784460443.4105532,
+    "ast_hash": "87ba8fbac93c5023e11d6273bc119456",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Permissions/ResourceHttpAuthorizationTest.php": {
+    "mtime": 1784460959.2376783,
+    "ast_hash": "70018412ba67f17eb2fd3afaf7c20172",
+    "semantic_hash": ""
+  },
+  "tests/Unit/Policies/PolicyDiscoveryTest.php": {
+    "mtime": 1784459761.386707,
+    "ast_hash": "4621096dc11e065b310b96e458807de3",
     "semantic_hash": ""
   }
 }
