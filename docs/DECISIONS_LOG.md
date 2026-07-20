@@ -504,3 +504,59 @@ Read Filament's own `HasNavigation::shouldRegisterNavigation()` source: it is `r
 
 ### Impact
 If Filament's nav-authorization wiring ever changes (e.g. a future Resource explicitly overrides `shouldRegisterNavigation()` for a new reason), this test will fail loudly and require updating the exception list — it does not silently pass. The task's own instructions already treat navigation-hiding as secondary ("Hiding navigation or buttons alone is insufficient") to the real HTTP-level protection, which this substitution still fully covers.
+
+---
+
+### Date
+2026-07-20 (OMS Permissions Task 2B)
+
+### Decision
+Report-page authorization is implemented by overriding the static `canAccess()` method (via a shared `AuthorizesReportAccess` trait), not by adding a permission check inside each page's `mount()`. Export authorization is implemented as an explicit `authorizeReportExport()` call at the top of every export method, in addition to (not instead of) the header action's `->visible()`.
+
+### Reason
+Read Filament's `Filament\Pages\Concerns\CanAuthorizeAccess` (used by every `Filament\Pages\Page`): it wires `canAccess()` into `mountCanAuthorizeAccess()` **and** `hydrateCanAuthorizeAccess()` (the latter runs on every subsequent Livewire request for that component, not just the first) and into the static `Page::registerNavigationItems()`. Overriding `canAccess()` therefore gets navigation-hiding, direct-URL 403, and per-request re-authorization "for free," from one method, exactly the mechanism Filament ships for this — the task explicitly said not to rely on `mount()` alone when Filament provides a proper page access method. For exports specifically, `canAccess()` only re-checks the *view* permission on each request — it says nothing about the *export* permission, and the header action's `->visible()` only controls whether the button renders, not whether the underlying public Livewire method can be invoked directly. A user could hold view without export, so `authorizeReportExport()` independently checks both permissions inside the method body itself, proven by a real `Livewire::test()->call('exportMethod')->assertForbidden()` against a user who was never shown the button.
+
+### Impact
+Any future export method added to one of these 6 pages (or a 7th page reusing the trait) must call `$this->authorizeReportExport();` as its first statement — adding only a `->visible()` on the action is not sufficient and was explicitly flagged as insufficient by the task. `ProjectFinancialDetailsPage::mount(int|string $project)` still runs its own DB lookup *before* `mountCanAuthorizeAccess()` fires (Livewire calls a component's own `mount()` before its trait `mount*()` hooks) — an unauthorized direct-URL request still ends in a 403, but only after the lookup runs; this ordering is a Livewire/Filament framework property, not something this task's code controls, and is called out in the test file's docblock.
+
+---
+
+### Date
+2026-07-20 (OMS Permissions Task 2B)
+
+### Decision
+Used real HTTP `assertSee()`/`assertDontSee()` against the Dashboard (`/admin`) sidebar to prove navigation visibility for the 5 nav-registered report pages, rather than falling back to a source-level reflection check (the approach Task 2A used for its 23 resources after finding cold `canViewAny()`/`shouldRegisterNavigation()` calls unreliable in this environment).
+
+### Reason
+Tried the HTTP-based sidebar check first specifically because Task 2A's docblock flagged it as previously unreliable; it turned out to work cleanly here (all 10 navigation-visibility assertions passed on the first fully-corrected run) — likely because each test method performs a genuinely fresh Laravel application boot (sqlite `:memory:`, no `RefreshDatabase`), so there was no stale static state to leak between assertions in this case. `ProjectFinancialDetailsPage` is the one exception: it declares no navigation label at all (`shouldRegisterNavigation = false` unconditionally), so there is no string to assert absent — that one page's navigation-disabled state is still verified via the same reflection technique Task 2A used, since it is the only technique that applies to a page with no nav item to render in the first place.
+
+### Impact
+If a future test in this same style (real HTTP navigation-visibility assertions) becomes flaky, that is new information about this environment worth re-investigating rather than assuming it will always fail the way Task 2A described — this task's result is contrary evidence, not a contradiction, since the two situations exercise different code paths (custom Pages vs. Resources) and different test files.
+
+---
+
+### Date
+2026-07-20 (OMS Permissions Task 2B)
+
+### Decision
+Both new test files register a test-only SQLite emulation of MySQL's `FIELD()` function (via `PDO::sqliteCreateFunction()` in `setUp()`) rather than modifying `ProjectFinancialDetailsPage::loadProjectDetails()`'s `orderByRaw("FIELD(severity, 'critical', 'warning', 'note')")` query.
+
+### Reason
+This raw SQL is pre-existing, unmodified production code, and the task explicitly forbids changing report queries/calculations. It only surfaced as a blocker because any test that fully mounts this specific page (even as an *authorized* Super Admin, to prove the 200/OK path) executes this query, and SQLite has no built-in `FIELD()`. Registering the function on the test connection's PDO instance makes the existing query executable under the test database without touching a single line of application code — the same category of accommodation as this project's existing `mysqlOnly` migration-exclusion list in every other permissions test file's `setUp()`.
+
+### Impact
+Any future test that needs to fully mount `ProjectFinancialDetailsPage` (not just prove a 403) under SQLite must include this same `setUp()` snippet, or reuse/extract it into a shared test trait if a third such test file is ever added. The emulation only orders by first-match position among the 3 known severities (critical/warning/note) — sufficient for `ORDER BY`, not a general-purpose `FIELD()` implementation.
+
+---
+
+### Date
+2026-07-20 (OMS Permissions Task 2B)
+
+### Decision
+Proved "a crafted Livewire request calling exportExcel()/exportWord() directly is rejected" using `Livewire::test($page)->call('exportMethod')->assertForbidden()` (letting the response bubble through Livewire's own testing response object), not by catching a thrown `HttpException` around the call.
+
+### Reason
+Traced `Livewire\Features\SupportTesting\RequestBroker::temporarilyDisableExceptionHandlingAndMiddleware()`: it calls `withoutExceptionHandling([HttpException::class, AuthorizationException::class])`, and Laravel's `$except` parameter means those two exception classes are *still* rendered normally into an HTTP response (not re-thrown) — only exceptions **outside** that list bubble raw to the test. A first attempt assuming the opposite (catching `HttpException`) produced 11 failures ("expected 403, none thrown") even though the `abort_unless()` calls were firing correctly. `Livewire\Features\SupportTesting\Testable::__call()` forwards any method it doesn't recognize (like `assertForbidden()`) straight to the captured `TestResponse`, which is exactly what a genuine Livewire component-update HTTP request/response cycle produces — this is the idiomatic, documented-by-source way to assert a Livewire action's HTTP outcome.
+
+### Impact
+Future tests asserting an `abort()`/`abort_unless()` inside a Livewire component method (page, action, or otherwise) reached via `Livewire::test()->call(...)` should use `->assertForbidden()`/`->assertStatus(403)`/etc. directly on the `Testable` chain, not a `try { ... } catch (HttpException $e)` block — the latter will silently never catch anything for exception classes Livewire's `RequestBroker` already special-cases (`HttpException`, `AuthorizationException`).

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Pages\Concerns\AuthorizesReportAccess;
 use App\Models\Currency;
 use App\Models\Partner;
 use App\Models\Project;
@@ -34,6 +35,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class DonorFinancialReportPage extends Page implements HasSchemas
 {
+    use AuthorizesReportAccess;
     use InteractsWithSchemas;
 
     protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-building-library';
@@ -49,6 +51,16 @@ class DonorFinancialReportPage extends Page implements HasSchemas
     protected static ?string $title = 'تقرير الجهات المانحة';
 
     protected string $view = 'filament.pages.donor-financial-report-page';
+
+    public static function reportViewPermission(): string
+    {
+        return 'reports.donor_financial_report.view';
+    }
+
+    public static function reportExportPermission(): string
+    {
+        return 'reports.donor_financial_report.export';
+    }
 
     /**
      * @var array<string, mixed>
@@ -89,11 +101,13 @@ class DonorFinancialReportPage extends Page implements HasSchemas
             Action::make('exportExcel')
                 ->label('تصدير Excel')
                 ->icon('heroicon-o-arrow-down-tray')
+                ->visible(fn (): bool => $this->canExportReport())
                 ->action(fn () => $this->exportExcel()),
 
             Action::make('exportWord')
                 ->label('تصدير Word')
                 ->icon('heroicon-o-document-text')
+                ->visible(fn (): bool => $this->canExportReport())
                 ->action(fn () => $this->exportWord()),
         ];
     }
@@ -212,6 +226,8 @@ class DonorFinancialReportPage extends Page implements HasSchemas
      */
     public function exportExcel(): ?StreamedResponse
     {
+        $this->authorizeReportExport();
+
         if (! $this->canExport()) {
             return null;
         }
@@ -221,6 +237,8 @@ class DonorFinancialReportPage extends Page implements HasSchemas
 
     public function exportWord(): ?StreamedResponse
     {
+        $this->authorizeReportExport();
+
         if (! $this->canExport()) {
             return null;
         }

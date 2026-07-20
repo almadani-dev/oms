@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Pages\Concerns\AuthorizesReportAccess;
 use App\Models\Project;
 use App\Models\Reports\ProjectFinancialSnapshot;
 use Filament\Actions\Action;
@@ -25,6 +26,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ProjectsGeneralFinancialPage extends Page implements HasTable
 {
+    use AuthorizesReportAccess;
     use InteractsWithTable;
 
     protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-chart-pie';
@@ -38,6 +40,16 @@ class ProjectsGeneralFinancialPage extends Page implements HasTable
     protected static ?string $title = 'الصفحة العامة للمشاريع';
 
     protected string $view = 'filament.pages.projects-general-financial-page';
+
+    public static function reportViewPermission(): string
+    {
+        return 'reports.projects_general_financial.view';
+    }
+
+    public static function reportExportPermission(): string
+    {
+        return 'reports.projects_general_financial.export';
+    }
 
     /** Above this many dirty/missing projects, auto-refresh is skipped in favor of the manual full-force button. */
     private const AUTO_REFRESH_LIMIT = 25;
@@ -322,6 +334,7 @@ class ProjectsGeneralFinancialPage extends Page implements HasTable
             Action::make('exportXlsx')
                 ->label('تصدير Excel')
                 ->icon('heroicon-o-arrow-down-tray')
+                ->visible(fn (): bool => $this->canExportReport())
                 ->action(fn () => $this->exportXlsx()),
         ];
     }
@@ -336,6 +349,8 @@ class ProjectsGeneralFinancialPage extends Page implements HasTable
      */
     public function exportXlsx(): StreamedResponse
     {
+        $this->authorizeReportExport();
+
         $headers = [
             'كود المشروع',
             'اسم المشروع',

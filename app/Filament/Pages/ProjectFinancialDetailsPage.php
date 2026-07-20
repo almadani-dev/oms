@@ -3,6 +3,7 @@
 namespace App\Filament\Pages;
 
 use App\Enums\TransactionLineRole;
+use App\Filament\Pages\Concerns\AuthorizesReportAccess;
 use App\Models\Reports\ProjectFinancialSnapshot;
 use App\Services\Reports\ProjectFinancialDetailsWordExportService;
 use Filament\Actions\Action;
@@ -13,6 +14,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ProjectFinancialDetailsPage extends Page
 {
+    use AuthorizesReportAccess;
+
     protected static bool $shouldRegisterNavigation = false;
 
     protected static ?string $slug = 'project-financial-details/{project}';
@@ -20,6 +23,16 @@ class ProjectFinancialDetailsPage extends Page
     protected static ?string $title = 'التقرير المالي للمشروع';
 
     protected string $view = 'filament.pages.project-financial-details-page';
+
+    public static function reportViewPermission(): string
+    {
+        return 'reports.project_financial_details.view';
+    }
+
+    public static function reportExportPermission(): string
+    {
+        return 'reports.project_financial_details.export';
+    }
 
     // Full panel width — this details report contains wide financial tables.
     public function getMaxContentWidth(): string
@@ -85,6 +98,7 @@ class ProjectFinancialDetailsPage extends Page
             Action::make('exportWord')
                 ->label('تصدير Word')
                 ->icon('heroicon-o-arrow-down-tray')
+                ->visible(fn (): bool => $this->canExportReport())
                 ->action(fn () => $this->exportWord()),
         ];
     }
@@ -92,6 +106,8 @@ class ProjectFinancialDetailsPage extends Page
     /** Reuses the exact data already computed in mount() — no recalculation. */
     public function exportWord(): StreamedResponse
     {
+        $this->authorizeReportExport();
+
         return app(ProjectFinancialDetailsWordExportService::class)->stream(
             $this->projectInfo,
             $this->financialMatrix,

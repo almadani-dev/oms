@@ -879,3 +879,38 @@ Added a reusable `App\Policies\Concerns\AuthorizesCrud` trait (viewAny/view/crea
 
 ### Commit Hash
 Not committed — awaiting explicit approval, per instructions.
+
+---
+
+### Date
+2026-07-20 (OMS Permissions Task 2B — custom report page and export authorization)
+
+### Task
+Protect all six custom Filament report pages (`AccountStatementPage`, `TrialBalancePage`, `DonorFinancialReportPage`, `ComprehensiveFinancialTransactionsPage`, `ProjectsGeneralFinancialPage`, `ProjectFinancialDetailsPage`) against unauthorized sidebar visibility, direct URL access, unauthorized Excel/Word export buttons, and direct Livewire/action invocation of export methods — using the pre-existing `reports.<page>.view`/`reports.<page>.export` permissions already registered in `PermissionRegistry`. Explicitly out of scope: Task 2A Resource Policies, User/Role/Permission management pages, any report calculation/query/filter/export-service/format change, migrations, package installs.
+
+### Result
+Added one reusable trait, `App\Filament\Pages\Concerns\AuthorizesReportAccess`, `use`d by all 6 report pages. Each page explicitly declares its own `reportViewPermission()`/`reportExportPermission()` strings (no name-based mapping). The trait's `canAccess(): bool` overrides Filament's `Concerns\CanAuthorizeAccess::canAccess()`, which every `Filament\Pages\Page` already wires into `mountCanAuthorizeAccess()`/`hydrateCanAuthorizeAccess()` (abort 403 on initial mount **and** on every subsequent Livewire request for that component) and into the static `Page::registerNavigationItems()` (checked after `shouldRegisterNavigation()`, so navigation visibility tracks the same permission automatically). `authorizeReportExport()` is called as the literal first statement of every export method (`exportExcel()`/`exportWord()`/`exportXlsx()`, 11 methods across the 6 pages), `abort_unless`-ing on both the view **and** export permission — independent of `canAccess()` having already run for this request and independent of the header action's `visible()` state, so a crafted Livewire request calling the export method directly is rejected before any file is generated. UI layer: every export header `Action` gained `->visible(fn (): bool => $this->canExportReport())`. `ProjectFinancialDetailsPage::$shouldRegisterNavigation = false` was left completely untouched — `Page::registerNavigationItems()` checks that flag before `canAccess()`, so this page stays permanently absent from the sidebar regardless of who is signed in, while its direct `{project}` route is now fully permission-gated. No report calculation, query, filter, export-service class, filename, Excel/Word formatting, Arabic label, or navigation label/group/icon/sort was changed; no Task 2A Resource Policy was touched; no migration was added.
+
+### Changed Files
+- `app/Filament/Pages/Concerns/AuthorizesReportAccess.php` (new — shared canAccess()/authorizeReportExport() trait)
+- `app/Filament/Pages/AccountStatementPage.php` (permission declarations, `->visible()` on both export actions, `authorizeReportExport()` in `exportExcel()`/`exportWord()`)
+- `app/Filament/Pages/TrialBalancePage.php` (same pattern)
+- `app/Filament/Pages/DonorFinancialReportPage.php` (same pattern)
+- `app/Filament/Pages/ComprehensiveFinancialTransactionsPage.php` (same pattern)
+- `app/Filament/Pages/ProjectsGeneralFinancialPage.php` (same pattern, single `exportXlsx()` action)
+- `app/Filament/Pages/ProjectFinancialDetailsPage.php` (same pattern, single `exportWord()` action; `shouldRegisterNavigation = false` preserved unchanged)
+- `tests/Feature/Reports/ReportPageAccessTest.php` (new, 30 tests — real HTTP 403/200 for all 6 pages' direct routes, navigation `assertSee`/`assertDontSee` against the Dashboard sidebar for the 5 nav-registered pages, cross-report permission isolation, Super Admin access-all, `ProjectFinancialDetailsPage`'s permanently-disabled navigation flag)
+- `tests/Feature/Reports/ReportExportAuthorizationTest.php` (new, 28 tests — `assertActionHidden`/`assertActionVisible` UI-layer proof, `Livewire::test()->call('exportMethod')->assertForbidden()` server-layer bypass proof for both permission-separation directions, `Notification::assertNotified()` proving the exact pre-existing `canExport()` warning text is unchanged for all 4 filter-driven reports, `hasSubmitted`-resets-on-filter-change regression, Super Admin export invocation)
+- `graphify-out/**` (regenerated via `graphify update .`)
+- `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md`, `docs/NEXT_STEPS.md` (this entry set)
+- No migration added. No report calculation/query/filter/export-service/format file was modified. No Task 2A Resource Policy was modified. No User/Role/Permission management page was built (remains pending).
+
+### Verification
+1. `php -l` clean on all 7 new/changed PHP files (the trait + 6 pages).
+2. `ReportPageAccessTest` alone → **30/30 passed, 44 assertions**.
+3. `ReportExportAuthorizationTest` alone → **28/28 passed, 77 assertions**.
+4. Full `php artisan test` → **574 tests, 571 passed, 1830 assertions, 1 failure, 2 skipped** — the 1 failure is the same pre-existing/unrelated `ExampleTest` (hits `/`, a route this Filament app never defines) recorded in every prior task log entry back to 2026-07-15; the 2 skips are the pre-existing Task 2A read-only-resource skips. All existing Task 1/2A permissions tests, existing report-adjacent tests, and existing financial-workflow tests passed unmodified within this run.
+5. `git status --short` / `git diff --stat`: only the trait file, the 6 page files, the 2 new test files, the 4 docs files, and `graphify-out/**` changed — zero modification to any Resource Policy, export service, report service, financial form/table, or migration.
+
+### Commit Hash
+Not committed — awaiting explicit approval, per instructions.

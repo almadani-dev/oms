@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Pages\Concerns\AuthorizesReportAccess;
 use App\Models\AccountType;
 use App\Models\Currency;
 use App\Services\Reports\TrialBalanceExcelExportService;
@@ -33,6 +34,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class TrialBalancePage extends Page implements HasSchemas
 {
+    use AuthorizesReportAccess;
     use InteractsWithSchemas;
 
     protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-scale';
@@ -48,6 +50,16 @@ class TrialBalancePage extends Page implements HasSchemas
     protected static ?string $title = 'ميزان المراجعة';
 
     protected string $view = 'filament.pages.trial-balance-page';
+
+    public static function reportViewPermission(): string
+    {
+        return 'reports.trial_balance.view';
+    }
+
+    public static function reportExportPermission(): string
+    {
+        return 'reports.trial_balance.export';
+    }
 
     /**
      * @var array<string, mixed>
@@ -116,11 +128,13 @@ class TrialBalancePage extends Page implements HasSchemas
             Action::make('exportExcel')
                 ->label('تصدير Excel')
                 ->icon('heroicon-o-arrow-down-tray')
+                ->visible(fn (): bool => $this->canExportReport())
                 ->action(fn () => $this->exportExcel()),
 
             Action::make('exportWord')
                 ->label('تصدير Word')
                 ->icon('heroicon-o-document-text')
+                ->visible(fn (): bool => $this->canExportReport())
                 ->action(fn () => $this->exportWord()),
         ];
     }
@@ -215,6 +229,8 @@ class TrialBalancePage extends Page implements HasSchemas
      */
     public function exportExcel(): ?StreamedResponse
     {
+        $this->authorizeReportExport();
+
         if (! $this->canExport()) {
             return null;
         }
@@ -237,6 +253,8 @@ class TrialBalancePage extends Page implements HasSchemas
 
     public function exportWord(): ?StreamedResponse
     {
+        $this->authorizeReportExport();
+
         if (! $this->canExport()) {
             return null;
         }

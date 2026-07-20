@@ -375,3 +375,17 @@ Close the historical-data gap left by the 2026-07-14 description/role feature (w
 
 ### Result
 Implemented as described in TASKS_LOG.md and DECISIONS_LOG.md (2026-07-15 entries). No accounting-meaning ambiguity was hit — the 6 flows' authoritative domain-record FKs and the opening-balance transaction-type name were sufficient to classify all 10 dev-DB transactions deterministically (0 unclassified), so no STOP-and-ask was needed. `--dry-run`/`--apply`/idempotence-re-`--apply`/integrity-snapshot sequence all passed; 17 new backfill tests + 33 existing description/role-builder tests + full suite (52/52 relevant, 1 pre-existing unrelated failure) all passing; one real sample export per updated report/format (7 files) generated from live dev data and verified to re-open. Not committed, per instruction.
+
+---
+
+### Date
+2026-07-20
+
+### Prompt
+"Implement OMS Permissions Task 2B: Custom Report Page and Export Authorization" — a structured task specifying: protect all 6 custom Filament report pages against unauthorized sidebar visibility, direct URL access, unauthorized Excel/Word export buttons, and direct Livewire/action invocation of export methods, using the pre-existing per-page `reports.<page>.view`/`reports.<page>.export` permissions already in `PermissionRegistry`; explicit page→permission map for all 6 pages; use the correct Filament v5 page-authorization method (not just `mount()`); export authorization must require both view and export permissions, protected in two layers (UI `visible()` + explicit server-side authorization inside the export method, "do not depend only on `visible()`"); preserve `ProjectFinancialDetailsPage`'s `shouldRegisterNavigation = false` and all existing export prerequisites/guard messages/snapshot behavior unchanged; a small reusable shared concern is acceptable but each page must explicitly declare its own permission names (no class-name-based magic mapping); data-driven real-HTTP + genuine Livewire/Filament action tests covering 14 numbered scenarios; verify the existing role permission matrix behaves as expected and report any discrepancy before changing it; explicit exclusions: no Resource Policy changes, no migrations, no package installs, no report calculation/query/filter/export-service/format changes; do not stage or commit, wait for approval; produce a detailed final report (files changed, permission map, exact protection mechanisms, test counts, git status/diff, confirmations).
+
+### Purpose
+Close the report-page/export gap explicitly deferred by Task 2A (which only covered Filament Resources/RelationManagers), so every custom report page and its exports are gated the same way the rest of the panel already is, using permissions that were already registered and role-assigned in Task 1 but never actually enforced anywhere.
+
+### Result
+Implemented as described in TASKS_LOG.md and DECISIONS_LOG.md (2026-07-20 "Task 2B" entries). The existing permission matrix (`SystemRoleDefaultPermissionsTest`) already matched every assumption in the prompt exactly (Accountant gets the 4 financial reports' view+export, Project Manager gets project report views without export, Viewer gets none, Admin gets everything except users/roles/permissions) — no discrepancy found, so no registry change was needed or made. 58 new tests (30 page-access + 28 export-authorization) all pass; full suite 574/574 excluding the same 1 pre-existing unrelated `ExampleTest` failure recorded since 2026-07-15. Not staged, not committed, per instruction.

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Pages\Concerns\AuthorizesReportAccess;
 use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\BankType;
@@ -35,6 +36,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class AccountStatementPage extends Page implements HasSchemas
 {
+    use AuthorizesReportAccess;
     use InteractsWithSchemas;
 
     protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-document-text';
@@ -50,6 +52,16 @@ class AccountStatementPage extends Page implements HasSchemas
     protected static ?string $title = 'تقرير كشف الحساب';
 
     protected string $view = 'filament.pages.account-statement-page';
+
+    public static function reportViewPermission(): string
+    {
+        return 'reports.account_statement.view';
+    }
+
+    public static function reportExportPermission(): string
+    {
+        return 'reports.account_statement.export';
+    }
 
     /**
      * @var array<string, mixed>
@@ -112,11 +124,13 @@ class AccountStatementPage extends Page implements HasSchemas
             Action::make('exportExcel')
                 ->label('تصدير Excel')
                 ->icon('heroicon-o-arrow-down-tray')
+                ->visible(fn (): bool => $this->canExportReport())
                 ->action(fn () => $this->exportExcel()),
 
             Action::make('exportWord')
                 ->label('تصدير Word')
                 ->icon('heroicon-o-document-text')
+                ->visible(fn (): bool => $this->canExportReport())
                 ->action(fn () => $this->exportWord()),
         ];
     }
@@ -252,6 +266,8 @@ class AccountStatementPage extends Page implements HasSchemas
      */
     public function exportExcel(): ?StreamedResponse
     {
+        $this->authorizeReportExport();
+
         if (! $this->canExport()) {
             return null;
         }
@@ -273,6 +289,8 @@ class AccountStatementPage extends Page implements HasSchemas
 
     public function exportWord(): ?StreamedResponse
     {
+        $this->authorizeReportExport();
+
         if (! $this->canExport()) {
             return null;
         }
