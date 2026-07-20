@@ -141,13 +141,19 @@ final class PermissionSyncService
         return $counts;
     }
 
+    /**
+     * Counts only *active* Super Admins (not soft-deleted, is_active=true —
+     * trashed users are already excluded automatically by User's global
+     * SoftDeletingScope), matching UserManagementService/DatabaseSeeder's
+     * definition. Read-only: this command never creates or updates a user.
+     */
     private function superAdminUserCount(): int
     {
         $role = Role::where('name', PermissionRegistry::SUPER_ADMIN)
             ->where('guard_name', $this->guardName())
             ->first();
 
-        return $role ? $role->users()->count() : 0;
+        return $role ? $role->users()->where('is_active', true)->count() : 0;
     }
 
     private function guardName(): string

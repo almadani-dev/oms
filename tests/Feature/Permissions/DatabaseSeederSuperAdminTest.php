@@ -246,7 +246,64 @@ class DatabaseSeederSuperAdminTest extends TestCase
         $restored = User::find($trashedUserId);
         $this->assertNotNull($restored);
         $this->assertFalse($restored->trashed());
+        $this->assertTrue($restored->is_active);
         $this->assertTrue($restored->hasRole(PermissionRegistry::SUPER_ADMIN));
+    }
+
+    // ---- an inactive (not deleted) configured user is reactivated, not recreated ----
+
+    public function test_configured_existing_inactive_user_becomes_active_super_admin(): void
+    {
+        $this->setBootstrapConfig();
+
+        $existingUser = User::factory()->create([
+            'email' => self::BOOTSTRAP_EMAIL,
+            'name' => 'Known Inactive Person',
+            'is_active' => false,
+        ]);
+        $originalPasswordHash = $existingUser->password;
+
+        $this->seed(DatabaseSeeder::class);
+
+        $this->assertSame(1, User::count());
+
+        $fresh = $existingUser->fresh();
+        $this->assertTrue($fresh->is_active);
+        $this->assertSame('Known Inactive Person', $fresh->name);
+        // Password is untouched for a merely-inactive (not soft-deleted)
+        // account — this is a known account being turned back on, not a
+        // fresh recovery credential.
+        $this->assertSame($originalPasswordHash, $fresh->password);
+        $this->assertTrue($fresh->hasRole(PermissionRegistry::SUPER_ADMIN));
+    }
+
+    // ---- an inactive Super Admin elsewhere does not block bootstrap recovery ----
+
+    public function test_inactive_super_admin_elsewhere_does_not_block_bootstrap_recovery(): void
+    {
+        $this->setBootstrapConfig();
+        $this->createSuperAdminRole();
+
+        $inactiveAdmin = User::factory()->create([
+            'email' => 'old-admin@test.local',
+            'is_active' => false,
+        ]);
+        $inactiveAdmin->assignRole(PermissionRegistry::SUPER_ADMIN);
+
+        $this->seed(DatabaseSeeder::class);
+
+        // Bootstrap recovery proceeded (did not skip): the configured user
+        // now exists and is an active Super Admin, alongside the untouched
+        // inactive one.
+        $this->assertSame(2, User::count());
+
+        $bootstrapped = User::where('email', self::BOOTSTRAP_EMAIL)->first();
+        $this->assertNotNull($bootstrapped);
+        $this->assertTrue($bootstrapped->is_active);
+        $this->assertTrue($bootstrapped->hasRole(PermissionRegistry::SUPER_ADMIN));
+
+        // The pre-existing inactive admin is left exactly as it was.
+        $this->assertFalse($inactiveAdmin->fresh()->is_active);
     }
 
     // ---- the restored user receives a newly hashed configured password ----
@@ -288,6 +345,20 @@ class DatabaseSeederSuperAdminTest extends TestCase
         Artisan::call('oms:sync-permissions');
 
         $this->assertStringNotContainsString('تحذير', Artisan::output());
+        $this->assertSame(1, User::count());
+    }
+
+    // ---- oms:sync-permissions still warns when the only Super Admin is inactive ----
+
+    public function test_sync_permissions_warns_when_only_inactive_super_admin_exists(): void
+    {
+        $this->createSuperAdminRole();
+        $inactiveAdmin = User::factory()->create(['is_active' => false]);
+        $inactiveAdmin->assignRole(PermissionRegistry::SUPER_ADMIN);
+
+        Artisan::call('oms:sync-permissions');
+
+        $this->assertStringContainsString('تحذير', Artisan::output());
         $this->assertSame(1, User::count());
     }
 }

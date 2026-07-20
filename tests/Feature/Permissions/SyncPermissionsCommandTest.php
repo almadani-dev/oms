@@ -145,4 +145,20 @@ class SyncPermissionsCommandTest extends TestCase
 
         $this->assertStringNotContainsString('تحذير', Artisan::output());
     }
+
+    // ---- warns when the only Super Admin holder is inactive, and still creates no users ----
+
+    public function test_it_warns_when_the_only_super_admin_holder_is_inactive(): void
+    {
+        Artisan::call('oms:sync-permissions');
+
+        $userCountBefore = User::count();
+        $inactiveAdmin = User::factory()->create(['is_active' => false]);
+        $inactiveAdmin->assignRole(PermissionRegistry::SUPER_ADMIN);
+
+        Artisan::call('oms:sync-permissions');
+
+        $this->assertStringContainsString('Super Admin', Artisan::output());
+        $this->assertSame($userCountBefore + 1, User::count());
+    }
 }

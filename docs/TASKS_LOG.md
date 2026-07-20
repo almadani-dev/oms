@@ -914,3 +914,46 @@ Added one reusable trait, `App\Filament\Pages\Concerns\AuthorizesReportAccess`, 
 
 ### Commit Hash
 Not committed — awaiting explicit approval, per instructions.
+
+---
+
+### Date
+2026-07-20 (OMS Permissions Task 3 — secure user management)
+
+### Task
+Replace the Task-1 hardcoded `UserPolicy` (Super-Admin-only via `Gate::before`) with granular `users.*` permissions and a full safety layer for `UserResource`: `users.is_active` migration, `UserManagementService` as the authoritative mutation layer, privilege-subset target protection (`canManageUser`), safe role assignment, self-protection, last-active-Super-Admin locking, safe single-record delete/restore with no force-delete/bulk actions anywhere, and `is_active`-aware `DatabaseSeeder`/`oms:sync-permissions` recovery logic. Explicitly out of scope: `RoleResource`/`PermissionResource` (Task 4/5), Task 2A Resource Policies, Task 2B report authorization, any financial logic.
+
+### Result
+Added `database/migrations/2026_07_20_000000_add_is_active_to_users_table.php` (`boolean('is_active')->default(true)`, no index). `User` gained the `is_active` boolean cast, added it to `#[Fillable(...)]`, added `protected $attributes = ['is_active' => true]` (needed because Eloquent doesn't reflect a DB column default onto an in-memory instance after `create()` — this was the root cause of a cascading 403 discovered while writing this task's own tests), and `canAccessPanel()` is now `! trashed() && is_active`. New `App\Services\Users\UserManagementService` is the single authoritative mutation layer, wrapping every mutation in `DB::transaction()`: `canManageUser(actor, target)` is a full effective-privilege-subset comparison (target must not hold the exact `Super Admin` role, must hold no protected permission — `users.assign_super_admin` exact or any `roles.*`/`permissions.*` prefix — and every one of the target's effective permissions, role-derived + direct via `getAllPermissions()`, must also be held by the actor) — gating name/email/password/is_active changes, not just role edits; a Super Admin actor always passes. `assignableRoleNames(actor)` is the separate, narrower "which new role may be added" check, applied only to *added* roles on an already-manageable target. Self-edit is a fully separate path that never calls `canManageUser`: `roles`/`is_active` absent from submitted data preserves the current value; present-and-different rejects with an Arabic `ValidationException` (crafted-request self-elevation defense), while name/email/password remain freely self-editable. The last-active-Super-Admin check performs a real locking read (`lockForUpdate()->get(['users.id'])`, counted in PHP, inside the same transaction as the mutation) rather than a locked `count()`, and only runs on the branch that could reduce the active count. `restoreUser()` never touches `is_active`; the only place in the codebase allowed to reactivate a user as part of a restore is `DatabaseSeeder::seedSuperAdmin()`'s bootstrap-recovery path, which bypasses the service entirely. `UserPolicy` was rewritten to granular `users.*` checks + `canManageUser`/self logic (`forceDelete`/`forceDeleteAny` stay hardcoded `false`, documented as defense-in-depth only, since `Gate::before` bypasses the Policy for a real Super Admin — the actual guarantee is that `UserResource` never registers a `ForceDeleteAction`/`ForceDeleteBulkAction` at all). `UsersTable`/`EditUser` wire their single-record `DeleteAction`/`RestoreAction` directly to the service (never `$record->delete()`/`$record->restore()`), with `->visible()` hiding self/last-active-admin for UX only; all bulk actions (`DeleteBulkAction`/`RestoreBulkAction`) were removed — single-record delete/restore only. `UserForm`'s roles `Select` no longer uses `->relationship()` (the service owns `syncRoles()`), options are `assignableRoleNames(actor)` merged with the record's current roles; password no longer pre-hashes via `dehydrateStateUsing(bcrypt(...))` (the model's `'password' => 'hashed'` cast is the single hashing point), gained a non-dehydrated `password_confirmation` sibling validated via `->confirmed()`. `DatabaseSeeder::seedSuperAdmin()`'s guard is now `is_active`-aware and its recovery logic has 4 branches (no user / soft-deleted / inactive-but-present / already-active), and `PermissionSyncService::superAdminUserCount()` likewise counts only active Super Admins (still read-only, never creates/updates a user).
+
+### Changed Files
+- `database/migrations/2026_07_20_000000_add_is_active_to_users_table.php` (new)
+- `app/Models/User.php` (`is_active` cast/fillable/model-default, `canAccessPanel()`)
+- `app/Services/Users/UserManagementService.php` (new — authoritative mutation layer)
+- `app/Policies/UserPolicy.php` (granular `users.*` + `canManageUser`/self logic, replacing the Task-1 hardcoded lockdown)
+- `app/Filament/Resources/Users/Schemas/UserForm.php` (roles `Select` without `->relationship()`, `is_active` toggle, password confirmation, single-hash password)
+- `app/Filament/Resources/Users/Pages/CreateUser.php` (`handleRecordCreation` → service)
+- `app/Filament/Resources/Users/Pages/EditUser.php` (`handleRecordUpdate` → service, `mutateFormDataBeforeFill` for roles, header `DeleteAction` → service)
+- `app/Filament/Resources/Users/Tables/UsersTable.php` (`is_active` column, `TrashedFilter`, single-record `DeleteAction`/`RestoreAction` → service, no bulk actions)
+- `app/Filament/Resources/Users/UserResource.php` (`getRecordRouteBindingEloquentQuery()` override for trashed-record routes)
+- `database/seeders/DatabaseSeeder.php` (`is_active`-aware guard + 4-branch bootstrap recovery)
+- `app/Services/Permissions/PermissionSyncService.php` (`is_active`-aware `superAdminUserCount()`)
+- `tests/Feature/Users/UserResourceLockdownTest.php` (deleted — superseded by the files below)
+- `tests/Feature/Users/UserPanelAccessTest.php`, `UserResourceAuthorizationTest.php`, `PrivilegeSubsetProtectionTest.php`, `SuperAdminProtectionTest.php`, `SelfProtectionTest.php`, `RoleAssignmentSafetyTest.php`, `UserFormBehaviorTest.php` (new)
+- `tests/Feature/Permissions/DatabaseSeederSuperAdminTest.php`, `SyncPermissionsCommandTest.php` (extended with `is_active`-aware cases)
+- `graphify-out/**` (regenerated via `graphify update .`)
+- `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/NEXT_STEPS.md` (this entry set)
+- No `RoleResource`/`PermissionResource` created. No Task 2A Resource Policy or Task 2B report-authorization file modified. No financial logic touched.
+
+### Verification
+1. `php -l` clean on all new/changed PHP files (migration, model, service, policy, form, pages, table, resource, seeder, sync service).
+2. `tests/Feature/Users` alone → **64/64 passed, 133 assertions**.
+3. `tests/Feature/Permissions` alone (Task 1/2A/2B + seeder/sync extensions) → **278 tests, 276 passed, 1103 assertions, 2 skipped, 0 failed**.
+4. Full `php artisan test` → **634 tests, 631 passed, 1960 assertions, 1 failure, 2 skipped** — the 1 failure is the same pre-existing/unrelated `ExampleTest` (hits `/`, a route this Filament app never defines) recorded in every prior task log entry back to 2026-07-15, confirmed to fail identically on a clean `git stash` of this task's changes (see below). All financial-workflow tests passed unmodified within this run.
+5. Confirmed the `ExampleTest` failure pre-exists on `main`: `git stash -u`, re-ran `php artisan test --filter=ExampleTest` (same 404 failure on the clean baseline), then `git stash pop` to restore all Task 3 changes — verified restored via `git status --short`.
+6. `git status --short` / `git diff --stat`: only the files listed above changed; no unrelated financial/report/resource file touched.
+7. The new migration was never run against the real local database — only against the in-memory SQLite test database already configured in `phpunit.xml` (`DB_CONNECTION=sqlite`, `DB_DATABASE=:memory:`), inside each test's own `setUp()`, exactly like every other test in this suite.
+8. Attempted a read-only check of the real local database (`oms@oms.com` existence, `users.is_active` column presence) via `php artisan tinker`; the local MySQL server was not running/reachable in this environment, so no connection could be made — this itself confirms no read or write occurred against it during this task.
+
+### Commit Hash
+Not committed — awaiting explicit approval, per instructions.
