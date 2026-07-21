@@ -3298,5 +3298,15 @@
     "mtime": 1784627484.8510463,
     "ast_hash": "673365404680e6b4b16e894a59c649ca",
     "semantic_hash": ""
+  },
+  "storage/framework/testing/disks/public/receipts/orphan.pdf": {
+    "mtime": 1784630067.4778638,
+    "ast_hash": "c91ca4ad2ff792df795c3bab362f7a28",
+    "semantic_hash": ""
+  },
+  "storage/framework/testing/disks/public/logo.png": {
+    "mtime": 1784630067.5256512,
+    "ast_hash": "24555cfd25ae5e76b92aeb464d2a50de",
+    "semantic_hash": ""
   }
 }
