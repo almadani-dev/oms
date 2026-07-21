@@ -13,11 +13,13 @@ use App\Observers\ProjectCostBudgetsPaymentObserver;
 use App\Observers\ProjectCostObserver;
 use App\Observers\ProjectCostReceiptObserver;
 use App\Observers\ProjectObserver;
+use App\Policies\RolePolicy;
 use App\Support\Permissions\PermissionRegistry;
 use Filament\Tables\Table;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use Spatie\Permission\Models\Role;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -46,6 +48,11 @@ class AppServiceProvider extends ServiceProvider
 
             return $user->hasRole(PermissionRegistry::SUPER_ADMIN) ? true : null;
         });
+
+        // Spatie's Role model lives outside App\Models, so Laravel's
+        // naming-convention policy discovery never guesses RolePolicy for
+        // it — register it explicitly.
+        Gate::policy(Role::class, RolePolicy::class);
 
         // Apply consistent, lightweight pagination defaults to every Filament
         // table (resources + relation managers) so large tables never load

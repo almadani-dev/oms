@@ -560,3 +560,45 @@ Traced `Livewire\Features\SupportTesting\RequestBroker::temporarilyDisableExcept
 
 ### Impact
 Future tests asserting an `abort()`/`abort_unless()` inside a Livewire component method (page, action, or otherwise) reached via `Livewire::test()->call(...)` should use `->assertForbidden()`/`->assertStatus(403)`/etc. directly on the `Testable` chain, not a `try { ... } catch (HttpException $e)` block — the latter will silently never catch anything for exception classes Livewire's `RequestBroker` already special-cases (`HttpException`, `AuthorizationException`).
+
+---
+
+### Date
+2026-07-20 (OMS Permissions Task 4 — secure role management)
+
+### Decision
+System-role protection for `RoleResource` is enforced structurally in `RoleResource::canEdit()`/`canDelete()` (calling `RoleManagementService::canManageRole()` directly, bypassing Gate/Policy) and in every table/page Edit/Delete action's explicit `->visible()` closure — never by relying on `RolePolicy::update()`/`delete()` returning `false`, and never by relying on Filament's default action-authorization resolution for the Edit/Delete row actions.
+
+### Reason
+`Gate::before` (AppServiceProvider) grants a real Super Admin every ability unconditionally, before Laravel ever reaches `RolePolicy::update()`/`delete()` — so a Policy method that correctly returns `false` for a system role is simply never consulted for that actor through the normal `$user->can('update', $role)`/Gate pipeline. Tracing Filament's `HasAuthorization`/`Page::getDefaultActionAuthorizationResponse()` confirmed the table's default `EditAction`/`DeleteAction` visibility also resolves through `Resource::getEditAuthorizationResponse()`/`getDeleteAuthorizationResponse()` — i.e. through the same Gate-based Policy path — so leaving those actions at their Filament defaults would have silently shown "Edit"/"Delete" for a system role to a Super Admin actor, even though the actual mutation would still be rejected by `RoleManagementService`. `RoleResource::canEdit()`/`canDelete()` were therefore written to call `canManageRole()` as plain PHP (no `Gate`/`can()` call inside it), which is what actually makes `EditRecord::authorizeAccess()` (`abort_unless(static::getResource()::canEdit(...), 403)`) 403 a direct system-role edit URL for a real Super Admin, and what makes the table/page action `->visible()` closures correctly hide those buttons for the same actor.
+
+### Impact
+Any future action added to `RoleResource`/`RolesTable`/its Pages that should be system-role-safe must call `RoleResource::canEdit()`/`canDelete()` (or `RoleManagementService::canManageRole()` directly) explicitly in its `->visible()`/`->action()` — adding a bare `EditAction::make()`/`DeleteAction::make()` without that explicit wiring would silently regress to showing/allowing the action for a Super Admin on a system role, since Filament's own default resolution path cannot be trusted for this specific rule. `RolePolicy::update()`/`delete()` are still correct and still tested directly (proving the Policy logic itself is right), but are understood to be advisory/defense-in-depth only for a real Super Admin actor, exactly like `UserPolicy::forceDelete()` in Task 3.
+
+---
+
+### Date
+2026-07-20 (OMS Permissions Task 4 — secure role management)
+
+### Decision
+`RolePolicy` is registered explicitly via `Gate::policy(Role::class, RolePolicy::class)` in `AppServiceProvider::boot()`, rather than relying on Laravel's naming-convention policy auto-discovery.
+
+### Reason
+Traced Laravel's `Gate::guessPolicyName()` directly: for a class outside an `…\Models\…` namespace segment, it only ever guesses `{EachAncestorNamespaceSegment}\Policies\{Basename}Policy` for the model's *own* namespace tree — for `Spatie\Permission\Models\Role` that produces `Spatie\Policies\RolePolicy`, `Spatie\Permission\Policies\RolePolicy`, and `Spatie\Permission\Models\Policies\RolePolicy`, none of which is `App\Policies\RolePolicy`. This is different from `App\Models\User` → `App\Policies\UserPolicy`, which auto-discovers correctly because the model itself lives under `App\Models`. Confirmed by reading the exact guess algorithm rather than assuming Filament/Laravel "just finds it" for every model.
+
+### Impact
+`RolePolicyTest::test_role_model_resolves_to_the_explicitly_registered_role_policy()` asserts `Gate::getPolicyFor(Role::class)` returns a `RolePolicy` instance, proving the explicit registration actually took effect (mirrors `PolicyDiscoveryTest`'s role for ordinary auto-discovered models). If `spatie/laravel-permission`'s `Role` model is ever swapped for a project-owned subclass under `App\Models`, this explicit registration becomes redundant but harmless — no future change is required either way.
+
+---
+
+### Date
+2026-07-20 (OMS Permissions Task 4 — secure role management)
+
+### Decision
+The permission-assignment UI is one collapsible `Section` + `CheckboxList` per `PermissionRegistry::groups()` module, each bound to a nested `permissions.{module}` form-state key — flattened to a single `list<string>` by the Create/Edit pages immediately before calling `RoleManagementService` — rather than one flat `CheckboxList` or a `->relationship()`-backed field.
+
+### Reason
+Filament's `CheckboxList` has no built-in option-grouping/optgroup support (confirmed by reading its Blade view — `@forelse ($options as $value => $label)` is a flat loop), so "grouped Arabic checkboxes" required either N separate components (one per module) or building custom grouped markup. N components each bound to a distinct nested state key is the smallest idiomatic Filament pattern that achieves real visual/functional grouping without custom Blade. A `->relationship()`-backed CheckboxList (Spatie's `permissions()` BelongsToMany) was explicitly rejected per the task's own instruction ("do not use automatic `->relationship()` saving if it bypasses RoleManagementService") — it would call `$relationship->sync()` directly from the form, skipping every validation/protected-permission/system-role check the service exists to enforce.
+
+### Impact
+Every Create/Edit page must remember to flatten `data.permissions.*` (`collect($data['permissions'] ?? [])->flatten()->unique()->values()->all()`) before passing it to the service — a future page reusing `RoleForm` without this step would silently submit a nested array instead of the flat list the service expects. Confirmed via a Livewire test that Filament's own `CheckboxList` "in" validation already rejects a submitted value outside the group's current `options()` (visible as error key `data.permissions.{module}.{index}`) — a first line of defense that runs even before `RoleManagementService::assignablePermissionNames()` is consulted a second time server-side.

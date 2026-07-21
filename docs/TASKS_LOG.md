@@ -957,3 +957,78 @@ Added `database/migrations/2026_07_20_000000_add_is_active_to_users_table.php` (
 
 ### Commit Hash
 Not committed — awaiting explicit approval, per instructions.
+
+---
+
+### Date
+2026-07-20 (OMS Permissions Task 4 — secure role management)
+
+### Task
+Create a Filament `RoleResource` (`النظام` → `الأدوار`) allowing authorized users to view roles, create/edit/delete safe custom roles, and assign permissions through grouped Arabic checkboxes — while the five system roles remain visible but structurally protected (not renameable/editable/deletable through this resource, including for a real Super Admin, since `oms:sync-permissions` remains their sole authority). Explicitly out of scope: `PermissionResource` (Task 5), `UserResource` redesign, financial logic, report authorization, migrations, Filament Shield.
+
+### Result
+Added `App\Services\Roles\RoleManagementService` (`isSystemRole`, `canManageRole`, `assignablePermissionNames`, `createRole`/`updateRole`/`deleteRole`, all transactional) as the single authoritative mutation layer, mirroring `UserManagementService`'s architecture. `canManageRole()` checks system-role status and actor-self-assignment unconditionally before any Super-Admin branch (using only `hasRole()`/permission-name arrays — never `Gate`/`can()` — so it is never bypassed by `Gate::before`), then requires every permission the role currently holds to be both non-protected and held by the actor for a non-Super-Admin. Protected permissions: exact `users.assign_super_admin`, or any name prefixed `roles.`/`permissions.` (exact/prefix match only). `createRole`/`updateRole`/`deleteRole` each require the matching `roles.*` ability, re-fetch the role fresh, reject protected/duplicate names, revalidate every submitted permission against `assignablePermissionNames()`, reject a role currently assigned to any user on delete, and call `PermissionRegistrar::forgetCachedPermissions()`. New `App\Policies\RolePolicy` (`viewAny`/`view`/`create` = ability only; `update`/`delete` = ability + `canManageRole()`) is explicitly registered via `Gate::policy(Role::class, RolePolicy::class)` in `AppServiceProvider::boot()`, since Spatie's `Role` model lives outside `App\Models` and is never found by Laravel's naming-convention auto-discovery (confirmed by tracing `Gate::guessPolicyName()`). Because `Gate::before` bypasses `RolePolicy` entirely for a real Super Admin, the actual system-role protection is structural: `RoleResource::canEdit()`/`canDelete()` call `RoleManagementService::canManageRole()` directly (bypassing Gate/Policy) alongside a plain ability check, and every table/page Edit/Delete action's `->visible()` calls those same overridden methods rather than relying on Filament's default action-authorization (which resolves through the Gate and would otherwise inherit the bypass). New `app/Filament/Resources/Roles/` (`RoleResource`, `Schemas/RoleForm`, `Tables/RolesTable`, `Pages/{ListRoles,CreateRole,ViewRole,EditRole}`) under nav group `النظام`, label `الأدوار`. Permission checkboxes are one collapsible Section + `CheckboxList` per `PermissionRegistry::groups()` module, bound to nested `permissions.{module}` form state and flattened to a single list by the Create/Edit pages before reaching the service (deliberately not `->relationship()`-backed); any DB `Permission` outside the registry appears under an additional `صلاحيات مخصصة` group labelled by its technical name and is always merged into a role's options so editing never silently drops it. Table shows name, system/custom badge, users/permissions counts, timestamps; View/Edit/Delete actions only (no bulk, no force-delete); system roles show View only.
+
+### Changed Files
+- `app/Services/Roles/RoleManagementService.php` (new)
+- `app/Policies/RolePolicy.php` (new)
+- `app/Providers/AppServiceProvider.php` (explicit `Gate::policy(Role::class, RolePolicy::class)` registration)
+- `app/Filament/Resources/Roles/RoleResource.php` (new)
+- `app/Filament/Resources/Roles/Schemas/RoleForm.php` (new)
+- `app/Filament/Resources/Roles/Tables/RolesTable.php` (new)
+- `app/Filament/Resources/Roles/Pages/ListRoles.php`, `CreateRole.php`, `ViewRole.php`, `EditRole.php` (new)
+- `tests/Feature/Roles/RoleManagementServiceTest.php` (new, 28 tests)
+- `tests/Feature/Roles/RolePolicyTest.php` (new, 9 tests)
+- `tests/Feature/Roles/RoleResourceHttpTest.php` (new, 8 tests)
+- `tests/Feature/Roles/RoleResourceLivewireTest.php` (new, 8 tests)
+- `tests/Feature/Roles/SystemRoleProtectionTest.php` (new, 23 tests)
+- `tests/Feature/Roles/SyncCompatibilityTest.php` (new, 4 tests)
+- `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md`, `docs/NEXT_STEPS.md`, `docs/PROMPTS_LOG.md` (this entry set)
+- No migration added. No `PermissionResource` created. No `UserResource`/`UserManagementService` file modified. No financial or report-authorization file modified.
+
+### Verification
+Run in the requested order:
+1. `RoleManagementServiceTest` alone → **28/28 passed, 44 assertions**.
+2. `RolePolicyTest` alone → **9/9 passed, 12 assertions**.
+3. `RoleResourceHttpTest` alone → **8/8 passed, 14 assertions**.
+4. `RoleResourceLivewireTest` alone → **8/8 passed, 25 assertions**.
+5. `SystemRoleProtectionTest` alone → **23/23 passed, 46 assertions**.
+6. `SyncCompatibilityTest` alone → **4/4 passed, 16 assertions**.
+7. `tests/Feature/Permissions` + `tests/Feature/Roles` together → **358 tests, 356 passed, 1260 assertions, 2 skipped** (same 2 pre-existing Task 2A skips).
+8. `tests/Feature/Users` + `tests/Unit/Policies` (existing Task 1–3 suites) → **88/88 passed, 182 assertions, 1 risky** (pre-existing, unrelated to this task).
+9. All financial workflow directories (`ExecutionPayments`, `GeneralExchanges`, `GeneralExpenses`, `ProjectCostBudgetsPayments`, `ProjectCostReceipts`, `Reports`, `Commands`) → **165/165 passed, 532 assertions**.
+10. Full `php artisan test` → **714 tests, 711 passed, 2117 assertions, 1 failure, 2 skipped** — the 1 failure is the same pre-existing/unrelated `ExampleTest` (hits `/`, a route this Filament app never defines) recorded in every prior task log entry back to 2026-07-15; confirmed to also fail identically on a clean `git stash` of this task's changes.
+11. `php -l` clean on all 11 new/changed PHP files.
+12. `git status --short` / `git diff --stat`: only the files listed above changed; no financial/report/UserResource file touched.
+
+### Commit Hash
+Not committed — awaiting explicit approval, per instructions.
+
+---
+
+### Date
+2026-07-20 (OMS Permissions Task 4 — pre-commit authorization verification)
+
+### Task
+Verify, before any commit, that `RoleResource::canEdit()`/`canDelete()` require **both** the operation ability (`roles.update`/`roles.delete`) **and** `RoleManagementService::canManageRole()` — not `canManageRole()` alone — and add explicit tests proving every combination of the two checks, including the Super-Admin-eligible-custom-role case and the rejected-operation-leaves-data-unchanged case.
+
+### Result
+Read the exact current implementations of `RoleResource::canEdit()`/`canDelete()`, `RolePolicy::update()`/`delete()`, and the Edit/Delete `->visible()` closures in `RolesTable`, `EditRole`, and `ViewRole` — all four already combined `$user->can('roles.update'|'roles.delete')` with `canManageRole()`/`canManageRole() && ! $record->users()->exists()`; **no production-code correction was needed**. Added `tests/Feature/Roles/RoleOperationAndTargetSafetyTest.php` (8 tests) proving explicitly: (1) canManageRole()-satisfied-but-missing-`roles.update` → 403 on the Edit URL; (2) same actor doesn't see the Edit action (table + View page); (3) canManageRole()-satisfied-but-missing-`roles.delete` → Delete hidden and independently rejected by the service; (4) `roles.update` alone does not permit editing a role whose permissions exceed the actor's; (5) `roles.delete` alone does not permit deleting such a role; (6) an actor holding both the ability and a satisfied `canManageRole()` can edit and delete an eligible custom role end-to-end; (7) Super Admin can edit/delete an eligible custom role but is still 403'd on every system role's direct Edit URL and structurally blocked by `canEdit()`/`canDelete()`; (8) a rejected update-then-delete attempt (ability present, `canManageRole()` failing) leaves the role's name, permission pivots, and user pivots completely unchanged. Two ordering bugs were found and fixed while writing tests 6 and 7: `RoleResource::canEdit()/canDelete()` read `auth()->user()` internally, so asserting their return value **before** calling `$this->actingAs($actor)` in a test always evaluates against no authenticated user — moved the assertions after `actingAs()` in both tests.
+
+### Changed Files
+- `tests/Feature/Roles/RoleOperationAndTargetSafetyTest.php` (new, 8 tests)
+- `graphify-out/**` (regenerated via `graphify update .`)
+- `docs/TASKS_LOG.md` (this entry)
+- No production file changed — `RoleResource.php`, `RolePolicy.php`, `RolesTable.php`, `EditRole.php`, `ViewRole.php` were read and confirmed already correct, not modified.
+
+### Verification
+1. `RoleOperationAndTargetSafetyTest` alone → **8/8 passed, 44 assertions** (2 test-ordering bugs found and fixed during this pass, both in the test file only).
+2. `RolePolicyTest` + `RoleResourceHttpTest` + `RoleResourceLivewireTest` + `SystemRoleProtectionTest` together → **48/48 passed, 97 assertions**.
+3. `tests/Feature/Roles` (all Role tests, including the new file) → **88/88 passed, 201 assertions**.
+4. `tests/Feature/Permissions` (all Permissions tests) → **278 tests, 276 passed, 1103 assertions, 2 skipped** (same 2 pre-existing Task 2A skips).
+5. Full `php artisan test` → **722 tests, 719 passed, 2161 assertions, 1 failure, 2 skipped, 1 risky** — the 1 failure is the same pre-existing/unrelated `ExampleTest`; the 1 risky test is likewise pre-existing.
+6. `git status --short` / `git diff --stat`: only the new test file, `graphify-out/**`, and this doc entry changed — zero modification to `RoleResource.php`/`RolePolicy.php`/`RolesTable.php`/`EditRole.php`/`ViewRole.php`/any other production file.
+7. No migration run. No real database written to (SQLite in-memory test DB only, as with every other test in this suite). No `PermissionResource` created.
+
+### Commit Hash
+Not committed — awaiting explicit approval, per instructions.
