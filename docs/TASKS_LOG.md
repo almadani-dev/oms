@@ -17,6 +17,43 @@
 ---
 
 ### Date
+2026-07-21
+
+### Task
+OMS Permissions Task 5: build a structurally read-only Filament `PermissionResource` (list/search/filter/view every `Permission`, see its Arabic label/module/associated roles) plus one protected, confirmation-based synchronization action that safely re-invokes the existing `PermissionSyncService` — never allowing manual permission create/edit/delete, even for a real Super Admin. Add one new registered permission, `permissions.sync`, defaulted to Super Admin only, with an additional exact-`Super Admin`-role requirement on the sync action independent of the permission grant.
+
+### Result
+Added `App\Policies\PermissionPolicy` (registered explicitly in `AppServiceProvider`, viewAny/view map to `permissions.view_any`/`permissions.view`, every mutation ability hard-`false`), `App\Services\Permissions\PermissionManagementService` (thin authorization wrapper: authenticated actor + exact `Super Admin` role + `permissions.sync` ability, all required, before delegating to the untouched `PermissionSyncService::sync()`), and a new `App\Filament\Resources\Permissions\PermissionResource` directory (`PermissionResource`, `Pages\ListPermissions`/`ViewPermission`, `Tables\PermissionsTable`, `Schemas\PermissionInfolist`) registering only `index`/`view` routes and hard-overriding all 8 mutation `canX()` methods to `false` — the structural guarantee that survives `Gate::before`'s Super-Admin Policy bypass. `PermissionRegistry` gained `permissions.sync` (`مزامنة الصلاحيات`, new `system_permissions` group labelled `النظام والصلاحيات`) and a `moduleForPermission()` helper; total registered permissions: 154 → 155. `RoleManagementService`'s pre-existing `permissions.`-prefix protection already covers the new permission with zero changes needed there. Table shows technical name/Arabic label/module/guard/roles-count/role-names/registered-or-custom status with matching filters, eager-loads roles to avoid N+1, and never hides a legacy/custom `Permission` row (shown under `صلاحيات مخصصة`). The sync header action is UX-hidden via `->visible()` for non-Super-Admins and, independently and more importantly, rejected server-side by `PermissionManagementService::sync()` even for a non-Super-Admin manually granted `permissions.sync` — proven via a raw crafted `mountAction()`/`callMountedAction()` Livewire call (Filament's own `isDisabled()`/`isHidden()` folding already blocks it at that layer) and, independently, a direct service-level test with no UI involved at all.
+
+### Changed Files
+- `app/Support/Permissions/PermissionRegistry.php` (added `permissions.sync` + `system_permissions` group + `moduleForPermission()`)
+- `app/Policies/PermissionPolicy.php` (new)
+- `app/Providers/AppServiceProvider.php` (registered `Gate::policy(Permission::class, PermissionPolicy::class)`)
+- `app/Services/Permissions/PermissionManagementService.php` (new)
+- `app/Filament/Resources/Permissions/PermissionResource.php` (new)
+- `app/Filament/Resources/Permissions/Pages/ListPermissions.php` (new)
+- `app/Filament/Resources/Permissions/Pages/ViewPermission.php` (new)
+- `app/Filament/Resources/Permissions/Tables/PermissionsTable.php` (new)
+- `app/Filament/Resources/Permissions/Schemas/PermissionInfolist.php` (new)
+- `tests/Feature/Permissions/PermissionPolicyTest.php` (new, 8 tests)
+- `tests/Feature/Permissions/PermissionResourceHttpTest.php` (new, 8 tests)
+- `tests/Feature/Permissions/PermissionResourceLivewireTest.php` (new, 11 tests)
+- `tests/Feature/Permissions/PermissionSyncActionTest.php` (new, 8 tests)
+- `tests/Feature/Permissions/PermissionManagementServiceTest.php` (new, 4 tests)
+- `tests/Feature/Permissions/SystemRoleDefaultPermissionsTest.php` (+1 test: `permissions.sync` role-default proof)
+- `tests/Feature/Permissions/SyncPermissionsCommandTest.php` (+1 test: `permissions.sync` created/assigned-only-to-Super-Admin proof)
+- `graphify-out/**` (regenerated via `graphify update .`)
+- `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md`, `docs/NEXT_STEPS.md` (this entry set)
+
+### Verification
+Ran in the approved order: `PermissionPolicyTest` (8/8), `PermissionResourceHttpTest` (8/8), `PermissionResourceLivewireTest` (11/11), `PermissionSyncActionTest` (8/8), `PermissionManagementServiceTest` (4/4), `SyncPermissionsCommandTest` + `SystemRoleDefaultPermissionsTest` + `SyncCompatibilityTest` (20/20), full `RoleResource` compatibility set (84/84), all `tests/Feature/Roles` (88/88), all `tests/Feature/Users` (64/64, 1 pre-existing risky unrelated), all `tests/Feature/Permissions` (317/319, 2 pre-existing skips unrelated), relevant financial test directories — ExecutionPayments/GeneralExpenses/GeneralExchanges/ProjectCostReceipts/ProjectCostBudgetsPayments (70/70), full `php artisan test` (760/763 — the 3 gaps are the same pre-existing unrelated `ExampleTest` failure, `ResourceHttpAuthorizationTest`'s 2 pre-existing `transactions`/`transaction_lines` read-only skips, and the pre-existing `tests/Feature/Users` risky flag, all confirmed via `git status --short` to be in files this task never touched). No migration run. No write against the real local database — every test uses the in-memory SQLite test database already configured in `phpunit.xml`.
+
+### Commit Hash
+Not committed — awaiting explicit approval, per task instructions.
+
+---
+
+### Date
 2026-07-15
 
 ### Task

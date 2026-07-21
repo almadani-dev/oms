@@ -58,6 +58,22 @@ class SystemRoleDefaultPermissionsTest extends TestCase
         }
     }
 
+    // ---- Task 5: Super Admin receives permissions.sync; no other system role does ----
+
+    public function test_only_super_admin_receives_permissions_sync(): void
+    {
+        $this->assertContains('permissions.sync', $this->permissionNamesFor(PermissionRegistry::SUPER_ADMIN));
+
+        foreach ([
+            PermissionRegistry::ADMIN,
+            PermissionRegistry::ACCOUNTANT,
+            PermissionRegistry::PROJECT_MANAGER,
+            PermissionRegistry::VIEWER,
+        ] as $role) {
+            $this->assertNotContains('permissions.sync', $this->permissionNamesFor($role), "{$role} unexpectedly received permissions.sync");
+        }
+    }
+
     // ---- 12. Admin does not receive roles.*, permissions.*, or users.assign_super_admin ----
 
     public function test_admin_does_not_receive_roles_permissions_or_user_management(): void

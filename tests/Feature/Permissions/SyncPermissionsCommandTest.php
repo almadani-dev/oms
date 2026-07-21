@@ -58,6 +58,28 @@ class SyncPermissionsCommandTest extends TestCase
         $this->assertSame(count(PermissionRegistry::names()), Permission::count());
     }
 
+    // ---- Task 5: creates permissions.sync and assigns it only to Super Admin ----
+
+    public function test_it_creates_permissions_sync_and_assigns_it_only_to_super_admin(): void
+    {
+        Artisan::call('oms:sync-permissions');
+
+        $this->assertTrue(Permission::where('name', 'permissions.sync')->where('guard_name', 'web')->exists());
+
+        $superAdminNames = Role::where('name', PermissionRegistry::SUPER_ADMIN)->firstOrFail()->permissions()->pluck('name')->all();
+        $this->assertContains('permissions.sync', $superAdminNames);
+
+        foreach ([
+            PermissionRegistry::ADMIN,
+            PermissionRegistry::ACCOUNTANT,
+            PermissionRegistry::PROJECT_MANAGER,
+            PermissionRegistry::VIEWER,
+        ] as $role) {
+            $names = Role::where('name', $role)->firstOrFail()->permissions()->pluck('name')->all();
+            $this->assertNotContains('permissions.sync', $names, "{$role} unexpectedly received permissions.sync");
+        }
+    }
+
     // ---- 6. creates the five system roles ----
 
     public function test_it_creates_the_five_system_roles(): void

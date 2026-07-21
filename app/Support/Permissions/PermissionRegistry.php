@@ -113,6 +113,19 @@ final class PermissionRegistry
     ];
 
     /**
+     * Task 5: protected by name (starts with `permissions.`, see
+     * RoleManagementService::isProtectedPermissionName()), granted to
+     * Super Admin only. `adminDefaults()`/`accountantDefaults()`/
+     * `projectManagerDefaults()`/`viewerDefaults()` never reference this
+     * group, so no other system role can ever pick it up by accident.
+     *
+     * @var array<string,string>
+     */
+    private const SYSTEM_PERMISSIONS = [
+        'permissions.sync' => 'مزامنة الصلاحيات',
+    ];
+
+    /**
      * @return array<string,string> permission name => Arabic label
      */
     public static function all(): array
@@ -179,10 +192,28 @@ final class PermissionRegistry
             $reportPermissions["reports.{$page}.export"] = "تصدير {$label}";
         }
 
+        $groups['system_permissions'] = ['label' => 'النظام والصلاحيات', 'permissions' => self::SYSTEM_PERMISSIONS];
         $groups['reports'] = ['label' => 'التقارير', 'permissions' => $reportPermissions];
         $groups['special'] = ['label' => 'صلاحيات خاصة', 'permissions' => self::SPECIAL_PERMISSIONS];
 
         return $groups;
+    }
+
+    /**
+     * The registry module key containing `$name`, or null when `$name` is
+     * not a registered permission (a custom/legacy Permission row). Used by
+     * PermissionResource to resolve a permission's Arabic module label
+     * without duplicating grouping logic.
+     */
+    public static function moduleForPermission(string $name): ?string
+    {
+        foreach (self::groups() as $module => $group) {
+            if (array_key_exists($name, $group['permissions'])) {
+                return $module;
+            }
+        }
+
+        return null;
     }
 
     /**

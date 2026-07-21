@@ -13,12 +13,14 @@ use App\Observers\ProjectCostBudgetsPaymentObserver;
 use App\Observers\ProjectCostObserver;
 use App\Observers\ProjectCostReceiptObserver;
 use App\Observers\ProjectObserver;
+use App\Policies\PermissionPolicy;
 use App\Policies\RolePolicy;
 use App\Support\Permissions\PermissionRegistry;
 use Filament\Tables\Table;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
 class AppServiceProvider extends ServiceProvider
@@ -53,6 +55,12 @@ class AppServiceProvider extends ServiceProvider
         // naming-convention policy discovery never guesses RolePolicy for
         // it — register it explicitly.
         Gate::policy(Role::class, RolePolicy::class);
+
+        // Same reasoning for Spatie's Permission model — see PermissionPolicy
+        // for why its mutation-ability denials alone are not sufficient
+        // (Gate::before bypasses Policies for Super Admin; PermissionResource
+        // hard-overrides the mutation abilities structurally instead).
+        Gate::policy(Permission::class, PermissionPolicy::class);
 
         // Apply consistent, lightweight pagination defaults to every Filament
         // table (resources + relation managers) so large tables never load
