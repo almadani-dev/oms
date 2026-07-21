@@ -13,6 +13,20 @@
 ---
 
 ### Date
+2026-07-21 (final authorization acceptance testing)
+
+### Decision
+The absence of a separate `users.assign_roles` permission in `PermissionRegistry` is accepted as the current approved design, not a defect. Normal role assignment stays controlled by `users.create`/`users.update` plus `UserManagementService`'s actor-privilege-subset validation (`assignableRoleNames()`, `createUser()`/`updateUser()` server-side revalidation); `users.assign_super_admin` remains the separate, independently-checked permission specifically for assigning the Super Admin role. No permission was added or renamed.
+
+### Reason
+The final acceptance spec named `users.assign_roles` as an expected permission, but a direct check of `PermissionRegistry` confirmed it was never defined — role assignment has always been gated by the combination of `users.create`/`users.update` and the privilege-subset logic already fully covered by `RoleAssignmentSafetyTest`/`PrivilegeSubsetProtectionTest`. Adding a new permission to match spec wording, without a proven behavioral gap, would be a registry change made to satisfy documentation rather than to fix a real defect — explicitly out of scope for a testing-only task.
+
+### Impact
+`PermissionRegistry` is unchanged. Any future spec or documentation referencing `users.assign_roles` should be corrected to describe the actual mechanism (`users.create`/`users.update` + privilege-subset validation) rather than implying a dedicated permission exists.
+
+---
+
+### Date
 2026-07-21
 
 ### Decision

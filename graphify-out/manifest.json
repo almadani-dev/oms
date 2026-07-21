@@ -1875,28 +1875,28 @@
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1784618157.4085836,
-    "ast_hash": "9682d3e4e2e61d50cc7af1e5480efad9",
+    "mtime": 1784621941.2772217,
+    "ast_hash": "6faee80a1482fa3049bd054a22a98b5e",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
-    "mtime": 1784618200.9816134,
-    "ast_hash": "879e0d97f9d528ff1fccee071302dfe8",
+    "mtime": 1784621983.087754,
+    "ast_hash": "12fa73bc50ae0c81943614f08c70353e",
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1784618221.0065453,
-    "ast_hash": "ef9c6ddd865f8bba36bffe44e5f59501",
+    "mtime": 1784621996.324666,
+    "ast_hash": "be0828ce4706c08ba15ffabb4c6fe76d",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
-    "mtime": 1784618248.9382217,
-    "ast_hash": "66f7a1c92d58f0c3e7fc0c8ad5e4aa36",
+    "mtime": 1784622015.068188,
+    "ast_hash": "e1e5cb978b1101b66a9edbbe3925b5d3",
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1784618181.4565704,
-    "ast_hash": "754c09448b7291a1ff52266daf02ef86",
+    "mtime": 1784621971.714521,
+    "ast_hash": "71ad78d34ee1804a7275f108c39575f6",
     "semantic_hash": ""
   },
   "app/Services/Reports/ProjectFinancialDetailsWordExportService.php": {
@@ -2130,12 +2130,12 @@
     "semantic_hash": ""
   },
   "storage/framework/testing/disks/public/receipts/orphan.pdf": {
-    "mtime": 1784617787.7790592,
+    "mtime": 1784621369.477559,
     "ast_hash": "c91ca4ad2ff792df795c3bab362f7a28",
     "semantic_hash": ""
   },
   "storage/framework/testing/disks/public/logo.png": {
-    "mtime": 1784617787.7790592,
+    "mtime": 1784621369.477559,
     "ast_hash": "24555cfd25ae5e76b92aeb464d2a50de",
     "semantic_hash": ""
   },
@@ -3092,6 +3092,11 @@
   "tests/Feature/Permissions/PermissionSyncActionTest.php": {
     "mtime": 1784616814.933007,
     "ast_hash": "1d7c99b1cee98b3586b4590659f385e9",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Permissions/AuthorizationAcceptanceTest.php": {
+    "mtime": 1784620858.989969,
+    "ast_hash": "fcec05db0558446f89c029890d4b31b5",
     "semantic_hash": ""
   }
 }

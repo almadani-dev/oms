@@ -1,6 +1,20 @@
 # Prompts Log
 
 ### Date
+2026-07-21 (final OMS authorization acceptance testing — Tasks 1–5)
+
+### Prompt
+User requested the final OMS authorization acceptance test pass across Permissions Tasks 1–5, explicitly as a testing task: audit existing coverage first (no duplicate tests), add only the smallest focused acceptance test file(s) for genuine gaps, use the real `PermissionSyncService` for test data (create one active user per system role, assign exactly one role each), verify system role integrity (five roles, exactly 155 permissions, exact default sets, idempotent sync), Filament panel access, real rendered sidebar navigation per role, direct URL access (200/403/404) for named representative resources/reports/system pages, create/update/delete authorization including structural protections that survive Super Admin, report access, export authorization (including no-permanent-file-storage), Users/Roles/Permissions management (including the `users.assign_roles` requirement), and cross-module negative leakage tests — run in a specified order, stop and report (not fix) any genuine defect found, and produce a detailed final report. No production authorization redesign, no financial-logic/Resource/Policy/`PermissionRegistry` changes merely to pass a test, no staging/commit, no real database writes.
+
+### Purpose
+Close out the OMS Permissions phase (Tasks 1→2A→2B→3→4→5, all previously implemented but never jointly acceptance-tested) with one final, independent pass proving the whole authorization surface behaves as designed end-to-end, before the phase is considered complete and safe to build further features (e.g. attachment security) on top of.
+
+### Result
+Audited ~80 existing test methods across `tests/Feature/{Permissions,Roles,Users,Reports}` and found coverage was strong; added exactly one new file, `tests/Feature/Permissions/AuthorizationAcceptanceTest.php` (22 tests, 200 assertions, all passing), covering only the confirmed gaps (absolute permission count, real per-role rendered navigation, representative view/edit HTTP routes, 404-not-403 for nonexistent create routes, actually-assigned-role mutation proofs, generic cross-module negative pairs, crafted Users form Super-Admin-assignment attempt). **No authorization defect was found.** The acceptance spec's `users.assign_roles` permission does not exist in `PermissionRegistry` — confirmed as the approved design (role assignment via `users.create`/`users.update` + privilege-subset validation, `users.assign_super_admin` separately gating Super Admin assignment), not a gap; no registry change made. Full suite 782/785, matching the pre-existing unrelated `ExampleTest` failure and risky Task 3 test recorded in every prior task's log — neither touched. User approved the result and requested documentation-only updates plus staging/commit of the new test file and generated `graphify-out/**` output. See `docs/TASKS_LOG.md` (2026-07-21 entry) for exact commands/counts and `docs/DECISIONS_LOG.md` for the `users.assign_roles` non-defect reasoning.
+
+---
+
+### Date
 2026-07-21 (OMS Permissions Task 5 — read-only permission management)
 
 ### Prompt

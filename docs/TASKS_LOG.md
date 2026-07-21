@@ -20,6 +20,28 @@
 2026-07-21
 
 ### Task
+Run the final OMS authorization acceptance test pass for Permissions Tasks 1–5 (system role integrity, Filament panel access, sidebar navigation, direct URL access, create/update/delete operations, report access, export authorization, Users/Roles/Permissions management, cross-module negative tests). Testing only — no production authorization redesign unless a genuine defect was proven; no financial-logic/UserResource/RoleResource/PermissionResource/policy/`PermissionRegistry` changes merely to make a test pass; no staging/commit until reviewed; no writes to the real local database.
+
+### Result
+Audited existing coverage across all ~80 test methods in `tests/Feature/{Permissions,Roles,Users,Reports}` before writing anything new. Coverage was strong; added exactly one new file, `tests/Feature/Permissions/AuthorizationAcceptanceTest.php` (22 tests, 200 assertions, all passing), covering only the genuine gaps the audit found — see `docs/AI_PROJECT_MEMORY.md` (2026-07-21 entry) for the full gap list. Test data was created entirely through the real `PermissionSyncService` (one active, non-deleted user per system role, exactly one role each) — never a hardcoded role/permission matrix; the file reuses `ResourceHttpAuthorizationTest::resourceProvider()` and `ReportPageAccessTest::reportProvider()` rather than inventing a second map. **No authorization defect was found anywhere in the tested surface.** Confirmed the acceptance spec's `users.assign_roles` permission does not exist in `PermissionRegistry` and is not a defect — role assignment is controlled by `users.create`/`users.update` + `UserManagementService`'s privilege-subset logic (already fully tested), and `users.assign_super_admin` remains the separate, independently-enforced permission for assigning Super Admin. This is the confirmed, approved design; no registry change was made.
+
+### Changed Files
+- `tests/Feature/Permissions/AuthorizationAcceptanceTest.php` (new, 22 tests)
+- `graphify-out/**` (regenerated via `graphify update .`)
+- `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md`, `docs/NEXT_STEPS.md` (this entry set)
+
+### Verification
+Ran in the requested order: new `AuthorizationAcceptanceTest` (22/22, 200 assertions), all `tests/Feature/Permissions` (339/341, 2 pre-existing unrelated skips), all `tests/Feature/Roles` (88/88), all `tests/Feature/Users` (64/64, 1 pre-existing unrelated risky), all `tests/Feature/Reports` (58/58), relevant financial authorization tests — GeneralExpenses/GeneralExchanges/ExecutionPayments/ProjectCostBudgetsPayments/ProjectCostReceipts (70/70), full `php artisan test` (782/785 — the 3 gaps are the same pre-existing unrelated `ExampleTest` failure, 2 pre-existing skips, and 1 pre-existing risky flag recorded in every prior task's log, confirmed untouched by this task). No migration run. No write against the real local database — every test uses the in-memory SQLite test database already configured in `phpunit.xml`.
+
+### Commit Hash
+`add final authorization acceptance coverage` (hash recorded after commit — see below)
+
+---
+
+### Date
+2026-07-21
+
+### Task
 OMS Permissions Task 5: build a structurally read-only Filament `PermissionResource` (list/search/filter/view every `Permission`, see its Arabic label/module/associated roles) plus one protected, confirmation-based synchronization action that safely re-invokes the existing `PermissionSyncService` — never allowing manual permission create/edit/delete, even for a real Super Admin. Add one new registered permission, `permissions.sync`, defaulted to Super Admin only, with an additional exact-`Super Admin`-role requirement on the sync action independent of the permission grant.
 
 ### Result
