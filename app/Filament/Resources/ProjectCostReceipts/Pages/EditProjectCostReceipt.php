@@ -5,11 +5,11 @@ namespace App\Filament\Resources\ProjectCostReceipts\Pages;
 use App\Enums\TransactionLineRole;
 use App\Filament\Resources\ProjectCostReceipts\ProjectCostReceiptResource;
 use App\Filament\Resources\ProjectCostReceipts\Tables\ProjectCostReceiptsTable;
-use App\Models\Attachment;
 use App\Models\ProjectCost;
 use App\Models\ProjectCostReceipt;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
+use App\Services\Attachments\AttachmentUploadService;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
@@ -21,7 +21,6 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class EditProjectCostReceipt extends EditRecord
 {
@@ -66,8 +65,9 @@ class EditProjectCostReceipt extends EditRecord
         $data['credit_bank_type_id']    = $creditLine?->account?->bank_type_id;
         $data['credit_account_id']      = $creditLine?->account_id;
 
-        $attachment            = $record->attachments()->first();
-        $data['receipt_image'] = $attachment?->file_path;
+        // The replacement upload field is intentionally left empty - the
+        // current attachment is shown separately via the secure preview
+        // component, never prefilled into FileUpload with a private path.
 
         return $data;
     }
@@ -161,46 +161,27 @@ class EditProjectCostReceipt extends EditRecord
                 );
             }
 
-            // STEP 7 - Handle file upload
-            $existingAttachment = $record->attachments()->first();
-            $newFilePath        = $data['receipt_image'] ?? null;
-            $isNewFile          = $newFilePath && $newFilePath !== $existingAttachment?->file_path;
+            // STEP 7 - Handle file upload/replacement/removal
+            $existingAttachment = $record->attachments()->latest('id')->first();
+            $newTempPath        = $data['receipt_image'] ?? null;
+            $removeRequested    = (bool) ($data['remove_current_attachment'] ?? false);
 
-            if ($isNewFile) {
-                if ($existingAttachment) {
-                    $existingAttachment->delete();
-                }
+            if ($newTempPath) {
+                // Store the replacement first; only soft-delete the previous
+                // active attachment once the new one has succeeded. If
+                // store() throws, the whole DB::transaction() rolls back and
+                // the previous attachment is left untouched.
+                app(AttachmentUploadService::class)->store(
+                    parent: $record,
+                    tempPath: $newTempPath,
+                    directory: 'receipts',
+                    prefix: 'receive',
+                    date: $record->date,
+                    amount: (float) $record->amount,
+                );
 
-                $tempPath = $newFilePath;
-                $ext      = pathinfo($tempPath, PATHINFO_EXTENSION);
-                $mimeType = Storage::disk('public')->mimeType($tempPath);
-                $fileSize = Storage::disk('public')->size($tempPath);
-
-                $attachment = Attachment::create([
-                    'attachable_type' => ProjectCostReceipt::class,
-                    'attachable_id'   => $record->id,
-                    'file_name'       => basename($tempPath),
-                    'file_path'       => $tempPath,
-                    'file_type'       => $mimeType,
-                    'file_size'       => $fileSize,
-                    'created_by'      => auth()->id(),
-                    'updated_by'      => auth()->id(),
-                ]);
-
-                $newName = 'receive_' . $attachment->id
-                    . '_' . Carbon::parse($record->date)->format('Ymd')
-                    . '_' . (int) $record->amount
-                    . '.' . $ext;
-
-                $newPath = 'receipts/' . $newName;
-
-                Storage::disk('public')->move($tempPath, $newPath);
-
-                $attachment->update([
-                    'file_name' => $newName,
-                    'file_path' => $newPath,
-                ]);
-            } elseif (!$newFilePath && $existingAttachment) {
+                $existingAttachment?->delete();
+            } elseif ($removeRequested && $existingAttachment) {
                 $existingAttachment->delete();
             }
 

@@ -6,9 +6,9 @@ use App\Enums\TransactionLineRole;
 use App\Filament\Resources\GeneralExpenses\GeneralExpenseResource;
 use App\Filament\Resources\GeneralExpenses\Schemas\GeneralExpenseForm;
 use App\Filament\Resources\GeneralExpenses\Tables\GeneralExpensesTable;
-use App\Models\Attachment;
 use App\Models\GeneralExpense;
 use App\Models\TransactionLine;
+use App\Services\Attachments\AttachmentUploadService;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
@@ -20,7 +20,6 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class EditGeneralExpense extends EditRecord
 {
@@ -78,8 +77,10 @@ class EditGeneralExpense extends EditRecord
         $data['credit_currency_display'] = $currencyName;
         $data['credit_account_id']      = $creditLine?->account_id;
 
-        // Section 4 - attachment
-        $data['expense_image'] = $record->attachments()->first()?->file_path;
+        // Section 4 - attachment: the replacement upload field is
+        // intentionally left empty - the current attachment is shown
+        // separately via the secure preview component, never prefilled
+        // into FileUpload with a private path.
 
         return $data;
     }
@@ -180,17 +181,17 @@ class EditGeneralExpense extends EditRecord
                 );
             }
 
-            // STEP 6 - Handle file swap
-            $existing    = $record->attachments()->first();
-            $newFilePath = $data['expense_image'] ?? null;
-            $isNewFile   = $newFilePath && $newFilePath !== $existing?->file_path;
+            // STEP 6 - Handle file replacement/removal
+            $existing        = $record->attachments()->latest('id')->first();
+            $newTempPath     = $data['expense_image'] ?? null;
+            $removeRequested = (bool) ($data['remove_current_attachment'] ?? false);
 
-            if ($isNewFile) {
-                if ($existing) {
-                    $existing->delete();
-                }
-                $this->storeAttachment($record, $newFilePath, $amount);
-            } elseif (! $newFilePath && $existing) {
+            if ($newTempPath) {
+                // Store the replacement first; only soft-delete the previous
+                // active attachment once the new one has succeeded.
+                $this->storeAttachment($record, $newTempPath, $amount);
+                $existing?->delete();
+            } elseif ($removeRequested && $existing) {
                 $existing->delete();
             }
 
@@ -278,29 +279,13 @@ class EditGeneralExpense extends EditRecord
 
     protected function storeAttachment(GeneralExpense $expense, string $tempPath, float $amount): void
     {
-        $ext      = pathinfo($tempPath, PATHINFO_EXTENSION);
-        $mimeType = Storage::disk('public')->mimeType($tempPath);
-        $fileSize = Storage::disk('public')->size($tempPath);
-
-        $attachment = Attachment::create([
-            'attachable_type' => GeneralExpense::class,
-            'attachable_id'   => $expense->id,
-            'file_name'       => basename($tempPath),
-            'file_path'       => $tempPath,
-            'file_type'       => $mimeType,
-            'file_size'       => $fileSize,
-            'created_by'      => auth()->id(),
-            'updated_by'      => auth()->id(),
-        ]);
-
-        $newName = 'gen_' . $attachment->id
-            . '_' . Carbon::parse($expense->date ?? now())->format('Ymd')
-            . '_' . (int) $amount
-            . '.' . $ext;
-
-        $newPath = 'general-expenses/' . $newName;
-        Storage::disk('public')->move($tempPath, $newPath);
-
-        $attachment->update(['file_name' => $newName, 'file_path' => $newPath]);
+        app(AttachmentUploadService::class)->store(
+            parent: $expense,
+            tempPath: $tempPath,
+            directory: 'general-expenses',
+            prefix: 'gen',
+            date: $expense->date ?? now(),
+            amount: $amount,
+        );
     }
 }

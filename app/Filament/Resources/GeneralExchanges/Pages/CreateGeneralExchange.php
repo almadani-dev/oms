@@ -6,10 +6,10 @@ use App\Enums\TransactionLineRole;
 use App\Filament\Resources\GeneralExchanges\GeneralExchangeResource;
 use App\Filament\Resources\GeneralExchanges\Schemas\GeneralExchangeForm;
 use App\Models\Account;
-use App\Models\Attachment;
 use App\Models\GeneralExchange;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
+use App\Services\Attachments\AttachmentUploadService;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
@@ -20,7 +20,6 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class CreateGeneralExchange extends CreateRecord
 {
@@ -295,32 +294,13 @@ class CreateGeneralExchange extends CreateRecord
 
     protected function storeAttachment(GeneralExchange $exchange, string $tempPath, float $finalAmount): void
     {
-        $ext      = pathinfo($tempPath, PATHINFO_EXTENSION);
-        $mimeType = Storage::disk('public')->mimeType($tempPath);
-        $fileSize = Storage::disk('public')->size($tempPath);
-
-        $attachment = Attachment::create([
-            'attachable_type' => GeneralExchange::class,
-            'attachable_id'   => $exchange->id,
-            'file_name'       => basename($tempPath),
-            'file_path'       => $tempPath,
-            'file_type'       => $mimeType,
-            'file_size'       => $fileSize,
-            'created_by'      => auth()->id(),
-            'updated_by'      => auth()->id(),
-        ]);
-
-        $newName = 'ext_' . $attachment->id
-            . '_' . Carbon::parse($exchange->date ?? now())->format('Ymd')
-            . '_' . (int) $finalAmount
-            . '.' . $ext;
-
-        $newPath = 'general-exchanges/' . $newName;
-        Storage::disk('public')->move($tempPath, $newPath);
-
-        $attachment->update([
-            'file_name' => $newName,
-            'file_path' => $newPath,
-        ]);
+        app(AttachmentUploadService::class)->store(
+            parent: $exchange,
+            tempPath: $tempPath,
+            directory: 'general-exchanges',
+            prefix: 'ext',
+            date: $exchange->date ?? now(),
+            amount: $finalAmount,
+        );
     }
 }

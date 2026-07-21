@@ -4,10 +4,10 @@ namespace App\Filament\Resources\GeneralExpenses\Pages;
 
 use App\Enums\TransactionLineRole;
 use App\Filament\Resources\GeneralExpenses\GeneralExpenseResource;
-use App\Models\Attachment;
 use App\Models\GeneralExpense;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
+use App\Services\Attachments\AttachmentUploadService;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
@@ -18,7 +18,6 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class CreateGeneralExpense extends CreateRecord
 {
@@ -223,32 +222,13 @@ class CreateGeneralExpense extends CreateRecord
 
     protected function storeAttachment(GeneralExpense $expense, string $tempPath, float $amount): void
     {
-        $ext      = pathinfo($tempPath, PATHINFO_EXTENSION);
-        $mimeType = Storage::disk('public')->mimeType($tempPath);
-        $fileSize = Storage::disk('public')->size($tempPath);
-
-        $attachment = Attachment::create([
-            'attachable_type' => GeneralExpense::class,
-            'attachable_id'   => $expense->id,
-            'file_name'       => basename($tempPath),
-            'file_path'       => $tempPath,
-            'file_type'       => $mimeType,
-            'file_size'       => $fileSize,
-            'created_by'      => auth()->id(),
-            'updated_by'      => auth()->id(),
-        ]);
-
-        $newName = 'gen_' . $attachment->id
-            . '_' . Carbon::parse($expense->date ?? now())->format('Ymd')
-            . '_' . (int) $amount
-            . '.' . $ext;
-
-        $newPath = 'general-expenses/' . $newName;
-        Storage::disk('public')->move($tempPath, $newPath);
-
-        $attachment->update([
-            'file_name' => $newName,
-            'file_path' => $newPath,
-        ]);
+        app(AttachmentUploadService::class)->store(
+            parent: $expense,
+            tempPath: $tempPath,
+            directory: 'general-expenses',
+            prefix: 'gen',
+            date: $expense->date ?? now(),
+            amount: $amount,
+        );
     }
 }

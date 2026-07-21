@@ -5,10 +5,10 @@ namespace App\Filament\Resources\ProjectCostBudgetsPayments\Pages;
 use App\Enums\TransactionLineRole;
 use App\Filament\Resources\ProjectCostBudgetsPayments\ProjectCostBudgetsPaymentResource;
 use App\Filament\Resources\ProjectCostBudgetsPayments\Tables\ProjectCostBudgetsPaymentsTable;
-use App\Models\Attachment;
 use App\Models\ProjectCost;
 use App\Models\ProjectCostBudget;
 use App\Models\TransactionLine;
+use App\Services\Attachments\AttachmentUploadService;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
@@ -20,7 +20,6 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class EditProjectCostBudgetsPayment extends EditRecord
 {
@@ -115,8 +114,10 @@ class EditProjectCostBudgetsPayment extends EditRecord
             ? Carbon::parse($record->transaction->transaction_time)->toDateString()
             : null;
 
-        // Section 5 - attachment
-        $data['payment_image'] = $record->attachments()->first()?->file_path;
+        // Section 5 - attachment: the replacement upload field is
+        // intentionally left empty - the current attachment is shown
+        // separately via the secure preview component, never prefilled
+        // into FileUpload with a private path.
 
         return $data;
     }
@@ -271,17 +272,17 @@ class EditProjectCostBudgetsPayment extends EditRecord
                 );
             }
 
-            // STEP 6 - Handle file swap
-            $existing    = $record->attachments()->first();
-            $newFilePath = $data['payment_image'] ?? null;
-            $isNewFile   = $newFilePath && $newFilePath !== $existing?->file_path;
+            // STEP 6 - Handle file replacement/removal
+            $existing        = $record->attachments()->latest('id')->first();
+            $newTempPath     = $data['payment_image'] ?? null;
+            $removeRequested = (bool) ($data['remove_current_attachment'] ?? false);
 
-            if ($isNewFile) {
-                if ($existing) {
-                    $existing->delete();
-                }
-                $this->storeAttachment($record, $newFilePath, $finalAmount);
-            } elseif (! $newFilePath && $existing) {
+            if ($newTempPath) {
+                // Store the replacement first; only soft-delete the previous
+                // active attachment once the new one has succeeded.
+                $this->storeAttachment($record, $newTempPath, $finalAmount);
+                $existing?->delete();
+            } elseif ($removeRequested && $existing) {
                 $existing->delete();
             }
 
@@ -379,29 +380,13 @@ class EditProjectCostBudgetsPayment extends EditRecord
 
     protected function storeAttachment(ProjectCostBudget $budget, string $tempPath, float $amount): void
     {
-        $ext      = pathinfo($tempPath, PATHINFO_EXTENSION);
-        $mimeType = Storage::disk('public')->mimeType($tempPath);
-        $fileSize = Storage::disk('public')->size($tempPath);
-
-        $attachment = Attachment::create([
-            'attachable_type' => ProjectCostBudget::class,
-            'attachable_id'   => $budget->id,
-            'file_name'       => basename($tempPath),
-            'file_path'       => $tempPath,
-            'file_type'       => $mimeType,
-            'file_size'       => $fileSize,
-            'created_by'      => auth()->id(),
-            'updated_by'      => auth()->id(),
-        ]);
-
-        $newName = 'pay_' . $attachment->id
-            . '_' . Carbon::parse($budget->transaction?->transaction_time ?? now())->format('Ymd')
-            . '_' . (int) $amount
-            . '.' . $ext;
-
-        $newPath = 'payments/' . $newName;
-        Storage::disk('public')->move($tempPath, $newPath);
-
-        $attachment->update(['file_name' => $newName, 'file_path' => $newPath]);
+        app(AttachmentUploadService::class)->store(
+            parent: $budget,
+            tempPath: $tempPath,
+            directory: 'payments',
+            prefix: 'pay',
+            date: $budget->transaction?->transaction_time ?? now(),
+            amount: $amount,
+        );
     }
 }

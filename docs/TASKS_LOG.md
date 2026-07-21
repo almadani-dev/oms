@@ -20,6 +20,38 @@
 2026-07-21
 
 ### Task
+OMS Task 6B: cut all five financial Resources (Project Cost Receipts, Project Cost Budget Disbursements, Execution Payments, General Expenses, General Exchanges) over from the public disk to the private `attachments` disk built in Task 6A — new uploads write only to the private disk with `disk = attachments`; images/PDFs preview securely inline on the View pages via server-built `attachments.show` routes; Edit pages support keep/replace/remove without ever prefilling a private path into `FileUpload`; old physical files are retained on soft delete; `disk = public` legacy rows remain supported through the same protected controller during the transition. Then, on approval: controlled local rollout of the real `disk`-column migration against the real local MySQL database (full backup first), documentation, Graphify refresh, and commit — explicitly not the Task 6C legacy-file quarantine/migration.
+
+### Result
+Added `App\Services\Attachments\AttachmentUploadService` (centralizes the upload/rename/move logic previously duplicated in all 10 Create/Edit page classes; directory/prefix allowlisted; reuses `AttachmentStorageService::isSafeRelativePath()`; row created first so its real id can be used in the deterministic `{prefix}_{id}_{Ymd}_{amount}.{ext}` filename; disk `throw => false` means move failure is checked via return value, not exception; a failed move force-deletes the just-created row, a post-move DB failure deletes only the newly-moved file and force-deletes the row, the old attachment is never touched by a failed call) and `resources/views/filament/components/secure-attachment-preview.blade.php` (one reusable component: inline image preview, "عرض بالحجم الكامل"/"تنزيل" links built server-side from the Attachment id only, safe file-card for non-images, Arabic empty state, no raw path/URL ever rendered — used identically in all 5 View and all 5 Edit pages). Updated all 5 Forms (`FileUpload` → `disk('attachments')` + `visibility('private')`, plus the new preview component and a `remove_current_attachment` checkbox, both visible only on Edit with an active attachment), all 5 Create pages (delegate to the new service), all 5 Edit pages (`mutateFormDataBeforeFill` no longer prefills the private path; `handleRecordUpdate` implements keep/replace/remove/replace-with-simultaneous-removal per the approved precedence rules), and all 5 View pages (hand-built `Storage::disk('public')->url()` HTML replaced by the shared component). 77 new tests (17 direct `AttachmentUploadService` failure/scheme tests, 30 parameterized Create/Edit tests across all 5 resources via `ReflectionMethod` on the real page handlers, 30 real `Livewire::test()` View-page rendering tests across all 5 resources), all passing. `grep` confirmed zero remaining `Storage::disk('public')`/`->url(`/raw `/storage/` references in the 5 financial Resource directories. After approval: created a full `mysqldump` backup (`C:\laragon\backups\oms\oms_before_attachment_disk_20260721_143806.sql`, 150,837 bytes, SHA-256 `e23e2c92589e7196cffa8023814c94df225f748437864ce7114aba759dfc2871`), ran only the targeted `2026_07_21_000001_add_disk_to_attachments_table` migration against the real local MySQL database, and verified post-migration: `disk varchar(32) default 'public'` exists exactly as the migration specifies, Attachment row count still 0, all six pre-existing orphan files under `storage/app/public/{execution-payments,payments}` byte-for-byte unchanged (SHA-256 compared before/after), no directory created under the real private attachments disk. One coverage gap flagged (not silently claimed as covered): the post-move DB-update-failure cleanup branch is implemented and code-reviewed but not deterministically unit-tested in this task, since SQLite in the test environment doesn't enforce the constraint that would trigger it and mocking `Attachment::update()` itself was judged too invasive for this task's scope.
+
+### Changed Files
+- `app/Services/Attachments/AttachmentUploadService.php` (new)
+- `resources/views/filament/components/secure-attachment-preview.blade.php` (new)
+- `app/Filament/Resources/ProjectCostReceipts/{Schemas/ProjectCostReceiptForm.php, Pages/{CreateProjectCostReceipt.php, EditProjectCostReceipt.php, ViewProjectCostReceipt.php}}`
+- `app/Filament/Resources/ProjectCostBudgetsPayments/{Schemas/ProjectCostBudgetsPaymentForm.php, Pages/{CreateProjectCostBudgetsPayment.php, EditProjectCostBudgetsPayment.php, ViewProjectCostBudgetsPayment.php}}`
+- `app/Filament/Resources/ExecutionPayments/{Schemas/ExecutionPaymentForm.php, Pages/{CreateExecutionPayment.php, EditExecutionPayment.php, ViewExecutionPayment.php}}`
+- `app/Filament/Resources/GeneralExpenses/{Schemas/GeneralExpenseForm.php, Pages/{CreateGeneralExpense.php, EditGeneralExpense.php, ViewGeneralExpense.php}}`
+- `app/Filament/Resources/GeneralExchanges/{Schemas/GeneralExchangeForm.php, Pages/{CreateGeneralExchange.php, EditGeneralExchange.php, ViewGeneralExchange.php}}`
+- `tests/Feature/Attachments/AttachmentUploadServiceTest.php` (new, 17 tests)
+- `tests/Feature/Attachments/FinancialAttachmentCutoverTest.php` (new, 30 tests)
+- `tests/Feature/Attachments/FinancialAttachmentViewFlowTest.php` (new, 30 tests)
+- `database/migrations/2026_07_21_000001_add_disk_to_attachments_table.php` (already existed from Task 6A; applied to the real local database in this task)
+- `graphify-out/**` (regenerated via `graphify update .`)
+- `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md`, `docs/NEXT_STEPS.md` (this entry set)
+
+### Verification
+Pre-commit targeted run: `tests/Feature/Attachments` (all 7 files including the 3 new ones) + the five financial Resource test directories + `ResourceHttpAuthorizationTest` + `AuthorizationAcceptanceTest` — 303 tests, 300 passed, 3 skipped (pre-existing, unrelated), 0 failed, 1040 assertions. Full suite was explicitly not run (per task instruction) either before or after the commit. Real database: `attachments` table was 0 rows / no `disk` column before, and 0 rows / `disk varchar(32) default 'public'` after — confirmed via read-only queries both times; no user/role/permission/financial table touched by the migration (schema-only `ALTER TABLE ADD COLUMN`); the migration status log confirms only `2026_07_21_000001_add_disk_to_attachments_table` was newly marked as run. No real `Attachment` record was ever created; no real attachment file was ever uploaded, moved, copied, renamed, or deleted; the six orphan files were confirmed byte-for-byte unchanged (SHA-256 compared before and after the migration).
+
+### Commit Hash
+`move financial attachments to private storage` (hash recorded after commit — see below)
+
+---
+
+### Date
+2026-07-21
+
+### Task
 Run the final OMS authorization acceptance test pass for Permissions Tasks 1–5 (system role integrity, Filament panel access, sidebar navigation, direct URL access, create/update/delete operations, report access, export authorization, Users/Roles/Permissions management, cross-module negative tests). Testing only — no production authorization redesign unless a genuine defect was proven; no financial-logic/UserResource/RoleResource/PermissionResource/policy/`PermissionRegistry` changes merely to make a test pass; no staging/commit until reviewed; no writes to the real local database.
 
 ### Result

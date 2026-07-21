@@ -9,8 +9,8 @@ use Filament\Actions\EditAction;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Resources\Pages\ViewRecord;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\View;
 use Filament\Schemas\Schema;
-use Illuminate\Support\Facades\Storage;
 
 class ViewExecutionPayment extends ViewRecord
 {
@@ -105,28 +105,9 @@ class ViewExecutionPayment extends ViewRecord
 
             Section::make('المرفقات')->schema([
 
-                TextEntry::make('attachment_display')
-                    ->label('صورة الإشعار')
-                    ->html()
-                    ->columnSpanFull()
-                    ->state(function ($record) {
-                        $attachment = $record->attachments()->first();
-
-                        if (! $attachment) {
-                            return '<span class="text-gray-500">لا يوجد إشعار مرفق</span>';
-                        }
-
-                        $url = Storage::disk('public')->url($attachment->file_path);
-
-                        if (str_contains($attachment->file_type ?? '', 'image')) {
-                            return '<img src="' . e($url) . '" style="max-width:100%;border-radius:8px;" />';
-                        }
-
-                        return '<a href="' . e($url) . '" target="_blank" rel="noopener noreferrer"
-                            style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:#3b82f6;color:#fff;border-radius:6px;text-decoration:none;">
-                            تحميل المرفق (PDF)
-                        </a>';
-                    }),
+                View::make('filament.components.secure-attachment-preview')
+                    ->viewData(fn ($record) => ['attachment' => $record->attachments()->latest('id')->first()])
+                    ->columnSpanFull(),
 
             ]),
 

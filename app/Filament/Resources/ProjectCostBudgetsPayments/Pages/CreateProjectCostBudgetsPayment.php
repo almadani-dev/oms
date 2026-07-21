@@ -4,11 +4,11 @@ namespace App\Filament\Resources\ProjectCostBudgetsPayments\Pages;
 
 use App\Enums\TransactionLineRole;
 use App\Filament\Resources\ProjectCostBudgetsPayments\ProjectCostBudgetsPaymentResource;
-use App\Models\Attachment;
 use App\Models\ProjectCost;
 use App\Models\ProjectCostBudget;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
+use App\Services\Attachments\AttachmentUploadService;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
@@ -20,7 +20,6 @@ use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 
 class CreateProjectCostBudgetsPayment extends CreateRecord
 {
@@ -310,32 +309,13 @@ class CreateProjectCostBudgetsPayment extends CreateRecord
 
     protected function storeAttachment(ProjectCostBudget $budget, string $tempPath, float $amount): void
     {
-        $ext      = pathinfo($tempPath, PATHINFO_EXTENSION);
-        $mimeType = Storage::disk('public')->mimeType($tempPath);
-        $fileSize = Storage::disk('public')->size($tempPath);
-
-        $attachment = Attachment::create([
-            'attachable_type' => ProjectCostBudget::class,
-            'attachable_id'   => $budget->id,
-            'file_name'       => basename($tempPath),
-            'file_path'       => $tempPath,
-            'file_type'       => $mimeType,
-            'file_size'       => $fileSize,
-            'created_by'      => auth()->id(),
-            'updated_by'      => auth()->id(),
-        ]);
-
-        $newName = 'pay_' . $attachment->id
-            . '_' . Carbon::parse($budget->transaction?->transaction_time ?? now())->format('Ymd')
-            . '_' . (int) $amount
-            . '.' . $ext;
-
-        $newPath = 'payments/' . $newName;
-        Storage::disk('public')->move($tempPath, $newPath);
-
-        $attachment->update([
-            'file_name' => $newName,
-            'file_path' => $newPath,
-        ]);
+        app(AttachmentUploadService::class)->store(
+            parent: $budget,
+            tempPath: $tempPath,
+            directory: 'payments',
+            prefix: 'pay',
+            date: $budget->transaction?->transaction_time ?? now(),
+            amount: $amount,
+        );
     }
 }

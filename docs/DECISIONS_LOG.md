@@ -13,6 +13,48 @@
 ---
 
 ### Date
+2026-07-21 (OMS Task 6B — financial Resource attachment cutover)
+
+### Decision
+`AttachmentUploadService::store()` creates the `Attachment` row first — with a temporary `file_name`/`file_path` — obtains its real database id, then builds the final deterministic filename and moves the file, then updates the row with the final metadata. Move failure is detected by checking `move()`'s boolean return value, not by catching an exception.
+
+### Reason
+The final filename format (`{prefix}_{id}_{Ymd}_{amount}.{ext}`) requires a real attachment id, and the task explicitly forbade inventing one via `MAX+1` (a classic race condition under concurrent uploads). Creating the row first and updating it once the id is known is the only race-free way to satisfy that constraint. Separately, the `attachments` disk is configured with `'throw' => false` (matching `AttachmentStorageService`'s own disks), so a real Flysystem-level move failure on that disk surfaces as `move()` returning `false`, not a thrown exception — code that only wrapped `move()` in a try/catch would silently miss this failure mode and leave a dangling `Attachment` row pointing at a file that was never actually written.
+
+### Impact
+Any future change to `AttachmentUploadService::store()` must preserve both properties: never derive the final id another way, and never assume a `throw`-catching pattern alone is sufficient for filesystem operations on this disk. Covered by `AttachmentUploadServiceTest::test_no_dangling_attachment_row_remains_when_the_move_fails` (Mockery-backed, since the real fake disk doesn't reproduce a `throw => false` failure deterministically) and `test_old_attachment_is_never_touched_by_a_failed_store_call`.
+
+---
+
+### Date
+2026-07-21 (OMS Task 6B — financial Resource attachment cutover)
+
+### Decision
+A replacement upload is stored via `AttachmentUploadService::store()` **before** the previous active `Attachment` row is soft-deleted, in every one of the 5 Edit pages' `handleRecordUpdate()`. Removal (the `remove_current_attachment` checkbox) and replacement share the same "old row untouched until the new state is confirmed" ordering; when both are submitted together, replacement takes precedence and the old row is soft-deleted exactly once.
+
+### Reason
+Filesystem writes are not covered by `DB::transaction()`. If the old row were soft-deleted first and the new upload then failed (missing temp file, disk move failure, etc.), the record would be left with no active attachment at all — a strictly worse outcome than "the edit failed, try again" for an accounting document. Storing first means a failed replacement always leaves the previous, still-valid attachment active and unchanged; only a successful store is followed by soft-deleting the old row, guaranteeing at most a brief moment where two rows are technically active (never visible outside the same request) and never zero.
+
+### Impact
+This ordering must be preserved in every current and future Edit page that adopts `AttachmentUploadService`. Covered by `FinancialAttachmentCutoverTest::test_edit_failed_replacement_leaves_the_previous_attachment_active_and_unchanged` and `test_edit_replacement_takes_precedence_over_simultaneous_removal`, parameterized across all 5 resources.
+
+---
+
+### Date
+2026-07-21 (OMS Task 6B — financial Resource attachment cutover)
+
+### Decision
+A single reusable Blade component (`resources/views/filament/components/secure-attachment-preview.blade.php`), rendered via `Filament\Schemas\Components\View`, is used identically on all 5 View pages and all 5 Edit pages (visible on Edit only when an active attachment exists, via Filament's automatic `?Model $record` closure injection — `null` on Create). It never receives or renders `Storage::url()`, a raw `file_path`, or an absolute filesystem path — only the Attachment's own id, from which it builds `route('attachments.show', [$id, 'view'|'download'])` server-side.
+
+### Reason
+Ten separate hand-built HTML blocks (one per View/Edit page) calling `Storage::disk('public')->url()` directly was both the literal vulnerability Task 6A/6B exist to close and, independently, needless duplication of the exact same three-state (image / non-image / empty) display logic. Centralizing it in one component makes "no raw storage URL anywhere in the 5 financial flows" a single-file property to verify (and `grep`-confirm) rather than ten.
+
+### Impact
+Any future financial Resource that displays an attachment should reuse this component rather than reimplementing display logic. If a new attachment-bearing Resource is added, wire it into the same `attachments.show` route via `AttachmentController::SUPPORTED_ATTACHABLE_TYPES` first, exactly as Task 6A's allowlist already requires.
+
+---
+
+### Date
 2026-07-21 (final authorization acceptance testing)
 
 ### Decision

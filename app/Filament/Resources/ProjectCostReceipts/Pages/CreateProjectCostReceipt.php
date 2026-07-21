@@ -4,11 +4,11 @@ namespace App\Filament\Resources\ProjectCostReceipts\Pages;
 
 use App\Enums\TransactionLineRole;
 use App\Filament\Resources\ProjectCostReceipts\ProjectCostReceiptResource;
-use App\Models\Attachment;
 use App\Models\ProjectCost;
 use App\Models\ProjectCostReceipt;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
+use App\Services\Attachments\AttachmentUploadService;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
@@ -19,7 +19,6 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class CreateProjectCostReceipt extends CreateRecord
 {
@@ -113,35 +112,14 @@ class CreateProjectCostReceipt extends CreateRecord
 
             // STEP 6 - If file uploaded
             if (!empty($data['receipt_image'])) {
-                $tempPath = $data['receipt_image'];
-                $ext      = pathinfo($tempPath, PATHINFO_EXTENSION);
-                $mimeType = Storage::disk('public')->mimeType($tempPath);
-                $fileSize = Storage::disk('public')->size($tempPath);
-
-                $attachment = Attachment::create([
-                    'attachable_type' => ProjectCostReceipt::class,
-                    'attachable_id'   => $receipt->id,
-                    'file_name'       => basename($tempPath),
-                    'file_path'       => $tempPath,
-                    'file_type'       => $mimeType,
-                    'file_size'       => $fileSize,
-                    'created_by'      => auth()->id(),
-                    'updated_by'      => auth()->id(),
-                ]);
-
-                $newName = 'receive_' . $attachment->id
-                    . '_' . Carbon::parse($receipt->date)->format('Ymd')
-                    . '_' . (int) $receipt->amount
-                    . '.' . $ext;
-
-                $newPath = 'receipts/' . $newName;
-
-                Storage::disk('public')->move($tempPath, $newPath);
-
-                $attachment->update([
-                    'file_name' => $newName,
-                    'file_path' => $newPath,
-                ]);
+                app(AttachmentUploadService::class)->store(
+                    parent: $receipt,
+                    tempPath: $data['receipt_image'],
+                    directory: 'receipts',
+                    prefix: 'receive',
+                    date: $receipt->date,
+                    amount: (float) $receipt->amount,
+                );
             }
 
             // STEP 7 - Success notification

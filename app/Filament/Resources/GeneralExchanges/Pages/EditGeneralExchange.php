@@ -7,9 +7,9 @@ use App\Filament\Resources\GeneralExchanges\GeneralExchangeResource;
 use App\Filament\Resources\GeneralExchanges\Schemas\GeneralExchangeForm;
 use App\Filament\Resources\GeneralExchanges\Tables\GeneralExchangesTable;
 use App\Models\Account;
-use App\Models\Attachment;
 use App\Models\GeneralExchange;
 use App\Models\TransactionLine;
+use App\Services\Attachments\AttachmentUploadService;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
@@ -21,7 +21,6 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class EditGeneralExchange extends EditRecord
 {
@@ -110,8 +109,10 @@ class EditGeneralExchange extends EditRecord
             ? Carbon::parse($record->transaction->transaction_time)->toDateString()
             : ($record->date ? Carbon::parse($record->date)->toDateString() : null);
 
-        // Section 4 - attachment
-        $data['exchange_image'] = $record->attachments()->first()?->file_path;
+        // Section 4 - attachment: the replacement upload field is
+        // intentionally left empty - the current attachment is shown
+        // separately via the secure preview component, never prefilled
+        // into FileUpload with a private path.
 
         return $data;
     }
@@ -260,17 +261,17 @@ class EditGeneralExchange extends EditRecord
                 );
             }
 
-            // STEP 6 - Handle file swap
-            $existing    = $record->attachments()->first();
-            $newFilePath = $data['exchange_image'] ?? null;
-            $isNewFile   = $newFilePath && $newFilePath !== $existing?->file_path;
+            // STEP 6 - Handle file replacement/removal
+            $existing        = $record->attachments()->latest('id')->first();
+            $newTempPath     = $data['exchange_image'] ?? null;
+            $removeRequested = (bool) ($data['remove_current_attachment'] ?? false);
 
-            if ($isNewFile) {
-                if ($existing) {
-                    $existing->delete();
-                }
-                $this->storeAttachment($record, $newFilePath, $finalAmount);
-            } elseif (! $newFilePath && $existing) {
+            if ($newTempPath) {
+                // Store the replacement first; only soft-delete the previous
+                // active attachment once the new one has succeeded.
+                $this->storeAttachment($record, $newTempPath, $finalAmount);
+                $existing?->delete();
+            } elseif ($removeRequested && $existing) {
                 $existing->delete();
             }
 
@@ -365,29 +366,13 @@ class EditGeneralExchange extends EditRecord
 
     protected function storeAttachment(GeneralExchange $exchange, string $tempPath, float $finalAmount): void
     {
-        $ext      = pathinfo($tempPath, PATHINFO_EXTENSION);
-        $mimeType = Storage::disk('public')->mimeType($tempPath);
-        $fileSize = Storage::disk('public')->size($tempPath);
-
-        $attachment = Attachment::create([
-            'attachable_type' => GeneralExchange::class,
-            'attachable_id'   => $exchange->id,
-            'file_name'       => basename($tempPath),
-            'file_path'       => $tempPath,
-            'file_type'       => $mimeType,
-            'file_size'       => $fileSize,
-            'created_by'      => auth()->id(),
-            'updated_by'      => auth()->id(),
-        ]);
-
-        $newName = 'ext_' . $attachment->id
-            . '_' . Carbon::parse($exchange->date ?? now())->format('Ymd')
-            . '_' . (int) $finalAmount
-            . '.' . $ext;
-
-        $newPath = 'general-exchanges/' . $newName;
-        Storage::disk('public')->move($tempPath, $newPath);
-
-        $attachment->update(['file_name' => $newName, 'file_path' => $newPath]);
+        app(AttachmentUploadService::class)->store(
+            parent: $exchange,
+            tempPath: $tempPath,
+            directory: 'general-exchanges',
+            prefix: 'ext',
+            date: $exchange->date ?? now(),
+            amount: $finalAmount,
+        );
     }
 }

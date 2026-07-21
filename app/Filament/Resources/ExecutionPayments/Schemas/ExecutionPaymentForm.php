@@ -15,6 +15,7 @@ use App\Models\ProjectSuper;
 use App\Models\TransactionLine;
 use App\Models\TransactionSuperType;
 use App\Models\TransactionType;
+use Filament\Forms\Components\Checkbox;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
@@ -24,7 +25,9 @@ use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
+use Filament\Schemas\Components\View;
 use Filament\Schemas\Schema;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Validation\ValidationException;
 
 class ExecutionPaymentForm
@@ -261,16 +264,33 @@ class ExecutionPaymentForm
              ===================================================== */
             Section::make('المرفقات')->schema([
 
+                View::make('filament.components.secure-attachment-preview')
+                    ->viewData(fn (?Model $record) => ['attachment' => self::activeAttachment($record)])
+                    ->visible(fn (?Model $record) => self::activeAttachment($record) !== null)
+                    ->columnSpanFull(),
+
                 FileUpload::make('payment_image')
-                    ->label('صورة الإشعار')
+                    ->label(fn (?Model $record) => $record ? 'استبدال المرفق' : 'صورة الإشعار')
                     ->acceptedFileTypes(['image/jpeg', 'image/png', 'application/pdf'])
                     ->maxSize(51200)
                     ->directory('execution-payments')
-                    ->disk('public'),
+                    ->disk('attachments')
+                    ->visibility('private'),
+
+                Checkbox::make('remove_current_attachment')
+                    ->label('حذف المرفق الحالي')
+                    ->helperText('سيتم إزالة المرفق الحالي عند الحفظ. لا يمكن التراجع عن هذا الإجراء.')
+                    ->visible(fn (?Model $record) => self::activeAttachment($record) !== null)
+                    ->dehydrated(true),
 
             ]),
 
         ]);
+    }
+
+    protected static function activeAttachment(?Model $record): mixed
+    {
+        return $record?->attachments()->latest('id')->first();
     }
 
     /* =========================================================
