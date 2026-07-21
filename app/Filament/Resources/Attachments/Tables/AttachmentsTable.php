@@ -2,15 +2,21 @@
 
 namespace App\Filament\Resources\Attachments\Tables;
 
-use Filament\Actions\BulkActionGroup;
-use Filament\Actions\DeleteBulkAction;
-use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 
+/**
+ * Read-only by construction (OMS Task 6A hardening): only `ViewAction` is
+ * registered - no Edit, no bulk actions (never calling `->toolbarActions()`
+ * means Filament never renders row-selection checkboxes or a bulk-delete
+ * button). AttachmentResource's hard `canX()` overrides are what actually
+ * block mutation even for Super Admin; this table simply never offers a
+ * mutation action in the first place - same split responsibility as
+ * PermissionsTable/PermissionResource.
+ */
 class AttachmentsTable
 {
     public static function configure(Table $table): Table
@@ -41,11 +47,6 @@ class AttachmentsTable
                     ->label('متعلق بـ'),
                 TrashedFilter::make(),
             ])
-            ->recordActions([ViewAction::make(), EditAction::make()])
-            ->toolbarActions([
-                BulkActionGroup::make([
-                    DeleteBulkAction::make(),
-                ]),
-            ]);
+            ->recordActions([ViewAction::make()]);
     }
 }

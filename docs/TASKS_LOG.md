@@ -1091,3 +1091,47 @@ Read the exact current implementations of `RoleResource::canEdit()`/`canDelete()
 
 ### Commit Hash
 Not committed — awaiting explicit approval, per instructions.
+
+---
+
+### Date
+2026-07-21 (OMS Task 6A — private attachment security foundation)
+
+### Task
+Three-part task, run across a read-only audit and two implementation passes, all under explicit "do not migrate/move/copy/delete any real attachment file, do not run the new migration against the real database, do not touch the five financial Resources yet" constraints: (1) audit the existing polymorphic `Attachment` model/relationships, all 5 financial workflows' `FileUpload` fields, storage disks/URLs, every display/download/delete code path, real DB/storage state, unauthenticated-access exposure, permissions, soft-delete behavior, export/report exposure, and existing test coverage, then design a smallest-safe-change plan; (2) implement the approved plan's foundation only — private `attachments` disk, a transitional `disk` column, an `AttachmentStorageService`, a single authenticated `AttachmentController` route, parent-policy reuse, and focused tests — explicitly excluding the five-Resource cutover and the legacy-file migration; (3) apply five mandatory security corrections found necessary before approval (harden the standalone `AttachmentResource`, validate stored file paths defensively, sanitize response filenames, fix soft-deleted-parent handling to avoid a 403-vs-404 information leak, and document the six orphaned public files as requiring a later quarantined migration) — then finalize, re-verify, document, and commit.
+
+### Result
+**Audit**: confirmed the 5 financial workflows (`ProjectCostReceipt`, `ProjectCostBudget` disbursements, `ProjectCostBudgetsPayment` execution payments, `GeneralExpense`, `GeneralExchange`) each create a polymorphic `Attachment` row via a near-identical `storeAttachment()` in their Create/Edit pages, uploading to the `public` disk and displaying via raw `Storage::disk('public')->url()` HTML — meaning any attachment URL was directly guessable and reachable with zero authentication or authorization once known; no soft-delete cascade existed from a trashed parent (or a soft-deleted `Attachment` itself) to its physical file; the standalone `AttachmentResource` (nav `النظام`) had zero real rows but its own `FileUpload` resolved to the pre-existing `local` disk, itself incidentally served unauthenticated by Laravel's built-in `serve => true` signed-URL route.
+
+**Foundation**: new private `attachments` disk (`storage/app/private/attachments`, `visibility: private`, `serve: false`, no `url` key, never symlinked); new `disk` column on `attachments` (default `'public'`, so every existing row keeps its true location without a backfill statement) with `Attachment::APPROVED_DISKS = ['public', 'attachments']` as the single allowlist `AttachmentStorageService::resolveDisk()` ever checks before calling `Storage::disk()`; one authenticated route (`GET /attachments/{attachment}/{mode}`, numeric id + `view`/`download` only, Filament's own `Authenticate::class` middleware — chosen over the bare `auth` alias specifically because this app has no route literally named `login`, only the panel-scoped one, and because it also runs the same `canAccessPanel()` check every other admin request goes through) whose controller authorizes strictly via `Gate::authorize('view', $parent)` against each attachment's actual parent record — reusing the 5 existing per-model policies unchanged, no new `attachments.*`-style permission introduced for this route.
+
+**Corrections**: `AttachmentResource` now mirrors `PermissionResource`'s exact structural pattern — hidden from navigation, only `index`/`view` routes registered, `CreateAttachment`/`EditAttachment` page classes deleted, all 8 mutation `canX()` methods hard-`false` (survives `Gate::before`'s Super-Admin bypass), table/list/view stripped of every Edit/Delete/bulk action — while `attachments.*` permissions and `AttachmentPolicy` stayed untouched, so `viewAny`/`view` still work as before. `AttachmentStorageService::isSafeRelativePath()` added as a defense-in-depth pre-check (rejects absolute Unix/Windows/UNC/drive-letter paths, null bytes, empty values, and any `..` segment after splitting on both `/` and `\`) before any stored `file_path` reaches `Storage`. `safeDownloadName()` strips directory segments and every C0/C1 control character (CR/LF specifically, for header-injection safety) from the stored `file_name`, falling back to a deterministic `attachment-{id}.{ext}` name — and, found and fixed during this same pass, uses a custom `lastPathSegment()` splitter rather than PHP's native `basename()`, because `basename()` only treats `\` as a separator on Windows and would have silently let a `..\..\folder\evil.pdf`-shaped stored filename leak its directory segments straight into `Content-Disposition` on a Linux server. Controller flow corrected so a missing-or-soft-deleted parent returns 404 **before** `Gate::authorize()` is ever called (previously it fell through to the reused policy and produced 403), so "trashed" and "never existed" are indistinguishable to any caller and no policy-level 403 can imply "it exists but you can't see it." Two pre-existing, unrelated Permissions test files (`AuthorizationAcceptanceTest`, `ResourceHttpAuthorizationTest`) encoded the *old* `AttachmentResource` behavior (visible in nav, has a create route) and were updated to expect the new, approved hardened behavior — not a regression, a necessary consequence of the hardening.
+
+The six pre-existing orphan files under `storage/app/public/{execution-payments,payments}` (no matching `Attachment` DB row — real DB `attachments` table has 0 rows) were **not** touched at any point; re-hashed identical before and after every phase of this task.
+
+### Changed Files
+- `config/filesystems.php` — new `attachments` disk.
+- `database/migrations/2026_07_21_000001_add_disk_to_attachments_table.php` — new `disk` column, default `public`.
+- `app/Models/Attachment.php` — `DISK_PUBLIC`/`DISK_ATTACHMENTS`/`APPROVED_DISKS` constants, `disk` added to `$fillable`.
+- `app/Services/Attachments/AttachmentStorageService.php` — new (disk resolution, path validation, MIME resolution, filename sanitization, streamed response).
+- `app/Http/Controllers/Attachments/AttachmentController.php` — new (the only route that serves attachment bytes).
+- `routes/web.php` — new `attachments.show` route.
+- `app/Filament/Resources/Attachments/AttachmentResource.php` — hardened (nav hidden, `canX()` hard-`false`, routes reduced to index/view).
+- `app/Filament/Resources/Attachments/Pages/ListAttachments.php`, `ViewAttachment.php` — header mutation actions removed.
+- `app/Filament/Resources/Attachments/Pages/CreateAttachment.php`, `EditAttachment.php` — deleted.
+- `app/Filament/Resources/Attachments/Tables/AttachmentsTable.php` — `EditAction`/bulk-delete removed.
+- `tests/Feature/Attachments/AttachmentAccessTest.php`, `AttachmentPathSafetyTest.php`, `AttachmentFilenameSanitizationTest.php`, `AttachmentResourceHardeningTest.php` — new (combined 64 tests; see Verification below).
+- `tests/Feature/Permissions/AuthorizationAcceptanceTest.php`, `ResourceHttpAuthorizationTest.php` — updated to expect `AttachmentResource`'s new hardened behavior (nav-hidden, no create route) alongside the pre-existing `ProjectCostResource` exception.
+- The five financial Resources' Schemas/Create/Edit/View pages were **not** touched — still `disk('public')`, still raw `Storage::url()`; the cutover is explicitly deferred to Task 6B.
+
+### Verification
+1. `tests/Feature/Attachments/*` alone → **64/64 passed**.
+2. Targeted (`Attachment|Permission|Role|User` filter) → **636 tests, 633 passed, 0 failed, 3 skipped, 1 risky** (skips: the two pre-existing read-only-resource create-route skips plus the new intentional `attachments` create-route skip; risky is the same pre-existing, unrelated case recorded since earlier tasks).
+3. Financial suites (`ExecutionPayments`, `GeneralExchanges`, `GeneralExpenses`, `ProjectCostBudgetsPayments`, `ProjectCostReceipts`) → **70/70 passed**.
+4. Full suite: `php artisan test` → **848 tests, 844 passed, 1 failed, 3 skipped, 1 risky** — the 1 failure is the same pre-existing/unrelated `ExampleTest` (`GET /` expects 200, gets 404), recorded in every prior task's log entry back to 2026-07-15; not touched.
+5. Real DB verified unaffected at every checkpoint: `attachments` table row count 0, no `disk` column present (migration never ran against it).
+6. The six orphan files under `storage/app/public/{execution-payments,payments}` re-hashed identical (MD5) before and after every phase.
+7. `git status --short` / `git diff --stat` confirmed at each checkpoint that only the files listed above changed — zero modification to any of the five financial Resources' Schemas/Create/Edit/View pages.
+
+### Commit Hash
+Committed as `add private attachment security foundation` — see `git log -1 --format=%H` for the exact hash.

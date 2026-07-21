@@ -12,6 +12,21 @@ class Attachment extends Model
 {
     use SoftDeletes, HasUserTracking;
 
+    /**
+     * The only disk names AttachmentStorageService will ever resolve
+     * Storage::disk() against for a given row. A 'disk' value outside this
+     * list (corrupt data, a future typo, manual DB editing) must never
+     * reach Storage::disk() - see AttachmentStorageService::resolveDisk().
+     */
+    public const DISK_PUBLIC = 'public';
+
+    public const DISK_ATTACHMENTS = 'attachments';
+
+    public const APPROVED_DISKS = [
+        self::DISK_PUBLIC,
+        self::DISK_ATTACHMENTS,
+    ];
+
     protected $fillable = [
         'attachable_type',
         'attachable_id',
@@ -19,6 +34,7 @@ class Attachment extends Model
         'file_path',
         'file_type',
         'file_size',
+        'disk',
         'notes',
         'created_by',
         'updated_by',

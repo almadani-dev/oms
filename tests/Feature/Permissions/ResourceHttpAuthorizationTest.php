@@ -105,7 +105,12 @@ class ResourceHttpAuthorizationTest extends TestCase
             'transaction_super_types' => ['transaction-super-types', 'transaction_super_types', TransactionSuperTypeResource::class, true],
             'project_statuses' => ['project-statuses', 'project_statuses', ProjectStatusResource::class, true],
             'settings' => ['settings', 'settings', SettingResource::class, true],
-            'attachments' => ['attachments', 'attachments', AttachmentResource::class, true],
+            // OMS Task 6A hardening: AttachmentResource's own upload path sits
+            // outside AttachmentController's authorization flow, so its
+            // canCreate() is hard-overridden to false and no create route is
+            // registered at all — see AttachmentResourceHardeningTest for the
+            // dedicated structural + Super Admin proof.
+            'attachments' => ['attachments', 'attachments', AttachmentResource::class, false],
         ];
     }
 
@@ -151,12 +156,17 @@ class ResourceHttpAuthorizationTest extends TestCase
      * in this environment for reasons unrelated to permission correctness.
      * This test instead confirms, at the source level, that none of the 23
      * resources override the nav-eligibility toggle away from its default —
-     * except the one pre-existing, documented, permission-independent
-     * exception (ProjectCostResource, reachable only via
-     * Projects/CostsRelationManager, never as a top-level nav item).
+     * except two pre-existing, documented, permission-independent
+     * exceptions: ProjectCostResource (reachable only via
+     * Projects/CostsRelationManager, never as a top-level nav item), and
+     * AttachmentResource (OMS Task 6A hardening: zero real usage today, and
+     * its own upload path sits outside AttachmentController's authorization
+     * flow — see AttachmentResourceHardeningTest).
      */
-    public function test_only_project_cost_resource_opts_out_of_navigation_registration(): void
+    public function test_only_project_cost_and_attachment_resources_opt_out_of_navigation_registration(): void
     {
+        $navigationOptOutResources = [ProjectCostResource::class, AttachmentResource::class];
+
         foreach (self::resourceProvider() as $name => [, , $resourceClass]) {
             // None of the 23 override the shouldRegisterNavigation() method
             // itself — confirms Filament's stock HasNavigation trait
@@ -173,7 +183,7 @@ class ResourceHttpAuthorizationTest extends TestCase
             $property->setAccessible(true);
             $isEligible = $property->getValue();
 
-            if ($resourceClass === ProjectCostResource::class) {
+            if (in_array($resourceClass, $navigationOptOutResources, true)) {
                 $this->assertFalse($isEligible, "{$name}: expected the known hardcoded navigation opt-out.");
             } else {
                 $this->assertTrue($isEligible, "{$name}: expected the default nav-eligible toggle (not overridden).");

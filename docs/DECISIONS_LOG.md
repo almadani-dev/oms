@@ -658,3 +658,45 @@ Filament's `CheckboxList` has no built-in option-grouping/optgroup support (conf
 
 ### Impact
 Every Create/Edit page must remember to flatten `data.permissions.*` (`collect($data['permissions'] ?? [])->flatten()->unique()->values()->all()`) before passing it to the service — a future page reusing `RoleForm` without this step would silently submit a nested array instead of the flat list the service expects. Confirmed via a Livewire test that Filament's own `CheckboxList` "in" validation already rejects a submitted value outside the group's current `options()` (visible as error key `data.permissions.{module}.{index}`) — a first line of defense that runs even before `RoleManagementService::assignablePermissionNames()` is consulted a second time server-side.
+
+---
+
+### Date
+2026-07-21 (OMS Task 6A — private attachment security foundation)
+
+### Decision
+An attachment's storage disk is resolved only through `Attachment::APPROVED_DISKS` (`['public', 'attachments']`), checked in one place (`AttachmentStorageService::resolveDisk()`) before every `Storage::disk()` call anywhere in the app — a stored `disk` value outside that list is treated as unavailable (404), never passed to `Storage::disk()`.
+
+### Reason
+`attachments.disk` is a plain database string column with no DB-level enum/check constraint. Trusting it directly would let a corrupted row, a future typo, or manual DB editing select an arbitrary Laravel filesystem disk (including ones never intended for attachment serving, like `s3` with production credentials, or `local`). An explicit allowlist checked at a single choke point makes "which disks can ever be read through this controller" a fact verifiable by reading one method, rather than an implicit property of wherever `Storage::disk($attachment->disk)` happens to be called.
+
+### Impact
+Adding a third approved disk (e.g. if S3 is ever adopted) requires updating `Attachment::APPROVED_DISKS` and nothing else in the authorization/serving path — `AttachmentController` and `AttachmentStorageService` never hardcode disk names beyond that constant. Grep confirms `Storage::disk($attachment->disk)` (the dynamic form) appears exactly once in `app/`, inside `resolveDisk()` itself.
+
+---
+
+### Date
+2026-07-21 (OMS Task 6A — private attachment security foundation)
+
+### Decision
+The standalone `AttachmentResource` was hardened (hidden from navigation, only `index`/`view` routes, all 8 mutation `canX()` methods hard-overridden to `false`) rather than deleted, and its `attachments.*` permissions and `AttachmentPolicy` were left untouched.
+
+### Reason
+Its own `FileUpload` resolves to the pre-existing `local` disk (Laravel's default, `config('filesystems.default')`), which sits entirely outside the new `AttachmentController`'s authorization flow and is incidentally served by Laravel's built-in signed-URL route (`serve => true` on that disk) — a latent upload path that needed closing immediately. Deleting the resource outright would have been a larger, less reversible change than necessary for a "smallest safe change" security task, and would have discarded the existing `attachments.*` permission module and `AttachmentPolicy` for no security benefit (viewing a permission-gated read-only list was never the risk — uploading through it was). `PermissionResource` already established the exact pattern this reuses: `Gate::before` bypasses the underlying Policy's mutation denial for a real Super Admin, so a Policy-only fix would not have been sufficient — the hard `canX()` override on the Resource itself is what actually closes it for every actor.
+
+### Impact
+`AttachmentResource` remains reachable at `/admin/attachments` only via direct URL for a user holding `attachments.view_any`/`attachments.view` (never via sidebar); its Create/Edit routes return 404 for everyone including Super Admin, proven by dedicated tests rather than relying on generic provider skips. If a future phase decides this resource should support the 5 financial attachable types (currently only `Project`/`Transaction`/`Partner`, none of which have any real rows) or should route through the new private disk, that is a distinct, separately-scoped decision — not made here.
+
+---
+
+### Date
+2026-07-21 (OMS Task 6A — private attachment security foundation)
+
+### Decision
+`AttachmentController` checks whether an attachment's parent record is missing or soft-deleted and returns 404 **before** ever calling `Gate::authorize('view', $parent)` — rather than letting the call reach the parent's own policy, which would also deny a trashed parent but via a 403.
+
+### Reason
+The parent policies' shared `AuthorizesCrud::view()` already denies a trashed record (`! $this->isTrashed($model)`), so relying on that alone would have produced 403 for a soft-deleted parent — indistinguishable, to the caller, from "authenticated but lacking permission." That conflation would leak one bit of information (trashed-status) to anyone who happens to already hold the module's `view` permission, even though the same conflation is otherwise harmless when checked purely as an internal policy detail elsewhere in the app (Filament's own View/Edit pages, which a user must already be mid-navigating a real, non-trashed record to reach). For a raw, guessable-numeric-id HTTP route, keeping "trashed" and "never existed" both resolve to 404 is a stricter, safer default.
+
+### Impact
+`AttachmentController`'s controller-level trashed-parent check is intentionally redundant with `AuthorizesCrud::view()`'s own trashed exclusion — both independently deny a trashed parent, by design, for two different reasons (information-leak avoidance here vs. general "don't operate on trashed records" elsewhere). Do not remove the controller-level check on the assumption that the policy already covers it; they serve different purposes even though the practical effect (denial) overlaps for an *authorized* user, and differs from the policy alone for an *unauthorized* user's ability to distinguish 403-vs-404.

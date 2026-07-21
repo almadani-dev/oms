@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Permissions;
 
+use App\Filament\Resources\Attachments\AttachmentResource;
 use App\Filament\Resources\Currencies\Pages\CreateCurrency;
 use App\Filament\Resources\Permissions\PermissionResource;
 use App\Filament\Resources\ProjectCosts\ProjectCostResource;
@@ -138,7 +139,13 @@ class AuthorizationAcceptanceTest extends TestCase
             // CostsRelationManager) — never expected in the sidebar, even
             // for Super Admin, so it is excluded from the permission-driven
             // expectation below.
-            if ($resourceClass === ProjectCostResource::class) {
+            //
+            // AttachmentResource hardcodes the same (OMS Task 6A hardening:
+            // zero real usage today — see the audit — and its own upload
+            // path sits outside AttachmentController's authorization flow,
+            // so it is hidden from the sidebar entirely regardless of
+            // permission, same treatment as ProjectCostResource).
+            if (in_array($resourceClass, [ProjectCostResource::class, AttachmentResource::class], true)) {
                 $response->assertDontSee($url, false);
 
                 continue;

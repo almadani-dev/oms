@@ -47,6 +47,21 @@ return [
             'report' => false,
         ],
 
+        // Private attachment storage: never symlinked into public/, no 'url'
+        // key, and 'serve' deliberately omitted (defaults to false) so
+        // Laravel's built-in local-disk signed-URL route (storage.<disk>,
+        // registered by FilesystemServiceProvider only when serve => true)
+        // never gets auto-registered for this disk. All access must go
+        // through the authenticated AttachmentController route instead.
+        'attachments' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/attachments'),
+            'visibility' => 'private',
+            'serve' => false,
+            'throw' => false,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),
