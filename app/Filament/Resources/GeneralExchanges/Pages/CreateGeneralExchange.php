@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\GeneralExchanges\Pages;
 
+use App\Filament\Concerns\RedirectsToResourceView;
 use App\Enums\TransactionLineRole;
 use App\Filament\Resources\GeneralExchanges\GeneralExchangeResource;
 use App\Filament\Resources\GeneralExchanges\Schemas\GeneralExchangeForm;
@@ -23,6 +24,8 @@ use Illuminate\Support\Facades\DB;
 
 class CreateGeneralExchange extends CreateRecord
 {
+    use RedirectsToResourceView;
+
     protected static string $resource = GeneralExchangeResource::class;
 
     protected function getSavedNotificationTitle(): ?string

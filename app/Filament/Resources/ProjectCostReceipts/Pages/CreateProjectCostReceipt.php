@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ProjectCostReceipts\Pages;
 
+use App\Filament\Concerns\RedirectsToResourceView;
 use App\Enums\TransactionLineRole;
 use App\Filament\Resources\ProjectCostReceipts\ProjectCostReceiptResource;
 use App\Models\ProjectCost;
@@ -22,6 +23,8 @@ use Illuminate\Support\Facades\DB;
 
 class CreateProjectCostReceipt extends CreateRecord
 {
+    use RedirectsToResourceView;
+
     protected static string $resource = ProjectCostReceiptResource::class;
 
     protected function getSavedNotificationTitle(): ?string

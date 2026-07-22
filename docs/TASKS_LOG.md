@@ -17,6 +17,28 @@
 ---
 
 ### Date
+2026-07-22 (OMS-wide CRUD redirect standard)
+
+### Task
+Standardize full-page Filament CRUD redirects across all current resources: successful Create → created record's View page; successful Edit → updated record's View page; successful page-level Delete → resource Index. Centralized, no hard-coded admin URLs, authorization checked before redirecting to View, resource Index as the safe fallback, RelationManager/modal CRUD and read-only resources left unchanged.
+
+### Result
+Added one shared concern `App\Filament\Concerns\RedirectsToResourceView` (overrides only `getRedirectUrl()`; resolves `$resource::getUrl('view'|'index', ...)`; redirects to View only when `canView($record)`, else Index). Applied it to all 22 editable resources' 44 Create/Edit page classes (import + `use` only — no other change). Page-level Delete was already correct (Filament `InteractsWithRecord::getDefaultActionSuccessRedirectUrl()` → Index) and intentionally left unchanged. No View page has/needs a DeleteAction. All 22 editable resources already had a registered View route, so no View pages were added. Read-only resources (Attachments, Permissions, TransactionLines, Transactions) and RelationManager/modal CRUD (Currencies, ProjectCosts, Projects, Transactions) are intentional exceptions. No authorization, persistence, validation, notification, accounting, or financial payload behavior changed.
+
+### Changed Files
+- Created: `app/Filament/Concerns/RedirectsToResourceView.php`
+- Created: `tests/Feature/Crud/CrudRedirectStandardTest.php` (genuine Livewire/HTTP), `tests/Feature/Crud/CrudRedirectStandardStructureTest.php` (structural)
+- Modified (44): every `Create*`/`Edit*` page under `app/Filament/Resources/*/Pages/` (import + `use RedirectsToResourceView;`, +3 lines each)
+
+### Verification
+Targeted suites only (no full suite): `tests/Feature/Crud`, `ResourceHttpAuthorizationTest`, `AuthorizationAcceptanceTest`, `Roles`, `Users`, `GeneralExpenses`, `GeneralExchanges`, `ExecutionPayments`, `ProjectCostBudgetsPayments`, `ProjectCostReceipts` → **402 total, 399 passed, 0 failed, 3 skipped, 0 risky, 1242 assertions** (the 3 skips are the pre-existing read-only "no create route" skips). New CRUD tests alone: 88 passed (75 structural + 13 functional). All tests use in-memory SQLite; real MySQL data, storage, migrations, and `.env` were untouched.
+
+### Commit Hash
+Committed as `standardize CRUD redirects across resources` (see `git log -1 --format=%H`).
+
+---
+
+### Date
 2026-07-22
 
 ### Task

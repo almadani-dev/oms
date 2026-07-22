@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Roles\Pages;
 
+use App\Filament\Concerns\RedirectsToResourceView;
 use App\Filament\Resources\Roles\RoleResource;
 use App\Filament\Resources\Roles\Schemas\RoleForm;
 use App\Services\Roles\RoleManagementService;
@@ -13,6 +14,8 @@ use Spatie\Permission\Models\Role;
 
 class EditRole extends EditRecord
 {
+    use RedirectsToResourceView;
+
     protected static string $resource = RoleResource::class;
 
     protected function mutateFormDataBeforeFill(array $data): array

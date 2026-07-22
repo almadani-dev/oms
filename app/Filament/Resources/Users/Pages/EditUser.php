@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Users\Pages;
 
+use App\Filament\Concerns\RedirectsToResourceView;
 use App\Filament\Resources\Users\UserResource;
 use App\Services\Users\UserManagementService;
 use Filament\Actions\Action;
@@ -11,6 +12,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class EditUser extends EditRecord
 {
+    use RedirectsToResourceView;
+
     protected static string $resource = UserResource::class;
 
     protected function mutateFormDataBeforeFill(array $data): array

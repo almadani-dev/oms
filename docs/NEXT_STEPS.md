@@ -1,5 +1,10 @@
 # Next Steps
 
+## Recommended Next Step (2026-07-22, OMS-wide CRUD redirect standard — implemented, verified, documented)
+
+- The OMS-wide CRUD redirect standard is complete: full-page **Create → saved record's View page**, **Edit → updated record's View page**, **page-level Delete → resource Index**. It is centralized in one concern, `App\Filament\Concerns\RedirectsToResourceView` (overrides only `getRedirectUrl()`), adopted by every Create/Edit page of the 22 editable resources (44 page classes). URLs resolve through the Resource (`$resource::getUrl('view'|'index', ...)`) — no hard-coded `/admin/...` — and the View redirect is gated by `canView($record)`, with the resource Index as the safe fallback. Page-level Delete already used Filament's correct stock Index redirect and was intentionally left unchanged; RelationManager/modal CRUD and the four read-only resources (Attachments, Permissions, TransactionLines, Transactions) are intentional exceptions.
+- No further work is required for this standard. When adding a **new** full-page resource, add `use RedirectsToResourceView;` to its Create/Edit pages — `tests/Feature/Crud/CrudRedirectStandardStructureTest` will fail if a current full-page Create/Edit page omits the concern, guarding against silent reversion to Filament's defaults.
+
 ## Recommended Next Step (2026-07-22, test-suite cleanup — committed)
 Removed the obsolete stock Laravel `ExampleTest` (asserted `GET /` = 200; OMS is Filament-only with no user-facing `/` route — no production route was added) and fixed the one risky Users test (`RoleAssignmentSafetyTest::test_submitted_super_admin_role_is_rejected_server_side` now asserts the `ValidationException` carries a `roles` error). Targeted `tests/Feature/Users/`: 64 passed, 0 failed, 0 skipped, 0 risky, 134 assertions. Test-only; no production behavior changed.
 

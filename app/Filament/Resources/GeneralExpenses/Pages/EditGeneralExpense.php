@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\GeneralExpenses\Pages;
 
+use App\Filament\Concerns\RedirectsToResourceView;
 use App\Enums\TransactionLineRole;
 use App\Filament\Resources\GeneralExpenses\GeneralExpenseResource;
 use App\Filament\Resources\GeneralExpenses\Schemas\GeneralExpenseForm;
@@ -23,6 +24,8 @@ use Illuminate\Support\Facades\DB;
 
 class EditGeneralExpense extends EditRecord
 {
+    use RedirectsToResourceView;
+
     protected static string $resource = GeneralExpenseResource::class;
 
     protected function getHeaderActions(): array

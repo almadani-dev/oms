@@ -2,12 +2,15 @@
 
 namespace App\Filament\Resources\Currencies\Pages;
 
+use App\Filament\Concerns\RedirectsToResourceView;
 use App\Filament\Resources\Currencies\CurrencyResource;
 use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\EditRecord;
 
 class EditCurrency extends EditRecord
 {
+    use RedirectsToResourceView;
+
     protected static string $resource = CurrencyResource::class;
 
     protected function getHeaderActions(): array

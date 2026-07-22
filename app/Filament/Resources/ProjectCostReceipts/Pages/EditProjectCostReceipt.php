@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ProjectCostReceipts\Pages;
 
+use App\Filament\Concerns\RedirectsToResourceView;
 use App\Enums\TransactionLineRole;
 use App\Filament\Resources\ProjectCostReceipts\ProjectCostReceiptResource;
 use App\Filament\Resources\ProjectCostReceipts\Tables\ProjectCostReceiptsTable;
@@ -24,6 +25,8 @@ use Illuminate\Support\Facades\DB;
 
 class EditProjectCostReceipt extends EditRecord
 {
+    use RedirectsToResourceView;
+
     protected static string $resource = ProjectCostReceiptResource::class;
 
     protected function getHeaderActions(): array

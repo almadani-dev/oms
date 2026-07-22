@@ -13,6 +13,20 @@
 ---
 
 ### Date
+2026-07-22 (OMS-wide CRUD redirect standard)
+
+### Decision
+Standardize post-operation navigation for every full-page Filament CRUD flow: successful Create → the created record's View page, successful Edit → the updated record's View page, successful page-level Delete → the resource Index. Implement it as a single shared concern, `App\Filament\Concerns\RedirectsToResourceView`, that overrides only `getRedirectUrl()` and is used by all 22 editable resources' 44 Create/Edit page classes. Redirect to View only when `canView($record)` passes; otherwise fall back to the resource Index.
+
+### Reason
+Filament v5.6.7's stock defaults were inconsistent with the required UX: Create already lands on View, but Edit returns `null` and stays on the edit form. Overriding 44 page classes individually would duplicate logic and could silently drift; one concern makes the rule uniform and future-proof (a new full-page resource that forgets it is caught by `CrudRedirectStandardStructureTest`). Resolving URLs through the Resource (`getUrl`) — never a hard-coded `/admin/...` path — preserves panel/tenant/route context. Gating the View redirect behind `canView` avoids sending a Create/Edit-only user to a predictable 403; the Index is the safe fallback, and the View page's own policy still runs on arrival, so authorization is never weakened or bypassed.
+
+### Impact
+Page-level Delete was deliberately NOT overridden: Filament already redirects `DeleteAction`/`ForceDeleteAction` on a record page to the resource Index via `InteractsWithRecord::getDefaultActionSuccessRedirectUrl()`, which already matches the standard — do not add a redundant delete override. RelationManager/modal CRUD (Currencies, ProjectCosts, Projects, Transactions) and the four read-only resources (Attachments, Permissions, TransactionLines, Transactions) are intentional exceptions and must stay unchanged. No View page has or needs a DeleteAction. No authorization, persistence, validation, notification, accounting, or financial payload behavior changed. Targeted tests: 402 total, 399 passed, 0 failed, 3 skipped, 0 risky, 1242 assertions (the 3 skips are the pre-existing read-only "no create route" skips).
+
+---
+
+### Date
 2026-07-22 (test-suite cleanup)
 
 ### Decision

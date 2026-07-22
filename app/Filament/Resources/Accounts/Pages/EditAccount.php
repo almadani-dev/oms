@@ -2,12 +2,15 @@
 
 namespace App\Filament\Resources\Accounts\Pages;
 
+use App\Filament\Concerns\RedirectsToResourceView;
 use App\Filament\Resources\Accounts\AccountResource;
 use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\EditRecord;
 
 class EditAccount extends EditRecord
 {
+    use RedirectsToResourceView;
+
     protected static string $resource = AccountResource::class;
 
     protected function getHeaderActions(): array

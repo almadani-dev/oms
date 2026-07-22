@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ProjectCostBudgetsPayments\Pages;
 
+use App\Filament\Concerns\RedirectsToResourceView;
 use App\Enums\TransactionLineRole;
 use App\Filament\Resources\ProjectCostBudgetsPayments\ProjectCostBudgetsPaymentResource;
 use App\Models\ProjectCost;
@@ -23,6 +24,8 @@ use Illuminate\Support\Facades\Log;
 
 class CreateProjectCostBudgetsPayment extends CreateRecord
 {
+    use RedirectsToResourceView;
+
     protected static string $resource = ProjectCostBudgetsPaymentResource::class;
 
     protected function getSavedNotificationTitle(): ?string

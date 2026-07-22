@@ -1,6 +1,20 @@
 # Prompts Log
 
 ### Date
+2026-07-22 (OMS-wide CRUD redirect standard)
+
+### Prompt
+"Implement an OMS-wide CRUD redirect standard for all current Filament resources." Business rule: after a successful full-page Create → the new record's View page; Edit → the updated record's View page; Delete → the resource Index/List page. Keep success notifications working; do not weaken permissions, add fake permissions, bypass View authorization, or change financial/accounting/validation/persistence behavior. Read-only audit first (clean tree/HEAD, CLAUDE.md + reference/memory docs + Graphify), inventory every full-page Create/Edit/View/Delete flow, prefer a centralized low-duplication solution that resolves URLs through the Resource (no hard-coded `/admin/...`), add a View page only where one is safely missing (none were), keep modal/RelationManager CRUD on the parent page, add focused genuine Livewire/HTTP + structural tests, run only targeted suites (new CRUD tests, affected resources, ResourceHttpAuthorizationTest, AuthorizationAcceptanceTest, affected financial), never touch real DB/storage/migrations/`.env`, and report fully before any staging/commit.
+
+### Purpose
+Give every full-page resource a consistent, predictable post-operation destination (View after Create/Edit, Index after Delete) without duplicating redirect logic across dozens of pages and without altering any authorization or financial behavior.
+
+### Result
+Implemented as documented in the 2026-07-22 `TASKS_LOG.md`/`DECISIONS_LOG.md` entries: one shared concern `App\Filament\Concerns\RedirectsToResourceView` adopted by all 22 editable resources' 44 Create/Edit page classes; page-level Delete left on Filament's correct stock Index redirect; RelationManager/modal CRUD and the four read-only resources unchanged; no View pages needed adding (all 22 editable resources already had a View route). Two focused test files added — `CrudRedirectStandardTest` (genuine Livewire/HTTP) and `CrudRedirectStandardStructureTest` (structural). Targeted run: 402 total, 399 passed, 0 failed, 3 skipped, 0 risky, 1242 assertions. Committed as `standardize CRUD redirects across resources` after approval.
+
+---
+
+### Date
 2026-07-22 (test-suite cleanup)
 
 ### Prompt

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Accounts\Pages;
 
+use App\Filament\Concerns\RedirectsToResourceView;
 use App\Enums\TransactionLineRole;
 use App\Filament\Resources\Accounts\AccountResource;
 use App\Models\Account;
@@ -22,6 +23,8 @@ use Illuminate\Validation\ValidationException;
 
 class CreateAccount extends CreateRecord
 {
+    use RedirectsToResourceView;
+
     protected static string $resource = AccountResource::class;
 
     public const OPENING_CLEARING_ACCOUNT_NAME = 'أرصدة افتتاحية';

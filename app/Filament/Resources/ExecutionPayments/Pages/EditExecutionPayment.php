@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ExecutionPayments\Pages;
 
+use App\Filament\Concerns\RedirectsToResourceView;
 use App\Enums\TransactionLineRole;
 use App\Filament\Resources\ExecutionPayments\ExecutionPaymentResource;
 use App\Filament\Resources\ExecutionPayments\Schemas\ExecutionPaymentForm;
@@ -25,6 +26,8 @@ use Illuminate\Support\Facades\DB;
 
 class EditExecutionPayment extends EditRecord
 {
+    use RedirectsToResourceView;
+
     protected static string $resource = ExecutionPaymentResource::class;
 
     protected function getHeaderActions(): array
