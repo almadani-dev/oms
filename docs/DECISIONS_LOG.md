@@ -13,6 +13,20 @@
 ---
 
 ### Date
+2026-07-22 (test-suite cleanup)
+
+### Decision
+Deleted the stock Laravel `ExampleTest` rather than making it pass, and fixed the risky `RoleAssignmentSafetyTest` test by adding an assertion on the caught `ValidationException`'s `roles` error (not by adding a filler assertion).
+
+### Reason
+`ExampleTest` asserts `GET /` returns 200; OMS is a Filament-only admin app that intentionally has no user-facing `/` route, so satisfying the test would have required adding a fake route — changing production routing purely to appease default scaffolding, which is worse than deleting a test that verifies nothing about this app. The risky test's real purpose is that a crafted Super Admin role assignment is refused server-side; asserting the exception carries a `roles` error verifies exactly that outcome, so the test now proves something meaningful instead of relying on an empty catch.
+
+### Impact
+The default Laravel `/` test target is gone; do not re-add an `ExampleTest` or a `/` route to satisfy scaffolding. Any future "expected exception" test in this codebase should assert on the exception (message key / errors) rather than leaving an empty catch, to avoid the same PHPUnit "no assertions" risky flag.
+
+---
+
+### Date
 2026-07-22 (OMS Task 6D — secure financial attachment registry)
 
 ### Decision

@@ -73,8 +73,12 @@ class RoleAssignmentSafetyTest extends TestCase
                 'roles' => [PermissionRegistry::SUPER_ADMIN],
             ]);
             $this->fail('Expected a ValidationException.');
-        } catch (ValidationException) {
-            // expected
+        } catch (ValidationException $e) {
+            // The rejection must be reported on the roles field - proving the
+            // crafted Super Admin assignment was refused server-side (and
+            // giving this test a real assertion, so it is no longer "risky:
+            // did not perform any assertions").
+            $this->assertArrayHasKey('roles', $e->errors());
         }
     }
 

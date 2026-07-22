@@ -20,6 +20,29 @@
 2026-07-22
 
 ### Task
+Minimal test-suite cleanup: remove the obsolete stock Laravel `ExampleTest` failure and fix the one pre-existing risky Users test. Test-only — no production behavior, routes, or the default Laravel `/` test target changed.
+
+### Result
+Deleted `tests/Feature/ExampleTest.php` — it was the unmodified Laravel scaffolding test asserting `GET /` returns 200, but this is a Filament-only app that intentionally defines no user-facing `/` route, so it could never pass and had no OMS value; it was **not** replaced with a filler assertion and **no** production `/` route was added. Fixed `RoleAssignmentSafetyTest::test_submitted_super_admin_role_is_rejected_server_side`, which PHPUnit flagged risky ("did not perform any assertions") because on the expected path the `ValidationException` was caught by an empty block and the `$this->fail()` never ran: added one meaningful assertion — `assertArrayHasKey('roles', $e->errors())` — verifying the crafted Super Admin assignment is rejected on the `roles` field (matching `UserManagementService`'s `ValidationException::withMessages(['roles' => …])`). No authorization logic or production code was weakened or touched.
+
+### Changed Files
+- `tests/Feature/ExampleTest.php` (deleted)
+- `tests/Feature/Users/RoleAssignmentSafetyTest.php` (one test method: added `roles`-error assertion)
+- `graphify-out/**` (regenerated via `graphify update .`)
+
+### Verification
+- Targeted Users tests (`tests/Feature/Users/`): **64 passed, 0 failed, 0 skipped, 0 risky, 134 assertions** (the affected file `RoleAssignmentSafetyTest`: 6 passed, 11 assertions, 0 risky). Full suite **not** run in this task.
+- No production code, route, migration, database, or storage file changed (only two test files + regenerated Graphify output).
+
+### Commit Hash
+_(to be filled after commit — `clean obsolete test scaffolding`)_
+
+---
+
+### Date
+2026-07-22
+
+### Task
 OMS Task 6D: rebuild and re-enable the standalone `AttachmentResource` as a secure, read-only financial attachment registry (`النظام` → `سجل المرفقات`). Browse/search/filter/view attachment metadata, preview images inline, and securely open/download files — never any upload/create/edit/delete/restore/force-delete/bulk mutation, never a raw path/disk/URL. Keep every Task 6A structural read-only override and the Task 6A–6C private-storage/parent-policy protections. Targeted tests only; no full suite, no real DB/file changes, no stage/commit until review.
 
 ### Result

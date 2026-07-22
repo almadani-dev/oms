@@ -1,6 +1,20 @@
 # Prompts Log
 
 ### Date
+2026-07-22 (test-suite cleanup)
+
+### Prompt
+User requested a minimal test-suite cleanup after the final full-suite run (967 total, 963 passed, 1 failed, 3 skipped, 1 risky): remove only the obsolete default `ExampleTest` failure and identify/fix the single risky Users test with the smallest safe change — do not change application routes or add a fake `/` route to satisfy the default Laravel test, do not modify production behavior, inspect only the two test targets and directly required helpers, run targeted tests only, and hold before staging/commit. After approval: update only the CLAUDE.md-required docs with a minimal factual entry (recording only actual results, not predicted final counts), run `graphify update .`, stage only the ExampleTest deletion + RoleAssignmentSafetyTest fix + docs + stable curated `graphify-out/**` (never cache/temp/source/routes/migrations/db/storage/.env/creds/backups/vendor), commit as `clean obsolete test scaffolding`, and report the hash + post-commit hook output; no push, no full suite yet, no new task.
+
+### Purpose
+Bring the test suite to a clean state at the close of Attachment Security Task 6 by removing a stock Laravel scaffolding test that can never pass in a Filament-only app (without distorting production routing to satisfy it) and by giving the one risky Users test a real assertion — so future runs are not muddied by a known-irrelevant failure and a "no assertions" risky flag.
+
+### Result
+Deleted `tests/Feature/ExampleTest.php`; added `assertArrayHasKey('roles', $e->errors())` to `RoleAssignmentSafetyTest::test_submitted_super_admin_role_is_rejected_server_side`. Targeted `tests/Feature/Users/`: 64 passed, 0 failed, 0 skipped, 0 risky, 134 assertions. No production code, route, migration, database, or storage file changed. Committed as `clean obsolete test scaffolding`.
+
+---
+
+### Date
 2026-07-22 (OMS Task 6D — secure financial attachment registry)
 
 ### Prompt
