@@ -13,6 +13,20 @@
 ---
 
 ### Date
+2026-07-22 (OMS Task 6D — secure financial attachment registry)
+
+### Decision
+For the registry's single amount+currency column, the two multi-currency operations (`ProjectCostBudget` disbursement, `GeneralExchange`) display **`final_amount` + `disbursementCurrency`**; the three single-currency operations display their own `amount` + `currency`. Parent-permission scoping is centralized in `FinancialAttachmentRegistry` and enforced twice — as a `whereHasMorph('attachable', <allowed types>)` list scope AND as a per-record `AttachmentResource::canView()` check (403 on a direct View URL) — and the "file available vs missing" filter was deliberately **not** built.
+
+### Reason
+`final_amount`/`disbursementCurrency` is a denormalized, already-approved stored field (no recomputation from transaction lines), is the exact figure the ExecutionPayment View already uses to represent a budget ("المبلغ المرصود"/"عملة المرصود"), and keeps one amount with one currency so currencies are never blended — the alternative (`original_amount`+`sourceCurrency`) was offered and the user approved the final-amount choice. Enforcing authorization in two independent layers satisfies "do not rely only on hiding table rows": the list scope hides unauthorized rows, and `canView()` independently returns 403 on a crafted/direct View of a supported-but-unauthorized record, so neither layer alone is load-bearing. The file-availability *filter* was omitted because file existence lives on the filesystem, not in a SQL column — a filter would have to `stat()` every row's file across the whole dataset (unbounded per-row filesystem work), violating the no-N+1 constraint; existence is instead surfaced per visible row in the Status column and in open/download visibility, bounded to the current page.
+
+### Impact
+Any future change to the multi-currency amount presentation is a one-line edit in `FinancialAttachmentRegistry::amount()`/`currency()`, but must keep amount and currency from the same side (never mix). The supported-type list in `FinancialAttachmentRegistry` must stay identical to `AttachmentController::SUPPORTED_ATTACHABLE_TYPES` (the Task 6A security boundary, left untouched) — a guard test (`AttachmentRegistryTest::test_supported_types_match_the_secure_controller_allowlist`) fails on any drift. Do not add a global "all financial attachments" permission and do not add a filesystem-scanning filter without a bounded/indexed strategy.
+
+---
+
+### Date
 2026-07-22 (OMS Task 6C — obsolete orphan public-file cleanup)
 
 ### Decision

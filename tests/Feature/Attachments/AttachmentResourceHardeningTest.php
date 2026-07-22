@@ -4,6 +4,7 @@ namespace Tests\Feature\Attachments;
 
 use App\Filament\Resources\Attachments\AttachmentResource;
 use App\Models\Attachment;
+use App\Models\ProjectCostReceipt;
 use App\Models\User;
 use App\Support\Permissions\PermissionRegistry;
 use Illuminate\Support\Facades\Artisan;
@@ -75,9 +76,16 @@ class AttachmentResourceHardeningTest extends TestCase
         $this->assertSame(['index', 'view'], array_keys(AttachmentResource::getPages()));
     }
 
-    public function test_navigation_is_hidden(): void
+    /**
+     * OMS Task 6D re-enabled the resource in the sidebar as the read-only
+     * financial attachment registry - navigation is now registered (gated by
+     * attachments.view_any via canViewAny), while every mutation ability above
+     * stays hard-false. This supersedes the Task 6A "navigation hidden"
+     * expectation.
+     */
+    public function test_navigation_is_registered(): void
     {
-        $this->assertFalse(AttachmentResource::shouldRegisterNavigation());
+        $this->assertTrue(AttachmentResource::shouldRegisterNavigation());
     }
 
     // =========================================================
@@ -123,7 +131,13 @@ class AttachmentResourceHardeningTest extends TestCase
     {
         $attachment = $this->makeAttachment();
 
-        $this->actingAs($this->userWithPermissions(['attachments.view_any', 'attachments.view']));
+        // OMS Task 6D: viewing a registry record now also requires the parent
+        // module's .view permission (ProjectCostReceipt -> project_cost_receipts.view),
+        // in addition to attachments.view - the list page itself only needs
+        // attachments.view_any.
+        $this->actingAs($this->userWithPermissions([
+            'attachments.view_any', 'attachments.view', 'project_cost_receipts.view',
+        ]));
 
         $this->get('/admin/attachments')->assertOk();
         $this->get("/admin/attachments/{$attachment->id}")->assertOk();
@@ -136,10 +150,17 @@ class AttachmentResourceHardeningTest extends TestCase
         $this->get('/admin/attachments')->assertForbidden();
     }
 
+    /**
+     * A supported financial attachable type (ProjectCostReceipt) - Task 6D's
+     * registry only ever binds/lists the five supported types, so the
+     * structural read-only proofs use one of them. The parent row itself does
+     * not need to exist for these route/ability assertions (canView checks
+     * type + permissions, not parent existence).
+     */
     private function makeAttachment(): Attachment
     {
         return Attachment::create([
-            'attachable_type' => 'App\\Models\\Project',
+            'attachable_type' => ProjectCostReceipt::class,
             'attachable_id' => 1,
             'file_name' => 'sample.jpg',
             'file_path' => 'sample.jpg',

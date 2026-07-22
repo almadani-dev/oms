@@ -157,15 +157,15 @@ class ResourceHttpAuthorizationTest extends TestCase
      * This test instead confirms, at the source level, that none of the 23
      * resources override the nav-eligibility toggle away from its default —
      * except two pre-existing, documented, permission-independent
-     * exceptions: ProjectCostResource (reachable only via
-     * Projects/CostsRelationManager, never as a top-level nav item), and
-     * AttachmentResource (OMS Task 6A hardening: zero real usage today, and
-     * its own upload path sits outside AttachmentController's authorization
-     * flow — see AttachmentResourceHardeningTest).
+     * exception: ProjectCostResource (reachable only via
+     * Projects/CostsRelationManager, never as a top-level nav item).
+     * AttachmentResource opted out under Task 6A but was re-enabled in the
+     * sidebar by Task 6D (the read-only financial attachment registry, gated
+     * by attachments.view_any), so it is now nav-eligible like the rest.
      */
-    public function test_only_project_cost_and_attachment_resources_opt_out_of_navigation_registration(): void
+    public function test_only_project_cost_resource_opts_out_of_navigation_registration(): void
     {
-        $navigationOptOutResources = [ProjectCostResource::class, AttachmentResource::class];
+        $navigationOptOutResources = [ProjectCostResource::class];
 
         foreach (self::resourceProvider() as $name => [, , $resourceClass]) {
             // None of the 23 override the shouldRegisterNavigation() method

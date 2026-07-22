@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Permissions;
 
-use App\Filament\Resources\Attachments\AttachmentResource;
 use App\Filament\Resources\Currencies\Pages\CreateCurrency;
 use App\Filament\Resources\Permissions\PermissionResource;
 use App\Filament\Resources\ProjectCosts\ProjectCostResource;
@@ -139,18 +138,17 @@ class AuthorizationAcceptanceTest extends TestCase
             // CostsRelationManager) — never expected in the sidebar, even
             // for Super Admin, so it is excluded from the permission-driven
             // expectation below.
-            //
-            // AttachmentResource hardcodes the same (OMS Task 6A hardening:
-            // zero real usage today — see the audit — and its own upload
-            // path sits outside AttachmentController's authorization flow,
-            // so it is hidden from the sidebar entirely regardless of
-            // permission, same treatment as ProjectCostResource).
-            if (in_array($resourceClass, [ProjectCostResource::class, AttachmentResource::class], true)) {
+            if ($resourceClass === ProjectCostResource::class) {
                 $response->assertDontSee($url, false);
 
                 continue;
             }
 
+            // AttachmentResource (OMS Task 6D) is now a normal nav resource
+            // gated by attachments.view_any - re-enabled as the read-only
+            // financial attachment registry, so it follows the standard
+            // permission-driven visibility rule below like every other
+            // resource (visible for roles holding attachments.view_any).
             $expectedVisible = in_array("{$module}.view_any", $granted, true);
 
             if ($expectedVisible) {

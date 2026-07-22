@@ -20,6 +20,37 @@
 2026-07-22
 
 ### Task
+OMS Task 6D: rebuild and re-enable the standalone `AttachmentResource` as a secure, read-only financial attachment registry (`النظام` → `سجل المرفقات`). Browse/search/filter/view attachment metadata, preview images inline, and securely open/download files — never any upload/create/edit/delete/restore/force-delete/bulk mutation, never a raw path/disk/URL. Keep every Task 6A structural read-only override and the Task 6A–6C private-storage/parent-policy protections. Targeted tests only; no full suite, no real DB/file changes, no stage/commit until review.
+
+### Result
+Added `App\Services\Attachments\FinancialAttachmentRegistry` (single source of truth mapping each of the five supported attachable types to its Arabic operation label, parent-module `.view` permission, per-type eager-load relationships, and display accessors) and rebuilt the resource around it. **Re-enabled in the sidebar** (`shouldRegisterNavigation` back to default true; labels: nav/plural `سجل المرفقات`, singular `مرفق`). **Read-only preserved:** all eight `canX()` still hard-false (verified even as Super Admin), only `index`/`view` routes, no Create/Edit page, `AttachmentForm` (the only `FileUpload`) deleted, no bulk actions. **Two-layer authorization:** opening the registry requires `attachments.view_any` (unchanged `AttachmentPolicy`); every listed/viewed row additionally requires `attachments.view` **and** the parent-module `.view` for its type — the list is scoped via `whereHasMorph('attachable', <actor's allowed types>)` (one EXISTS subquery per allowed type, requiring an existing non-trashed parent; none of the five parent perms ⇒ `1=0`, no rows), and `AttachmentResource::canView()` re-enforces the same rule on the View page so a direct URL to a supported-but-unauthorized record returns **403** (not merely a hidden row) and also gates the table `ViewAction` against crafted calls. Super Admin sees all five via `Gate::before`. **Only the five approved financial types** are ever listed/bound (`getEloquentQuery()` `whereIn` supported types) — unsupported `Project`/`Transaction`/`Partner` rows are excluded and 404 on direct URL; a guard test asserts the registry's supported list stays byte-identical to `AttachmentController::SUPPORTED_ATTACHABLE_TYPES` (controller untouched). **Preview/download remain protected** through the existing `attachments.show` route + its parent Policy (the shared `secure-attachment-preview` component); missing files (Status `ملف مفقود`), soft-deleted rows (audit metadata via the `المحذوفة` filter, safe notice, no links) and invalid-disk rows never expose a file link or the stored path. Amount/currency: single-currency ops use their own `amount`+`currency`; the two multi-currency ops (`ProjectCostBudget`, `GeneralExchange`) use `final_amount`+`disbursementCurrency` (never mixed) — approved; see DECISIONS_LOG. Operation number = parent `transaction.transaction_number`; date = `date` except `ProjectCostBudget` which has no own date column and uses `transaction.transaction_time`. Polymorphic parent + project chain + currency + transaction + uploader are eager-loaded via `MorphTo::morphWith` per type (no N+1, proven by a query-count test). **The file-availability filter was intentionally omitted** to avoid unbounded per-row filesystem work (existence can't be a SQL predicate); it is still surfaced per-row in the Status column and drives open/download visibility, bounded to the visible page. Real `attachments` table (read-only inspection): now 3 rows (0 at Task 6C — real app data added since), all `GeneralExpense` on the private `attachments` disk (2 trashed, 1 active), 0 public, 0 unsupported — nothing modified.
+
+### Changed Files
+- `app/Services/Attachments/FinancialAttachmentRegistry.php` (new)
+- `app/Filament/Resources/Attachments/AttachmentResource.php` (nav re-enabled, labels, `canView` override, supported-type + eager-load base query, `form()` removed; all `canX` still false)
+- `app/Filament/Resources/Attachments/Tables/AttachmentsTable.php` (registry columns/filters/actions + per-user scoping)
+- `app/Filament/Resources/Attachments/Pages/ViewAttachment.php` (metadata infolist + secure preview + trashed/missing handling)
+- `app/Filament/Resources/Attachments/Schemas/AttachmentForm.php` (deleted — removed the only `FileUpload`)
+- `tests/Feature/Attachments/AttachmentRegistryTest.php` (new, 42 tests)
+- `tests/Feature/Attachments/AttachmentResourceHardeningTest.php` (nav-now-registered + supported-type view access)
+- `tests/Feature/Permissions/ResourceHttpAuthorizationTest.php` (nav opt-out list: only ProjectCostResource now)
+- `tests/Feature/Permissions/AuthorizationAcceptanceTest.php` (attachments now a normal `attachments.view_any`-gated nav resource)
+- `graphify-out/**` (regenerated via `graphify update .`)
+
+### Verification
+- New `AttachmentRegistryTest`: **42 passed, 101 assertions**, 0 failed/skipped/risky.
+- Full targeted set (`tests/Feature/Attachments` + `ResourceHttpAuthorizationTest` + `AuthorizationAcceptanceTest`): **274 tests → 271 passed, 0 failed, 3 skipped, 0 risky, 856 assertions** (the 3 skips are the pre-existing "no create route" skips for transactions/transaction_lines/attachments). Full suite **not** run; unrelated Roles/Users/Reports suites **not** run.
+- Tests run on SQLite `:memory:` under `APP_ENV=testing` with `Storage::fake` — no real DB record or real attachment file changed; no migration run.
+
+### Commit Hash
+_(to be filled after commit — `add secure financial attachment registry`)_
+
+---
+
+### Date
+2026-07-22
+
+### Task
 OMS Task 6C: remove the six obsolete, orphaned public attachment files previously identified under `storage/app/public/{execution-payments,payments}` (no matching DB row). User confirmed the old financial records were intentionally deleted and the six files are no longer needed — not to be quarantined, migrated, preserved, or attached to any record. Read-only DB verification first; delete only the exact six verified orphans; never touch the public disk root, `public/storage`, the symlink, `.gitignore`, any private attachment, or any DB row. Then post-deletion verification, targeted tests only, docs. No stage/commit until review.
 
 ### Result
