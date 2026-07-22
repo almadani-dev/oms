@@ -17,6 +17,33 @@
 ---
 
 ### Date
+2026-07-22
+
+### Task
+OMS Task 6C: remove the six obsolete, orphaned public attachment files previously identified under `storage/app/public/{execution-payments,payments}` (no matching DB row). User confirmed the old financial records were intentionally deleted and the six files are no longer needed — not to be quarantined, migrated, preserved, or attached to any record. Read-only DB verification first; delete only the exact six verified orphans; never touch the public disk root, `public/storage`, the symlink, `.gitignore`, any private attachment, or any DB row. Then post-deletion verification, targeted tests only, docs. No stage/commit until review.
+
+### Result
+**No deletion was performed — the six orphan files were already absent from disk when this task ran.** Pre-flight found `storage/app/public` containing only the Laravel control file `.gitignore` (14 bytes); neither the `execution-payments/` nor the `payments/` directory exists (verified two independent ways: Bash `find` and PowerShell `Get-ChildItem -Recurse -Force`). The public disk root was confirmed as `storage_path('app/public')` in `config/filesystems.php` (not a mis-mapped path). The six files were present and byte-for-byte unchanged as of the last commit `27969b5` (2026-07-21, per the Task 6B entry below) and were never git-tracked (uploaded files, git-ignored), so their subsequent removal from disk does not appear in `git status`; the user's Task 6C confirmation states they were intentionally removed. Because the files were already gone, per-file pre-deletion sizes/SHA-256 could **not** be recorded by this task (not fabricated); prior docs record only an aggregate 706,133 bytes for the six orphans (2026-07-15 entry in `AI_PROJECT_MEMORY.md`). MySQL was down at first (connection refused) and the read-only DB check was deferred until the user brought it up, then run. Read-only DB verification (via `php artisan tinker`, `withTrashed()`): **0** rows referencing `execution-payments` or `payments` (active or trashed), **0** rows on the `public` disk, **0** rows on the `attachments` disk, **0** total rows in the `attachments` table — the table is empty, consistent with the intentional data deletion. Post-deletion verification: old public URLs return **HTTP 403 Forbidden** (live `curl` against `http://172.16.0.100/oms/public/storage/{execution-payments,payments}/probe.jpg`) — note the server returns 403, not the 404 the task wording anticipated; this is Apache's uniform response for any nonexistent file under `/storage/` (an existing file, `/storage/.gitignore`, returns 200, proving the `public/storage` symlink is intact and static serving is live). No private attachment, symlink, `.gitignore`, or public-storage structure was modified (nothing was deleted or written outside `docs/`). Code posture re-confirmed unchanged from Task 6B: all 5 financial Forms upload to `->disk('attachments')` (private); all 5 View pages render the shared `secure-attachment-preview` component, which links only via `route('attachments.show', ...)`; grep found no `Storage::url()` or raw `/storage/` in any `app/**/*.php` financial-display path (only a comment in `AttachmentController` stating it must not be used) or in any `resources/**/*.blade.php`. No quarantine or legacy-migration tooling is necessary: the `attachments` table is empty (no `disk = public` rows to migrate) and every current/future financial attachment already uses the private disk + protected `attachments.show` route.
+
+### Changed Files
+- `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md`, `docs/PROMPTS_LOG.md`, `docs/NEXT_STEPS.md` (documentation only)
+- No application code, migration, database row, storage file, symlink, or `.gitignore` changed.
+
+### Verification
+- Working tree clean at start (`git status --short` empty, branch `main`).
+- `storage/app/public` contents: only `.gitignore` (14 bytes); the two orphan directories do not exist (Bash + PowerShell).
+- Public disk root confirmed `storage_path('app/public')` (`config/filesystems.php:43`).
+- Read-only DB (tinker, `withTrashed()`): 0 orphan-path rows, 0 public-disk rows, 0 attachments-disk rows, 0 total rows.
+- Old public URLs: HTTP 403 (serve no file); `/storage/.gitignore` → 200 (symlink intact).
+- Targeted tests: `php artisan test tests/Feature/Attachments` → **141 passed, 400 assertions** (includes `FinancialAttachmentCutoverTest` + `FinancialAttachmentViewFlowTest`, both in that directory). Full suite not run, per instructions.
+- 5 Forms → `disk('attachments')`; 5 View pages → `secure-attachment-preview` / `attachments.show`; no `Storage::url()`/`/storage/` in financial display (grep).
+
+### Commit Hash
+Not committed — awaiting review (no staging).
+
+---
+
+### Date
 2026-07-21
 
 ### Task

@@ -13,6 +13,20 @@
 ---
 
 ### Date
+2026-07-22 (OMS Task 6C — obsolete orphan public-file cleanup)
+
+### Decision
+Task 6C was treated as **satisfied without performing any deletion** once pre-flight found the six orphan public files already absent from disk, and **no quarantine/manifest or legacy-migration Artisan tooling was built** (the step Task 6A/6B's NEXT_STEPS had queued as 6C's scope). Only read-only verification, targeted tests, and documentation were done; per-file pre-deletion SHA-256/sizes were not invented for files that were already gone.
+
+### Reason
+The task's premise (six files on disk to delete, hashing each before deletion) no longer held: the files were present and byte-identical at commit `27969b5` (2026-07-21) but were removed from disk before this task ran, and — being git-ignored uploads — their removal is invisible to `git`. Deleting nothing and then reporting a "successful deletion" (or fabricating pre-deletion hashes) would have been dishonest, so the work was reframed to *verify and document the already-achieved end state*. The quarantine/legacy-migration tooling that Task 6A/6B anticipated is provably unnecessary now: the `attachments` table is empty (0 rows, verified with `withTrashed()`), so there are no `disk = public` legacy rows to migrate, and every current/future financial attachment already writes to the private `attachments` disk and is served only through the protected `attachments.show` route (Task 6B). Building migration tooling for a population that is empty and cannot grow via the public path would be dead code.
+
+### Impact
+There is no orphan-quarantine or legacy-file-migration command in the codebase, by design — if a future `disk = public` row ever appears (e.g. a restored old backup), that scope must be re-opened and re-approved rather than assumed to exist. The observed post-cleanup fact that any nonexistent `/storage/...` path returns **HTTP 403** (not 404) on this environment's Apache — while an existing file like `/storage/.gitignore` returns 200 — is the expected server behavior; a future check that the old public URLs "no longer serve a file" should assert non-200 / no file content, not specifically 404.
+
+---
+
+### Date
 2026-07-21 (OMS Task 6B — financial Resource attachment cutover)
 
 ### Decision

@@ -1,6 +1,20 @@
 # Prompts Log
 
 ### Date
+2026-07-22 (OMS Task 6C — obsolete orphan public-file cleanup)
+
+### Prompt
+User requested "OMS Task 6C: REMOVE OBSOLETE ORPHANED PUBLIC ATTACHMENTS" — confirming the old financial records were intentionally deleted and the six orphaned public files under `storage/app/public/{execution-payments,payments}` are no longer needed. Explicit constraints: do not quarantine/migrate/preserve/attach the six files; do not delete the public disk, the `public/storage` symlink, or unrelated public files; do not run the full test suite; do not stage/commit until review. A detailed pre-flight (confirm clean tree; read-only verify the `attachments` table has no active or trashed rows referencing the six files; enumerate the exact six files and record each path/size/SHA-256 before deletion; confirm no unexpected files beyond the six and harmless control files), a scoped deletion (only the six verified orphans; never the disk root, symlink, `.gitignore`, private attachments, or any DB row; keep empty directories), an 8-point post-deletion verification, targeted-tests-only (`tests/Feature/Attachments/`, `FinancialAttachmentCutoverTest`, `FinancialAttachmentViewFlowTest`), a CLAUDE.md documentation update, and a final pre-commit report (deleted paths, hashes, DB-reference check, URL results, test counts, `git status --short`, `git diff --stat`, and a no-collateral-change confirmation) — with an explicit stop-and-report instruction if any DB row referenced the files or any unexpected file was present.
+
+### Purpose
+Complete the attachment-security cleanup by removing the last public exposure surface (the six pre-existing orphan files with no DB row) after Task 6A built the private-serving foundation and Task 6B cut the five live financial workflows over to it — closing out the phase so no legacy public attachment content and no quarantine/migration debt remains.
+
+### Result
+Stop-and-report: the six files were found **already absent** from disk (only `.gitignore` remained under `storage/app/public`; neither orphan directory existed), so nothing was deleted and no pre-deletion hashes could be recorded (not fabricated). MySQL was initially down; after the user brought it up, read-only verification confirmed the `attachments` table is empty (0 rows referencing the paths active-or-trashed, 0 public/attachments-disk rows, 0 total). Old public URLs return HTTP 403 (serve no file; symlink intact — `/storage/.gitignore` → 200). Code posture from Task 6B re-confirmed (5 Forms → private `attachments` disk, 5 View pages → `attachments.show`, no `Storage::url()`/raw `/storage/`). Targeted tests 141/141 (400 assertions). Concluded no quarantine/legacy-migration tooling is necessary (empty table, private-only path). Documentation updated across all five CLAUDE.md-required docs; not staged, not committed — awaiting review. See `docs/TASKS_LOG.md` (2026-07-22 "OMS Task 6C" entry) and `docs/DECISIONS_LOG.md` (2026-07-22 entry) for full detail.
+
+---
+
+### Date
 2026-07-21 (OMS Task 6B — financial Resource attachment cutover)
 
 ### Prompt
