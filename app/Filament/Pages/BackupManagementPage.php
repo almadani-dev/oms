@@ -204,6 +204,10 @@ class BackupManagementPage extends Page implements HasTable
                         BackupStatus::Queued => 'gray',
                         BackupStatus::Running, BackupStatus::Verifying, BackupStatus::Restoring, BackupStatus::Deleting => 'warning',
                         BackupStatus::Deleted => 'gray',
+                        // Terminal but degraded — never green (not a clean
+                        // success) and never red (not a full failure either;
+                        // see BackupStatus::isSuccessfulOutcome()).
+                        BackupStatus::RestorePartial => 'warning',
                     })
                     ->formatStateUsing(fn (BackupStatus $state): string => BackupLabels::status($state)),
 
@@ -466,6 +470,7 @@ class BackupManagementPage extends Page implements HasTable
             'protected' => 'هذه النسخة محمية ولا يمكن حذفها.',
             'last_known_good' => 'لا يمكن حذف آخر نسخة سليمة تم التحقق منها.',
             'referenced_pre_restore' => 'هذه النسخة مرتبطة بعملية استعادة أخرى ولا يمكن حذفها.',
+            'restore_source_in_use' => 'هذه النسخة قيد الاستخدام حالياً في عملية استعادة نشطة ولا يمكن حذفها.',
             'locked' => 'ملف النسخة الاحتياطية قيد الاستخدام حالياً، يرجى المحاولة لاحقاً.',
             default => 'تعذر حذف النسخة الاحتياطية.',
         };
@@ -483,6 +488,7 @@ class BackupManagementPage extends Page implements HasTable
             'allowed' => 'مسموح',
             'last_known_good' => 'ممنوع — آخر نسخة ناجحة',
             'protected' => 'ممنوع — محمية يدويًا',
+            'restore_source_in_use' => 'ممنوع — مستخدمة في عملية استعادة',
             'locked' => 'ممنوع — قيد الاستخدام',
             default => 'ممنوع',
         };

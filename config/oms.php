@@ -128,6 +128,66 @@ return [
         // this age is surfaced as stale by retention/health checks — never
         // auto-resolved silently.
         'stale_operation_max_age_minutes' => (int) env('OMS_BACKUP_STALE_MAX_AGE_MINUTES', 180),
+
+        /*
+        |----------------------------------------------------------------------
+        | Restore (OMS Task 7C)
+        |----------------------------------------------------------------------
+        |
+        | Foundation values only — no locking, launch, or progress-writing
+        | code exists yet (Task 7C.1). Nothing here is speculative beyond
+        | what the already-approved Task 7C architecture needs: the
+        | independent filesystem lock, the signed progress protocol, the
+        | preflight disk-space check, and attachment-restore defense in
+        | depth all consume exactly these keys, and no others, starting in
+        | later 7C phases.
+        |
+        */
+        'restore' => [
+
+            // config('filesystems.disks.*') name — see config/filesystems.php.
+            'disk' => env('OMS_RESTORE_DISK', 'restores'),
+
+            // Bumped only if the private progress-file JSON shape changes in
+            // a way old, still-running restore processes couldn't produce —
+            // mirrors BackupManifestBuilder::VERSION's purpose for archives.
+            'progress_schema_version' => 1,
+
+            // Seconds between progress-file heartbeat writes while a restore
+            // is running. Diagnostic only — never used to decide lock
+            // ownership (the filesystem lock's own liveness is authoritative
+            // for that; see the Task 7C delta-plan lock design).
+            'heartbeat_seconds' => (int) env('OMS_RESTORE_HEARTBEAT_SECONDS', 5),
+
+            // Minutes since the last heartbeat before a non-terminal restore
+            // is surfaced to a Super Admin as possibly stale/crashed. Never
+            // triggers an automatic takeover, retry, or resume — recovery is
+            // always an explicit, confirmation-gated Super Admin action.
+            'stale_after_minutes' => (int) env('OMS_RESTORE_STALE_AFTER_MINUTES', 20),
+
+            // Preflight free-space check (runs before maintenance mode).
+            // Required space is calculated from manifest-declared sizes plus
+            // the itemized estimate in the Task 7C delta plan, then
+            // multiplied by (1 + margin_percent/100), floored at
+            // min_free_space_reserve_bytes.
+            'min_free_space_reserve_bytes' => (int) env('OMS_RESTORE_MIN_FREE_SPACE_BYTES', 1_073_741_824), // 1 GiB
+            'free_space_margin_percent' => (int) env('OMS_RESTORE_FREE_SPACE_MARGIN_PERCENT', 20),
+
+            // Defense in depth on top of (never instead of) manifest-
+            // authenticated attachment content during staging — a
+            // historically valid, already hash-verified attachment is never
+            // rejected solely because of this list; only these fixed
+            // executable/script extensions are hard-rejected regardless of
+            // what a manifest says. Deliberately fixed, not sourced from any
+            // mutable current-state allowlist.
+            'attachments_denied_extensions' => [
+                'php', 'phtml', 'phar', 'exe', 'sh', 'bat', 'cmd', 'dll', 'htaccess',
+            ],
+
+            // Seconds. Applies to the streamed `mysql` import subprocess
+            // only — mirrors 'dump_timeout' above for the reverse direction.
+            'mysql_import_timeout' => (int) env('OMS_RESTORE_MYSQL_IMPORT_TIMEOUT', 3600),
+        ],
     ],
 
 ];

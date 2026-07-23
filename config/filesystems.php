@@ -76,6 +76,25 @@ return [
             'report' => false,
         ],
 
+        // OMS Task 7C — private, transient restore workspace: signed
+        // progress files, the decrypt/extraction workspace, staged
+        // attachments, and the pre-swap attachments quarantine. Same shape
+        // as 'attachments'/'backups' (never symlinked, no built-in signed-
+        // URL route auto-registered for it) and deliberately a separate
+        // disk from both — retention/backup-listing code must never see
+        // restore scratch state, and restore's plaintext material must
+        // never share a root with either published archives or live
+        // attachments. No code writes to this disk yet (Task 7C.1 only
+        // declares it); nothing under it is committed to the repository.
+        'restores' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/restores'),
+            'visibility' => 'private',
+            'serve' => false,
+            'throw' => false,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

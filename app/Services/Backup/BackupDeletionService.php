@@ -128,6 +128,10 @@ final class BackupDeletionService
             return BackupDeletionEligibility::blocked('referenced_pre_restore');
         }
 
+        if ($this->isRestoreSourceInUse($operation)) {
+            return BackupDeletionEligibility::blocked('restore_source_in_use');
+        }
+
         if ($this->isLocked($operation)) {
             return BackupDeletionEligibility::blocked('locked');
         }
@@ -165,6 +169,37 @@ final class BackupDeletionService
 
         return BackupOperation::query()
             ->where('pre_restore_safety_backup_id', $operation->id)
+            ->exists();
+    }
+
+    /**
+     * OMS Task 7C.1: a completed backup currently being read as the source
+     * of a non-terminal restore must be undeletable. "Non-terminal" is
+     * deliberately derived from BackupStatus::isActive() — the same single
+     * source of truth BackupRetentionService::mustKeep() and this class's
+     * own active_status check already use — rather than hard-coded to
+     * `Restoring` alone, so this rule automatically stays correct for
+     * whichever active status(es) a restore row actually passes through
+     * (queued/running/verifying/restoring/deleting are all "active" today)
+     * without needing a second, separately-maintained list here. Restored,
+     * RestoreFailed, and RestorePartial are all terminal and therefore
+     * never match. Mirrors isReferencedPreRestore()'s query shape. No
+     * restore rows exist yet anywhere in the app (Task 7C.1 adds only the
+     * schema/enum vocabulary), so this is a real, testable rule from day
+     * one even though nothing produces a `type = restore` row until later
+     * 7C phases.
+     */
+    private function isRestoreSourceInUse(BackupOperation $operation): bool
+    {
+        $activeStatusValues = array_map(
+            static fn (BackupStatus $status): string => $status->value,
+            array_values(array_filter(BackupStatus::cases(), static fn (BackupStatus $status): bool => $status->isActive())),
+        );
+
+        return BackupOperation::query()
+            ->where('type', BackupType::Restore->value)
+            ->where('source_backup_id', $operation->id)
+            ->whereIn('status', $activeStatusValues)
             ->exists();
     }
 

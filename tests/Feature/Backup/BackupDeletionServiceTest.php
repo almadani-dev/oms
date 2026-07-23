@@ -202,6 +202,105 @@ class BackupDeletionServiceTest extends BackupTestCase
         }
     }
 
+    // ---- OMS Task 7C.1: a backup currently used as a restore source cannot be deleted ----
+
+    /**
+     * Every active BackupStatus a restore-type row could be in — not just
+     * `Restoring` — must block the source backup. Mirrors
+     * activeStatusProvider() below, which independently drives the
+     * pre-existing `active_status` rule test for the same reason: the
+     * active-status set is a single source of truth (BackupStatus::isActive())
+     * and both rules must honor it identically.
+     */
+    #[DataProvider('activeStatusProvider')]
+    public function test_a_backup_that_is_the_source_of_a_non_terminal_restore_cannot_be_deleted(BackupStatus $restoreStatus): void
+    {
+        $admin = $this->superAdmin();
+        $this->makeCompletedOperation(['verified_at' => now(), 'completed_at' => now()->subHour()]);
+
+        $source = $this->makeCompletedOperation();
+
+        BackupOperation::create([
+            'type' => BackupType::Restore->value,
+            'scope' => BackupScope::Full->value,
+            'status' => $restoreStatus->value,
+            'disk' => 'backups',
+            'source_backup_id' => $source->id,
+        ]);
+
+        try {
+            (new BackupDeletionService())->delete($source, $admin);
+            $this->fail('Expected BackupDeletionRejectedException.');
+        } catch (BackupDeletionRejectedException $e) {
+            $this->assertSame('restore_source_in_use', $e->reasonCode);
+        }
+
+        $this->assertNull($source->fresh()->deleted_at);
+    }
+
+    /**
+     * Every terminal restore outcome — Restored, RestoreFailed, and the
+     * degraded RestorePartial alike — must NOT keep the source backup
+     * blocked by this rule once the restore is no longer in progress.
+     */
+    #[DataProvider('terminalRestoreStatusProvider')]
+    public function test_a_restore_source_backup_becomes_deletable_once_the_restore_is_terminal(BackupStatus $restoreStatus): void
+    {
+        $admin = $this->superAdmin();
+        $this->makeCompletedOperation(['verified_at' => now(), 'completed_at' => now()->subHour()]);
+
+        $source = $this->makeCompletedOperation();
+
+        BackupOperation::create([
+            'type' => BackupType::Restore->value,
+            'scope' => BackupScope::Full->value,
+            'status' => $restoreStatus->value,
+            'disk' => 'backups',
+            'source_backup_id' => $source->id,
+        ]);
+
+        $result = (new BackupDeletionService())->delete($source, $admin);
+
+        $this->assertNotNull($source->fresh()->deleted_at);
+        $this->assertFalse($result->fileWasAlreadyMissing);
+    }
+
+    public static function terminalRestoreStatusProvider(): array
+    {
+        return [
+            'restored' => [BackupStatus::Restored],
+            'restore_failed' => [BackupStatus::RestoreFailed],
+            'restore_partial' => [BackupStatus::RestorePartial],
+        ];
+    }
+
+    public function test_eligibility_and_delete_agree_a_restore_source_backup_is_blocked(): void
+    {
+        $admin = $this->superAdmin();
+        $this->makeCompletedOperation(['verified_at' => now(), 'completed_at' => now()->subHour()]);
+
+        $source = $this->makeCompletedOperation();
+
+        BackupOperation::create([
+            'type' => BackupType::Restore->value,
+            'scope' => BackupScope::Full->value,
+            'status' => BackupStatus::Restoring->value,
+            'disk' => 'backups',
+            'source_backup_id' => $source->id,
+        ]);
+
+        $eligibility = (new BackupDeletionService())->eligibility($source);
+        $this->assertFalse($eligibility->allowed);
+        $this->assertSame('restore_source_in_use', $eligibility->reasonCode);
+
+        try {
+            (new BackupDeletionService())->delete($source, $admin);
+            $this->fail('Expected BackupDeletionRejectedException.');
+        } catch (BackupDeletionRejectedException $e) {
+            $this->assertSame($eligibility->reasonCode, $e->reasonCode);
+        }
+    }
+
     // ---- 68. locked/in-use backup cannot be deleted ----
 
     public function test_a_locked_backup_cannot_be_deleted(): void

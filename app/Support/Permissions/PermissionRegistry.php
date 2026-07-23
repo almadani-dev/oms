@@ -126,13 +126,16 @@ final class PermissionRegistry
     ];
 
     /**
-     * OMS Task 7B.1: Super Admin-only by construction, exactly like
+     * OMS Task 7B.1/7C.1: Super Admin-only by construction, exactly like
      * `permissions.sync` above — deliberately excluded from every other
      * system role's defaults (see adminDefaults()'s explicit `backups.`
-     * exclusion) even though it is registered here so future
-     * least-privilege delegation is possible without a migration.
-     * `backups.restore` is intentionally NOT registered yet — Restore is a
-     * separate, later phase (OMS Task 7C).
+     * prefix exclusion, which covers `backups.restore` automatically) even
+     * though it is registered here so future least-privilege delegation is
+     * possible without a migration. Registering `backups.restore` alone
+     * never authorizes anything by itself — every restore entry point must
+     * still independently enforce the real `Super Admin` role, exactly as
+     * `App\Support\Backup\BackupAuthorization` already does for every other
+     * `backups.*` action (see its docblock).
      *
      * @var array<string,string>
      */
@@ -143,6 +146,7 @@ final class PermissionRegistry
         'backups.download' => 'تنزيل نسخة احتياطية',
         'backups.verify' => 'فحص سلامة نسخة احتياطية',
         'backups.delete' => 'حذف نسخة احتياطية',
+        'backups.restore' => 'استعادة نسخة احتياطية',
     ];
 
     /**

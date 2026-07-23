@@ -18,15 +18,20 @@ class BackupPermissionsAndModelTest extends BackupTestCase
 {
     // ---- 78. backup permissions are registered ------------------------------------
 
-    public function test_all_six_backup_permissions_are_registered(): void
+    public function test_all_seven_backup_permissions_are_registered(): void
     {
         $names = PermissionRegistry::names();
 
-        foreach (['view_any', 'view', 'create', 'download', 'verify', 'delete'] as $operation) {
+        foreach (['view_any', 'view', 'create', 'download', 'verify', 'delete', 'restore'] as $operation) {
             $this->assertContains("backups.{$operation}", $names, "backups.{$operation} must be registered.");
         }
+    }
 
-        $this->assertNotContains('backups.restore', $names, 'backups.restore must not be registered yet (Task 7C).');
+    public function test_backups_restore_has_the_approved_arabic_label(): void
+    {
+        $groups = PermissionRegistry::groups();
+
+        $this->assertSame('استعادة نسخة احتياطية', $groups['backups']['permissions']['backups.restore']);
     }
 
     public function test_backup_permissions_have_arabic_labels_in_their_own_group(): void
@@ -61,7 +66,7 @@ class BackupPermissionsAndModelTest extends BackupTestCase
     {
         $defaults = PermissionRegistry::defaultPermissionsForRole(PermissionRegistry::SUPER_ADMIN);
 
-        foreach (['view_any', 'view', 'create', 'download', 'verify', 'delete'] as $operation) {
+        foreach (['view_any', 'view', 'create', 'download', 'verify', 'delete', 'restore'] as $operation) {
             $this->assertContains("backups.{$operation}", $defaults);
         }
     }
@@ -150,5 +155,102 @@ class BackupPermissionsAndModelTest extends BackupTestCase
         $this->assertTrue($restore->is_protected);
         $this->assertTrue($restore->isCompleted() === false); // Restored, not Completed
         $this->assertFalse($restore->isVerified());
+    }
+
+    // ---- OMS Task 7C.1: restore_metadata / launch_nonce ----------------------------
+
+    public function test_restore_metadata_casts_as_an_array_and_round_trips(): void
+    {
+        $payload = [
+            'requester' => ['user_id' => 42, 'name' => 'Test Admin', 'email' => 'admin@example.test'],
+            'source_backup_uuid' => 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+            'pre_restore_safety_backup_uuid' => null,
+            'confirmed_at' => '2026-07-23T10:00:00Z',
+            'phase_history' => [
+                ['phase' => 'starting', 'at' => '2026-07-23T10:00:01Z'],
+                ['phase' => 'maintenance_enabled', 'at' => '2026-07-23T10:00:02Z'],
+            ],
+            'result' => null,
+        ];
+
+        $operation = BackupOperation::create([
+            'type' => BackupType::Restore->value,
+            'scope' => BackupScope::Full->value,
+            'status' => BackupStatus::Queued->value,
+            'disk' => 'backups',
+            'restore_metadata' => $payload,
+            'launch_nonce' => str_repeat('n', 64),
+        ]);
+
+        $fresh = BackupOperation::query()->findOrFail($operation->id);
+
+        $this->assertIsArray($fresh->restore_metadata);
+        $this->assertSame($payload, $fresh->restore_metadata);
+        $this->assertSame(str_repeat('n', 64), $fresh->launch_nonce);
+    }
+
+    public function test_restore_metadata_and_launch_nonce_default_to_null(): void
+    {
+        $operation = BackupOperation::create([
+            'type' => BackupType::Manual->value,
+            'scope' => BackupScope::Full->value,
+            'status' => BackupStatus::Completed->value,
+            'disk' => 'backups',
+        ]);
+
+        $fresh = BackupOperation::query()->findOrFail($operation->id);
+
+        $this->assertNull($fresh->restore_metadata);
+        $this->assertNull($fresh->launch_nonce);
+    }
+
+    /**
+     * Documents/locks in the bounded shape restore_metadata['phase_history']
+     * must respect once a future progress-writer (Task 7C.2+) exists — no
+     * writer exists yet, so this only proves the column itself can hold a
+     * payload at exactly the documented bound and that the bound constant
+     * is sane, not that anything currently enforces it.
+     */
+    public function test_restore_metadata_phase_history_bound_is_documented_and_the_column_can_hold_it(): void
+    {
+        $this->assertGreaterThan(0, BackupOperation::RESTORE_METADATA_MAX_PHASE_HISTORY_ENTRIES);
+
+        $phaseHistory = [];
+
+        for ($i = 0; $i < BackupOperation::RESTORE_METADATA_MAX_PHASE_HISTORY_ENTRIES; $i++) {
+            $phaseHistory[] = ['phase' => "phase_{$i}", 'at' => now()->toIso8601String()];
+        }
+
+        $operation = BackupOperation::create([
+            'type' => BackupType::Restore->value,
+            'scope' => BackupScope::Full->value,
+            'status' => BackupStatus::Restoring->value,
+            'disk' => 'backups',
+            'restore_metadata' => ['phase_history' => $phaseHistory],
+        ]);
+
+        $fresh = BackupOperation::query()->findOrFail($operation->id);
+
+        $this->assertCount(BackupOperation::RESTORE_METADATA_MAX_PHASE_HISTORY_ENTRIES, $fresh->restore_metadata['phase_history']);
+    }
+
+    public function test_is_restore_operation_reflects_only_the_rows_own_type(): void
+    {
+        $restore = BackupOperation::create([
+            'type' => BackupType::Restore->value,
+            'scope' => BackupScope::Full->value,
+            'status' => BackupStatus::Queued->value,
+            'disk' => 'backups',
+        ]);
+
+        $manual = BackupOperation::create([
+            'type' => BackupType::Manual->value,
+            'scope' => BackupScope::Full->value,
+            'status' => BackupStatus::Completed->value,
+            'disk' => 'backups',
+        ]);
+
+        $this->assertTrue($restore->isRestoreOperation());
+        $this->assertFalse($manual->isRestoreOperation());
     }
 }

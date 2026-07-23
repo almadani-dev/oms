@@ -13,6 +13,20 @@
 ---
 
 ### Date
+2026-07-23 (OMS Task 7C.1 — restore domain/schema/config/authorization foundation)
+
+### Decision
+Reuse the existing `backup_operations` table for a restore operation's own audit row (`type = BackupType::Restore`) instead of a new `restore_operations` table, and store every restore-specific field that doesn't fit the backup-shaped columns in one new nullable JSON column, `restore_metadata`, rather than several new narrow typed columns.
+
+### Reason
+The Task 7B.1 schema already reserved `source_backup_id`/`pre_restore_safety_backup_id` and the `restoring`/`restored`/`restore_failed` status vocabulary specifically for this — its own docblocks said so before any restore code existed. Building a second table would duplicate SoftDeletes/UUID/created_by/timestamp machinery that already works and is already tested, for no real benefit. A single bounded JSON column (capped via `BackupOperation::RESTORE_METADATA_MAX_PHASE_HISTORY_ENTRIES`) covers requester-identity-snapshot/source-and-safety-UUID-snapshots/confirmation-timestamp/phase-history/sanitized-result without a migration per field, and was explicitly the smaller of two options weighed during the read-only planning phase (a second narrow-column migration was the original proposal; this replaced it after a review round).
+
+### Impact
+Any later 7C phase adding a new piece of restore-specific audit context should add a key to `restore_metadata`, not a new column, unless that data needs to be indexed/queried directly (the one exception already made is `launch_nonce`, kept as its own column specifically because Task 7C.4's atomic launch-claim needs it in a plain `WHERE` clause). `restore_metadata` is documented but not yet written by any code — the writer/bound-enforcement responsibility is explicitly deferred to Task 7C.2+, not built prematurely here.
+
+---
+
+### Date
 2026-07-23 (Backup management page — deletion-eligibility UI clarification)
 
 ### Decision

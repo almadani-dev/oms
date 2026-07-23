@@ -43,6 +43,11 @@ final class BackupDeletionRejectedException extends RuntimeException
         return new self('Cannot delete a pre-restore backup referenced by another operation.', 'referenced_pre_restore');
     }
 
+    public static function restoreSourceInUse(): self
+    {
+        return new self('Cannot delete a backup that is the source of an active restore operation.', 'restore_source_in_use');
+    }
+
     public static function locked(): self
     {
         return new self('Backup archive is currently locked by another operation.', 'locked');
@@ -67,6 +72,7 @@ final class BackupDeletionRejectedException extends RuntimeException
             'protected' => self::isProtected(),
             'last_known_good' => self::lastKnownGood(),
             'referenced_pre_restore' => self::referencedPreRestore(),
+            'restore_source_in_use' => self::restoreSourceInUse(),
             'locked' => self::locked(),
             default => self::unexpectedFailure(),
         };

@@ -17,6 +17,27 @@
 ---
 
 ### Date
+2026-07-23 (OMS Task 7C.1 — restore domain/schema/config/authorization foundation)
+
+### Task
+Implement Phase 7C.1 only of the approved OMS Task 7C restore architecture (per the three-turn read-only audit + two delta-plan correction rounds): restore domain/schema/configuration/authorization/deletion-eligibility foundation. Explicitly excluded from this phase: locking, progress files, launch routes/controllers, restore commands, archive extraction, database/attachment restore, and any restore UI action.
+
+### Result
+See `docs/AI_PROJECT_MEMORY.md` (2026-07-23 "Task 7C.1" entry) for the full design/reasoning. Summary: `backup_operations` gained two additive columns (`restore_metadata` JSON, `launch_nonce` string) rather than a new table; `BackupType::Restore`/`BackupStatus::RestorePartial` added; `BackupOperation` gained `isRestoreOperation()` plus the `RESTORE_METADATA_MAX_PHASE_HISTORY_ENTRIES` bound constant; `backups.restore` permission registered (Super-Admin-only by construction, registration alone never authorizes); new private `restores` disk + `config('oms.backup.restore')` foundation section; `BackupDeletionService` gained the `restore_source_in_use` eligibility rule; a real pre-existing bug in `BackupDeletionRejectedException::forReason()` (silently coercing any unrecognized reason code to `unexpected_failure`) was found and fixed as part of wiring the new rule through end-to-end.
+
+### Changed Files
+- Created: `database/migrations/2026_07_23_150000_add_restore_columns_to_backup_operations_table.php`; `tests/Unit/Enums/{BackupTypeTest,BackupStatusTest}.php`; `tests/Unit/Support/Backup/BackupLabelsTest.php`
+- Modified: `app/Enums/{BackupType,BackupStatus}.php`; `app/Models/BackupOperation.php`; `app/Support/Permissions/PermissionRegistry.php`; `config/filesystems.php`; `config/oms.php`; `app/Services/Backup/BackupDeletionService.php`; `app/Services/Backup/Exceptions/BackupDeletionRejectedException.php`; `app/Support/Backup/BackupLabels.php`; `app/Filament/Pages/BackupManagementPage.php`; `tests/Feature/Backup/{BackupPermissionsAndModelTest,BackupDeletionServiceTest}.php`
+
+### Verification
+Targeted only (no full suite): `tests/Feature/Backup` + `tests/Unit/Services/Backup` + `tests/Unit/Enums` + `tests/Unit/Support/Backup` + `SystemRoleDefaultPermissionsTest` + `SyncPermissionsCommandTest` → **291 total, 289 passed, 0 failed, 2 skipped (pre-existing 7B.1 OS-level symlink tests, unrelated), 1189 assertions**. No migration run against the real database, no real backup/restore created. Post-implementation review corrected `isRestoreSourceInUse()` to match every active `BackupStatus` (not only `Restoring`) and confirmed no other duplicated reason-code mapping exists in the backup deletion subsystem beyond the one already fixed.
+
+### Commit Hash
+_(not committed — awaiting review)_
+
+---
+
+### Date
 2026-07-23 (Backup management page — deletion-eligibility UI clarification)
 
 ### Task

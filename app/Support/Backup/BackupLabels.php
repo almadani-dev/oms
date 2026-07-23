@@ -21,6 +21,7 @@ final class BackupLabels
             BackupType::Daily => 'يومي',
             BackupType::Weekly => 'أسبوعي',
             BackupType::PreRestore => 'قبل الاستعادة',
+            BackupType::Restore => 'استعادة',
         };
     }
 
@@ -46,6 +47,7 @@ final class BackupLabels
             BackupStatus::Restoring => 'قيد الاستعادة',
             BackupStatus::Restored => 'تمت الاستعادة',
             BackupStatus::RestoreFailed => 'فشل الاستعادة',
+            BackupStatus::RestorePartial => 'استعادة جزئية',
         };
     }
 }
