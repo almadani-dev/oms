@@ -31,6 +31,7 @@ class AdminPanelProvider extends PanelProvider
             ->spa()
             ->font('Tajawal', url: 'https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap')
             ->login()
+            ->databaseNotifications()
             ->colors([
                 'primary' => Color::Amber,
             ])

@@ -69,7 +69,18 @@ final class BackupCreationOrchestrator
             'disk' => (string) config('oms.backup.disk', 'backups'),
             'operation_reason' => $reason,
             'created_by' => $createdBy,
-            'is_protected' => $type === BackupType::Manual,
+            // Deliberately NOT auto-true for manual backups (corrected during
+            // OMS Task 7B.2): manual backups already can't be auto-deleted by
+            // BackupRetentionService via its own independent
+            // `type === BackupType::Manual` check in mustKeep() below, so
+            // this flag doesn't need to duplicate that. Leaving it false by
+            // default is what lets a Super Admin manually delete an
+            // unwanted manual backup through BackupDeletionService — an
+            // unconditional `true` here would make every manual backup
+            // permanently undeletable, which is not the intended design.
+            // `is_protected` is reserved for a future explicit
+            // "always keep this one" flag, not implied by type.
+            'is_protected' => false,
         ];
 
         try {

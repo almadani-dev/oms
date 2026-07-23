@@ -13,6 +13,20 @@
 ---
 
 ### Date
+2026-07-23 (OMS Task 7B.2 — Filament backup management page)
+
+### Decision
+Build the Filament management page's authorization on a shared `App\Support\Backup\BackupAuthorization` helper (real `Super Admin` role via `hasRole()` **and** the specific `backups.*` permission), re-checked explicitly inside every action's own closure — not only via `->visible()`/page `canAccess()`. Correct a genuine 7B.1 defect discovered while implementing deletion: `BackupCreationOrchestrator::enqueue()` set `is_protected = true` for every manual backup unconditionally; changed it to default `false`. Replace `AuthorizationAcceptanceTest`'s hardcoded `155`-permission-count assertion with a registry-driven one (no duplicates in `PermissionRegistry::names()`, every registry name synced exactly once, no unexpected extra permission, `backups.*` explicitly present) instead of a new hardcoded `161`.
+
+### Reason
+Gate::before already grants a real Super Admin every ability automatically, so checking a `backups.*` permission alone would not by itself guarantee "Super Admin only" if that permission were ever manually granted to a lesser role — the same reasoning `BackupDownloadController` already used in 7B.1, now centralized and reused rather than re-derived per action. The `is_protected = true` default for manual backups was flagged during design: Task 7B.2's own spec explicitly states "manual backups may be manually deleted unless protected" and "'never auto-deleted' does not mean never manually deletable," but the unconditional flag would have made every manual backup permanently undeletable through the new UI — a real contradiction, not a matter of interpretation. Retention's automatic protection for manual backups was never actually dependent on `is_protected` (`BackupRetentionService::mustKeep()` already has its own independent `type === Manual` check), so defaulting it to `false` closes the gap without weakening any existing guarantee. The `155`-count test's own docblock stated its purpose was an *absolute* (not merely relative) guarantee distinct from other tests' relative equality checks; a fixed literal is exactly the kind of assertion that goes stale the next time any module gains a permission — deriving correctness from the registry itself, plus explicit `backups.*` membership as a documented regression guard, gives the same guarantee without a new expiration date.
+
+### Impact
+`App\Support\Backup\BackupAuthorization` is now the one place "is this actor allowed to do X to backups" is decided outside the download controller (which keeps its own pre-existing, independently-correct check unchanged) — any future backup action should call it rather than re-deriving the Super-Admin-plus-permission rule inline. `BackupCreationOrchestrator::enqueue()`'s `is_protected` default is now `false` for manual backups; do not restore the old unconditional `true` without re-confirming this contradiction has been resolved differently. `AuthorizationAcceptanceTest::test_permission_registry_contains_exactly_155_permissions` no longer exists under that name (renamed `test_permission_registry_is_exactly_and_uniquely_synchronized`) — any future permission-count regression will surface as a missing/duplicate/unexpected-permission assertion failure, never a stale magic number. See `docs/TASKS_LOG.md` (2026-07-23 "Task 7B.2" entry) for the full file list and test counts.
+
+---
+
+### Date
 2026-07-23 (OMS Task 7B.1 — backup core foundation)
 
 ### Decision

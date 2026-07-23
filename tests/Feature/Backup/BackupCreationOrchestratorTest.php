@@ -191,11 +191,17 @@ class BackupCreationOrchestratorTest extends BackupTestCase
         $this->assertNotSame($first->id, $second->id);
     }
 
-    public function test_manual_backups_are_protected_by_default(): void
+    public function test_manual_backups_are_not_is_protected_by_default(): void
     {
+        // Corrected during OMS Task 7B.2: manual backups are already
+        // retention-protected via BackupRetentionService::mustKeep()'s own
+        // independent `type === BackupType::Manual` check, so `is_protected`
+        // does not need to (and must not) be forced true here — doing so
+        // would make every manual backup permanently undeletable through
+        // BackupDeletionService.
         $operation = $this->orchestrator()->enqueue(BackupType::Manual, BackupScope::Database, null, null);
 
-        $this->assertTrue($operation->is_protected);
+        $this->assertFalse($operation->is_protected);
     }
 
     // ---- correction 1: full verification before completion (wiring proof) ----------------

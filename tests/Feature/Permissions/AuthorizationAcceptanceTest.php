@@ -39,7 +39,12 @@ use Tests\TestCase;
  * Reports suites (see the coverage audit in the task report) — it only
  * closes the specific gaps that audit identified:
  *
- *  - an absolute (not merely relative) 155-permission-count assertion;
+ *  - an absolute (not merely relative) permission-set assertion: every
+ *    PermissionRegistry-declared name is synced exactly once, the registry
+ *    itself has no duplicates, and no unexpected extra permission exists —
+ *    deliberately not a hardcoded total (a fixed 155 literal here predated
+ *    Task 7B.1's 6 backups.* permissions and went stale/failing the moment
+ *    they were added; this form can never go stale the same way again);
  *  - real rendered-sidebar navigation, per actually-assigned system role,
  *    for the 23 ordinary CRUD resources + 5 nav report pages + Users/Roles/
  *    Permissions, driven entirely by PermissionRegistry::defaultPermissionsForRole()
@@ -63,8 +68,8 @@ use Tests\TestCase;
  *
  * Uses the same schema-only SQLite + URL::forceRootUrl approach as the rest
  * of the Permissions suite, and runs the real PermissionSyncService (never a
- * hand-rolled role/permission matrix) to seed the five system roles and 155
- * permissions before each test.
+ * hand-rolled role/permission matrix) to seed the five system roles and every
+ * PermissionRegistry-declared permission before each test.
  */
 class AuthorizationAcceptanceTest extends TestCase
 {
@@ -98,13 +103,46 @@ class AuthorizationAcceptanceTest extends TestCase
         app(PermissionSyncService::class)->sync();
     }
 
-    // ---- A2: absolute permission count (existing tests only assert a
-    // relative Permission::count() === count(registry) equality) ----
+    // ---- A2: absolute permission-set assertion — not merely a relative
+    // Permission::count() === count(registry) equality (which alone would
+    // pass even if the registry and the synced table drifted by the exact
+    // same wrong amount), but that PermissionRegistry::names() itself has
+    // no duplicate, and the synced database contains exactly that set: no
+    // registered permission missing, no unexpected extra permission.
+    // Deliberately not a hardcoded total — see class docblock for why a
+    // fixed 155 literal here previously went stale the moment Task 7B.1
+    // added 6 backups.* permissions. ----
 
-    public function test_permission_registry_contains_exactly_155_permissions(): void
+    public function test_permission_registry_is_exactly_and_uniquely_synchronized(): void
     {
-        $this->assertCount(155, PermissionRegistry::names());
-        $this->assertSame(155, Permission::query()->where('guard_name', 'web')->count());
+        $registryNames = PermissionRegistry::names();
+
+        $this->assertCount(
+            count($registryNames),
+            array_unique($registryNames),
+            'PermissionRegistry::names() must never contain a duplicate permission name.',
+        );
+
+        $syncedNames = Permission::query()->where('guard_name', 'web')->pluck('name')->all();
+
+        foreach ($registryNames as $name) {
+            $this->assertContains($name, $syncedNames, "Permission '{$name}' is registered but was never synced to the database.");
+        }
+
+        $this->assertCount(
+            count($registryNames),
+            $syncedNames,
+            'The synced `web`-guard permission set must contain exactly what PermissionRegistry declares — no more, no fewer. '
+            .'(Combined with the "every registry name is synced" check above, an equal count here rules out any unexpected extra permission.)',
+        );
+
+        // Guards specifically against the exact staleness that broke this
+        // test before: Task 7B.1 added these 6 permissions without this
+        // file being updated. Asserted structurally (registry membership),
+        // never via a magic total.
+        foreach (['view_any', 'view', 'create', 'download', 'verify', 'delete'] as $operation) {
+            $this->assertContains("backups.{$operation}", $registryNames);
+        }
     }
 
     // ---- C: real rendered sidebar navigation, per actually-assigned system

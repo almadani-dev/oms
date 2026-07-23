@@ -4,7 +4,10 @@ namespace App\Jobs;
 
 use App\Enums\BackupStatus;
 use App\Models\BackupOperation;
+use App\Notifications\BackupNotificationEvent;
 use App\Services\Backup\BackupCreationOrchestrator;
+use App\Services\Backup\BackupNotifier;
+use App\Support\Backup\BackupErrorSanitizer;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -45,7 +48,9 @@ class CreateBackupJob implements ShouldQueue
         // own $tries/$backoff retries it automatically. The orchestrator
         // deliberately leaves the operation row untouched (still queued)
         // in that specific case, so a retry picks up cleanly.
-        $orchestrator->run($this->backupOperationId);
+        $operation = $orchestrator->run($this->backupOperationId);
+
+        app(BackupNotifier::class)->notify($operation, BackupNotificationEvent::BackupSucceeded);
     }
 
     public function failed(?Throwable $exception): void
@@ -60,8 +65,10 @@ class CreateBackupJob implements ShouldQueue
             'status' => BackupStatus::Failed->value,
             'failed_at' => now(),
             'error_summary' => $exception !== null
-                ? mb_substr($exception->getMessage(), 0, 2000)
+                ? BackupErrorSanitizer::sanitize($exception->getMessage())
                 : 'Backup job failed with no exception detail.',
         ])->save();
+
+        app(BackupNotifier::class)->notify($operation, BackupNotificationEvent::BackupFailed, $operation->error_summary);
     }
 }

@@ -1,6 +1,20 @@
 # Prompts Log
 
 ### Date
+2026-07-23 (OMS Task 7B.2 — Filament backup management page)
+
+### Prompt
+A three-part sequence. (1) **"Implement OMS Task 7B.2: FILAMENT BACKUP MANAGEMENT PAGE"**: build the Super-Admin-only Filament page (`النظام` → `النسخ الاحتياطي والاستعادة`) on top of the 7B.1 backup core — overview stat cards, manual-backup/verify/download/delete row and header actions, a backup operations table with polling, and persistent database notifications — explicitly excluding Restore (no action/permission/job/route, a static informational notice only), with 94 numbered required test cases and pre-flight instructions to inspect the exact existing 7B.1 APIs before integrating; report and wait for approval. Mid-implementation, a genuine conflict was found and raised before proceeding rather than guessed at: `BackupCreationOrchestrator::enqueue()` (7B.1, already committed) set `is_protected = true` for every manual backup, which would make the new deletion feature's own explicit "manual backups may be manually deleted unless protected" design impossible to satisfy — the user chose to fix the 7B.1 default (`is_protected = false` for manual, since retention already independently protects manual backups via its own `type === Manual` check). (2) **"Apply one focused correction before approving OMS Task 7B.2"**: the targeted permissions suite had one pre-existing failing test (`AuthorizationAcceptanceTest::test_permission_registry_contains_exactly_155_permissions`, confirmed via `git stash` to already fail at HEAD before any 7B.2 change) with a hardcoded permission-count literal that predated Task 7B.1's 6 `backups.*` permissions — replace it with a durable, `PermissionRegistry`-derived assertion (no duplicates, every registry name synced exactly once, no unexpected extra, `backups.*` explicitly covered) rather than swapping one magic number for another; run only the directly affected permission test files, not the full suite. (3) **This finalization**: update only the 5 CLAUDE.md-required docs, run `graphify update .` and validate its output, review the complete diff to confirm it contains only the approved implementation/tests/migration/docs/curated Graphify output (never `graphify-out/cache/**`, real backups/attachments, `.env`, credentials, or unrelated changes), stage only that, show the pre-commit diff and safety confirmations, commit as `add secure backup management page`, and report the hash and post-commit hook output — no push, no Task 7C.
+
+### Purpose
+Give a real Super Admin a safe, non-technical-friendly way to see backup health at a glance and trigger the three background operations (create, verify, delete) the 7B.1 foundation already supports, entirely through queued jobs and persistent notifications — never a synchronous web-request backup, never a raw storage path or secret surfaced in the UI, and never any Restore capability before its own dedicated, independently-designed engine (Task 7C) exists.
+
+### Result
+Implemented exactly as scoped, including the mid-task `is_protected` correction and the separate permission-test durability fix — see `docs/TASKS_LOG.md` (2026-07-23 "Task 7B.2" entry) for the full file list and `docs/DECISIONS_LOG.md` (2026-07-23 "Task 7B.2" entry) for the `BackupAuthorization`-centralization, `is_protected`-default, and durable-permission-count reasoning. Targeted backup tests: 238 total, 236 passed, 0 failed, 2 skipped (pre-existing 7B.1 OS-level symlink tests), 0 risky, 658 assertions. Corrected permission tests: 45 total, 45 passed, 0 failed, 0 skipped, 0 risky, 838 assertions. No real backup, `mysqldump`, migration, permission sync, or database/storage change at any point across all three turns. Committed as `add secure backup management page`.
+
+---
+
+### Date
 2026-07-23 (OMS Task 7B.1 — encrypted backup core foundation)
 
 ### Prompt
