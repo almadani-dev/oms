@@ -1075,8 +1075,8 @@
     "semantic_hash": "594a01554ab7583541a8fb05a69f935f"
   },
   "config/filesystems.php": {
-    "mtime": 1784720553.663615,
-    "ast_hash": "07d24fd5f6dc0c11e1caf26f7e602129",
+    "mtime": 1784804201.9633157,
+    "ast_hash": "7b0c5c0ddba1e3ed9ededcae15abf89b",
     "semantic_hash": ""
   },
   "config/logging.php": {
@@ -1825,28 +1825,28 @@
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1784800645.6395211,
-    "ast_hash": "ccfae64feadad5eba283958ef131b968",
+    "mtime": 1784805310.2560928,
+    "ast_hash": "595cca1cb3933674ca106269e9697f4f",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
-    "mtime": 1784800670.9294763,
-    "ast_hash": "8c680a6c07baf38acf8c592ad527efca",
+    "mtime": 1784804915.23165,
+    "ast_hash": "5d17afc0eb487ec5ed26477611c6165c",
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1784800678.610995,
-    "ast_hash": "fc7fa5030b6d4ab1f98b5197350380ee",
+    "mtime": 1784805314.4586864,
+    "ast_hash": "71d9a05fcac198529a9289a426da01a8",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
-    "mtime": 1784800687.3527868,
-    "ast_hash": "dd3bac733830ec143cb56e0b3299ae68",
+    "mtime": 1784805320.555883,
+    "ast_hash": "57bc761f8c04d6fd5338486dee94da9c",
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1784800659.7676382,
-    "ast_hash": "f87e59c307489b7215569eb963bc6dcc",
+    "mtime": 1784805327.8942325,
+    "ast_hash": "8feca643ff53f6bf6e37511bf5e7d162",
     "semantic_hash": ""
   },
   "app/Services/Reports/ProjectFinancialDetailsWordExportService.php": {
@@ -2450,8 +2450,8 @@
     "semantic_hash": ""
   },
   "app/Support/Permissions/PermissionRegistry.php": {
-    "mtime": 1784720655.4462297,
-    "ast_hash": "86ed220e1f709c13ab923080807ff94f",
+    "mtime": 1784804192.862108,
+    "ast_hash": "21c03cea98d35d6db8ebc506db0b65e7",
     "semantic_hash": ""
   },
   "storage/framework/views/195d4e8dd894a342e21cb13125a73afe.php": {
@@ -2485,8 +2485,8 @@
     "semantic_hash": ""
   },
   "config/oms.php": {
-    "mtime": 1784721491.559767,
-    "ast_hash": "aa417c6335c61b239f5ec42863d914c5",
+    "mtime": 1784804219.587087,
+    "ast_hash": "0782e47eb338eaa78d98d0c17d296768",
     "semantic_hash": ""
   },
   "app/Policies/AccountPolicy.php": {
@@ -3010,13 +3010,13 @@
     "semantic_hash": ""
   },
   "app/Enums/BackupStatus.php": {
-    "mtime": 1784720610.0766635,
-    "ast_hash": "957a6893cbcf1ec72315aaa26ec52602",
+    "mtime": 1784804144.5845175,
+    "ast_hash": "cf547e29ed1207b9a9e71c35ce55dd8b",
     "semantic_hash": ""
   },
   "app/Enums/BackupType.php": {
-    "mtime": 1784720605.8695452,
-    "ast_hash": "ec09ee36415f3c35734f5ce6826f5756",
+    "mtime": 1784804132.0410554,
+    "ast_hash": "e892d1b85ee63d45b274b595a48b0b70",
     "semantic_hash": ""
   },
   "app/Http/Controllers/Backups/BackupDownloadController.php": {
@@ -3040,8 +3040,8 @@
     "semantic_hash": ""
   },
   "app/Models/BackupOperation.php": {
-    "mtime": 1784723760.0594432,
-    "ast_hash": "9b16bfc0230ea02d9cc841ea5608b727",
+    "mtime": 1784804183.1908693,
+    "ast_hash": "73e16e19da8787b7bffb5f6831966b62",
     "semantic_hash": ""
   },
   "app/Services/Backup/AttachmentCollectionResult.php": {
@@ -3435,8 +3435,8 @@
     "semantic_hash": ""
   },
   "tests/Feature/Backup/BackupPermissionsAndModelTest.php": {
-    "mtime": 1784722294.4443045,
-    "ast_hash": "2b847ab607f2a301ff206d6a3969ae4e",
+    "mtime": 1784804370.8498795,
+    "ast_hash": "0fdb5ccdc06fdf03e85c98eece03fbdb",
     "semantic_hash": ""
   },
   "tests/Feature/Backup/BackupRetentionServiceTest.php": {
@@ -3500,8 +3500,8 @@
     "semantic_hash": ""
   },
   "app/Filament/Pages/BackupManagementPage.php": {
-    "mtime": 1784799920.9791508,
-    "ast_hash": "cff273a967b6b3426c03f4a66342ef9b",
+    "mtime": 1784804285.1702025,
+    "ast_hash": "88e0bfd82c46865624aa0d507be1d958",
     "semantic_hash": ""
   },
   "app/Filament/Widgets/BackupOverviewWidget.php": {
@@ -3525,8 +3525,8 @@
     "semantic_hash": ""
   },
   "app/Services/Backup/BackupDeletionService.php": {
-    "mtime": 1784799850.1727383,
-    "ast_hash": "021f18c8786ec3bdc79252d7e1ab58e6",
+    "mtime": 1784805110.837798,
+    "ast_hash": "ee836dfd0c3d0c6e68e8b4e82da54cb1",
     "semantic_hash": ""
   },
   "app/Services/Backup/BackupNotifier.php": {
@@ -3550,8 +3550,8 @@
     "semantic_hash": ""
   },
   "app/Services/Backup/Exceptions/BackupDeletionRejectedException.php": {
-    "mtime": 1784799830.470263,
-    "ast_hash": "7f98bff632affeb22fb58841e0bec757",
+    "mtime": 1784804680.900653,
+    "ast_hash": "d915fd9b76e7a786d3cb6a64b5ba2424",
     "semantic_hash": ""
   },
   "app/Support/Backup/BackupAuthorization.php": {
@@ -3565,8 +3565,8 @@
     "semantic_hash": ""
   },
   "app/Support/Backup/BackupLabels.php": {
-    "mtime": 1784793334.716199,
-    "ast_hash": "18a9c66099071c65a0e7e5ca9d2aa4a9",
+    "mtime": 1784804263.0050523,
+    "ast_hash": "aa14e9856cdf76bdd7fcfebe87df6c99",
     "semantic_hash": ""
   },
   "app/Support/Backup/BackupSizeFormatter.php": {
@@ -3615,8 +3615,8 @@
     "semantic_hash": ""
   },
   "tests/Feature/Backup/BackupDeletionServiceTest.php": {
-    "mtime": 1784799975.145845,
-    "ast_hash": "35d70ce098a7076fa80cdeedceb2e78a",
+    "mtime": 1784805132.8376324,
+    "ast_hash": "4761b1077edef7c79c51b3c109e1e7c7",
     "semantic_hash": ""
   },
   "tests/Feature/Backup/BackupManagementPageTest.php": {
@@ -3662,6 +3662,41 @@
   "storage/framework/views/fe3b55b0ba46f619024a88bbbffe25cb.php": {
     "mtime": 1784798858.7451663,
     "ast_hash": "5b97068be192c0c6749bdb70044340dd",
+    "semantic_hash": ""
+  },
+  "database/migrations/2026_07_23_150000_add_restore_columns_to_backup_operations_table.php": {
+    "mtime": 1784804123.429594,
+    "ast_hash": "b79e32bb4dbe3b6774341b40332bb9bc",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/1ea79387bbc7d2cebc902bbd8ea759ab.php": {
+    "mtime": 1784801463.1064065,
+    "ast_hash": "6fb86611e73bda3c726704bd8be91df8",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/3021d8116874abcb3bb328c83a64fa4e.php": {
+    "mtime": 1784801462.9853494,
+    "ast_hash": "74a5258a57376905f5f8d3f114913f8a",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/6b0f9b250da99bc2741b2cfbd04980ac.php": {
+    "mtime": 1784801464.6613407,
+    "ast_hash": "be475254891f11b77aabe5c27e0f8046",
+    "semantic_hash": ""
+  },
+  "tests/Unit/Enums/BackupStatusTest.php": {
+    "mtime": 1784804346.3718922,
+    "ast_hash": "a507821cb35fe2ce1a0441fca2c3ceb6",
+    "semantic_hash": ""
+  },
+  "tests/Unit/Enums/BackupTypeTest.php": {
+    "mtime": 1784804336.8847759,
+    "ast_hash": "bcb9c3885fef88447d88af6b2ceb63ca",
+    "semantic_hash": ""
+  },
+  "tests/Unit/Support/Backup/BackupLabelsTest.php": {
+    "mtime": 1784804355.061193,
+    "ast_hash": "4d4b0b978f5b7e80c6cf92b56d182a53",
     "semantic_hash": ""
   }
 }
