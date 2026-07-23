@@ -62,6 +62,20 @@ return [
             'report' => false,
         ],
 
+        // Private backup archive storage: same shape as the 'attachments'
+        // disk (never symlinked, 'serve' omitted so Laravel's built-in
+        // signed-URL local-disk route never auto-registers for it). All
+        // access must go through the authenticated BackupDownloadController
+        // route instead — never a Storage::url() or a raw disk path.
+        'backups' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/backups'),
+            'visibility' => 'private',
+            'serve' => false,
+            'throw' => false,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

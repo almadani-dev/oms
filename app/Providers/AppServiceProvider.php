@@ -15,6 +15,13 @@ use App\Observers\ProjectCostReceiptObserver;
 use App\Observers\ProjectObserver;
 use App\Policies\PermissionPolicy;
 use App\Policies\RolePolicy;
+use App\Services\Backup\BackupArchiveContentVerifier;
+use App\Services\Backup\Contracts\BackupArchiveContentVerifier as BackupArchiveContentVerifierContract;
+use App\Services\Backup\Contracts\ProcessRunner;
+use App\Services\Backup\Contracts\SymlinkDetector;
+use App\Services\Backup\NativeSymlinkDetector;
+use App\Services\Backup\SecretstreamEnvelope;
+use App\Services\Backup\SymfonyProcessRunner;
 use App\Support\Permissions\PermissionRegistry;
 use Filament\Tables\Table;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -30,7 +37,34 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // OMS Task 7B.1: production binding for the injectable process
+        // seam DatabaseDumper depends on. The test suite never resolves
+        // this binding — it binds a fake ProcessRunner directly in each
+        // test instead, so a real mysqldump is never invoked.
+        $this->app->bind(ProcessRunner::class, SymfonyProcessRunner::class);
+
+        // Reads config('oms.backup.chunk_size') fresh on every resolution
+        // (not a singleton) so tests that override the config per-test —
+        // e.g. a tiny chunk size to force multi-chunk round trips — are
+        // always honored, including when SecretstreamEnvelope is resolved
+        // indirectly as a constructor dependency of another service.
+        $this->app->bind(SecretstreamEnvelope::class, fn (): SecretstreamEnvelope => new SecretstreamEnvelope(
+            (int) config('oms.backup.chunk_size', 1048576),
+        ));
+
+        // AttachmentCollector/BackupArchiveBuilder accept this as an
+        // optional constructor param (defaulting to a fresh
+        // NativeSymlinkDetector when unresolvable) — this binding just
+        // makes that explicit rather than relying on the container's
+        // resolve-then-fall-back-to-default behavior for an unbound
+        // interface.
+        $this->app->bind(SymlinkDetector::class, NativeSymlinkDetector::class);
+
+        // BackupCreationOrchestrator/BackupIntegrityVerifier depend on the
+        // contract, not this concrete final class — tests inject a fake
+        // implementation of the contract to simulate a verification
+        // failure instead of subclassing a final class.
+        $this->app->bind(BackupArchiveContentVerifierContract::class, BackupArchiveContentVerifier::class);
     }
 
     /**

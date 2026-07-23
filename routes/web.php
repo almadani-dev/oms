@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Attachments\AttachmentController;
+use App\Http\Controllers\Backups\BackupDownloadController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -28,3 +29,13 @@ Route::get('/attachments/{attachment}/{mode}', [AttachmentController::class, 'sh
     ->whereIn('mode', ['view', 'download'])
     ->middleware(\Filament\Http\Middleware\Authenticate::class)
     ->name('attachments.show');
+
+// OMS Task 7B.1 — secure download foundation for backup archives. {backup}
+// is the BackupOperation's UUID (never its stored_path or a disk path) and
+// is constrained to the UUID shape before the controller ever runs a
+// query. No Filament UI links here yet (Task 7B.2) — this route exists so
+// that later UI has a safe, already-authorized endpoint to point at.
+Route::get('/backups/{backup}/download', [BackupDownloadController::class, 'show'])
+    ->where('backup', '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}')
+    ->middleware(\Filament\Http\Middleware\Authenticate::class)
+    ->name('backups.download');

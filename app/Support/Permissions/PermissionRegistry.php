@@ -126,6 +126,26 @@ final class PermissionRegistry
     ];
 
     /**
+     * OMS Task 7B.1: Super Admin-only by construction, exactly like
+     * `permissions.sync` above — deliberately excluded from every other
+     * system role's defaults (see adminDefaults()'s explicit `backups.`
+     * exclusion) even though it is registered here so future
+     * least-privilege delegation is possible without a migration.
+     * `backups.restore` is intentionally NOT registered yet — Restore is a
+     * separate, later phase (OMS Task 7C).
+     *
+     * @var array<string,string>
+     */
+    private const BACKUP_PERMISSIONS = [
+        'backups.view_any' => 'عرض قائمة النسخ الاحتياطية',
+        'backups.view' => 'عرض نسخة احتياطية',
+        'backups.create' => 'إنشاء نسخة احتياطية',
+        'backups.download' => 'تنزيل نسخة احتياطية',
+        'backups.verify' => 'فحص سلامة نسخة احتياطية',
+        'backups.delete' => 'حذف نسخة احتياطية',
+    ];
+
+    /**
      * @return array<string,string> permission name => Arabic label
      */
     public static function all(): array
@@ -193,6 +213,7 @@ final class PermissionRegistry
         }
 
         $groups['system_permissions'] = ['label' => 'النظام والصلاحيات', 'permissions' => self::SYSTEM_PERMISSIONS];
+        $groups['backups'] = ['label' => 'النسخ الاحتياطي والاستعادة', 'permissions' => self::BACKUP_PERMISSIONS];
         $groups['reports'] = ['label' => 'التقارير', 'permissions' => $reportPermissions];
         $groups['special'] = ['label' => 'صلاحيات خاصة', 'permissions' => self::SPECIAL_PERMISSIONS];
 
@@ -261,9 +282,11 @@ final class PermissionRegistry
 
     /**
      * Broad operational access. Deliberately excludes every `users.*`,
-     * `roles.*`, and `permissions.*` permission — user/role/permission
-     * management stays out of Admin's default set until the full
-     * UserResource safety phase (Task 3) and RoleResource (Task 4) exist.
+     * `roles.*`, `permissions.*`, and `backups.*` permission —
+     * user/role/permission management stays out of Admin's default set
+     * until the full UserResource safety phase (Task 3) and RoleResource
+     * (Task 4) exist, and backup/restore stays Super Admin-only by
+     * construction per the approved OMS Task 7 design (2026-07-22).
      *
      * @return list<string>
      */
@@ -273,7 +296,8 @@ final class PermissionRegistry
             self::names(),
             static fn (string $name): bool => ! str_starts_with($name, 'users.')
                 && ! str_starts_with($name, 'roles.')
-                && ! str_starts_with($name, 'permissions.'),
+                && ! str_starts_with($name, 'permissions.')
+                && ! str_starts_with($name, 'backups.'),
         ));
     }
 

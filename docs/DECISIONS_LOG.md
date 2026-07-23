@@ -13,6 +13,20 @@
 ---
 
 ### Date
+2026-07-23 (OMS Task 7B.1 — backup core foundation)
+
+### Decision
+Build a focused, in-house OMS backup implementation (mysqldump + ZipArchive + a dedicated libsodium Secretstream envelope + Laravel queue/cache primitives) rather than installing `spatie/laravel-backup` or any other third-party backup package. A newly-created backup must pass the exact same full content verification as an already-published one — via one shared `BackupArchiveContentVerifier` implementation behind a narrow contract — **before** it is ever published or marked `completed`, and `verified_at` is stamped at that same moment. Scheduled backups are deduplicated by a database-enforced unique `deduplication_key`, not an application-level check alone. A second, per-backup Cache lock (distinct from the single global operation lock) protects a published archive from deletion while it is being downloaded, verified, or (later) restored.
+
+### Reason
+The Task 7A audit found no existing backup package, no restore-workflow equivalent in any mainstream Laravel backup package, and an approved design (typed double-confirmation restore, pre-restore safety backup, maintenance mode) that would have to be built by hand regardless of what created the archive — adopting a package would only cover roughly the backup-creation third of the real scope while adding an unverified Laravel-13/Filament-5/PHP-8.3 compatibility risk. Verifying only *after* publication (the original design) left a window where a corrupted-but-published archive could sit in the table as `completed` with no verification at all until a separate job happened to run; verifying the *candidate* first and publishing only on success closes that window structurally. An application-level "check then insert" for scheduled dedup is race-prone under two concurrent workers; the database's own UNIQUE constraint is the only mechanism that is actually atomic. A single global lock does not stop a download/verify/restore from racing a retention deletion of the *same* file while an unrelated backup is otherwise idle — a second, file-scoped lock is required for that specific race, and it must be held through the real content-transmission phase (via the `StreamedResponse` callback), not merely while the controller method executes, since a download response is only fully "in flight" once the client is actually receiving bytes.
+
+### Impact
+`App\Services\Backup\BackupCreationOrchestrator`, `BackupIntegrityVerifier`, `BackupRetentionService`, and `BackupDownloadController` are the only places these rules may live — any future backup-related code must reuse them rather than reimplementing verification, deduplication, or locking. `backups.restore`, `RestoreBackupJob`, and the Filament management page are explicitly out of scope for this phase (Task 7C / Task 7B.2) — do not add restore logic under the assumption Task 7B.1's structures already anticipate it beyond the vocabulary already present in the `BackupStatus`/`BackupType` enums and the `source_backup_id`/`pre_restore_safety_backup_id` columns. See `docs/TASKS_LOG.md` (2026-07-23 entry) for the full file list and `docs/AI_PROJECT_MEMORY.md` for the encryption-envelope, mysqldump-streaming, and permission-model detail.
+
+---
+
+### Date
 2026-07-22 (OMS-wide CRUD redirect standard)
 
 ### Decision
