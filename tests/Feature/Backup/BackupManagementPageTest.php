@@ -334,12 +334,72 @@ class BackupManagementPageTest extends BackupTestCase
             ->assertSee('غير متحقق');
     }
 
-    public function test_protected_status_is_displayed(): void
+    public function test_deletion_eligibility_column_is_labeled_and_shows_the_allowed_badge_for_a_deletable_backup(): void
     {
         $this->actingAs($this->makeSuperAdmin());
-        $this->makeCompletedOperation(['is_protected' => true]);
+        // A separate, more recent verified backup so this one is never
+        // treated as "last known-good".
+        $this->makeCompletedOperation(['verified_at' => now(), 'completed_at' => now()]);
+        $this->makeCompletedOperation(['verified_at' => null, 'completed_at' => now()->subDay()]);
 
-        Livewire::test(BackupManagementPage::class)->assertSee('محمية');
+        Livewire::test(BackupManagementPage::class)
+            ->assertSee('إمكانية الحذف')
+            ->assertSee('مسموح');
+    }
+
+    public function test_the_last_known_good_backup_shows_an_undeletable_badge(): void
+    {
+        $this->actingAs($this->makeSuperAdmin());
+        $this->makeCompletedOperation(['verified_at' => now(), 'completed_at' => now()]);
+
+        Livewire::test(BackupManagementPage::class)->assertSee('ممنوع — آخر نسخة ناجحة');
+    }
+
+    public function test_a_manually_protected_backup_shows_an_undeletable_badge(): void
+    {
+        $this->actingAs($this->makeSuperAdmin());
+        // Older than a separate last-good backup, so only is_protected
+        // explains the block.
+        $this->makeCompletedOperation(['verified_at' => now(), 'completed_at' => now()]);
+        $this->makeCompletedOperation(['is_protected' => true, 'verified_at' => null, 'completed_at' => now()->subDay()]);
+
+        Livewire::test(BackupManagementPage::class)->assertSee('ممنوع — محمية يدويًا');
+    }
+
+    public function test_details_modal_manual_protection_field_is_unambiguous(): void
+    {
+        $protected = $this->makeCompletedOperation(['is_protected' => true]);
+        $unprotected = $this->makeCompletedOperation(['is_protected' => false]);
+
+        // Exercises the exact same private schema builder detailsAction()
+        // wires into the modal, without depending on Filament's own
+        // action-modal rendering pipeline (which this suite otherwise never
+        // renders through Livewire test assertions).
+        $action = (new \ReflectionMethod(BackupManagementPage::class, 'detailsAction'))
+            ->invoke(new BackupManagementPage());
+
+        $buildSchema = (new \ReflectionProperty($action, 'schema'))->getValue($action);
+
+        $protectedStates = collect($buildSchema($protected))->map->getState();
+        $unprotectedStates = collect($buildSchema($unprotected))->map->getState();
+
+        $this->assertTrue($protectedStates->contains('محمية يدويًا'));
+        $this->assertTrue($unprotectedStates->contains('غير محمية يدويًا'));
+    }
+
+    public function test_deletion_eligibility_badge_and_the_delete_action_use_the_same_decision(): void
+    {
+        $this->actingAs($this->makeSuperAdmin());
+        $lastGood = $this->makeCompletedOperation(['verified_at' => now(), 'completed_at' => now()]);
+
+        Livewire::test(BackupManagementPage::class)
+            ->assertSee('ممنوع — آخر نسخة ناجحة')
+            ->callTableAction('delete', record: $lastGood->getKey(), data: ['confirmation' => 'DELETE'])
+            ->assertNotified();
+
+        // The delete action rejected it (same 'last_known_good' rule the
+        // badge displayed), so the row must remain untouched.
+        $this->assertNull($lastGood->fresh()->deleted_at);
     }
 
     public function test_uuid_search_finds_the_matching_record(): void

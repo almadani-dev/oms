@@ -13,6 +13,20 @@
 ---
 
 ### Date
+2026-07-23 (Backup management page — deletion-eligibility UI clarification)
+
+### Decision
+Expose the deletion-eligibility decision as a new public `BackupDeletionService::eligibility()` method (returning a small `BackupDeletionEligibility` value object) rather than re-implementing any of the rejection rules inside the Filament page, and give `BackupDeletionRejectedException` one new `forReason(string $reasonCode)` dispatcher so `delete()` itself is refactored to consume the same `eligibility()` result instead of re-checking each rule inline a second time. Memoize the "last known-good" lookup per `BackupDeletionService` instance (via `once()`) and have the Filament page resolve one shared instance for the whole table render, rather than one per row.
+
+### Reason
+The task explicitly required the badge to "reflect the exact same rules used by the delete action" and forbade duplicating deletion rules in the Filament page — a second, separately-maintained copy of "is this backup protected / last-known-good / locked" would inevitably drift from `delete()`'s real behavior over time. Routing both `delete()` and the badge through one `eligibility()` method makes that impossible by construction — a rule change only ever needs to happen once. The per-instance memoization was necessary because `eligibility()` is called once per visible table row on every 10-second poll, and the existing "last known-good" check is a real, unindexed-by-row-count aggregate query — without memoization this would have re-introduced an N+1 the codebase already has a dedicated bounded-query-count regression test guarding against (`test_query_count_remains_bounded_as_row_count_increases`).
+
+### Impact
+Any future addition to `BackupDeletionService`'s rejection rules should be added to `eligibility()` (not `delete()` directly) so the Filament badge picks it up automatically — `delete()` now only adds the actual lock-and-perform-delete step on top of whatever `eligibility()` already decided. The "locked" state is a best-effort point-in-time peek (acquire-then-immediately-release), not a persisted flag — a badge showing "مسموح" can still occasionally lose a race to a concurrent download/verify/delete between page render and the next real delete attempt; this was accepted as consistent with the existing `BackupFileLock` design (also non-blocking/advisory at the row level), not treated as a new gap. The `is_protected` `TernaryFilter` (raw manual-flag filter) and its "محمية"/"غير محمية" labels were deliberately left unchanged, since the task's explicit scope was the table column and the details-modal field only.
+
+---
+
+### Date
 2026-07-23 (OMS Task 7B.2 — Filament backup management page)
 
 ### Decision

@@ -52,4 +52,23 @@ final class BackupDeletionRejectedException extends RuntimeException
     {
         return new self('Backup deletion failed unexpectedly.', 'unexpected_failure');
     }
+
+    /**
+     * Maps a BackupDeletionEligibility::blocked() reasonCode back onto the
+     * matching factory, so BackupDeletionService::delete() can throw off of
+     * the exact same result its own eligibility() check already computed
+     * instead of re-deriving the reason a second time.
+     */
+    public static function forReason(string $reasonCode): self
+    {
+        return match ($reasonCode) {
+            'already_deleted' => self::alreadyDeleted(),
+            'active_status' => self::activeStatus(),
+            'protected' => self::isProtected(),
+            'last_known_good' => self::lastKnownGood(),
+            'referenced_pre_restore' => self::referencedPreRestore(),
+            'locked' => self::locked(),
+            default => self::unexpectedFailure(),
+        };
+    }
 }

@@ -1,6 +1,20 @@
 # Prompts Log
 
 ### Date
+2026-07-23 (Backup management page — deletion-eligibility UI clarification)
+
+### Prompt
+"Implement a small, focused UI clarification in the OMS backup management page" — rename the table's "الحماية" column to "إمكانية الحذف" and show one of four badges ("مسموح" / three "ممنوع —" reasons) reflecting the exact same rules `BackupDeletionService` already uses for the delete action (reused, not duplicated), keep the details-modal "الحماية" field but rename its values to make clear it is manual-protection-only ("محمية يدويًا"/"غير محمية يدويًا"), add focused tests for last-known-good/manually-protected/deletable/badge-and-delete-parity, read only the directly relevant files, run only the targeted backup tests, and show the diff and test results before committing.
+
+### Purpose
+Prevent operators from misreading "غير محمية" (not manually protected) as "this backup can be deleted" when it may actually be undeletable for an entirely different reason (it's the last verified good backup, or a file lock is currently held) — a real UX ambiguity that could lead someone to assume a delete attempt will succeed when it won't, or conversely assume a genuinely deletable backup is protected when it only lacks the manual flag.
+
+### Result
+Implemented as scoped — see `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md` (both 2026-07-23 "deletion-eligibility UI clarification" entries) for the full file list and reasoning. Targeted backup suite: 174 total, 173 passed, 0 failed, 1 pre-existing skip, 499 assertions. Awaiting review before commit.
+
+---
+
+### Date
 2026-07-23 (OMS Task 7B.2 — Filament backup management page)
 
 ### Prompt

@@ -167,6 +167,12 @@ class BackupManagementPage extends Page implements HasTable
 
     public function table(Table $table): Table
     {
+        // Resolved once and captured by the column closures below (not
+        // app()-resolved per row) so BackupDeletionService::eligibility()'s
+        // memoized last-known-good lookup only ever runs a single query per
+        // table render, regardless of how many rows are visible.
+        $deletionService = app(BackupDeletionService::class);
+
         return $table
             ->query(BackupOperation::query()->with('createdBy'))
             ->defaultSort('created_at', 'desc')
@@ -239,11 +245,13 @@ class BackupManagementPage extends Page implements HasTable
                         default => 'gray',
                     }),
 
-                TextColumn::make('is_protected')
-                    ->label('الحماية')
+                TextColumn::make('deletion_eligibility')
+                    ->label('إمكانية الحذف')
                     ->badge()
-                    ->formatStateUsing(fn (bool $state): string => $state ? 'محمية' : 'غير محمية')
-                    ->color(fn (bool $state): string => $state ? 'success' : 'gray'),
+                    ->state(fn (BackupOperation $record): string => $deletionService->eligibility($record)->reasonCode ?? 'allowed')
+                    ->formatStateUsing(fn (string $state): string => $this->deletionEligibilityLabel($state))
+                    ->color(fn (string $state): string => $this->deletionEligibilityColor($state))
+                    ->tooltip(fn (string $state): ?string => $state === 'allowed' ? null : $this->deletionRejectionMessage($state)),
 
                 TextColumn::make('operation_reason')
                     ->label('ملخص العملية')
@@ -369,7 +377,7 @@ class BackupManagementPage extends Page implements HasTable
                 TextEntry::make('original_size_bytes')->label('الحجم الأصلي')->state(BackupSizeFormatter::format($record->original_size_bytes)),
                 TextEntry::make('file_count')->label('عدد ملفات المرفقات')->state($record->file_count === null ? '—' : (string) $record->file_count),
                 TextEntry::make('encryption_key_id')->label('معرّف مفتاح التشفير')->state($record->encryption_key_id ?? '—'),
-                TextEntry::make('is_protected')->label('الحماية')->state($record->is_protected ? 'محمية' : 'غير محمية'),
+                TextEntry::make('is_protected')->label('الحماية')->state($record->is_protected ? 'محمية يدويًا' : 'غير محمية يدويًا'),
                 TextEntry::make('error_summary')->label('ملخص الخطأ')->state($record->error_summary ?? '—'),
             ]);
     }
@@ -460,6 +468,32 @@ class BackupManagementPage extends Page implements HasTable
             'referenced_pre_restore' => 'هذه النسخة مرتبطة بعملية استعادة أخرى ولا يمكن حذفها.',
             'locked' => 'ملف النسخة الاحتياطية قيد الاستخدام حالياً، يرجى المحاولة لاحقاً.',
             default => 'تعذر حذف النسخة الاحتياطية.',
+        };
+    }
+
+    /**
+     * Every displayed label keys off the exact same
+     * BackupDeletionService::eligibility() reasonCode the delete action
+     * itself rejects on (see deletionRejectionMessage(), used as this
+     * badge's tooltip) — never a separately-maintained set of rules.
+     */
+    private function deletionEligibilityLabel(string $reasonCode): string
+    {
+        return match ($reasonCode) {
+            'allowed' => 'مسموح',
+            'last_known_good' => 'ممنوع — آخر نسخة ناجحة',
+            'protected' => 'ممنوع — محمية يدويًا',
+            'locked' => 'ممنوع — قيد الاستخدام',
+            default => 'ممنوع',
+        };
+    }
+
+    private function deletionEligibilityColor(string $reasonCode): string
+    {
+        return match ($reasonCode) {
+            'allowed' => 'success',
+            'locked' => 'warning',
+            default => 'danger',
         };
     }
 }

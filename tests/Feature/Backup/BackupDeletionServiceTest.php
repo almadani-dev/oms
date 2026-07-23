@@ -322,4 +322,77 @@ class BackupDeletionServiceTest extends BackupTestCase
             $this->assertSame('already_deleted', $e->reasonCode);
         }
     }
+
+    // ---- eligibility() (the read-only "إمكانية الحذف" badge decision) must
+    // agree with delete() exactly, for every rule ----
+
+    public function test_eligibility_allows_an_older_unprotected_non_last_good_unlocked_backup(): void
+    {
+        $this->makeCompletedOperation(['verified_at' => now(), 'completed_at' => now()]);
+        $operation = $this->makeCompletedOperation(['verified_at' => null, 'completed_at' => now()->subDay()]);
+
+        $eligibility = (new BackupDeletionService())->eligibility($operation);
+
+        $this->assertTrue($eligibility->allowed);
+        $this->assertNull($eligibility->reasonCode);
+    }
+
+    public function test_eligibility_and_delete_agree_the_last_known_good_backup_is_blocked(): void
+    {
+        $admin = $this->superAdmin();
+        $operation = $this->makeCompletedOperation(['verified_at' => now(), 'completed_at' => now()]);
+
+        $eligibility = (new BackupDeletionService())->eligibility($operation);
+        $this->assertFalse($eligibility->allowed);
+        $this->assertSame('last_known_good', $eligibility->reasonCode);
+
+        try {
+            (new BackupDeletionService())->delete($operation, $admin);
+            $this->fail('Expected BackupDeletionRejectedException.');
+        } catch (BackupDeletionRejectedException $e) {
+            $this->assertSame($eligibility->reasonCode, $e->reasonCode);
+        }
+    }
+
+    public function test_eligibility_and_delete_agree_a_manually_protected_backup_is_blocked(): void
+    {
+        $admin = $this->superAdmin();
+        $operation = $this->makeCompletedOperation(['is_protected' => true]);
+
+        $eligibility = (new BackupDeletionService())->eligibility($operation);
+        $this->assertFalse($eligibility->allowed);
+        $this->assertSame('protected', $eligibility->reasonCode);
+
+        try {
+            (new BackupDeletionService())->delete($operation, $admin);
+            $this->fail('Expected BackupDeletionRejectedException.');
+        } catch (BackupDeletionRejectedException $e) {
+            $this->assertSame($eligibility->reasonCode, $e->reasonCode);
+        }
+    }
+
+    public function test_eligibility_and_delete_agree_a_locked_backup_is_blocked(): void
+    {
+        $admin = $this->superAdmin();
+        $this->makeCompletedOperation(['verified_at' => now(), 'completed_at' => now()]);
+        $operation = $this->makeCompletedOperation(['verified_at' => null]);
+
+        $externalLock = Cache::lock(BackupFileLock::name($operation->uuid), 60);
+        $this->assertTrue($externalLock->get());
+
+        try {
+            $eligibility = (new BackupDeletionService())->eligibility($operation);
+            $this->assertFalse($eligibility->allowed);
+            $this->assertSame('locked', $eligibility->reasonCode);
+
+            try {
+                (new BackupDeletionService())->delete($operation, $admin);
+                $this->fail('Expected BackupDeletionRejectedException.');
+            } catch (BackupDeletionRejectedException $e) {
+                $this->assertSame($eligibility->reasonCode, $e->reasonCode);
+            }
+        } finally {
+            $externalLock->release();
+        }
+    }
 }

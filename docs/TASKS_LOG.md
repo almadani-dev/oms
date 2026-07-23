@@ -17,6 +17,28 @@
 ---
 
 ### Date
+2026-07-23 (Backup management page — deletion-eligibility UI clarification)
+
+### Task
+Clarify the backup management table's "الحماية" column, which showed only the raw `is_protected` flag and was misleading for backups that are undeletable for other reasons (last known-good, active status, referenced pre-restore, or a transient file lock). Rename it to "إمكانية الحذف" and show a single badge reflecting the real deletion-eligibility decision, reusing `BackupDeletionService`'s own rules (no duplicated logic). Rename the details modal's `is_protected` field values to explicitly say "يدويًا" (manual) since that field now only describes manual protection, not overall deletability.
+
+### Result
+Added `App\Services\Backup\BackupDeletionEligibility` (a small read-only `allowed`/`reasonCode` value object) and a new public `BackupDeletionService::eligibility(BackupOperation $operation)` method that mirrors `delete()`'s exact rule order (already_deleted → active_status → protected → last_known_good → referenced_pre_restore → locked), including a best-effort lock peek (acquire-then-release) for the "locked" state, which can otherwise only be observed at actual delete time. `delete()` itself now calls `eligibility()` and throws via a new `BackupDeletionRejectedException::forReason(string $reasonCode)` factory — the rejection reasons are derived from one shared source, never duplicated between the service and the UI. `BackupDeletionService::lastKnownGoodId()` is memoized per instance via Laravel's `once()` helper; `BackupManagementPage::table()` resolves one `BackupDeletionService` instance and reuses it across all row-column closures so the last-known-good query runs once per table render, not once per row (verified via the pre-existing bounded-query-count test, which continued to pass unchanged). The table's `deletion_eligibility` column (label "إمكانية الحذف") shows "مسموح" (success), "ممنوع — آخر نسخة ناجحة" (danger), "ممنوع — محمية يدويًا" (danger), or "ممنوع — قيد الاستخدام" (warning), with a tooltip reusing the page's existing `deletionRejectionMessage()` Arabic text. The details modal's `is_protected` `TextEntry` keeps its "الحماية" label but its values are now "محمية يدويًا"/"غير محمية يدويًا". No deletion rule changed; no migration; `is_protected`'s `TernaryFilter` was left untouched (out of the requested scope).
+
+### Changed Files
+- Created: `app/Services/Backup/BackupDeletionEligibility.php`
+- Modified: `app/Services/Backup/BackupDeletionService.php` (new `eligibility()`/`isLocked()`/memoized `lastKnownGoodId()`, `delete()` refactored to reuse `eligibility()`); `app/Services/Backup/Exceptions/BackupDeletionRejectedException.php` (new `forReason()` factory); `app/Filament/Pages/BackupManagementPage.php` (renamed/replaced table column, renamed modal field values, two new label/color helper methods)
+- Modified tests: `tests/Feature/Backup/BackupDeletionServiceTest.php` (4 new eligibility/delete-parity tests), `tests/Feature/Backup/BackupManagementPageTest.php` (replaced the stale `test_protected_status_is_displayed`; added badge-label, delete/badge-parity, and reflection-based details-modal-value tests)
+
+### Verification
+`php artisan test tests/Feature/Backup` — 174 total, 173 passed, 0 failed, 1 skipped (pre-existing, unrelated OS-level symlink test), 499 assertions. `graphify update .` run after the code change.
+
+### Commit Hash
+(pending — not yet committed)
+
+---
+
+### Date
 2026-07-23 (OMS Task 7B.2 — Filament backup management page)
 
 ### Task
