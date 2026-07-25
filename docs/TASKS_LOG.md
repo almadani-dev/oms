@@ -41,7 +41,7 @@ See `docs/AI_PROJECT_MEMORY.md` (2026-07-25 "Task 7C.3" entry) for full design/r
 6. Not independently unit-tested: `RestoreArchivePreparer`'s cleanup-failure-never-masks-original-exception guard (`cleanupBestEffort()`). Empirically confirmed on this Windows/Laragon host that `unlink()` succeeds even against an open file handle, so `Storage::deleteDirectory()` cannot be deterministically forced to fail here to prove the guard under real failure — the same class of Windows-testability gap already documented for the pre-existing real-symlink-creation tests. The fix itself (wrap `$workspace->cleanup()` in try/catch, swallow, always rethrow the original exception) was verified by code review and by the existing passing tests that prove a *successful* cleanup does not interfere with original-exception propagation.
 
 ### Commit Hash
-`implement secure restore preflight and staging` — see `git log -1 --format=%H` for the exact hash.
+`c6cfa07` implement secure restore preflight and staging
 
 ---
 
