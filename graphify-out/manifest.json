@@ -1825,8 +1825,8 @@
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1784959979.3258274,
-    "ast_hash": "8f8fd49f0e25395e470b003cbb0e21de",
+    "mtime": 1784961380.8021748,
+    "ast_hash": "694df0ae0a77a7ce995ffd19b736b730",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
@@ -1835,8 +1835,8 @@
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1784959996.0918267,
-    "ast_hash": "458e9f81ba59210b9b795c84c36d15a2",
+    "mtime": 1784961416.409233,
+    "ast_hash": "c5971771ec7c52270e6e8ec8c27d9f9f",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
@@ -1845,8 +1845,8 @@
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1784959989.2194262,
-    "ast_hash": "632c8331be115b0afdc6e5882c320603",
+    "mtime": 1784961406.346963,
+    "ast_hash": "ab5bf882c4cf9f8e53a0901712ae6bfb",
     "semantic_hash": ""
   },
   "app/Services/Reports/ProjectFinancialDetailsWordExportService.php": {
@@ -3685,8 +3685,8 @@
     "semantic_hash": ""
   },
   "app/Services/Restore/RestoreProgressWriter.php": {
-    "mtime": 1784959605.0089068,
-    "ast_hash": "c4d5b594a33b2ccee5d5c84757f818ff",
+    "mtime": 1784961066.4556952,
+    "ast_hash": "6004599871aef9f611a4ff7ed23b7e0f",
     "semantic_hash": ""
   },
   "tests/Feature/Restore/RestoreActivityGuardTest.php": {
@@ -3695,8 +3695,8 @@
     "semantic_hash": ""
   },
   "tests/Feature/Restore/RestoreProgressWriterReaderTest.php": {
-    "mtime": 1784807426.2330053,
-    "ast_hash": "d2dd2da7ebf85d4d54b21554044dcedd",
+    "mtime": 1784961122.0470788,
+    "ast_hash": "4c2ab314c9f113d81211833f1c512219",
     "semantic_hash": ""
   },
   "tests/Unit/Services/Backup/BackupSubsystemLockTest.php": {
@@ -3712,6 +3712,31 @@
   "tests/Unit/Services/Restore/RestoreProgressSnapshotTest.php": {
     "mtime": 1784807216.2072766,
     "ast_hash": "541e2c886b6b2abf91efb2481fca8abd",
+    "semantic_hash": ""
+  },
+  "app/Services/Restore/Contracts/RestoreProgressDurability.php": {
+    "mtime": 1784960974.2116215,
+    "ast_hash": "acc10b132a115dd009486efdb70a0711",
+    "semantic_hash": ""
+  },
+  "app/Services/Restore/Exceptions/RestoreProgressWriteException.php": {
+    "mtime": 1784960996.2582383,
+    "ast_hash": "a53833f0a65240226f1e2b0c88829ed2",
+    "semantic_hash": ""
+  },
+  "app/Services/Restore/NativeRestoreProgressDurability.php": {
+    "mtime": 1784960986.2096426,
+    "ast_hash": "eb56bdfe0ff0dfa4e9a455b083980242",
+    "semantic_hash": ""
+  },
+  "storage/framework/testing/disks/restores/aaaaaaaa-0000-0000-0000-00000000001c/progress.json": {
+    "mtime": 1784961345.7024062,
+    "ast_hash": "79bdfae3ff7bc8c6c71a2cdc64d5d013",
+    "semantic_hash": ""
+  },
+  "tests/Support/Restore/FakeRestoreProgressDurability.php": {
+    "mtime": 1784961076.2424717,
+    "ast_hash": "c69524ffc9e05ec6e504aedf9c61d0c6",
     "semantic_hash": ""
   }
 }
