@@ -13,6 +13,20 @@
 ---
 
 ### Date
+2026-07-23 (OMS Task 7C.2 — independent lock, signed progress protocol, atomic progress storage, restore-activity dual gate)
+
+### Decision
+Restore's authoritative subsystem-wide lock is a real OS `flock()` on a fixed file (`{restores disk}/.locks/subsystem.lock`), not a database-backed `Cache::lock()` — and reuse the existing exception/HTTP-status vocabulary (`BackupLockedException`, `BackupIntegrityException`, `BackupDeletionRejectedException::locked()`, HTTP 423) for "the subsystem lock is unavailable" rather than introducing a new reason code or exception type for it.
+
+### Reason
+This app's `cache.default` is `database` in both production and local (confirmed in `bootstrap/app.php`'s own scheduler comment), so a `Cache::lock()`'s backing row lives inside the very database a restore replaces — it cannot be trusted to survive the operation it exists to serialize, independent of any TTL-expiry concern. A real `flock()` has no such dependency, and is released automatically by the OS if the holding process dies, which is exactly the crash-safety property this design needs (see `BackupSubsystemLockHandle`'s `isLive()`, which re-affirms the lock on its own file descriptor rather than merely checking `is_resource()`, and `RestoreActivityGuard`, which is what actually decides whether a stale state may be cleared — never this lock itself). Reusing the existing exception/status vocabulary rather than inventing new reason codes for this phase keeps the diff minimal: restore doesn't have a real launch mechanism yet (Task 7C.4+), so a dedicated "blocked by restore" reason code would be speculative right now, and every existing caller/test that already handles "this operation is currently locked" continues to work unchanged for the new cause too.
+
+### Impact
+When Task 7C.4+ builds the real restore launcher/orchestrator and the exclusive lock starts being genuinely held in practice, revisit whether operators need a more specific UI message ("blocked by an active restore" vs. "blocked by another backup operation") — today both surface identically. `runWithLockAlreadyHeld()`'s handle validation (live + Exclusive + matching path) is the one place a lock-bypass is possible at all; any future caller of it must go through `BackupSubsystemLock::validateHandle()` the same way — never trust a handle by type alone.
+
+---
+
+### Date
 2026-07-23 (OMS Task 7C.1 — restore domain/schema/config/authorization foundation)
 
 ### Decision

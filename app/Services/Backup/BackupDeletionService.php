@@ -30,9 +30,22 @@ use Throwable;
  * OMS Task 7B.2 — see BackupCreationOrchestrator::enqueue()), so an
  * ordinary manual backup IS deletable through this service unless one of
  * the explicit rules below applies.
+ *
+ * OMS Task 7C.2: delete() additionally holds BackupSubsystemLock::acquireShared()
+ * for its entire duration — including eligibility() evaluation, not only
+ * the actual delete — then the existing per-backup BackupFileLock, in that
+ * exact order. A restore holding the exclusive subsystem lock always
+ * excludes a delete attempt (surfaced via the existing `locked` rejection
+ * reason — a subsystem-wide lock and a single-backup lock both mean "this
+ * archive cannot be touched right now" from the caller's point of view).
  */
 final class BackupDeletionService
 {
+    public function __construct(
+        private readonly BackupSubsystemLock $subsystemLock = new BackupSubsystemLock(),
+    ) {
+    }
+
     /**
      * @throws BackupDeletionRejectedException
      */
@@ -40,24 +53,34 @@ final class BackupDeletionService
     {
         BackupAuthorization::authorize($actor, 'backups.delete');
 
-        $eligibility = $this->eligibility($operation);
+        $subsystemHandle = $this->subsystemLock->acquireShared();
 
-        if (! $eligibility->allowed) {
-            throw BackupDeletionRejectedException::forReason($eligibility->reasonCode);
-        }
-
-        $lock = Cache::lock(BackupFileLock::name($operation->uuid), (int) config('oms.backup.lock_ttl', 3600));
-
-        if (! $lock->get()) {
+        if ($subsystemHandle === null) {
             throw BackupDeletionRejectedException::locked();
         }
 
-        $priorStatus = $operation->status;
-
         try {
-            return $this->performDelete($operation, $priorStatus);
+            $eligibility = $this->eligibility($operation);
+
+            if (! $eligibility->allowed) {
+                throw BackupDeletionRejectedException::forReason($eligibility->reasonCode);
+            }
+
+            $lock = Cache::lock(BackupFileLock::name($operation->uuid), (int) config('oms.backup.lock_ttl', 3600));
+
+            if (! $lock->get()) {
+                throw BackupDeletionRejectedException::locked();
+            }
+
+            $priorStatus = $operation->status;
+
+            try {
+                return $this->performDelete($operation, $priorStatus);
+            } finally {
+                $lock->release();
+            }
         } finally {
-            $lock->release();
+            $subsystemHandle->release();
         }
     }
 

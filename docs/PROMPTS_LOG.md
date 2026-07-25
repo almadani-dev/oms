@@ -1,6 +1,20 @@
 # Prompts Log
 
 ### Date
+2026-07-23 (OMS Task 7C.2 — independent lock, signed progress protocol, atomic progress storage, restore-activity dual gate)
+
+### Prompt
+**"Implement OMS Task 7C.2 only"** — the independent backup-subsystem filesystem lock, signed restore-progress protocol, atomic progress storage, and restore-activity dual gate, per the final approved architecture from the prior audit/delta-plan turns. A detailed, itemized spec: (A) a `BackupSubsystemLock`/`BackupSubsystemLockHandle`/`LockMode` design with non-blocking shared/exclusive `flock()`, a handle validated (not merely type-checked) before any lock-bypass path is accepted; (B) the exact required lock-acquisition order applied to all five ordinary operations (shared subsystem lock → existing Cache/per-backup lock, no peek-and-release, download holding through the full streamed transmission); (C) a `runWithLockAlreadyHeld()` internal path for the future pre-restore safety backup, sharing one pipeline with `run()`, never duplicated; (D)–(F) the signed progress-file protocol (schema version from config, HMAC-SHA256 keyed off `APP_KEY` with a fixed context string, signature verified before every read, crash-safe atomic temp-file-then-rename writes, one previous snapshot retained); (E) the exact bounded field list and what must never be stored; (G) the dual restore-activity gate (DB row OR signed progress file, tampered files never silently ignored); (H) a detailed test matrix including real filesystem lock contention; (I) an explicit scope-restriction list excluding every later-phase concern (launch, archive extraction, DB/attachment restore, maintenance mode, watchdog, UI). Also carried forward a standing correction for the later launch phase (7C.4 must serialize concurrent launch attempts under a short-lived exclusive lock) and reconfirmed the complete Phase 7C.2 lock order for future services to follow. Read only the targeted 7C.1 files, existing lock/download services and their tests, and the two config files; run only targeted tests; update docs; stop before committing.
+
+### Purpose
+Build the one mechanism every later restore phase depends on for correctness — a mutual-exclusion primitive that survives the exact failure mode (the database being replaced mid-restore) that would defeat the database-backed lock the rest of the backup subsystem already uses, plus a tamper-evident, crash-safe way to record and later read a restore's progress independently of that same database — without yet building anything that could actually launch or perform a restore, so this layer can be fully reviewed and tested in isolation first.
+
+### Result
+Phase 7C.2 implemented exactly as scoped — see `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md` (both 2026-07-23 "Task 7C.2" entries) for the full file list and reasoning. No bugs found this round (unlike 7C.1's `BackupDeletionRejectedException::forReason()` gap) — the existing exception/status vocabulary was reused as-is for the new subsystem-lock-unavailable case in all five operations, confirmed by extending each operation's existing test file rather than needing new exception plumbing. Targeted suite: 347 total, 345 passed, 0 failed, 2 pre-existing skips, 856 assertions (after a final-review round that corrected inaccurate fsync wording — `fsync()` is core PHP since 8.1 and genuinely runs on this 8.3 runtime — documented Linux-atomic vs. Windows-replace-in-place rename behavior explicitly, and added a UUID-only directory filter to `RestoreActivityGuard` so a stray non-UUID directory can never create a false permanent restore block; 3 new focused guard tests). Awaiting review before commit; Phase 7C.3 onward not started.
+
+---
+
+### Date
 2026-07-23 (OMS Task 7C.1 — restore domain/schema/config/authorization foundation)
 
 ### Prompt

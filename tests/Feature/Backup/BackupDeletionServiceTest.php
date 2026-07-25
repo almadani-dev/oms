@@ -9,6 +9,7 @@ use App\Models\BackupOperation;
 use App\Models\User;
 use App\Services\Backup\BackupDeletionService;
 use App\Services\Backup\BackupFileLock;
+use App\Services\Backup\BackupSubsystemLock;
 use App\Services\Backup\Exceptions\BackupDeletionRejectedException;
 use App\Support\Permissions\PermissionRegistry;
 use Illuminate\Support\Facades\Cache;
@@ -493,5 +494,28 @@ class BackupDeletionServiceTest extends BackupTestCase
         } finally {
             $externalLock->release();
         }
+    }
+
+    // ---- OMS Task 7C.2: shared subsystem lock ------------------------------------------------
+
+    public function test_deletion_is_blocked_while_the_exclusive_subsystem_lock_is_held(): void
+    {
+        $admin = $this->superAdmin();
+        $this->makeCompletedOperation(['verified_at' => now(), 'completed_at' => now()]);
+        $operation = $this->makeCompletedOperation(['verified_at' => null]);
+
+        $exclusive = (new BackupSubsystemLock())->acquireExclusive();
+        $this->assertNotNull($exclusive, 'Test setup: expected to acquire the exclusive subsystem lock.');
+
+        try {
+            (new BackupDeletionService())->delete($operation, $admin);
+            $this->fail('Expected BackupDeletionRejectedException.');
+        } catch (BackupDeletionRejectedException $e) {
+            $this->assertSame('locked', $e->reasonCode);
+        } finally {
+            $exclusive->release();
+        }
+
+        $this->assertNull($operation->fresh()->deleted_at);
     }
 }

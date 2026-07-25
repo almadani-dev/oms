@@ -8,6 +8,8 @@ use App\Enums\BackupType;
 use App\Models\BackupOperation;
 use App\Services\Backup\BackupFileLock;
 use App\Services\Backup\BackupRetentionService;
+use App\Services\Backup\BackupSubsystemLock;
+use App\Services\Backup\Exceptions\BackupLockedException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -349,5 +351,27 @@ class BackupRetentionServiceTest extends BackupTestCase
 
         $this->assertSoftDeleted('backup_operations', ['id' => $target->id]);
         $this->assertFalse(Storage::disk('backups')->exists($target->stored_path));
+    }
+
+    // ---- OMS Task 7C.2: shared subsystem lock ------------------------------------------------
+
+    public function test_run_is_blocked_while_the_exclusive_subsystem_lock_is_held(): void
+    {
+        $exclusive = (new BackupSubsystemLock())->acquireExclusive();
+        $this->assertNotNull($exclusive, 'Test setup: expected to acquire the exclusive subsystem lock.');
+
+        $operation = $this->makeOperation(['type' => BackupType::Daily->value]);
+        $this->putPlaceholderFile('backups', $operation->stored_path);
+
+        try {
+            (new BackupRetentionService())->run();
+            $this->fail('Expected BackupLockedException.');
+        } catch (BackupLockedException) {
+            // expected
+        } finally {
+            $exclusive->release();
+        }
+
+        $this->assertNotSoftDeleted('backup_operations', ['id' => $operation->id]);
     }
 }

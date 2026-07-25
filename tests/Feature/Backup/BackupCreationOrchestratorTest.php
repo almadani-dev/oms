@@ -7,10 +7,12 @@ use App\Enums\BackupStatus;
 use App\Enums\BackupType;
 use App\Models\BackupOperation;
 use App\Services\Backup\BackupCreationOrchestrator;
+use App\Services\Backup\BackupSubsystemLock;
 use App\Services\Backup\Contracts\BackupArchiveContentVerifier;
 use App\Services\Backup\Exceptions\BackupIntegrityException;
 use App\Services\Backup\Exceptions\BackupLockedException;
 use App\Services\Backup\Exceptions\BackupOperationException;
+use App\Services\Backup\LockMode;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
@@ -371,5 +373,143 @@ class BackupCreationOrchestratorTest extends BackupTestCase
         $this->assertNull($first->deduplication_key);
         $this->assertNull($second->deduplication_key);
         $this->assertNotSame($first->id, $second->id);
+    }
+
+    // ---- OMS Task 7C.2: shared/exclusive subsystem lock -----------------------------------
+
+    public function test_run_is_blocked_while_the_exclusive_subsystem_lock_is_held(): void
+    {
+        $exclusive = (new BackupSubsystemLock())->acquireExclusive();
+        $this->assertNotNull($exclusive, 'Test setup: expected to acquire the exclusive subsystem lock.');
+
+        $orchestrator = $this->orchestrator();
+        $operation = $orchestrator->enqueue(BackupType::Manual, BackupScope::Database, null, null);
+
+        try {
+            $this->expectException(BackupLockedException::class);
+            $orchestrator->run($operation->id);
+        } finally {
+            $exclusive->release();
+        }
+    }
+
+    public function test_run_still_acquires_the_existing_global_cache_lock_after_the_shared_subsystem_lock(): void
+    {
+        // The subsystem lock is free here — this proves run() still checks
+        // the pre-existing global Cache lock afterward, i.e. the second
+        // step of the required order, not merely the first.
+        $lock = Cache::lock('oms-backup-operation-test', 60);
+        $this->assertTrue($lock->get());
+
+        $orchestrator = $this->orchestrator();
+        $operation = $orchestrator->enqueue(BackupType::Manual, BackupScope::Database, null, null);
+
+        try {
+            $this->expectException(BackupLockedException::class);
+            $orchestrator->run($operation->id);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    public function test_run_with_lock_already_held_succeeds_via_a_live_exclusive_handle(): void
+    {
+        $handle = (new BackupSubsystemLock())->acquireExclusive();
+        $this->assertNotNull($handle);
+
+        $orchestrator = $this->orchestrator();
+        $operation = $orchestrator->enqueue(BackupType::Manual, BackupScope::Database, null, null);
+
+        try {
+            $result = $orchestrator->runWithLockAlreadyHeld($operation->id, $handle);
+
+            $this->assertSame(BackupStatus::Completed, $result->status);
+        } finally {
+            $handle->release();
+        }
+    }
+
+    /**
+     * The whole point of runWithLockAlreadyHeld(): it must never attempt to
+     * acquire the global Cache lock itself. Proven here by holding that
+     * Cache lock externally (as if another operation genuinely held it)
+     * while calling runWithLockAlreadyHeld() with a valid exclusive
+     * handle — success proves no second Cache-lock acquisition was ever
+     * attempted, since one would have failed against this external hold.
+     * Success while ALREADY holding the exclusive filesystem lock is
+     * simultaneously proof no second filesystem lock was attempted either
+     * (a second exclusive-vs-exclusive or shared-vs-exclusive attempt on
+     * the same lock file would itself have failed).
+     */
+    public function test_run_with_lock_already_held_acquires_no_second_filesystem_or_cache_lock(): void
+    {
+        $handle = (new BackupSubsystemLock())->acquireExclusive();
+        $this->assertNotNull($handle);
+
+        $externalCacheLock = Cache::lock('oms-backup-operation-test', 60);
+        $this->assertTrue($externalCacheLock->get());
+
+        $orchestrator = $this->orchestrator();
+        $operation = $orchestrator->enqueue(BackupType::Manual, BackupScope::Database, null, null);
+
+        try {
+            $result = $orchestrator->runWithLockAlreadyHeld($operation->id, $handle);
+
+            $this->assertSame(BackupStatus::Completed, $result->status, 'Must succeed despite the global Cache lock being externally held — proving it was never touched.');
+        } finally {
+            $externalCacheLock->release();
+            $handle->release();
+        }
+    }
+
+    public function test_run_with_lock_already_held_rejects_a_released_handle(): void
+    {
+        $handle = (new BackupSubsystemLock())->acquireExclusive();
+        $this->assertNotNull($handle);
+        $handle->release();
+
+        $orchestrator = $this->orchestrator();
+        $operation = $orchestrator->enqueue(BackupType::Manual, BackupScope::Database, null, null);
+
+        $this->expectException(BackupOperationException::class);
+        $orchestrator->runWithLockAlreadyHeld($operation->id, $handle);
+    }
+
+    public function test_run_with_lock_already_held_rejects_a_shared_mode_handle(): void
+    {
+        $handle = (new BackupSubsystemLock())->acquireShared();
+        $this->assertNotNull($handle);
+
+        $orchestrator = $this->orchestrator();
+        $operation = $orchestrator->enqueue(BackupType::Manual, BackupScope::Database, null, null);
+
+        try {
+            $this->expectException(BackupOperationException::class);
+            $orchestrator->runWithLockAlreadyHeld($operation->id, $handle);
+        } finally {
+            $handle->release();
+        }
+    }
+
+    public function test_run_with_lock_already_held_rejects_a_foreign_lock_handle(): void
+    {
+        // A handle genuinely acquired — but from a completely different
+        // BackupSubsystemLock instance pointed at a different path — must
+        // never authorize the bypass path against the orchestrator's own
+        // (default-resolved) subsystem lock.
+        $foreignPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'oms-foreign-lock-'.bin2hex(random_bytes(8)).DIRECTORY_SEPARATOR.'subsystem.lock';
+        $foreignHandle = (new BackupSubsystemLock($foreignPath))->acquireExclusive();
+        $this->assertNotNull($foreignHandle);
+        $this->assertSame(LockMode::Exclusive, $foreignHandle->mode());
+
+        $orchestrator = $this->orchestrator();
+        $operation = $orchestrator->enqueue(BackupType::Manual, BackupScope::Database, null, null);
+
+        try {
+            $this->expectException(BackupOperationException::class);
+            $orchestrator->runWithLockAlreadyHeld($operation->id, $foreignHandle);
+        } finally {
+            $foreignHandle->release();
+        }
     }
 }

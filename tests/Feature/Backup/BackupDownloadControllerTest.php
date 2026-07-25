@@ -8,6 +8,8 @@ use App\Enums\BackupType;
 use App\Models\BackupOperation;
 use App\Models\User;
 use App\Services\Backup\BackupFileLock;
+use App\Services\Backup\BackupSubsystemLock;
+use App\Services\Backup\LockMode;
 use App\Support\Permissions\PermissionRegistry;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
@@ -271,5 +273,86 @@ class BackupDownloadControllerTest extends BackupTestCase
         $lock = Cache::lock(BackupFileLock::name($operation->uuid), 5);
         $this->assertTrue($lock->get(), 'Lock should be released even when the underlying stream fails.');
         $lock->release();
+    }
+
+    // ---- OMS Task 7C.2: shared subsystem lock ------------------------------------------------
+
+    public function test_download_returns_423_while_the_exclusive_subsystem_lock_is_held(): void
+    {
+        $user = $this->makeSuperAdmin();
+        $operation = $this->makeCompletedOperation();
+
+        $exclusive = (new BackupSubsystemLock())->acquireExclusive();
+        $this->assertNotNull($exclusive, 'Test setup: expected to acquire the exclusive subsystem lock.');
+
+        try {
+            $response = $this->actingAs($user)->get($this->downloadUrl($operation));
+            $response->assertStatus(423);
+        } finally {
+            $exclusive->release();
+        }
+    }
+
+    public function test_download_holds_the_shared_subsystem_lock_until_streaming_finishes(): void
+    {
+        $user = $this->makeSuperAdmin();
+        $operation = $this->makeCompletedOperation();
+
+        $response = $this->actingAs($user)->get($this->downloadUrl($operation));
+        $response->assertOk();
+
+        // Triggers the StreamedResponse's actual content-transmission
+        // callback — both locks are only released inside that callback.
+        $response->streamedContent();
+
+        $exclusive = (new BackupSubsystemLock())->acquireExclusive();
+        $this->assertNotNull($exclusive, 'Exclusive acquisition must succeed once streaming has completed — proving the shared lock was actually released, not merely never held.');
+        $exclusive->release();
+    }
+
+    public function test_download_releases_the_subsystem_lock_after_a_streaming_failure(): void
+    {
+        $user = $this->makeSuperAdmin();
+        $operation = $this->makeCompletedOperation();
+
+        $response = $this->actingAs($user)->get($this->downloadUrl($operation));
+        $response->assertOk();
+
+        Storage::disk('backups')->delete($operation->stored_path);
+
+        $response->streamedContent();
+
+        $exclusive = (new BackupSubsystemLock())->acquireExclusive();
+        $this->assertNotNull($exclusive, 'Shared lock must be released even when the underlying stream fails.');
+        $exclusive->release();
+    }
+
+    public function test_download_acquires_the_shared_subsystem_lock_before_the_per_backup_lock(): void
+    {
+        // Holding the per-backup lock externally must not stop the shared
+        // subsystem lock from being attempted first — the download must
+        // still fail (423) via the per-backup-lock check, exactly as
+        // before Task 7C.2, proving the new outer lock doesn't change the
+        // existing per-backup-lock outcome for ordinary contention.
+        $user = $this->makeSuperAdmin();
+        $operation = $this->makeCompletedOperation();
+
+        $externalLock = Cache::lock(BackupFileLock::name($operation->uuid), 60);
+        $this->assertTrue($externalLock->get());
+
+        try {
+            $response = $this->actingAs($user)->get($this->downloadUrl($operation));
+            $response->assertStatus(423);
+        } finally {
+            $externalLock->release();
+        }
+
+        // The shared subsystem lock must have been released again after
+        // the per-backup-lock rejection (never left held on this failure
+        // path) — an exclusive acquisition must now succeed immediately.
+        $exclusive = (new BackupSubsystemLock())->acquireExclusive();
+        $this->assertNotNull($exclusive, 'Shared lock must not remain held after a per-backup-lock rejection.');
+        $this->assertSame(LockMode::Exclusive, $exclusive->mode());
+        $exclusive->release();
     }
 }

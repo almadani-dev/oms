@@ -17,6 +17,27 @@
 ---
 
 ### Date
+2026-07-23 (OMS Task 7C.2 — independent lock, signed progress protocol, atomic progress storage, restore-activity dual gate)
+
+### Task
+Implement Phase 7C.2 only of the approved OMS Task 7C restore architecture: the independent backup-subsystem filesystem lock (shared/exclusive), the pre-restore-safety-backup internal lock-bypass path, the signed restore-progress protocol with crash-safe atomic writes, and the dual restore-activity gate. Explicitly excluded: restore launch controller/routes, launch nonce claiming, detached process launcher, restore command, archive extraction, database/attachment restore, maintenance mode, watchdog, recovery acknowledgment, and any Filament restore UI.
+
+### Result
+See `docs/AI_PROJECT_MEMORY.md` (2026-07-23 "Task 7C.2" entry) for full design/reasoning. Summary: new `BackupSubsystemLock`/`BackupSubsystemLockHandle`/`LockMode` (real `flock()`, never a database-backed Cache lock); all five ordinary backup-subsystem operations (creation, retention, verification, deletion, download) now hold the shared lock for their full duration before their existing Cache/per-backup locks, in the exact required order; `BackupCreationOrchestrator` gained `runWithLockAlreadyHeld()` (validated live/exclusive/matching-path handle, no second lock acquisition, shared `execute()` pipeline with `run()`) for the future pre-restore safety backup; new `App\Services\Restore\*` signed progress-file protocol (`RestoreProgressSnapshot`/`Signer`/`Writer`/`Reader`) with atomic temp-file-then-rename writes and a bounded, validated schema; new `RestoreActivityGuard` implementing the DB-row-OR-signed-progress-file dual gate.
+
+### Changed Files
+- Created: `app/Services/Backup/{LockMode,BackupSubsystemLockHandle,BackupSubsystemLock}.php`; `app/Services/Restore/{RestoreProgressSnapshot,RestoreProgressSigner,RestoreProgressWriter,RestoreProgressReader,RestoreActivityState,RestoreActivityGuard}.php`; `app/Services/Restore/Exceptions/RestoreProgressIntegrityException.php`; `tests/Unit/Services/Backup/BackupSubsystemLockTest.php`; `tests/Unit/Services/Restore/{RestoreProgressSnapshotTest,RestoreProgressSignerTest}.php`; `tests/Feature/Restore/{RestoreProgressWriterReaderTest,RestoreActivityGuardTest}.php`
+- Modified: `app/Services/Backup/{BackupCreationOrchestrator,BackupRetentionService,BackupIntegrityVerifier,BackupDeletionService}.php`; `app/Http/Controllers/Backups/BackupDownloadController.php`; `tests/Feature/Backup/{BackupTestCase,BackupCreationOrchestratorTest,BackupRetentionServiceTest,BackupIntegrityVerifierTest,BackupDeletionServiceTest,BackupDownloadControllerTest}.php`
+
+### Verification
+Targeted only (no full suite): `tests/Feature/Backup` + `tests/Unit/Services/Backup` + `tests/Unit/Services/Restore` + `tests/Feature/Restore` → **347 total, 345 passed, 0 failed, 2 skipped (pre-existing 7B.1 OS-level symlink tests, unrelated), 856 assertions** (Backup subset 287 unchanged by the final-review corrections; Restore subset 60 re-run after them, 60/60 passed, incl. 3 new UUID-scan tests). `git diff --check` clean. No real backup/restore created, no real database touched beyond the schema-only SQLite test harness. Final-review corrections: `RestoreProgressWriter` fsync wording (`fsync()` is core PHP since 8.1 and is genuinely called on this 8.3 runtime) + explicit Linux-atomic / Windows-replace-in-place documentation; `RestoreActivityGuard` now skips non-UUID directories (a stray non-UUID directory can no longer create a false permanent "tampered" block).
+
+### Commit Hash
+_(not committed — awaiting review)_
+
+---
+
+### Date
 2026-07-23 (OMS Task 7C.1 — restore domain/schema/config/authorization foundation)
 
 ### Task

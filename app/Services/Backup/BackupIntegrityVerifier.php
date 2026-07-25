@@ -25,6 +25,12 @@ use Illuminate\Support\Str;
  * never race a concurrent deletion (and retention, which acquires the
  * same lock before deleting a file, can never race a concurrent
  * verification).
+ *
+ * OMS Task 7C.2: verify() additionally holds BackupSubsystemLock::acquireShared()
+ * for its entire duration — including the up-front validity checks, not
+ * only the locked read — then the existing per-backup BackupFileLock, in
+ * that exact order. A restore holding the exclusive subsystem lock always
+ * excludes a verification attempt.
  */
 final class BackupIntegrityVerifier
 {
@@ -32,6 +38,7 @@ final class BackupIntegrityVerifier
         private readonly BackupKeyRing $keyRing,
         private readonly SecretstreamEnvelope $envelope,
         private readonly BackupArchiveContentVerifier $contentVerifier,
+        private readonly BackupSubsystemLock $subsystemLock = new BackupSubsystemLock(),
     ) {
     }
 
@@ -40,38 +47,48 @@ final class BackupIntegrityVerifier
      */
     public function verify(BackupOperation $operation): void
     {
-        if (! $operation->isCompleted()) {
-            throw new BackupIntegrityException('Only a completed backup can be verified.');
-        }
+        $subsystemHandle = $this->subsystemLock->acquireShared();
 
-        $approvedDisk = (string) config('oms.backup.disk', 'backups');
-
-        if ($operation->disk !== $approvedDisk) {
-            throw new BackupIntegrityException('Backup operation references an unapproved disk.');
-        }
-
-        $storedPath = (string) $operation->stored_path;
-
-        if (! SafeBackupPath::isSafe($storedPath)) {
-            throw new BackupIntegrityException('Backup operation has an unsafe stored path.');
-        }
-
-        $disk = Storage::disk($operation->disk);
-
-        if (! $disk->exists($storedPath)) {
-            throw new BackupIntegrityException('Backup archive file is missing from disk.');
-        }
-
-        $lock = Cache::lock(BackupFileLock::name($operation->uuid), (int) config('oms.backup.lock_ttl', 3600));
-
-        if (! $lock->get()) {
-            throw new BackupIntegrityException('Backup archive is currently in use by another operation.');
+        if ($subsystemHandle === null) {
+            throw new BackupIntegrityException('Backup subsystem is currently locked by an active restore.');
         }
 
         try {
-            $this->verifyLocked($operation, $disk, $storedPath);
+            if (! $operation->isCompleted()) {
+                throw new BackupIntegrityException('Only a completed backup can be verified.');
+            }
+
+            $approvedDisk = (string) config('oms.backup.disk', 'backups');
+
+            if ($operation->disk !== $approvedDisk) {
+                throw new BackupIntegrityException('Backup operation references an unapproved disk.');
+            }
+
+            $storedPath = (string) $operation->stored_path;
+
+            if (! SafeBackupPath::isSafe($storedPath)) {
+                throw new BackupIntegrityException('Backup operation has an unsafe stored path.');
+            }
+
+            $disk = Storage::disk($operation->disk);
+
+            if (! $disk->exists($storedPath)) {
+                throw new BackupIntegrityException('Backup archive file is missing from disk.');
+            }
+
+            $lock = Cache::lock(BackupFileLock::name($operation->uuid), (int) config('oms.backup.lock_ttl', 3600));
+
+            if (! $lock->get()) {
+                throw new BackupIntegrityException('Backup archive is currently in use by another operation.');
+            }
+
+            try {
+                $this->verifyLocked($operation, $disk, $storedPath);
+            } finally {
+                $lock->release();
+            }
         } finally {
-            $lock->release();
+            $subsystemHandle->release();
         }
     }
 

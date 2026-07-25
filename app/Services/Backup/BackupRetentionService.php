@@ -23,27 +23,47 @@ use Illuminate\Support\Facades\Storage;
  * backups disk (only ever via a validated safe relative path), then
  * soft-delete the metadata row — never a hard delete, so retention history
  * stays auditable.
+ *
+ * OMS Task 7C.2: run() first acquires BackupSubsystemLock::acquireShared()
+ * for its entire duration (so a restore holding the exclusive lock always
+ * excludes a retention run), then the existing global Cache lock — in that
+ * exact order. Per-backup file locks used inside execute() are unchanged.
  */
 final class BackupRetentionService
 {
+    public function __construct(
+        private readonly BackupSubsystemLock $subsystemLock = new BackupSubsystemLock(),
+    ) {
+    }
+
     /**
      * @throws BackupLockedException
      */
     public function run(bool $dryRun = false): BackupRetentionReport
     {
-        $lock = Cache::lock(
-            (string) config('oms.backup.lock_name', 'oms-backup-operation'),
-            (int) config('oms.backup.lock_ttl', 3600),
-        );
+        $subsystemHandle = $this->subsystemLock->acquireShared();
 
-        if (! $lock->get()) {
+        if ($subsystemHandle === null) {
             throw BackupLockedException::alreadyRunning();
         }
 
         try {
-            return $this->execute($dryRun);
+            $lock = Cache::lock(
+                (string) config('oms.backup.lock_name', 'oms-backup-operation'),
+                (int) config('oms.backup.lock_ttl', 3600),
+            );
+
+            if (! $lock->get()) {
+                throw BackupLockedException::alreadyRunning();
+            }
+
+            try {
+                return $this->execute($dryRun);
+            } finally {
+                $lock->release();
+            }
         } finally {
-            $lock->release();
+            $subsystemHandle->release();
         }
     }
 

@@ -52,9 +52,12 @@ abstract class BackupTestCase extends TestCase
 
         Storage::fake('backups');
         Storage::fake('attachments');
+        Storage::fake('restores');
 
         config([
             'oms.backup.disk' => 'backups',
+            'oms.backup.restore.disk' => 'restores',
+            'oms.backup.restore.progress_schema_version' => 1,
             'oms.backup.queue' => 'backups',
             'oms.backup.timezone' => 'Asia/Gaza',
             'oms.backup.lock_name' => 'oms-backup-operation-test',

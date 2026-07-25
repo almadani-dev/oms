@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Backups;
 use App\Http\Controllers\Controller;
 use App\Models\BackupOperation;
 use App\Services\Backup\BackupFileLock;
+use App\Services\Backup\BackupSubsystemLock;
 use App\Services\Backup\Support\SafeBackupPath;
 use App\Support\Permissions\PermissionRegistry;
 use Illuminate\Http\Request;
@@ -38,10 +39,19 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * finishes, fails, or the underlying file vanished out from under it.
  * This is what lets BackupRetentionService safely skip a backup that's
  * mid-download instead of racing it.
+ *
+ * OMS Task 7C.2: additionally acquires BackupSubsystemLock::acquireShared()
+ * before the per-backup BackupFileLock (that exact order — shared
+ * subsystem lock, then per-backup lock) and holds it for the identical
+ * full transmission lifetime, released in the same StreamedResponse
+ * callback finally block. A restore holding the exclusive subsystem lock
+ * makes a download attempt return the same 423 a per-backup-lock conflict
+ * already returns — from the client's point of view both mean "this
+ * archive cannot be read right now."
  */
 class BackupDownloadController extends Controller
 {
-    public function show(Request $request, string $backup): StreamedResponse
+    public function show(Request $request, string $backup, BackupSubsystemLock $subsystemLock): StreamedResponse
     {
         $user = $request->user();
 
@@ -64,12 +74,25 @@ class BackupDownloadController extends Controller
         $disk = Storage::disk($operation->disk);
         abort_unless($disk->exists($storedPath), 404);
 
+        $subsystemHandle = $subsystemLock->acquireShared();
+
+        // 423 Locked: a restore currently holds the exclusive subsystem
+        // lock — never silently served and never a generic 404/500.
+        abort_if($subsystemHandle === null, 423);
+
         $lock = Cache::lock(BackupFileLock::name($operation->uuid), (int) config('oms.backup.lock_ttl', 3600));
 
-        // 423 Locked: the archive exists and is authorized, but is
-        // currently being written/deleted (retention) or otherwise held —
-        // never silently served and never a generic 404/500.
-        abort_unless($lock->get(), 423);
+        if (! $lock->get()) {
+            // The subsystem lock was already acquired for this request —
+            // it must be released before aborting, since abort() throws
+            // and skips any code after it in this method.
+            $subsystemHandle->release();
+
+            // 423 Locked: the archive exists and is authorized, but is
+            // currently being written/deleted (retention) or otherwise
+            // held — never silently served and never a generic 404/500.
+            abort(423);
+        }
 
         $filename = $this->safeDownloadFilename($operation);
 
@@ -81,7 +104,7 @@ class BackupDownloadController extends Controller
             'Content-Disposition' => HeaderUtils::makeDisposition(HeaderUtils::DISPOSITION_ATTACHMENT, $filename),
         ];
 
-        return new StreamedResponse(function () use ($lock, $disk, $storedPath): void {
+        return new StreamedResponse(function () use ($subsystemHandle, $lock, $disk, $storedPath): void {
             try {
                 $stream = $disk->readStream($storedPath);
 
@@ -97,6 +120,7 @@ class BackupDownloadController extends Controller
                 }
             } finally {
                 $lock->release();
+                $subsystemHandle->release();
             }
         }, 200, $headers);
     }

@@ -9,6 +9,7 @@ use App\Services\Backup\BackupCreationOrchestrator;
 use App\Services\Backup\BackupFileLock;
 use App\Services\Backup\BackupIntegrityVerifier;
 use App\Services\Backup\BackupKeyRing;
+use App\Services\Backup\BackupSubsystemLock;
 use App\Services\Backup\Exceptions\BackupIntegrityException;
 use App\Services\Backup\SecretstreamEnvelope;
 use Illuminate\Support\Facades\Cache;
@@ -250,6 +251,23 @@ class BackupIntegrityVerifierTest extends BackupTestCase
             $this->verifier()->verify($operation);
         } finally {
             $externalLock->release();
+        }
+    }
+
+    // ---- OMS Task 7C.2: shared subsystem lock ------------------------------------------------
+
+    public function test_verification_is_blocked_while_the_exclusive_subsystem_lock_is_held(): void
+    {
+        $operation = $this->completedOperation();
+
+        $exclusive = (new BackupSubsystemLock())->acquireExclusive();
+        $this->assertNotNull($exclusive, 'Test setup: expected to acquire the exclusive subsystem lock.');
+
+        try {
+            $this->expectException(BackupIntegrityException::class);
+            $this->verifier()->verify($operation);
+        } finally {
+            $exclusive->release();
         }
     }
 }

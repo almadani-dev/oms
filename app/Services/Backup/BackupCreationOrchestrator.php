@@ -31,8 +31,17 @@ use Throwable;
  *
  * `enqueue()` (called by the command, outside the queue) only ever creates
  * the BackupOperation row with status=queued — it does no filesystem or
- * network work. `run()` (called by CreateBackupJob) does all of it, and is
- * the only place that ever touches the global Cache lock.
+ * network work. `run()` (called by CreateBackupJob) does all of it.
+ *
+ * OMS Task 7C.2: `run()` first acquires BackupSubsystemLock::acquireShared()
+ * for its entire duration (so a restore holding the exclusive lock always
+ * excludes it), then the existing global Cache lock — in that exact order,
+ * never the reverse, and never skipped. The actual creation pipeline lives
+ * in the private execute() method so it is never duplicated: `run()` calls
+ * it after acquiring both locks, and runWithLockAlreadyHeld() (used only by
+ * the future restore orchestrator's pre-restore safety backup, Task 7C.6+)
+ * calls it directly after validating an already-held exclusive handle,
+ * acquiring neither lock itself.
  */
 final class BackupCreationOrchestrator
 {
@@ -43,6 +52,7 @@ final class BackupCreationOrchestrator
         private readonly BackupManifestBuilder $manifestBuilder,
         private readonly SecretstreamEnvelope $envelope,
         private readonly BackupArchiveContentVerifier $contentVerifier,
+        private readonly BackupSubsystemLock $subsystemLock,
     ) {
     }
 
@@ -105,10 +115,14 @@ final class BackupCreationOrchestrator
     }
 
     /**
-     * @throws BackupLockedException when another backup/verify/retention
-     *                                operation already holds the lock —
-     *                                the operation row is left untouched
-     *                                (still queued) so a retry can proceed.
+     * @throws BackupLockedException when the subsystem's shared lock can't
+     *                                be acquired (a restore currently holds
+     *                                the exclusive lock) or another
+     *                                backup/verify/retention operation
+     *                                already holds the existing global
+     *                                Cache lock — the operation row is left
+     *                                untouched (still queued) so a retry
+     *                                can proceed.
      * @throws BackupOperationException on any other failure, including a
      *                                    failed pre-publish verification —
      *                                    the operation row is already
@@ -120,17 +134,59 @@ final class BackupCreationOrchestrator
      */
     public function run(int $operationId): BackupOperation
     {
-        $operation = BackupOperation::findOrFail($operationId);
+        $subsystemHandle = $this->subsystemLock->acquireShared();
 
-        $lock = Cache::lock(
-            (string) config('oms.backup.lock_name', 'oms-backup-operation'),
-            (int) config('oms.backup.lock_ttl', 3600),
-        );
-
-        if (! $lock->get()) {
+        if ($subsystemHandle === null) {
             throw BackupLockedException::alreadyRunning();
         }
 
+        try {
+            $lock = Cache::lock(
+                (string) config('oms.backup.lock_name', 'oms-backup-operation'),
+                (int) config('oms.backup.lock_ttl', 3600),
+            );
+
+            if (! $lock->get()) {
+                throw BackupLockedException::alreadyRunning();
+            }
+
+            try {
+                return $this->execute($operationId);
+            } finally {
+                $lock->release();
+            }
+        } finally {
+            $subsystemHandle->release();
+        }
+    }
+
+    /**
+     * Runs the identical creation pipeline as run(), for exactly one
+     * caller: the future restore orchestrator's pre-restore safety backup
+     * (Task 7C.6+), which already holds the subsystem's exclusive lock for
+     * its entire run and must never attempt to acquire a second filesystem
+     * lock or the global Cache lock on top of it (both would be redundant
+     * at best and a nested-lock deadlock at worst against a non-reentrant
+     * Cache lock). $handle is validated — live, Exclusive, and issued for
+     * this exact BackupSubsystemLock's own path — before a single dump/file
+     * operation begins; merely being an instance of BackupSubsystemLockHandle
+     * is never sufficient. Ordinary callers must keep using run().
+     *
+     * @throws BackupOperationException if $handle fails validation, or on
+     *                                    any creation-pipeline failure.
+     */
+    public function runWithLockAlreadyHeld(int $operationId, BackupSubsystemLockHandle $handle): BackupOperation
+    {
+        if (! $this->subsystemLock->validateHandle($handle, LockMode::Exclusive)) {
+            throw new BackupOperationException('Refusing to run the backup pipeline: the supplied lock handle is not a live, exclusive, matching subsystem lock.');
+        }
+
+        return $this->execute($operationId);
+    }
+
+    private function execute(int $operationId): BackupOperation
+    {
+        $operation = BackupOperation::findOrFail($operationId);
         $disk = Storage::disk($operation->disk);
         $workingDir = null;
 
@@ -246,8 +302,6 @@ final class BackupCreationOrchestrator
             ])->save();
 
             throw new BackupOperationException("Backup creation failed: {$summary}", previous: $e);
-        } finally {
-            $lock->release();
         }
     }
 
