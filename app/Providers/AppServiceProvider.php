@@ -23,7 +23,9 @@ use App\Services\Backup\NativeSymlinkDetector;
 use App\Services\Backup\SecretstreamEnvelope;
 use App\Services\Backup\SymfonyProcessRunner;
 use App\Services\Restore\Contracts\FilesystemIdentity;
+use App\Services\Restore\Contracts\RestoreProcessLauncher;
 use App\Services\Restore\NativeFilesystemIdentity;
+use App\Services\Restore\RestoreProcessLauncherFactory;
 use App\Support\Permissions\PermissionRegistry;
 use Filament\Tables\Table;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -73,6 +75,15 @@ class AppServiceProvider extends ServiceProvider
         // implementation directly — tests inject a fake that reports
         // arbitrary paths as the same/different filesystem deterministically.
         $this->app->bind(FilesystemIdentity::class, NativeFilesystemIdentity::class);
+
+        // OMS Task 7C.4: platform selection is a pure PHP_OS_FAMILY check
+        // (see RestoreProcessLauncherFactory) — tests bind a fake
+        // RestoreProcessLauncher directly instead of resolving this
+        // binding, so a real process is never spawned by the test suite.
+        $this->app->bind(
+            RestoreProcessLauncher::class,
+            fn () => $this->app->make(RestoreProcessLauncherFactory::forOsFamily(PHP_OS_FAMILY)),
+        );
     }
 
     /**

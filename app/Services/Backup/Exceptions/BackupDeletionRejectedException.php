@@ -48,6 +48,18 @@ final class BackupDeletionRejectedException extends RuntimeException
         return new self('Cannot delete a backup that is the source of an active restore operation.', 'restore_source_in_use');
     }
 
+    /**
+     * OMS Task 7C.4 correction pass — distinct from restoreSourceInUse():
+     * this fires for ANY backup while ANY restore is claimed/running or has
+     * an active/tampered signed progress file, not only the specific backup
+     * a restore is reading from. Closes the parent-launch-to-child-lock-
+     * acquisition handoff gap (see RestoreActivityGuard::blocksOrdinaryOperations()).
+     */
+    public static function restoreActivityInProgress(): self
+    {
+        return new self('Cannot delete a backup while restore activity is in progress.', 'restore_activity_in_progress');
+    }
+
     public static function locked(): self
     {
         return new self('Backup archive is currently locked by another operation.', 'locked');
@@ -73,6 +85,7 @@ final class BackupDeletionRejectedException extends RuntimeException
             'last_known_good' => self::lastKnownGood(),
             'referenced_pre_restore' => self::referencedPreRestore(),
             'restore_source_in_use' => self::restoreSourceInUse(),
+            'restore_activity_in_progress' => self::restoreActivityInProgress(),
             'locked' => self::locked(),
             default => self::unexpectedFailure(),
         };

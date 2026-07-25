@@ -187,6 +187,28 @@ return [
             // Seconds. Applies to the streamed `mysql` import subprocess
             // only — mirrors 'dump_timeout' above for the reverse direction.
             'mysql_import_timeout' => (int) env('OMS_RESTORE_MYSQL_IMPORT_TIMEOUT', 3600),
+
+            // OMS Task 7C.4 — absolute path to the PHP CLI binary the
+            // detached `oms:restore {uuid}` child is spawned with. Must be
+            // a real CLI-capable php, never a php-fpm/apache SAPI binary —
+            // PHP_BINARY is only a reasonable fallback for local CLI/
+            // testing contexts and must be overridden for a real php-fpm
+            // production deployment.
+            'php_binary' => env('OMS_RESTORE_PHP_BINARY', PHP_BINARY),
+
+            // Linux only: absolute path to `setsid`, required to fully
+            // detach the restore child from the web request's session so
+            // it survives PHP-FPM/the request ending. Launch fails closed
+            // if this binary is missing or not executable — never silently
+            // falls back to an undetached child.
+            'linux_setsid_path' => env('OMS_RESTORE_SETSID_PATH', '/usr/bin/setsid'),
+
+            // How long (seconds) and how often `oms:restore` retries
+            // acquiring the lifetime exclusive BackupSubsystemLock before
+            // giving up — the parent launch request may still hold the
+            // same lock briefly while writing the initial progress file.
+            'launch_lock_retry_timeout_seconds' => (int) env('OMS_RESTORE_LAUNCH_LOCK_RETRY_TIMEOUT', 30),
+            'launch_lock_retry_interval_ms' => (int) env('OMS_RESTORE_LAUNCH_LOCK_RETRY_INTERVAL_MS', 200),
         ],
     ],
 

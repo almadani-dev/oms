@@ -8,6 +8,7 @@ use App\Models\BackupOperation;
 use App\Models\User;
 use App\Services\Backup\Exceptions\BackupDeletionRejectedException;
 use App\Services\Backup\Support\SafeBackupPath;
+use App\Services\Restore\RestoreActivityGuard;
 use App\Support\Backup\BackupAuthorization;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
@@ -38,11 +39,23 @@ use Throwable;
  * excludes a delete attempt (surfaced via the existing `locked` rejection
  * reason — a subsystem-wide lock and a single-backup lock both mean "this
  * archive cannot be touched right now" from the caller's point of view).
+ *
+ * OMS Task 7C.4 correction pass: eligibility() (still evaluated entirely
+ * while delete() holds the shared subsystem lock — see below) now also
+ * checks RestoreActivityGuard::blocksOrdinaryOperations() as one of its own
+ * rules (`restore_activity_in_progress`), rather than delete() checking it
+ * separately — keeping eligibility()/delete() unable to disagree, exactly
+ * like every other rule this class enforces. This closes the parent-
+ * launch-to-child-lock-acquisition handoff gap: between the moment a
+ * restore is claimed and the moment its detached `oms:restore` child
+ * acquires its own lifetime exclusive lock (or, after a crash, forever
+ * until explicit recovery), no ordinary delete may proceed.
  */
 final class BackupDeletionService
 {
     public function __construct(
         private readonly BackupSubsystemLock $subsystemLock = new BackupSubsystemLock(),
+        private readonly RestoreActivityGuard $restoreActivityGuard = new RestoreActivityGuard(),
     ) {
     }
 
@@ -139,6 +152,10 @@ final class BackupDeletionService
             return BackupDeletionEligibility::blocked('active_status');
         }
 
+        if ($this->restoreActivityBlocks()) {
+            return BackupDeletionEligibility::blocked('restore_activity_in_progress');
+        }
+
         if ($operation->is_protected) {
             return BackupDeletionEligibility::blocked('protected');
         }
@@ -160,6 +177,21 @@ final class BackupDeletionService
         }
 
         return BackupDeletionEligibility::allowed();
+    }
+
+    /**
+     * Memoized per service instance via once() — same reasoning as
+     * lastKnownGoodId(): the management page resolves one shared
+     * BackupDeletionService and calls eligibility() once per visible row,
+     * so this must not issue a fresh restore-activity scan (a DB query plus
+     * a directory listing) per row. Safe: `once()` is scoped to this PHP
+     * request/process only, and a genuine delete() action arrives as its
+     * own separate Livewire request with its own fresh instance/cache —
+     * never a stale answer carried across two different user actions.
+     */
+    private function restoreActivityBlocks(): bool
+    {
+        return once(fn (): bool => $this->restoreActivityGuard->blocksOrdinaryOperations());
     }
 
     private function isLastKnownGood(BackupOperation $operation): bool

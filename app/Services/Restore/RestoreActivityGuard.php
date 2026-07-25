@@ -62,6 +62,45 @@ final class RestoreActivityGuard
         return RestoreActivityState::Inactive;
     }
 
+    /**
+     * OMS Task 7C.4 correction pass — the gate ordinary backup-subsystem
+     * operations (create/retention/verify/delete/download) must consult
+     * while still holding BackupSubsystemLock::acquireShared(), closing the
+     * parent-launch-to-child-lock-acquisition handoff gap: between the
+     * moment RestoreLaunchService claims a row and writes its initial
+     * progress file, and the moment the detached `oms:restore` child
+     * obtains its own lifetime exclusive lock, no ordinary shared-lock
+     * operation may start.
+     *
+     * Deliberately NOT the same test as isActive()/blocksNewRestore():
+     * a merely `Queued` restore row (no progress file yet — nothing has
+     * been launched) must never block an ordinary operation, so only a
+     * genuinely claimed/running restore (`status = Restoring`) counts here,
+     * not every status BackupStatus::isActive() would otherwise include.
+     * The progress-file half is unchanged from isActive()'s own scan: a
+     * valid non-terminal file blocks, and a malformed/unsigned/tampered one
+     * blocks for manual review (TamperedOrInvalid) exactly the same way —
+     * "fail closed when restore activity cannot be safely determined."
+     */
+    public function blocksOrdinaryOperations(): bool
+    {
+        $progressState = $this->scanForNonTerminalProgress(null);
+
+        if ($progressState === RestoreActivityState::TamperedOrInvalid) {
+            return true;
+        }
+
+        return $progressState === RestoreActivityState::Active || $this->hasClaimedDbRow();
+    }
+
+    private function hasClaimedDbRow(): bool
+    {
+        return BackupOperation::query()
+            ->where('type', BackupType::Restore->value)
+            ->where('status', BackupStatus::Restoring->value)
+            ->exists();
+    }
+
     private function hasActiveDbRow(?string $excludeRestoreUuid): bool
     {
         $activeStatusValues = array_map(

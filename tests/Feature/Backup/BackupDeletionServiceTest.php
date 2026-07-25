@@ -212,6 +212,17 @@ class BackupDeletionServiceTest extends BackupTestCase
      * pre-existing `active_status` rule test for the same reason: the
      * active-status set is a single source of truth (BackupStatus::isActive())
      * and both rules must honor it identically.
+     *
+     * OMS Task 7C.4 correction pass: `Restoring` specifically is now
+     * intercepted earlier by the new, broader
+     * RestoreActivityGuard::blocksOrdinaryOperations() rule
+     * (`restore_activity_in_progress`) before `restore_source_in_use` is
+     * ever reached — that gate blocks deleting ANY backup while ANY
+     * restore is claimed/running, not only the one backup a restore
+     * happens to be reading from. The other active statuses
+     * (queued/running/verifying/deleting) are untouched by that gate (it
+     * only ever matches `Restoring`) and still surface the original,
+     * more specific `restore_source_in_use` reason.
      */
     #[DataProvider('activeStatusProvider')]
     public function test_a_backup_that_is_the_source_of_a_non_terminal_restore_cannot_be_deleted(BackupStatus $restoreStatus): void
@@ -229,11 +240,15 @@ class BackupDeletionServiceTest extends BackupTestCase
             'source_backup_id' => $source->id,
         ]);
 
+        $expectedReasonCode = $restoreStatus === BackupStatus::Restoring
+            ? 'restore_activity_in_progress'
+            : 'restore_source_in_use';
+
         try {
             (new BackupDeletionService())->delete($source, $admin);
             $this->fail('Expected BackupDeletionRejectedException.');
         } catch (BackupDeletionRejectedException $e) {
-            $this->assertSame('restore_source_in_use', $e->reasonCode);
+            $this->assertSame($expectedReasonCode, $e->reasonCode);
         }
 
         $this->assertNull($source->fresh()->deleted_at);
@@ -290,9 +305,14 @@ class BackupDeletionServiceTest extends BackupTestCase
             'source_backup_id' => $source->id,
         ]);
 
+        // OMS Task 7C.4 correction pass: a `Restoring` restore row now
+        // trips the broader RestoreActivityGuard::blocksOrdinaryOperations()
+        // rule before restore_source_in_use is ever reached — see the
+        // sibling test above. The point of THIS test — that eligibility()
+        // and delete() can never disagree — still holds exactly as before.
         $eligibility = (new BackupDeletionService())->eligibility($source);
         $this->assertFalse($eligibility->allowed);
-        $this->assertSame('restore_source_in_use', $eligibility->reasonCode);
+        $this->assertSame('restore_activity_in_progress', $eligibility->reasonCode);
 
         try {
             (new BackupDeletionService())->delete($source, $admin);

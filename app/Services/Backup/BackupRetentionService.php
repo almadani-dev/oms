@@ -7,6 +7,7 @@ use App\Enums\BackupType;
 use App\Models\BackupOperation;
 use App\Services\Backup\Exceptions\BackupLockedException;
 use App\Services\Backup\Support\SafeBackupPath;
+use App\Services\Restore\RestoreActivityGuard;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 
@@ -28,11 +29,19 @@ use Illuminate\Support\Facades\Storage;
  * for its entire duration (so a restore holding the exclusive lock always
  * excludes a retention run), then the existing global Cache lock — in that
  * exact order. Per-backup file locks used inside execute() are unchanged.
+ *
+ * OMS Task 7C.4 correction pass: immediately after acquiring the shared
+ * lock, RestoreActivityGuard::blocksOrdinaryOperations() is checked (still
+ * holding the shared lock) — closes the parent-launch-to-child-lock-
+ * acquisition handoff gap, where the flock() itself has already been
+ * released but the detached restore child has not yet acquired its own
+ * lifetime exclusive lock.
  */
 final class BackupRetentionService
 {
     public function __construct(
         private readonly BackupSubsystemLock $subsystemLock = new BackupSubsystemLock(),
+        private readonly RestoreActivityGuard $restoreActivityGuard = new RestoreActivityGuard(),
     ) {
     }
 
@@ -44,6 +53,12 @@ final class BackupRetentionService
         $subsystemHandle = $this->subsystemLock->acquireShared();
 
         if ($subsystemHandle === null) {
+            throw BackupLockedException::alreadyRunning();
+        }
+
+        if ($this->restoreActivityGuard->blocksOrdinaryOperations()) {
+            $subsystemHandle->release();
+
             throw BackupLockedException::alreadyRunning();
         }
 

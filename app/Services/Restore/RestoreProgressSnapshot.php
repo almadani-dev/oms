@@ -34,8 +34,19 @@ final class RestoreProgressSnapshot
      * itself is not implemented until Task 7C.6+ — this list exists now so
      * the progress-file schema is already fixed and cannot silently drift
      * once that phase is built.
+     *
+     * OMS Task 7C.4 correction pass: `launching` was added ahead of
+     * `lock_acquired` — RestoreLaunchService (the parent web request) writes
+     * the INITIAL progress file the moment it claims the row, which is
+     * strictly before the detached `oms:restore` child has acquired its own
+     * lifetime exclusive BackupSubsystemLock (it only retries for that
+     * after being spawned). Reporting `lock_acquired` during that gap would
+     * be inaccurate — nothing has acquired the lifetime lock yet. Only the
+     * command itself, after truly acquiring that lock, ever writes
+     * `lock_acquired`.
      */
     public const ALLOWED_PHASES = [
+        'launching',
         'lock_acquired',
         'validating',
         'preflight',

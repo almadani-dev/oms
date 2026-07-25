@@ -7,6 +7,7 @@ use App\Models\BackupOperation;
 use App\Services\Backup\BackupFileLock;
 use App\Services\Backup\BackupSubsystemLock;
 use App\Services\Backup\Support\SafeBackupPath;
+use App\Services\Restore\RestoreActivityGuard;
 use App\Support\Permissions\PermissionRegistry;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -48,10 +49,18 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * makes a download attempt return the same 423 a per-backup-lock conflict
  * already returns — from the client's point of view both mean "this
  * archive cannot be read right now."
+ *
+ * OMS Task 7C.4 correction pass: immediately after acquiring the shared
+ * lock, RestoreActivityGuard::blocksOrdinaryOperations() is checked (still
+ * holding the shared lock) — closes the parent-launch-to-child-lock-
+ * acquisition handoff gap, where the flock() itself has already been
+ * released but the detached restore child has not yet acquired its own
+ * lifetime exclusive lock. Also returns 423, same as every other lock
+ * conflict this controller already reports.
  */
 class BackupDownloadController extends Controller
 {
-    public function show(Request $request, string $backup, BackupSubsystemLock $subsystemLock): StreamedResponse
+    public function show(Request $request, string $backup, BackupSubsystemLock $subsystemLock, RestoreActivityGuard $restoreActivityGuard): StreamedResponse
     {
         $user = $request->user();
 
@@ -79,6 +88,16 @@ class BackupDownloadController extends Controller
         // 423 Locked: a restore currently holds the exclusive subsystem
         // lock — never silently served and never a generic 404/500.
         abort_if($subsystemHandle === null, 423);
+
+        // 423 Locked: closes the parent-launch-to-child-lock-acquisition
+        // handoff gap — a restore has been claimed and has a valid/tampered
+        // progress file, but the detached child has not yet (or will
+        // never) acquire its own lifetime exclusive lock.
+        if ($restoreActivityGuard->blocksOrdinaryOperations()) {
+            $subsystemHandle->release();
+
+            abort(423);
+        }
 
         $lock = Cache::lock(BackupFileLock::name($operation->uuid), (int) config('oms.backup.lock_ttl', 3600));
 

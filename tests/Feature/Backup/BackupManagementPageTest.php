@@ -801,11 +801,21 @@ class BackupManagementPageTest extends BackupTestCase
         $this->assertFalse(class_exists(\App\Jobs\RestoreBackupJob::class));
     }
 
-    public function test_no_restore_route_exists(): void
+    /**
+     * OMS Task 7C.4 added exactly one restore-related route — the signed,
+     * authenticated launch endpoint (see RestoreLaunchControllerTest for its
+     * own authorization/signature coverage) — and nothing else. This guard
+     * now proves that no OTHER restore surface (a request-creation route, a
+     * UI-linked action route, etc.) has been added alongside it.
+     */
+    public function test_only_the_signed_restore_launch_route_exists(): void
     {
-        $routes = collect(app('router')->getRoutes())->map(fn ($r) => $r->uri());
+        $restoreRoutes = collect(app('router')->getRoutes())
+            ->filter(fn ($r) => str_contains($r->uri(), 'restore'))
+            ->map(fn ($r) => $r->uri())
+            ->values();
 
-        $this->assertFalse($routes->contains(fn (string $uri): bool => str_contains($uri, 'restore')));
+        $this->assertSame(['restores/{uuid}/launch'], $restoreRoutes->all());
     }
 
     public function test_no_direct_backup_operation_edit_or_create_resource_exists(): void

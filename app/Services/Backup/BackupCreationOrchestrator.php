@@ -9,6 +9,7 @@ use App\Models\BackupOperation;
 use App\Services\Backup\Contracts\BackupArchiveContentVerifier;
 use App\Services\Backup\Exceptions\BackupLockedException;
 use App\Services\Backup\Exceptions\BackupOperationException;
+use App\Services\Restore\RestoreActivityGuard;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Filesystem\FilesystemAdapter;
@@ -36,7 +37,14 @@ use Throwable;
  * OMS Task 7C.2: `run()` first acquires BackupSubsystemLock::acquireShared()
  * for its entire duration (so a restore holding the exclusive lock always
  * excludes it), then the existing global Cache lock — in that exact order,
- * never the reverse, and never skipped. The actual creation pipeline lives
+ * never the reverse, and never skipped. OMS Task 7C.4 correction pass:
+ * immediately after acquiring the shared lock (while still holding it),
+ * RestoreActivityGuard::blocksOrdinaryOperations() is checked — this closes
+ * the parent-launch-to-child-lock-acquisition handoff gap, where the OS
+ * flock() has already been released by the parent but the detached restore
+ * child has not yet acquired its own lifetime exclusive lock.
+ *
+ * The actual creation pipeline lives
  * in the private execute() method so it is never duplicated: `run()` calls
  * it after acquiring both locks, and runWithLockAlreadyHeld() (used only by
  * the future restore orchestrator's pre-restore safety backup, Task 7C.6+)
@@ -53,6 +61,7 @@ final class BackupCreationOrchestrator
         private readonly SecretstreamEnvelope $envelope,
         private readonly BackupArchiveContentVerifier $contentVerifier,
         private readonly BackupSubsystemLock $subsystemLock,
+        private readonly RestoreActivityGuard $restoreActivityGuard = new RestoreActivityGuard(),
     ) {
     }
 
@@ -137,6 +146,12 @@ final class BackupCreationOrchestrator
         $subsystemHandle = $this->subsystemLock->acquireShared();
 
         if ($subsystemHandle === null) {
+            throw BackupLockedException::alreadyRunning();
+        }
+
+        if ($this->restoreActivityGuard->blocksOrdinaryOperations()) {
+            $subsystemHandle->release();
+
             throw BackupLockedException::alreadyRunning();
         }
 

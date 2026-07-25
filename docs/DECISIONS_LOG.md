@@ -13,6 +13,90 @@
 ---
 
 ### Date
+2026-07-25 (OMS Task 7C.4 — replay-safe restore launch, global serialization, detached process launcher, `oms:restore` command shell)
+
+### Decision
+`LinuxDetachedRestoreProcessLauncher` spawns the child as a plain argv array passed directly to `proc_open()` (via Symfony `Process`) — never a shell string — with `setsid --fork` as the first two argv elements, rather than building any shell-escaped command line.
+
+### Reason
+Directly inspecting the installed `symfony/process` 7.4.13 source (`Process::start()`) showed that on this PHP/OS combination (no `--enable-sigchild` fallback path), an array command is handed to `proc_open()` completely unmodified — no `/bin/sh -c` wrapper, no `exec` prefix, no string interpolation anywhere — so there is no shell-injection surface to defend against in the first place, and no escaping is needed even for the one genuinely variable argument (the restore UUID, itself regex-validated before the array is even built). The task's fallback allowance ("a small validated shell wrapper is unavoidable... only the validated UUID may be variable") assumed a shell would be required for output redirection and backgrounding; that turned out to be unnecessary once `disableOutput()`'s `/dev/null`-file-descriptor behavior (confirmed in `UnixPipes::getDescriptors()`) was accounted for, and `setsid --fork` fully replaces the "background with `&`" idiom by forking and exiting on its own.
+
+### Impact
+There is no shell command string anywhere in the Linux (or Windows) launcher to audit for escaping bugs — the entire injection-surface question is moot by construction. If a future phase ever needs additional argv elements, they must stay in the array form; introducing a shell string later would reintroduce exactly the injection surface this design avoided, and should not be done without re-deriving this same Process-source analysis.
+
+---
+
+### Date
+2026-07-25 (OMS Task 7C.4 — replay-safe restore launch, global serialization, detached process launcher, `oms:restore` command shell)
+
+### Decision
+The restore-activity re-check inside `RestoreLaunchService::launch()`'s critical section maps `RestoreActivityState::TamperedOrInvalid` to the same HTTP 409 conflict bucket as `RestoreActivityState::Active` (reason code `restore_state_requires_review` vs. `restore_already_active`), rather than inventing a distinct HTTP status for it.
+
+### Reason
+The task's explicit response table only names four buckets (202/409/423/403-401/500); a tampered progress file is not a "locked by another subsystem operation" case (that's specifically `BackupSubsystemLock::acquireExclusive()` returning `null`) and not a launcher/progress-write failure (nothing was attempted yet) — it is, from the caller's point of view, simply "this restore cannot be launched right now," which is exactly what 409 already communicates for the replay/already-claimed cases. Distinguishing the *reason* (`restore_state_requires_review`) in the JSON body, without inventing a new status code, keeps the four-bucket contract intact while still surfacing enough information for a future recovery-flow UI to tell the two cases apart.
+
+### Impact
+A future Super-Admin recovery/acknowledgment phase should read the JSON `reason` field (not the HTTP status alone) to distinguish "another restore is genuinely active" from "a stale/tampered progress file needs manual review" — both currently surface as 409 to any caller that only checks the status code.
+
+---
+
+### Date
+2026-07-25 (OMS Task 7C.4 — replay-safe restore launch, global serialization, detached process launcher, `oms:restore` command shell)
+
+### Decision
+`config('oms.backup.restore.php_binary')` defaults to `PHP_BINARY` rather than being left empty/required like `oms.backup.mysql_client_path`.
+
+### Reason
+`PHP_BINARY` is a correct, sane default in the two contexts this repository's own tests and local `php artisan serve` development actually run in (a real CLI `php`/`php.exe`), which keeps the launcher usable out of the box without extra `.env` setup for local/testing use. It is explicitly documented in both the config comment and the Linux launcher's docblock that this is wrong for a real php-fpm production deployment (`PHP_BINARY` there resolves to the `php-fpm` master binary, not a CLI-invocable one) and **must** be overridden via `OMS_RESTORE_PHP_BINARY` before Task 7C ever goes live on the real Hostinger VPS.
+
+### Impact
+Deploying this launcher to the real production VPS without setting `OMS_RESTORE_PHP_BINARY` to a real CLI `php` binary path will cause every restore launch to fail closed at `php_binary_missing` (since a `php-fpm` binary is not `is_executable()`-appropriate for this purpose in general, and even if it were, would not run `artisan` as an ordinary CLI script) — this is a required production deployment step, not merely a nice-to-have.
+
+---
+
+### Date
+2026-07-25 (OMS Task 7C.4 correction pass — POST instead of GET for the launch route)
+
+### Decision
+The signed restore-launch route was changed from `GET /restores/{uuid}/launch` to `POST /restores/{uuid}/launch`, with no GET route registered at that path at all.
+
+### Reason
+The endpoint mutates state (claims a queued row) and spawns an OS process — a signed GET is still a plain idempotent-looking URL from the browser's/any intermediary's point of view, so it can be triggered by prefetching (`<link rel="prefetch">`, browser speculative navigation), automated link scanners/crawlers following every href, or a user simply pasting/opening the URL out of curiosity. POST keeps the request out of every one of those categories by convention, and additionally keeps the normal `web` middleware group's CSRF verification active as a second, independent layer on top of the signed-URL check (verified directly against `PreventRequestForgery::handle()`: CSRF is skipped only for reading verbs GET/HEAD/OPTIONS or while genuinely `runningUnitTests()` — never for an ordinary POST outside tests).
+
+### Impact
+Any future phase that generates this signed URL (the request/confirmation UI, Task 7C.5+) must generate it for a POST request (e.g. a form submission or an explicit `fetch()`/`axios` POST), never a plain link/anchor tag — an `<a href>` would only ever produce a GET, which now 405s and can never launch anything.
+
+---
+
+### Date
+2026-07-25 (OMS Task 7C.4 correction pass — restore-execution activity gate folded into `BackupDeletionService::eligibility()`, not a separate check in `delete()`)
+
+### Decision
+The new `RestoreActivityGuard::blocksOrdinaryOperations()` check for `BackupDeletionService` is implemented as one more rule inside `eligibility()` (`restore_activity_in_progress`, memoized via `once()`) rather than as a standalone check in `delete()` before `eligibility()` is called.
+
+### Reason
+An initial implementation added the check directly in `delete()`, immediately after acquiring the shared subsystem lock and before calling `eligibility()`. This broke two pre-existing tests (`BackupDeletionServiceTest::test_a_backup_that_is_the_source_of_a_non_terminal_restore_cannot_be_deleted` and `test_eligibility_and_delete_agree_a_restore_source_backup_is_blocked`) in a way that revealed a real design problem, not just a stale assertion: `eligibility()` (used for the management page's "إمكانية الحذف" badge) and `delete()` would have disagreed about *why* a restore-source backup is blocked — `eligibility()` would still say `restore_source_in_use` while `delete()` now said `locked` for the exact same row, violating this class's own established "the badge and the actual delete rejection can never disagree" guarantee (see the 2026-07-23 deletion-eligibility decision entry). Folding the check into `eligibility()` itself restores that guarantee: both callers now derive the same answer from the same rule evaluation, exactly like every other rule this class enforces (`active_status`, `protected`, `last_known_good`, etc.).
+
+### Impact
+A `Restoring`-status restore row now blocks deleting its OWN source backup via the new, broader `restore_activity_in_progress` reason rather than the older, narrower `restore_source_in_use` reason — a genuine, intentional broadening (any backup delete is blocked while any restore is claimed/running or has an active/tampered progress file, not only the specific backup that restore happens to be reading from). The two pre-existing tests were updated to expect this new, more accurate reason code for the `Restoring` case specifically; the other active statuses (queued/running/verifying/deleting), which the new gate does not match, still correctly surface `restore_source_in_use`. The restore-activity check is memoized per `BackupDeletionService` instance via `once()` (mirroring `lastKnownGoodId()`'s existing pattern) — required because the management page resolves one shared instance and calls `eligibility()` once per visible row; without memoization this reintroduced an N+1 (caught by the pre-existing `test_creator_relationship_is_eager_loaded_without_n_plus_one` bounded-query-count test).
+
+---
+
+### Date
+2026-07-25 (OMS Task 7C.4 correction pass — `launching` vs `lock_acquired` progress phases)
+
+### Decision
+Added a new phase, `launching`, to `RestoreProgressSnapshot::ALLOWED_PHASES`, positioned immediately before `lock_acquired`. `RestoreLaunchService` (the parent web request) now writes `phase=launching` as the initial progress state; `phase=lock_acquired` is written ONLY by the `oms:restore` command itself, and only after it has genuinely acquired its own lifetime exclusive `BackupSubsystemLock`.
+
+### Reason
+The original implementation had `RestoreLaunchService` write `phase=lock_acquired` as the very first progress state, immediately after claiming the row — but at that exact moment nothing has acquired the lifetime lock yet: the parent only ever holds the short-lived *launch* lock (released once the child is spawned), and the detached child has not even started retrying for its own lock. Reporting `lock_acquired` during that gap would be actively misleading to any future consumer of the progress file (a status UI, a watchdog, a human debugging a stuck restore) — it is not merely a naming nitpick.
+
+### Impact
+Any future phase reading `phase` from a progress file to decide "has the lifetime lock genuinely been acquired" can now trust `lock_acquired` literally — it is only ever true once the `oms:restore` process itself holds that lock. A restore observed at `phase=launching` for longer than expected is diagnostically distinct from one observed at `phase=lock_acquired` for longer than expected (the former suggests the child never started or is still retrying the lock; the latter suggests it's stuck immediately after acquiring it, before even reaching the not-yet-implemented execution engine).
+
+---
+
+### Date
 2026-07-25 (OMS Task 7C.3 — restore preflight, decryption/verification, safe extraction, private staging)
 
 ### Decision

@@ -6,6 +6,7 @@ use App\Models\BackupOperation;
 use App\Services\Backup\Contracts\BackupArchiveContentVerifier;
 use App\Services\Backup\Exceptions\BackupIntegrityException;
 use App\Services\Backup\Support\SafeBackupPath;
+use App\Services\Restore\RestoreActivityGuard;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
@@ -31,6 +32,13 @@ use Illuminate\Support\Str;
  * only the locked read — then the existing per-backup BackupFileLock, in
  * that exact order. A restore holding the exclusive subsystem lock always
  * excludes a verification attempt.
+ *
+ * OMS Task 7C.4 correction pass: immediately after acquiring the shared
+ * lock, RestoreActivityGuard::blocksOrdinaryOperations() is checked (still
+ * holding the shared lock) — closes the parent-launch-to-child-lock-
+ * acquisition handoff gap, where the flock() itself has already been
+ * released but the detached restore child has not yet acquired its own
+ * lifetime exclusive lock.
  */
 final class BackupIntegrityVerifier
 {
@@ -39,6 +47,7 @@ final class BackupIntegrityVerifier
         private readonly SecretstreamEnvelope $envelope,
         private readonly BackupArchiveContentVerifier $contentVerifier,
         private readonly BackupSubsystemLock $subsystemLock = new BackupSubsystemLock(),
+        private readonly RestoreActivityGuard $restoreActivityGuard = new RestoreActivityGuard(),
     ) {
     }
 
@@ -51,6 +60,12 @@ final class BackupIntegrityVerifier
 
         if ($subsystemHandle === null) {
             throw new BackupIntegrityException('Backup subsystem is currently locked by an active restore.');
+        }
+
+        if ($this->restoreActivityGuard->blocksOrdinaryOperations()) {
+            $subsystemHandle->release();
+
+            throw new BackupIntegrityException('Backup subsystem is currently blocked by restore activity.');
         }
 
         try {
