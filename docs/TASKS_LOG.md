@@ -33,7 +33,28 @@ See `docs/AI_PROJECT_MEMORY.md` (2026-07-23 "Task 7C.2" entry) for full design/r
 Targeted only (no full suite): `tests/Feature/Backup` + `tests/Unit/Services/Backup` + `tests/Unit/Services/Restore` + `tests/Feature/Restore` → **347 total, 345 passed, 0 failed, 2 skipped (pre-existing 7B.1 OS-level symlink tests, unrelated), 856 assertions** (Backup subset 287 unchanged by the final-review corrections; Restore subset 60 re-run after them, 60/60 passed, incl. 3 new UUID-scan tests). `git diff --check` clean. No real backup/restore created, no real database touched beyond the schema-only SQLite test harness. Final-review corrections: `RestoreProgressWriter` fsync wording (`fsync()` is core PHP since 8.1 and is genuinely called on this 8.3 runtime) + explicit Linux-atomic / Windows-replace-in-place documentation; `RestoreActivityGuard` now skips non-UUID directories (a stray non-UUID directory can no longer create a false permanent "tampered" block).
 
 ### Commit Hash
-_(not committed — awaiting review)_
+`a7ea0a3` implement restore locking and progress protocol (+ `1ce0e47` refresh graphify after restore locking and progress protocol)
+
+---
+
+### Date
+2026-07-23 (OMS Task 7C.2 durability hardening — restore progress fsync gate + parent-directory sync)
+
+### Task
+One focused hardening correction to `RestoreProgressWriter` before starting 7C.3: do not replace the current valid `progress.json` unless the new temp file has been durably synchronized as far as the production platform supports; add best-effort parent-directory sync after a successful rename so the rename survives an OS crash on Linux.
+
+### Result
+`RestoreProgressWriter` now enforces a durability gate before the rename — `fwrite` fully succeeds, `fflush` succeeds, and (where `fsync` exists) the temp-file `fsync` succeeds — otherwise it throws a sanitized `RestoreProgressWriteException`, preserves the current valid file untouched, and cleans up the temp file. After a successful rename it `fsync`es the containing directory (best-effort; unsupported on Windows). File sync and directory sync go through a new injectable `App\Services\Restore\Contracts\RestoreProgressDurability` seam (production `NativeRestoreProgressDurability`, test `FakeRestoreProgressDurability`). `progress.previous.json` remains a best-effort recovery copy that can never abort the write or be treated as authoritative. No lock behavior, progress schema, activity guard, or other 7C.2 functionality changed.
+
+### Changed Files
+- Created: `app/Services/Restore/Contracts/RestoreProgressDurability.php`; `app/Services/Restore/NativeRestoreProgressDurability.php`; `app/Services/Restore/Exceptions/RestoreProgressWriteException.php`; `tests/Support/Restore/FakeRestoreProgressDurability.php`
+- Modified: `app/Services/Restore/RestoreProgressWriter.php`; `tests/Feature/Restore/RestoreProgressWriterReaderTest.php`
+
+### Verification
+Directly-affected restore tests only: `tests/Feature/Restore/RestoreProgressWriterReaderTest` → 21/21 passed; full restore subset `tests/Feature/Restore` + `tests/Unit/Services/Restore` → **66 total, 66 passed, 0 failed, 94 assertions** (60 prior + 6 new durability tests: sync-failure prevents rename & preserves current file, temp cleanup after durability failure, dir-sync never called on temp-sync failure, dir-sync runs only after a successful rename, dir-sync failure doesn't corrupt the published file, native path publishes end-to-end). `php -l` clean; `git diff --check` clean. No real backup/restore/database touched.
+
+### Commit Hash
+_(not committed at time of writing — see "harden restore progress durability")_
 
 ---
 

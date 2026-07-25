@@ -3,12 +3,14 @@
 namespace Tests\Feature\Restore;
 
 use App\Services\Restore\Exceptions\RestoreProgressIntegrityException;
+use App\Services\Restore\Exceptions\RestoreProgressWriteException;
 use App\Services\Restore\RestoreProgressReader;
 use App\Services\Restore\RestoreProgressSigner;
 use App\Services\Restore\RestoreProgressSnapshot;
 use App\Services\Restore\RestoreProgressWriter;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
+use Tests\Support\Restore\FakeRestoreProgressDurability;
 use Tests\TestCase;
 
 /**
@@ -296,5 +298,119 @@ class RestoreProgressWriterReaderTest extends TestCase
 
         $this->assertSame($jsonA, $jsonB);
         $this->assertSame(RestoreProgressSigner::sign($jsonA), RestoreProgressSigner::sign($jsonB));
+    }
+
+    // ---- durability hardening: fsync gate + parent-directory sync ---------------------------
+
+    public function test_a_temp_file_sync_failure_prevents_the_rename_and_preserves_the_current_file(): void
+    {
+        $uuid = 'aaaaaaaa-0000-0000-0000-000000000017';
+
+        // Establish a valid current progress.json with a fully-durable write.
+        (new RestoreProgressWriter())->write($this->snapshot($uuid, ['reason' => 'durable original']));
+
+        // Now attempt a second write whose temp-file sync fails.
+        $failingDurability = new FakeRestoreProgressDurability(syncFileResult: false);
+
+        try {
+            (new RestoreProgressWriter($failingDurability))->write($this->snapshot($uuid, ['reason' => 'should never land']));
+            $this->fail('Expected RestoreProgressWriteException.');
+        } catch (RestoreProgressWriteException) {
+            // expected
+        }
+
+        // The current authoritative file must be completely unchanged.
+        $snapshot = (new RestoreProgressReader())->read($uuid);
+        $this->assertSame('durable original', $snapshot->reason, 'A temp-file sync failure must never replace the current valid progress.json.');
+    }
+
+    public function test_a_temp_file_sync_failure_cleans_up_the_temp_file(): void
+    {
+        $uuid = 'aaaaaaaa-0000-0000-0000-000000000018';
+        $failingDurability = new FakeRestoreProgressDurability(syncFileResult: false);
+
+        try {
+            (new RestoreProgressWriter($failingDurability))->write($this->snapshot($uuid));
+            $this->fail('Expected RestoreProgressWriteException.');
+        } catch (RestoreProgressWriteException) {
+            // expected
+        }
+
+        $disk = Storage::disk('restores');
+        $leftovers = collect($disk->exists($uuid) ? $disk->files($uuid) : [])
+            ->filter(fn (string $f): bool => str_contains($f, '.tmp'));
+
+        $this->assertCount(0, $leftovers, 'No temp file should remain after a durability failure.');
+        $this->assertFalse($disk->exists("{$uuid}/progress.json"), 'No progress.json should have been published on a durability failure.');
+    }
+
+    public function test_a_temp_file_sync_failure_never_calls_the_parent_directory_sync(): void
+    {
+        // Proves the rename (and therefore the post-rename directory sync)
+        // is never reached when the temp-file durability gate fails.
+        $uuid = 'aaaaaaaa-0000-0000-0000-000000000019';
+        $failingDurability = new FakeRestoreProgressDurability(syncFileResult: false);
+
+        try {
+            (new RestoreProgressWriter($failingDurability))->write($this->snapshot($uuid));
+            $this->fail('Expected RestoreProgressWriteException.');
+        } catch (RestoreProgressWriteException) {
+            // expected
+        }
+
+        $this->assertSame(1, $failingDurability->syncFileCalls);
+        $this->assertSame(0, $failingDurability->syncDirectoryCalls, 'Parent-directory sync must never run when the temp-file sync failed.');
+    }
+
+    public function test_parent_directory_sync_is_attempted_only_after_a_successful_rename(): void
+    {
+        $uuid = 'aaaaaaaa-0000-0000-0000-00000000001a';
+        $disk = Storage::disk('restores');
+
+        $durability = new FakeRestoreProgressDurability();
+        // Capture filesystem state at the exact moment the directory sync is
+        // attempted — progress.json must ALREADY be the published new file,
+        // proving the sync happens strictly after the rename.
+        $reasonAtSyncTime = null;
+        $durability->onSyncDirectory = function () use ($disk, $uuid, &$reasonAtSyncTime): void {
+            if ($disk->exists("{$uuid}/progress.json")) {
+                $decoded = json_decode($disk->get("{$uuid}/progress.json"), true);
+                $reasonAtSyncTime = $decoded['reason'] ?? null;
+            }
+        };
+
+        (new RestoreProgressWriter($durability))->write($this->snapshot($uuid, ['reason' => 'published before sync']));
+
+        $this->assertSame(1, $durability->syncFileCalls);
+        $this->assertSame(1, $durability->syncDirectoryCalls);
+        $this->assertSame('published before sync', $reasonAtSyncTime, 'The parent-directory sync must run only after progress.json is the published new file.');
+    }
+
+    public function test_a_parent_directory_sync_failure_does_not_corrupt_the_published_file(): void
+    {
+        $uuid = 'aaaaaaaa-0000-0000-0000-00000000001b';
+
+        // Directory sync reports failure — per the documented best-effort
+        // policy the write still succeeds and progress.json is the correct
+        // new content (the rename already completed).
+        $durability = new FakeRestoreProgressDurability(syncFileResult: true, syncDirectoryResult: false);
+
+        (new RestoreProgressWriter($durability))->write($this->snapshot($uuid, ['reason' => 'survives dir-sync failure']));
+
+        $snapshot = (new RestoreProgressReader())->read($uuid);
+        $this->assertSame('survives dir-sync failure', $snapshot->reason, 'A best-effort parent-directory sync failure must never corrupt or abort the published progress.json.');
+    }
+
+    public function test_a_flush_and_sync_success_publishes_the_file_with_the_native_durability(): void
+    {
+        // Sanity: the default (native) durability path completes end to end
+        // on this runtime, i.e. the real fsync gate does not spuriously
+        // reject a genuine write.
+        $uuid = 'aaaaaaaa-0000-0000-0000-00000000001c';
+
+        (new RestoreProgressWriter())->write($this->snapshot($uuid, ['reason' => 'native durable']));
+
+        $snapshot = (new RestoreProgressReader())->read($uuid);
+        $this->assertSame('native durable', $snapshot->reason);
     }
 }
