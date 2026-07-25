@@ -38,22 +38,31 @@ final class RestoreActivityGuard
     ) {
     }
 
-    public function isActive(): RestoreActivityState
+    /**
+     * OMS Task 7C.3: $excludeRestoreUuid lets a restore's own preflight
+     * check ignore its own (not-yet-active, or already-claimed) UUID while
+     * still blocking on any OTHER active/tampered restore — required for a
+     * later orchestration phase to re-run preflight for the very restore it
+     * is about to continue without being blocked by itself. Passing null
+     * (the default, and every existing caller) preserves the original
+     * "scan everything" behavior exactly.
+     */
+    public function isActive(?string $excludeRestoreUuid = null): RestoreActivityState
     {
-        $progressState = $this->scanForNonTerminalProgress();
+        $progressState = $this->scanForNonTerminalProgress($excludeRestoreUuid);
 
         if ($progressState === RestoreActivityState::TamperedOrInvalid) {
             return RestoreActivityState::TamperedOrInvalid;
         }
 
-        if ($progressState === RestoreActivityState::Active || $this->hasActiveDbRow()) {
+        if ($progressState === RestoreActivityState::Active || $this->hasActiveDbRow($excludeRestoreUuid)) {
             return RestoreActivityState::Active;
         }
 
         return RestoreActivityState::Inactive;
     }
 
-    private function hasActiveDbRow(): bool
+    private function hasActiveDbRow(?string $excludeRestoreUuid): bool
     {
         $activeStatusValues = array_map(
             static fn (BackupStatus $status): string => $status->value,
@@ -63,6 +72,7 @@ final class RestoreActivityGuard
         return BackupOperation::query()
             ->where('type', BackupType::Restore->value)
             ->whereIn('status', $activeStatusValues)
+            ->when($excludeRestoreUuid !== null, fn ($query) => $query->where('uuid', '!=', $excludeRestoreUuid))
             ->exists();
     }
 
@@ -91,8 +101,20 @@ final class RestoreActivityGuard
      * own restore_uuid matches the containing directory's UUID, so a valid
      * signature lifted from one restore's file into another restore's
      * directory is rejected too.
+     *
+     * $excludeRestoreUuid (OMS Task 7C.3) never skips validating the
+     * excluded directory's own progress file — it only ever suppresses
+     * treating a VALID, non-terminal snapshot for that exact UUID as
+     * "active." A malformed/unsigned/invalid-signature/UUID-mismatched
+     * file is still read, still fails the same way, and still marks
+     * $sawInvalid regardless of exclusion — exclusion can never turn a
+     * corrupt/untrusted state into "safe." This is deliberately NOT a
+     * `continue` before the read: excluding a directory from the read
+     * entirely would let a tampered file for the excluded UUID slip past
+     * undetected, which is exactly the "exclusion turns corrupt state
+     * into safe" failure this guard must never allow.
      */
-    private function scanForNonTerminalProgress(): RestoreActivityState
+    private function scanForNonTerminalProgress(?string $excludeRestoreUuid): RestoreActivityState
     {
         $disk = Storage::disk((string) config('oms.backup.restore.disk', 'restores'));
         $sawInvalid = false;
@@ -116,7 +138,9 @@ final class RestoreActivityGuard
                 continue;
             }
 
-            if (! $snapshot->isTerminal()) {
+            $isExcluded = $excludeRestoreUuid !== null && hash_equals($excludeRestoreUuid, $uuid);
+
+            if (! $snapshot->isTerminal() && ! $isExcluded) {
                 return RestoreActivityState::Active;
             }
         }

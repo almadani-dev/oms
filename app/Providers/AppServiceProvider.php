@@ -22,6 +22,8 @@ use App\Services\Backup\Contracts\SymlinkDetector;
 use App\Services\Backup\NativeSymlinkDetector;
 use App\Services\Backup\SecretstreamEnvelope;
 use App\Services\Backup\SymfonyProcessRunner;
+use App\Services\Restore\Contracts\FilesystemIdentity;
+use App\Services\Restore\NativeFilesystemIdentity;
 use App\Support\Permissions\PermissionRegistry;
 use Filament\Tables\Table;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -65,6 +67,12 @@ class AppServiceProvider extends ServiceProvider
         // implementation of the contract to simulate a verification
         // failure instead of subclassing a final class.
         $this->app->bind(BackupArchiveContentVerifierContract::class, BackupArchiveContentVerifier::class);
+
+        // OMS Task 7C.3: RestorePreflightChecker's same-filesystem check
+        // depends on this contract rather than the native stat()/volume
+        // implementation directly — tests inject a fake that reports
+        // arbitrary paths as the same/different filesystem deterministically.
+        $this->app->bind(FilesystemIdentity::class, NativeFilesystemIdentity::class);
     }
 
     /**

@@ -256,4 +256,93 @@ class RestoreActivityGuardTest extends BackupTestCase
 
         $this->assertSame(RestoreActivityState::TamperedOrInvalid, $this->guard()->isActive());
     }
+
+    // ---- OMS Task 7C.3: $excludeRestoreUuid can never turn corrupt state into "safe" -------
+
+    /**
+     * A restore may exclude its own UUID to check whether any OTHER
+     * restore is active, without its own (still non-terminal, genuinely
+     * valid) progress file blocking itself.
+     */
+    public function test_excluding_the_current_restore_uuid_ignores_its_own_valid_active_progress_file(): void
+    {
+        $uuid = 'aaaaaaaa-0000-0000-0000-000000000010';
+        (new RestoreProgressWriter())->write($this->snapshot($uuid, ['phase' => 'preflight']));
+
+        $this->assertSame(RestoreActivityState::Inactive, $this->guard()->isActive($uuid));
+    }
+
+    /**
+     * The exact corruption this exclusion parameter must never enable:
+     * the excluded UUID's own progress.json is tampered (fails signature
+     * verification) — exclusion must NOT cause this to be silently
+     * skipped. It must still be read, still fail, and still surface as
+     * TamperedOrInvalid.
+     */
+    public function test_excluding_the_current_restore_uuid_does_not_suppress_its_own_tampered_progress_file(): void
+    {
+        $uuid = 'aaaaaaaa-0000-0000-0000-000000000011';
+        (new RestoreProgressWriter())->write($this->snapshot($uuid, ['phase' => 'preflight']));
+
+        $disk = Storage::disk('restores');
+        $decoded = json_decode($disk->get("{$uuid}/progress.json"), true);
+        $decoded['reason'] = 'tampered after being written';
+        $disk->put("{$uuid}/progress.json", json_encode($decoded));
+
+        $state = $this->guard()->isActive($uuid);
+
+        $this->assertSame(RestoreActivityState::TamperedOrInvalid, $state);
+        $this->assertTrue($state->blocksNewRestore(), 'Excluding a restore UUID must never suppress TamperedOrInvalid for that same UUID.');
+    }
+
+    /**
+     * Excluding the current restore UUID must never weaken blocking of a
+     * DIFFERENT restore's tampered progress file.
+     */
+    public function test_excluding_the_current_restore_uuid_still_flags_a_different_tampered_progress_file(): void
+    {
+        $currentUuid = 'aaaaaaaa-0000-0000-0000-000000000012';
+        $otherUuid = 'aaaaaaaa-0000-0000-0000-000000000013';
+
+        (new RestoreProgressWriter())->write($this->snapshot($otherUuid, ['phase' => 'restored', 'result' => 'restored']));
+
+        $disk = Storage::disk('restores');
+        $decoded = json_decode($disk->get("{$otherUuid}/progress.json"), true);
+        $decoded['reason'] = 'tampered — belongs to a different restore than the one excluded';
+        $disk->put("{$otherUuid}/progress.json", json_encode($decoded));
+
+        $this->assertSame(RestoreActivityState::TamperedOrInvalid, $this->guard()->isActive($currentUuid));
+    }
+
+    /**
+     * Excluding the current restore UUID must never weaken blocking of a
+     * DIFFERENT, genuinely active restore's DB row.
+     */
+    public function test_excluding_the_current_restore_uuid_still_blocks_on_a_different_active_db_row(): void
+    {
+        $currentUuid = 'aaaaaaaa-0000-0000-0000-000000000014';
+
+        BackupOperation::create([
+            'type' => BackupType::Restore->value,
+            'scope' => BackupScope::Full->value,
+            'status' => BackupStatus::Restoring->value,
+            'disk' => 'backups',
+        ]);
+
+        $this->assertSame(RestoreActivityState::Active, $this->guard()->isActive($currentUuid));
+    }
+
+    /**
+     * Excluding the current restore UUID must never weaken blocking of a
+     * DIFFERENT, genuinely active restore's progress file.
+     */
+    public function test_excluding_the_current_restore_uuid_still_blocks_on_a_different_active_progress_file(): void
+    {
+        $currentUuid = 'aaaaaaaa-0000-0000-0000-000000000015';
+        $otherUuid = 'aaaaaaaa-0000-0000-0000-000000000016';
+
+        (new RestoreProgressWriter())->write($this->snapshot($otherUuid, ['phase' => 'database_restoring']));
+
+        $this->assertSame(RestoreActivityState::Active, $this->guard()->isActive($currentUuid));
+    }
 }

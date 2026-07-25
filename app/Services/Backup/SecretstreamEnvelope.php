@@ -239,6 +239,32 @@ final class SecretstreamEnvelope
         }
     }
 
+    /**
+     * OMS Task 7C.3 — reads and validates only this envelope's cleartext
+     * prefix (magic bytes, format version, key_id) without touching the
+     * Secretstream header or a single ciphertext frame. Lets restore
+     * preflight confirm "which key would decryption need" and "is this
+     * envelope version supported" without decrypting the archive — the
+     * exact same validation decryptFile() itself applies to that prefix,
+     * reused rather than re-implemented.
+     *
+     * @throws BackupEnvelopeCorruptException|BackupEnvelopeUnsupportedVersionException
+     */
+    public function peekKeyId(string $sourcePath): string
+    {
+        $in = fopen($sourcePath, 'rb');
+
+        if ($in === false) {
+            throw new RuntimeException("Unable to open encrypted source for header inspection: {$sourcePath}");
+        }
+
+        try {
+            return $this->readHeaderPrefix($in);
+        } finally {
+            fclose($in);
+        }
+    }
+
     private function readHeaderPrefix($handle): string
     {
         $magic = $this->readExact($handle, 4, 'magic bytes');

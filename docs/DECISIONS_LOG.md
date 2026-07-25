@@ -13,6 +13,66 @@
 ---
 
 ### Date
+2026-07-25 (OMS Task 7C.3 — restore preflight, decryption/verification, safe extraction, private staging)
+
+### Decision
+`RestoreDiskSpaceEstimator` uses an itemized sum of real, potentially-coexisting disk consumers rather than a flat "3 × encrypted archive size" multiplier. **Corrected after initial review**: the mandatory pre-restore safety backup is always FULL regardless of the selected restore scope, so its terms (current database size, current attachments size, and the 3-copy archive/candidate/verification pipeline) are now summed unconditionally — never conditioned on the selected scope the way the source-side staging terms are. Current database size comes from a new injectable `CurrentDatabaseSizeEstimator` (production: an `information_schema.tables` aggregate query), not from the source backup's own size — falling back to `max(source_original_bytes, 50 MiB)` only when the real query is unavailable, never to zero and never to an implausibly tiny value.
+
+### Reason
+The task explicitly forbade a flat multiplier, and an initial review round correctly identified that scaling the safety backup off the SOURCE backup's own declared size was wrong: the current live system can be far larger (or smaller) than whichever backup is being restored from, and a database-only or files-only restore still triggers a FULL safety backup of the whole current system before anything is touched — so both current DB size and current attachments size must always contribute, regardless of what the user selected to restore. Itemizing named components (rather than a blind multiplier) keeps the formula auditable; the 50 MiB floor on the current-database fallback prevents a tiny/near-zero source-backup size from making that proxy implausibly small.
+
+### Impact
+The estimate is deliberately generous, dominated by CURRENT system scale rather than the source backup's size — a small old source backup being restored onto a since-grown live system will not underestimate space (proven by a dedicated test). If a real `information_schema` query ever proves too slow/unreliable in production, `CurrentDatabaseSizeEstimator` is the single seam to revise (e.g. caching the last known value) — `RestoreDiskSpaceEstimator` itself should not need to change.
+
+---
+
+### Date
+2026-07-25 (OMS Task 7C.3 — restore preflight, decryption/verification, safe extraction, private staging)
+
+### Decision
+`RestoreArchiveExtractor` derives every entry it ever writes strictly from the manifest object already returned by a successful `BackupArchiveContentVerifier::verify()` call — never from `ZipArchive`'s own raw directory listing — and re-validates size/hash/path-safety a second time during extraction rather than trusting that prior verification pass alone.
+
+### Reason
+`BackupArchiveContentVerifier::verify()` already proves the ZIP's exact entry set and every declared hash match the manifest, but extraction is a separate, later code path against the same decrypted file — iterating only the manifest's declared components (rather than re-listing the ZIP) makes "an entry present in the ZIP but not in the manifest can never be written" true by construction, not by a second full-set comparison. The redundant per-entry size/hash re-check during streaming is deliberate defense in depth (matches the task's explicit ask for both a `statIndex()` size check and a streamed SHA-256 comparison), protecting against a corrupted central-directory entry whose metadata itself disagrees with the actual decompressed bytes.
+
+### Impact
+Any future manifest field addition that should be extracted must be added to `RestoreArchiveExtractor`'s explicit iteration (`dump`/`attachments.files` today) — a new component silently present in the ZIP will never be staged just because it exists there. `RestoreArchivePreparationException`/`RestoreArchiveExtractionException` reason codes (`decryption_failed`, `verification_failed`, `unexpected_entry`, `size_mismatch`, `hash_mismatch`, `byte_limit_exceeded`, etc.) are the stable identifiers later phases/tests should key off, not the sanitized message text.
+
+**Correction (final review, same day)**: `BackupArchiveContentVerifier::verify()` runs in a separate earlier call against the same decrypted file — a genuine (if narrow) gap existed between "verified" and "about to be extracted." `RestoreArchiveExtractor::assertEntrySetMatchesManifest()` now independently rebuilds the manifest's FULL expected entry set (every declared component, not just the ones the currently selected restore scope needs) and compares it, sorted, against the currently open ZIP's actual listing — mirroring `BackupArchiveContentVerifier::verifyExactEntrySet()`'s own logic — immediately before any staged content is written, rejecting a mismatch in either direction outright. Every manifest-declared attachment path is also safety/duplicate-checked at this same earlier point, so an unsafe path is rejected even when the ZIP happens to contain a literally-matching entry name.
+
+---
+
+### Date
+2026-07-25 (OMS Task 7C.3 — restore preflight, decryption/verification, safe extraction, private staging)
+
+### Decision
+`RestoreWorkspace` has no age-based stale-cleanup method at all; its `cleanup()` only ever removes the one `{restore_uuid}/workspace/` subtree it itself creates, never the restore's UUID directory or any sibling (`progress.json`, `progress.previous.json`, a future quarantine directory, or the disk-root `.locks`).
+
+### Reason
+The task explicitly excluded implementing stale-by-age workspace cleanup in this phase. Rather than adding an unused time-based sweep now, safety comes structurally from scope: because `cleanup()` can only ever touch its own restore UUID's own `workspace` subdirectory, it is physically incapable of deleting another restore's in-progress state or any progress/lock/quarantine file, regardless of when or how often it's called — proven directly by isolation tests rather than by a policy check that would otherwise need to consult `RestoreProgressReader` before every cleanup.
+
+### Impact
+When a later phase adds an actual stale-cleanup sweep (age-based, across multiple restore UUID directories), it must not be added inside `RestoreWorkspace` itself — that class's contract is "clean up exactly one restore's own workspace, nothing else." A stale sweep belongs in a separate, explicitly-scoped service that consults `RestoreActivityGuard`/`RestoreProgressReader` before ever calling `RestoreWorkspace::cleanup()` on a UUID it didn't just fail to prepare.
+
+**Correction (final review, same day)**: `RestoreWorkspace` gained the same injectable `SymlinkDetector` seam already used by the Backup subsystem and `RestoreArchiveExtractor`. `prepare()` and every path-returning method now walk from the target path up to the restores-disk root, refusing to proceed if any existing component is a symlink/junction/reparse point — an attacker-placed symlink at `{uuid}` or `{uuid}/workspace` could otherwise silently redirect a textually-"safe" `SafeBackupPath`-validated relative path outside the workspace entirely, even though `SafeBackupPath` itself has no way to detect that (it only ever inspects the path string, never the live filesystem). Windows junction/reparse-point detection has the same documented limitation as every other `NativeSymlinkDetector` consumer in this codebase.
+
+---
+
+### Date
+2026-07-25 (OMS Task 7C.3 correction — restore-activity exclusion must never suppress a tampered progress file)
+
+### Decision
+`RestoreActivityGuard::scanForNonTerminalProgress()`'s `$excludeRestoreUuid` handling was rewritten: the excluded directory's `progress.json` is now ALWAYS read and validated exactly like every other directory's; only a snapshot that is BOTH valid AND non-terminal AND for the excluded UUID is ever ignored. A read failure (malformed/unsigned/invalid-signature/schema-mismatch/UUID-mismatch) for the excluded UUID still marks `$sawInvalid` and still surfaces as `TamperedOrInvalid`, exactly as it would for any other directory.
+
+### Reason
+The original implementation (`if ($excludeRestoreUuid !== null && hash_equals(...)) { continue; }` placed BEFORE the read) skipped the excluded directory entirely — never attempting to read or validate its progress file at all. That meant a corrupted or tampered `progress.json` belonging to the very UUID being excluded would never be detected, silently behaving as if the state were clean. This is exactly the "exclusion turns corrupt state into safe" failure mode the guard must never allow, caught during a dedicated final-review pass before commit, not by an initial test (the initial test suite only proved the *positive* case — a valid active file being correctly excluded — and never a tampered one).
+
+### Impact
+Any future caller of `RestoreActivityGuard::isActive($excludeRestoreUuid)` can rely on: excluding a UUID only ever weakens the check for that UUID's own *genuinely valid, non-terminal* state, never for a corrupt/untrusted one. Six new tests in `RestoreActivityGuardTest` (`test_excluding_the_current_restore_uuid_does_not_suppress_its_own_tampered_progress_file` and siblings) pin this behavior down directly — any future refactor of this method must keep them passing.
+
+---
+
+### Date
 2026-07-23 (OMS Task 7C.2 — independent lock, signed progress protocol, atomic progress storage, restore-activity dual gate)
 
 ### Decision
