@@ -22,10 +22,20 @@ use App\Services\Backup\Contracts\SymlinkDetector;
 use App\Services\Backup\NativeSymlinkDetector;
 use App\Services\Backup\SecretstreamEnvelope;
 use App\Services\Backup\SymfonyProcessRunner;
+use App\Services\Restore\Contracts\ArtisanCommandRunner;
 use App\Services\Restore\Contracts\FilesystemIdentity;
+use App\Services\Restore\Contracts\ProcessStreamInputRunner;
+use App\Services\Restore\Contracts\RestoreDatabaseConnectionResetter;
+use App\Services\Restore\Contracts\RestoreEphemeralTableCleaner;
+use App\Services\Restore\Contracts\RestoreMetadataReconstructor;
 use App\Services\Restore\Contracts\RestoreProcessLauncher;
+use App\Services\Restore\LaravelArtisanCommandRunner;
+use App\Services\Restore\LaravelRestoreDatabaseConnectionResetter;
 use App\Services\Restore\NativeFilesystemIdentity;
+use App\Services\Restore\RestoreEphemeralTablePolicy;
+use App\Services\Restore\RestoreMetadataUpserter;
 use App\Services\Restore\RestoreProcessLauncherFactory;
+use App\Services\Restore\SymfonyProcessStreamInputRunner;
 use App\Support\Permissions\PermissionRegistry;
 use Filament\Tables\Table;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -84,6 +94,16 @@ class AppServiceProvider extends ServiceProvider
             RestoreProcessLauncher::class,
             fn () => $this->app->make(RestoreProcessLauncherFactory::forOsFamily(PHP_OS_FAMILY)),
         );
+
+        // OMS Task 7C.5: production bindings for the database-restore and
+        // post-import reconciliation seams. Nothing in this codebase yet
+        // resolves DatabaseRestorer or RestoreReconciler — these bindings
+        // only make them constructible once a future orchestrator does.
+        $this->app->bind(ProcessStreamInputRunner::class, SymfonyProcessStreamInputRunner::class);
+        $this->app->bind(RestoreDatabaseConnectionResetter::class, LaravelRestoreDatabaseConnectionResetter::class);
+        $this->app->bind(ArtisanCommandRunner::class, LaravelArtisanCommandRunner::class);
+        $this->app->bind(RestoreMetadataReconstructor::class, RestoreMetadataUpserter::class);
+        $this->app->bind(RestoreEphemeralTableCleaner::class, RestoreEphemeralTablePolicy::class);
     }
 
     /**

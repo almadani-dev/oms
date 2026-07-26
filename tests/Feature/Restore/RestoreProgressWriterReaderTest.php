@@ -2,8 +2,12 @@
 
 namespace Tests\Feature\Restore;
 
+use App\Enums\BackupScope;
 use App\Services\Restore\Exceptions\RestoreProgressIntegrityException;
 use App\Services\Restore\Exceptions\RestoreProgressWriteException;
+use App\Services\Restore\Metadata\BackupOperationSnapshot;
+use App\Services\Restore\Metadata\RestoreOperationSnapshot;
+use App\Services\Restore\Metadata\RestoreReconciliationSnapshot;
 use App\Services\Restore\RestoreProgressReader;
 use App\Services\Restore\RestoreProgressSigner;
 use App\Services\Restore\RestoreProgressSnapshot;
@@ -47,6 +51,7 @@ class RestoreProgressWriterReaderTest extends TestCase
             'result' => null,
             'restoreFailedPhase' => null,
             'errorSummary' => null,
+            'reconciliationSnapshot' => null,
         ], $overrides);
 
         return RestoreProgressSnapshot::create(
@@ -63,7 +68,73 @@ class RestoreProgressWriterReaderTest extends TestCase
             $a['result'],
             $a['restoreFailedPhase'],
             $a['errorSummary'],
+            $a['reconciliationSnapshot'],
         );
+    }
+
+    private function reconciliationSnapshot(): RestoreReconciliationSnapshot
+    {
+        $now = now()->format(\DATE_ATOM);
+        $identity = ['user_id' => null, 'name' => 'Admin', 'email' => 'admin@example.com'];
+
+        $source = BackupOperationSnapshot::create(
+            uuid: 'bbbbbbbb-cccc-dddd-eeee-ffffffffffff',
+            type: 'manual',
+            scope: BackupScope::Full->value,
+            disk: 'backups',
+            archivePath: 'source.enc',
+            archiveFilename: 'source.enc',
+            sizeBytes: 100,
+            checksumSha256: str_repeat('a', 64),
+            encryptionKeyId: 'key-1',
+            manifestVersion: 1,
+            fileCount: 2,
+            originalSizeBytes: 200,
+            createdAt: $now,
+            startedAt: $now,
+            completedAt: $now,
+            verifiedAt: $now,
+            createdBy: $identity,
+            isProtected: false,
+            operationReason: null,
+        );
+
+        $safety = BackupOperationSnapshot::create(
+            uuid: 'cccccccc-dddd-eeee-ffff-000000000000',
+            type: 'pre_restore',
+            scope: BackupScope::Full->value,
+            disk: 'backups',
+            archivePath: 'safety.enc',
+            archiveFilename: 'safety.enc',
+            sizeBytes: 100,
+            checksumSha256: str_repeat('b', 64),
+            encryptionKeyId: 'key-1',
+            manifestVersion: 1,
+            fileCount: 2,
+            originalSizeBytes: 200,
+            createdAt: $now,
+            startedAt: $now,
+            completedAt: $now,
+            verifiedAt: $now,
+            createdBy: $identity,
+            isProtected: true,
+            operationReason: 'pre-restore safety backup',
+        );
+
+        $restore = RestoreOperationSnapshot::create(
+            restoreUuid: 'aaaaaaaa-0000-0000-0000-000000000001',
+            sourceUuid: 'bbbbbbbb-cccc-dddd-eeee-ffffffffffff',
+            safetyUuid: 'cccccccc-dddd-eeee-ffff-000000000000',
+            scope: BackupScope::Full->value,
+            requestedBy: $identity,
+            reason: 'testing',
+            confirmedAt: $now,
+            startedAt: $now,
+            phaseHistory: [['phase' => 'database_restoring', 'at' => $now]],
+            resultContext: null,
+        );
+
+        return RestoreReconciliationSnapshot::create($source, $safety, $restore);
     }
 
     // ---- valid round trip ------------------------------------------------------------------
@@ -77,6 +148,78 @@ class RestoreProgressWriterReaderTest extends TestCase
         $read = (new RestoreProgressReader())->read($uuid);
 
         $this->assertSame($written->toCanonicalArray(), $read->toCanonicalArray());
+    }
+
+    // ---- OMS Task 7C.5 correction pass: optional reconciliation snapshot -------------------
+
+    public function test_a_written_snapshot_with_a_reconciliation_snapshot_reads_back_identically(): void
+    {
+        $uuid = 'aaaaaaaa-0000-0000-0000-00000000001d';
+        $written = $this->snapshot($uuid, ['reconciliationSnapshot' => $this->reconciliationSnapshot()]);
+
+        (new RestoreProgressWriter())->write($written);
+        $read = (new RestoreProgressReader())->read($uuid);
+
+        $this->assertNotNull($read->reconciliationSnapshot);
+        $this->assertEquals($written->reconciliationSnapshot, $read->reconciliationSnapshot);
+        $this->assertSame($written->toCanonicalArray(), $read->toCanonicalArray());
+    }
+
+    public function test_tampering_with_a_reconciliation_snapshot_field_invalidates_the_signature(): void
+    {
+        $uuid = 'aaaaaaaa-0000-0000-0000-00000000001e';
+        (new RestoreProgressWriter())->write($this->snapshot($uuid, ['reconciliationSnapshot' => $this->reconciliationSnapshot()]));
+
+        $disk = Storage::disk('restores');
+        $decoded = json_decode($disk->get("{$uuid}/progress.json"), true);
+        $decoded['reconciliation_snapshot']['source_backup']['checksum_sha256'] = str_repeat('f', 64);
+        $disk->put("{$uuid}/progress.json", json_encode($decoded));
+
+        $this->expectException(RestoreProgressIntegrityException::class);
+        (new RestoreProgressReader())->read($uuid);
+    }
+
+    public function test_a_malformed_reconciliation_snapshot_is_rejected_on_read(): void
+    {
+        $uuid = 'aaaaaaaa-0000-0000-0000-00000000001f';
+        $written = $this->snapshot($uuid);
+
+        $body = array_merge(['schema_version' => 1], $written->toCanonicalArray());
+        // A structurally invalid nested snapshot (missing required keys) —
+        // simulates a corrupted/malicious file, never something this
+        // codebase's own writer could ever produce (RestoreReconciliationSnapshot
+        // cannot be constructed in this shape). The whole body is signed
+        // exactly as-is, so this fails CONTENT validation, not the
+        // signature check — isolating exactly the guarantee under test.
+        $body['reconciliation_snapshot'] = ['source_backup' => ['uuid' => 'not-a-uuid']];
+
+        $canonicalJson = json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $body['signature'] = RestoreProgressSigner::sign($canonicalJson);
+
+        Storage::disk('restores')->put("{$uuid}/progress.json", json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+        $this->expectException(RestoreProgressIntegrityException::class);
+        (new RestoreProgressReader())->read($uuid);
+    }
+
+    public function test_an_old_progress_payload_without_a_reconciliation_snapshot_key_still_reads_successfully(): void
+    {
+        $uuid = 'aaaaaaaa-0000-0000-0000-000000000020';
+        $written = $this->snapshot($uuid);
+
+        // Simulates a file written before this field existed at all — the
+        // key is completely absent, not merely null.
+        $body = array_merge(['schema_version' => 1], $written->toCanonicalArray());
+        unset($body['reconciliation_snapshot']);
+
+        $canonicalJson = json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $body['signature'] = RestoreProgressSigner::sign($canonicalJson);
+
+        Storage::disk('restores')->put("{$uuid}/progress.json", json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+
+        $read = (new RestoreProgressReader())->read($uuid);
+
+        $this->assertNull($read->reconciliationSnapshot);
     }
 
     public function test_progress_json_is_a_real_file_on_the_restores_disk(): void

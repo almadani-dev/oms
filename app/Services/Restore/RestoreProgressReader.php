@@ -3,6 +3,7 @@
 namespace App\Services\Restore;
 
 use App\Services\Restore\Exceptions\RestoreProgressIntegrityException;
+use App\Services\Restore\Metadata\RestoreReconciliationSnapshot;
 use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
 use TypeError;
@@ -100,6 +101,15 @@ final class RestoreProgressReader
 
         try {
             $requestedBy = $body['requested_by'] ?? null;
+            $reconciliationSnapshotData = $body['reconciliation_snapshot'] ?? null;
+
+            // Absent entirely (a progress file written before this field
+            // existed) and explicitly null both mean the same thing here —
+            // only a genuine array is ever handed to
+            // RestoreReconciliationSnapshot::fromArray() for validation.
+            $reconciliationSnapshot = is_array($reconciliationSnapshotData)
+                ? RestoreReconciliationSnapshot::fromArray($reconciliationSnapshotData)
+                : null;
 
             return RestoreProgressSnapshot::create(
                 restoreUuid: $restoreUuid,
@@ -115,6 +125,7 @@ final class RestoreProgressReader
                 result: $this->nullableString($body['result'] ?? null),
                 restoreFailedPhase: $this->nullableString($body['restore_failed_phase'] ?? null),
                 errorSummary: $this->nullableString($body['error_summary'] ?? null),
+                reconciliationSnapshot: $reconciliationSnapshot,
             );
         } catch (InvalidArgumentException|TypeError $e) {
             // TypeError is caught alongside InvalidArgumentException

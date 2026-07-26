@@ -1,0 +1,121 @@
+<?php
+
+namespace App\Services\Restore;
+
+use App\Services\Restore\Contracts\ArtisanCommandRunner;
+use App\Services\Restore\Contracts\RestoreDatabaseConnectionResetter;
+use App\Services\Restore\Contracts\RestoreEphemeralTableCleaner;
+use App\Services\Restore\Contracts\RestoreMetadataReconstructor;
+use App\Services\Restore\Exceptions\RestoreReconciliationException;
+use App\Services\Restore\Metadata\BackupOperationSnapshot;
+use App\Services\Restore\Metadata\RestoreOperationSnapshot;
+use RuntimeException;
+use Throwable;
+
+/**
+ * OMS Task 7C.5 — the only place a successful `mysql` database import
+ * (DatabaseRestorer) is turned back into a trustworthy, migrated,
+ * permission-synced application state with authoritative backup/restore
+ * audit rows. Must run only AFTER the import succeeds, and only while the
+ * future orchestrator (not built here) still holds the exclusive
+ * BackupSubsystemLock and maintenance mode — this class acquires neither,
+ * and never lifts maintenance mode itself.
+ *
+ * Deliberately NOT one big DB::transaction(): `migrate --force` may commit
+ * implicitly per-migration, `oms:sync-permissions`/`permission:cache-reset`/
+ * `queue:restart` may use their own connections, and the schema itself
+ * changes mid-run — wrapping all of it in one outer transaction would be
+ * both incorrect and impossible to roll back meaningfully. Each of the
+ * seven required steps either fully succeeds or this method throws
+ * immediately with a distinct, sanitized reasonCode — nothing after a
+ * failed step ever runs, and a caller can always tell exactly which step
+ * failed without any raw exception text leaking out.
+ *
+ * OMS Task 7C.5 correction pass — database-connection policy: this class
+ * never accepts a caller-supplied connection name. It always resets
+ * `config('database.default')` — the exact same connection `migrate`,
+ * every Eloquent model, and every `DB::table()` call in the metadata/
+ * ephemeral steps below implicitly target — so reconciliation can never be
+ * pointed at a different physical database than the one those steps
+ * actually operate on. `DatabaseRestorer` independently fails closed if the
+ * connection it's about to `mysql`-import into isn't that same default
+ * connection (see its own docblock) — the two halves of a restore can
+ * never silently disagree about which database is being restored.
+ */
+final class RestoreReconciler
+{
+    public function __construct(
+        private readonly RestoreDatabaseConnectionResetter $connectionResetter,
+        private readonly ArtisanCommandRunner $artisan,
+        private readonly RestoreMetadataReconstructor $metadataReconstructor,
+        private readonly RestoreEphemeralTableCleaner $ephemeralTableCleaner,
+    ) {
+    }
+
+    /**
+     * @throws RestoreReconciliationException
+     */
+    public function reconcile(
+        BackupOperationSnapshot $sourceBackup,
+        BackupOperationSnapshot $safetyBackup,
+        RestoreOperationSnapshot $restoreOperation,
+    ): void {
+        $this->step(
+            fn () => $this->connectionResetter->reset((string) config('database.default')),
+            RestoreReconciliationException::connectionResetFailed(...),
+        );
+
+        $this->step(
+            fn () => $this->runArtisan('migrate', ['--force' => true]),
+            RestoreReconciliationException::migrationFailed(...),
+        );
+
+        $this->step(
+            fn () => $this->runArtisan('oms:sync-permissions'),
+            RestoreReconciliationException::permissionSyncFailed(...),
+        );
+
+        $this->step(
+            fn () => $this->runArtisan('permission:cache-reset'),
+            RestoreReconciliationException::permissionCacheResetFailed(...),
+        );
+
+        $this->step(
+            fn () => $this->metadataReconstructor->reconstruct($sourceBackup, $safetyBackup, $restoreOperation),
+            RestoreReconciliationException::metadataReconstructionFailed(...),
+        );
+
+        $this->step(
+            fn () => $this->ephemeralTableCleaner->clean(),
+            RestoreReconciliationException::ephemeralCleanupFailed(...),
+        );
+
+        $this->step(
+            fn () => $this->runArtisan('queue:restart'),
+            RestoreReconciliationException::queueRestartFailed(...),
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $parameters
+     */
+    private function runArtisan(string $command, array $parameters = []): void
+    {
+        if ($this->artisan->run($command, $parameters) !== 0) {
+            throw new RuntimeException("Artisan command [{$command}] exited with a non-zero status.");
+        }
+    }
+
+    /**
+     * @param  callable(): void  $step
+     * @param  callable(?Throwable): RestoreReconciliationException  $onFailure
+     */
+    private function step(callable $step, callable $onFailure): void
+    {
+        try {
+            $step();
+        } catch (Throwable $e) {
+            throw $onFailure($e);
+        }
+    }
+}

@@ -223,7 +223,16 @@ class RestoreProgressSnapshotTest extends TestCase
             'result',
             'restore_failed_phase',
             'error_summary',
+            'reconciliation_snapshot',
         ], array_keys($snapshot->toCanonicalArray()));
+    }
+
+    public function test_reconciliation_snapshot_defaults_to_null(): void
+    {
+        $snapshot = $this->create();
+
+        $this->assertNull($snapshot->reconciliationSnapshot);
+        $this->assertNull($snapshot->toCanonicalArray()['reconciliation_snapshot']);
     }
 
     public function test_every_allowed_phase_is_individually_accepted(): void

@@ -3,6 +3,7 @@
 namespace App\Services\Restore;
 
 use App\Models\BackupOperation;
+use App\Services\Restore\Metadata\RestoreReconciliationSnapshot;
 use DateTimeImmutable;
 use InvalidArgumentException;
 
@@ -22,6 +23,21 @@ use InvalidArgumentException;
  * Never carries: a confirmation phrase, a password, an encryption key, a
  * raw command line, a raw stack trace, or an unbounded exception message —
  * nothing here has a field for any of those, by construction.
+ *
+ * OMS Task 7C.5 correction pass: `reconciliationSnapshot` is an OPTIONAL,
+ * nullable, bounded `RestoreReconciliationSnapshot` — the authoritative
+ * source-backup/safety-backup/restore-operation metadata a future
+ * orchestrator writes into the signed progress file immediately BEFORE the
+ * database import runs, so RestoreMetadataUpserter can still reconstruct
+ * all three `backup_operations` rows even if the process crashes after
+ * import and the original database (and its live rows) is gone. Backward
+ * compatible by construction: a progress file written before this field
+ * existed simply has no `reconciliation_snapshot` key at all, which decodes
+ * to `null` here exactly like an explicit absence — no schema_version bump
+ * was needed. RestoreProgressReader's signature check verifies the raw
+ * decoded body exactly as persisted, never a value freshly rebuilt from
+ * this class's current shape, so an old file's signature is unaffected by
+ * this field's addition either way.
  */
 final class RestoreProgressSnapshot
 {
@@ -109,6 +125,7 @@ final class RestoreProgressSnapshot
         public readonly ?string $result,
         public readonly ?string $restoreFailedPhase,
         public readonly ?string $errorSummary,
+        public readonly ?RestoreReconciliationSnapshot $reconciliationSnapshot,
     ) {
     }
 
@@ -132,6 +149,7 @@ final class RestoreProgressSnapshot
         ?string $result,
         ?string $restoreFailedPhase,
         ?string $errorSummary,
+        ?RestoreReconciliationSnapshot $reconciliationSnapshot = null,
     ): self {
         self::assertUuid($restoreUuid, 'restore_uuid');
         self::assertRequestedBy($requestedBy);
@@ -178,6 +196,7 @@ final class RestoreProgressSnapshot
             result: $result,
             restoreFailedPhase: $restoreFailedPhase,
             errorSummary: $errorSummary,
+            reconciliationSnapshot: $reconciliationSnapshot,
         );
     }
 
@@ -209,6 +228,7 @@ final class RestoreProgressSnapshot
             'result' => $this->result,
             'restore_failed_phase' => $this->restoreFailedPhase,
             'error_summary' => $this->errorSummary,
+            'reconciliation_snapshot' => $this->reconciliationSnapshot?->toArray(),
         ];
     }
 

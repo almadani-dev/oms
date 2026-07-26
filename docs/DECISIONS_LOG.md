@@ -13,6 +13,76 @@
 ---
 
 ### Date
+2026-07-26 (OMS Task 7C.5 correction pass — database-connection policy)
+
+### Decision
+Restore is supported only for the application's primary/default database connection. `DatabaseRestorer` fails closed with `database_connection_mismatch` if the resolved backup/restore connection name (`config('oms.backup.database_connection') ?: config('database.default')`) differs from `config('database.default')`, and `RestoreReconciler` no longer accepts any caller-supplied connection name — it always targets `database.default` directly.
+
+### Reason
+`migrate`, every Eloquent model, and every `DB::table()` call in the metadata-upsert/ephemeral-cleanup steps have no `->on()` override anywhere in this codebase — they all implicitly operate on `config('database.default')`. `config('oms.backup.database_connection')` exists purely as a backup-CREATION-side override (so `DatabaseDumper` can dump a non-default connection). If a restore imported into that same override while reconciliation operated on `database.default`, the two halves would silently disagree about which physical database was actually being restored — exactly the "ambiguous mixed-connection restore" the review explicitly asked to close. The alternative (explicitly threading one named connection through every reconciliation step) was rejected: nothing in the current architecture actually needs or exercises a non-default application connection, and threading one through would add real complexity to close a risk this single-connection policy closes for free.
+
+### Impact
+A restore can never partially succeed against the wrong database. If `OMS_BACKUP_DB_CONNECTION` is ever set to something other than the application's real default connection, restore fails immediately and loudly (before any mysql client path is even resolved) rather than silently reconciling a database nothing was actually imported into. A focused test (`DatabaseRestorerTest::test_mismatched_backup_connection_is_rejected_before_any_process_runs`) proves no process is ever spawned in that case.
+
+---
+
+### Date
+2026-07-26 (OMS Task 7C.5 correction pass — durable reconciliation snapshots)
+
+### Decision
+Extend the existing signed `RestoreProgressSnapshot` protocol with an optional, nullable `reconciliationSnapshot` field (a new bounded `RestoreReconciliationSnapshot` value object) rather than inventing a second, separate persistence mechanism for the source/safety/restore metadata snapshots a future orchestrator must capture before the database import runs.
+
+### Reason
+The progress-file protocol is already the one thing this architecture treats as durable and trustworthy independent of the live database (see `RestoreActivityGuard`'s own reasoning for why it never trusts the DB row alone). Reusing it — rather than adding a second signed file, a second signing key, or a second read/write/atomicity implementation — means the reconciliation snapshot inherits every guarantee already built and tested for progress.json (atomic durable writes, signature verification, bounded size, crash-safety) for free, and a single read gives an orchestrator both "what phase was this restore in" and "what do I need to reconstruct metadata with" in one already-verified payload. A schema_version bump was deliberately avoided — making the field optional/nullable and having the reader treat an absent key exactly like an explicit `null` keeps every progress file written by 7C.2/7C.4 code fully readable with no migration of on-disk state.
+
+### Impact
+`RestoreMetadataUpserter` can now be handed snapshots recovered from progress.json even if the database itself was replaced/wiped by the import and crashed before reconciliation ran — proven by `RestoreReconciliationSnapshotRecoveryTest`, which drops `backup_operations` entirely between writing the snapshot and reconstructing from it. `RestoreReconciliationSnapshot` deliberately does not duplicate the outer envelope's own fields (phase/result/last_heartbeat_at/error_summary stay exclusively on `RestoreProgressSnapshot`) — it only carries the three metadata snapshots the future orchestrator's own write-before-import step will supply.
+
+---
+
+### Date
+2026-07-25 (OMS Task 7C.5 — streamed database restoration and post-import reconciliation services)
+
+### Decision
+`RestoreReconciler` depends on four interfaces with no default implementation (`RestoreDatabaseConnectionResetter`, `ArtisanCommandRunner`, `RestoreMetadataReconstructor`, `RestoreEphemeralTableCleaner`) rather than constructing any of its four collaborators itself, even though `ArtisanCommandRunner`/the metadata/ephemeral steps could safely run for real against the test suite's own migrated SQLite database.
+
+### Reason
+The one collaborator that genuinely cannot run for real in a test (`RestoreDatabaseConnectionResetter` — purging the test's own `:memory:` connection would destroy its entire schema) forced an interface anyway; making all four collaborators interfaces, injected with no default, is what lets a single shared order-log test spy prove the exact required 7-step cross-collaborator sequence and every failure's short-circuit behavior in one focused, fast test file, instead of needing a slower, real-DB-and-real-Artisan integration test to observe ordering indirectly.
+
+### Impact
+`RestoreReconcilerTest` never touches a real database purge, a real Artisan command, or a real metadata write — it is a pure ordering/failure-propagation test. `RestoreMetadataUpserter`/`RestoreEphemeralTablePolicy`'s own real-DB behavior is instead proven separately, each in its own dedicated test file. `AppServiceProvider` binds all four to their production implementations so a future orchestrator can resolve `RestoreReconciler` through the container with no further wiring.
+
+---
+
+### Date
+2026-07-25 (OMS Task 7C.5 — streamed database restoration and post-import reconciliation services)
+
+### Decision
+`BackupOperationSnapshot`/`RestoreOperationSnapshot` do not accept `status` as a constructor parameter at all — `BackupOperationSnapshot` always represents an authoritative Completed+verified backup, and `RestoreOperationSnapshot` always represents a Restoring restore operation, baked into `RestoreMetadataUpserter`'s own upsert logic rather than left to whatever value a caller happens to pass in.
+
+### Reason
+The task's own required behavior is that a source/safety backup's status must be force-corrected to Completed regardless of whatever stale Running/Verifying state the imported SQL dump happens to contain, and a restore row's status must stay Restoring until a future orchestrator decides the terminal result. Making `status` a constructor parameter would have left open the possibility of a caller accidentally passing through the dump's own stale value — removing the parameter entirely makes that mistake structurally impossible rather than merely discouraged.
+
+### Impact
+Every snapshot this codebase can construct is automatically compliant with the forced-status rule; there is no code path, current or future, that can build a `BackupOperationSnapshot` claiming `Running`/`Verifying`/`Failed`, or a `RestoreOperationSnapshot` claiming a terminal result.
+
+---
+
+### Date
+2026-07-25 (OMS Task 7C.5 — streamed database restoration and post-import reconciliation services)
+
+### Decision
+`RestoreEphemeralTablePolicy` deletes `jobs` rows only where `queue` is exactly the configured backups queue AND `reserved_at IS NULL` (not every row on that queue).
+
+### Reason
+A row with a non-null `reserved_at` is currently being processed by a queue worker — removing it out from under an in-flight worker would silently drop a job mid-execution rather than merely clearing a backlog of not-yet-started ones. The task's own wording ("pending rows") maps to "not yet claimed by a worker," which `reserved_at IS NULL` is the literal Laravel database-queue-driver definition of.
+
+### Impact
+A restore's reconciliation can never race a currently-running backup-queue job into silent data loss; only genuinely queued-but-unstarted backups-queue jobs are cleared, and every other queue's jobs (reserved or not) are left completely untouched.
+
+---
+
+### Date
 2026-07-25 (OMS Task 7C.4 — replay-safe restore launch, global serialization, detached process launcher, `oms:restore` command shell)
 
 ### Decision
