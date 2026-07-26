@@ -1628,3 +1628,34 @@ Exact `git diff --name-status` (36 files: 29 added, 7 modified, 0 deleted):
 
 ### Commit Hash
 See the commit immediately following this entry.
+
+---
+
+### Date
+2026-07-26 (test-stability pass — stabilize backup restore regression tests)
+
+### Task
+Investigate and stabilize the one flaky failure (`BackupCreationOrchestratorTest::test_creation_never_reaches_completed_when_pre_publish_verification_fails`) flagged by the previous correction pass's broader regression run, without starting Task 7C.7. Reproduce with the smallest test combination, identify leaked shared state, fix the root cause (not the assertion, not by skipping/reordering), specifically review `once()` memoization, then verify with repeated runs, the full failing class, the same broader regression subset, and a randomized-order run.
+
+### Result
+**Root cause (test-isolation bug, not a production bug)**: 7 methods in the newly-added `tests/Feature/Restore/Attachments/RestoreAttachmentActivationServiceTest.php` called `RestoreAttachmentActivationService::activate()` — which performs real filesystem renames while holding a real `BackupSubsystemLock` exclusive `flock()` — **before** entering the `try { ... } finally { $handle->release(); }` block that releases it. Since PHPUnit runs the whole suite in one PHP process and `Storage::fake('restores')` reuses the identical fixed on-disk path every test (wiping directory *contents* only, never closing an already-open OS lock handle), a handle leaked by an assertion or an unexpected throw in one of those 7 methods could make `BackupSubsystemLock::acquireShared()` fail in a later, unrelated test in the same process — exactly the acquisition `BackupCreationOrchestrator::run()` depends on. Two full regression runs of the exact same filter produced 1 failure and then 0 failures respectively before the fix, confirming genuine non-deterministic (timing-dependent) flakiness rather than a fixed order dependency — consistent with a rare real transient condition (e.g. a Windows AV/file-handle hiccup during one of the test's real `rename()`/`fopen()` calls) occasionally triggering an assertion failure or exception in the unguarded window.
+
+**`once()` memoization reviewed**: the only `once()` usage anywhere in the backup/restore subsystem is `BackupDeletionService::restoreActivityBlocks()`/`lastKnownGoodId()`, both already documented as correctly scoped per-instance (`once()` keys on the calling object's identity) — neither is a candidate for cross-test/cross-instance leakage, and neither is used by `BackupCreationOrchestrator`.
+
+**Fix**: restructured all 7 vulnerable methods so the entire span from `exclusiveHandle()` acquisition through the `activate()` call to the final assertions is inside one `try` block, with `$handle->release()` as the only statement in `finally` — no code path between acquisition and the guard can now throw without still releasing the lock. No production code was touched; `BackupSubsystemLock`/`BackupSubsystemLockHandle` behaved exactly as designed throughout (a real `flock()` correctly blocking a second acquisition while held) — the defect was solely in the test's own acquire/release discipline, not reordering, not weakening any assertion, not skipping the test.
+
+### Changed Files
+- `tests/Feature/Restore/Attachments/RestoreAttachmentActivationServiceTest.php` — the only file changed (76 insertions, 58 deletions; restructured try/finally boundaries in 7 test methods, no assertions weakened, no tests removed/skipped/reordered).
+
+### Verification
+1. `php -l` on the changed file — clean.
+2. `git diff --check` — no whitespace errors.
+3. The specific previously-flaky test run **10/10 times consecutively** — all passed.
+4. `BackupCreationOrchestratorTest` alone — **25/25 passed**.
+5. Combined `RestoreAttachmentActivationServiceTest|BackupCreationOrchestratorTest` filter (the two classes most directly implicated) — **54/54 passed**.
+6. Broader `Restore|Backup` regression, default order — **742 tests, 739 passed, 0 failed, 3 skipped, 1769 assertions**.
+7. Same broader regression, `--order-by=random` — **742 tests, 739 passed, 0 failed, 3 skipped, 1769 assertions**.
+8. Full suite was NOT run (out of scope per instructions).
+
+### Commit Hash
+See the commit immediately following this entry (`graphify update .` was NOT run — no production code changed).

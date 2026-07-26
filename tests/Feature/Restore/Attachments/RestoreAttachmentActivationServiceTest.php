@@ -518,33 +518,36 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $manifest = $this->manifestFor([$this->stageAttachment($workspace, 'receipts/new.jpg', 'new-content')], 11);
 
         $handle = $this->exclusiveHandle();
-        $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
-
-        // Rollback's own moves: [0] live(restored)->discard succeeds, [1]
-        // quarantine->live fails, [2] the method's own best-effort recovery
-        // attempt (discard->live) also fails — a genuine crash/unavailable
-        // resource, not a transient error the same call recovers from.
-        $crashingMover = new FakeAttachmentMoveRunner([false, true, true]);
-
-        $threw = false;
 
         try {
-            $this->service($crashingMover)->rollback($handle, $swap);
-        } catch (RestoreAttachmentRollbackException) {
-            $threw = true;
+            $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+
+            // Rollback's own moves: [0] live(restored)->discard succeeds, [1]
+            // quarantine->live fails, [2] the method's own best-effort recovery
+            // attempt (discard->live) also fails — a genuine crash/unavailable
+            // resource, not a transient error the same call recovers from.
+            $crashingMover = new FakeAttachmentMoveRunner([false, true, true]);
+
+            $threw = false;
+
+            try {
+                $this->service($crashingMover)->rollback($handle, $swap);
+            } catch (RestoreAttachmentRollbackException) {
+                $threw = true;
+            }
+
+            $this->assertTrue($threw, 'The simulated crash was expected to surface as a rollback failure.');
+            $this->assertSame(AttachmentSwapState::InterruptedDuringRollback, $this->inspect());
+
+            // A fresh call (as a future recovery flow would make) with a
+            // working mover must be able to resume and complete successfully.
+            $this->service()->rollback($handle, $swap);
+
+            $this->assertSame(AttachmentSwapState::RolledBack, $this->inspect());
+            $this->assertSame('original-content', Storage::disk('attachments')->get('receipts/original.jpg'));
+        } finally {
+            $handle->release();
         }
-
-        $this->assertTrue($threw, 'The simulated crash was expected to surface as a rollback failure.');
-        $this->assertSame(AttachmentSwapState::InterruptedDuringRollback, $this->inspect());
-
-        // A fresh call (as a future recovery flow would make) with a
-        // working mover must be able to resume and complete successfully.
-        $this->service()->rollback($handle, $swap);
-
-        $this->assertSame(AttachmentSwapState::RolledBack, $this->inspect());
-        $this->assertSame('original-content', Storage::disk('attachments')->get('receipts/original.jpg'));
-
-        $handle->release();
     }
 
     public function test_forced_rollback_failure_preserves_recoverable_data(): void
@@ -555,9 +558,10 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $manifest = $this->manifestFor([$this->stageAttachment($workspace, 'receipts/new.jpg', 'new-content')], 11);
 
         $handle = $this->exclusiveHandle();
-        $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
 
         try {
+            $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+
             // Rollback's own moves: [0] live(restored)->discard succeeds, [1] quarantine->live fails.
             $mover = new FakeAttachmentMoveRunner([false, true]);
 
@@ -582,12 +586,13 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $manifest = $this->manifestFor([$this->stageAttachment($workspace, 'receipts/new.jpg', 'new-content')], 11);
 
         $handle = $this->exclusiveHandle();
-        $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
-
-        // 1st write (RollbackStarted) succeeds; 2nd write (RollbackLiveDiscarded) fails.
-        $markerWriter = $this->markerWriterFailingOnCall(2);
 
         try {
+            $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+
+            // 1st write (RollbackStarted) succeeds; 2nd write (RollbackLiveDiscarded) fails.
+            $markerWriter = $this->markerWriterFailingOnCall(2);
+
             $exception = null;
 
             try {
@@ -645,17 +650,21 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $manifest = $this->manifestFor([$this->stageAttachment($workspace, 'receipts/new.jpg', 'new-content')], 11);
 
         $handle = $this->exclusiveHandle();
-        $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
-
-        $foreignPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'oms-foreign-lock-'.bin2hex(random_bytes(8)).'.lock';
-        $foreignShared = (new BackupSubsystemLock($foreignPath))->acquireShared();
-        $this->assertNotNull($foreignShared);
 
         try {
-            $this->expectException(RestoreAttachmentRollbackException::class);
-            $this->service()->rollback($foreignShared, $swap);
+            $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+
+            $foreignPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'oms-foreign-lock-'.bin2hex(random_bytes(8)).'.lock';
+            $foreignShared = (new BackupSubsystemLock($foreignPath))->acquireShared();
+            $this->assertNotNull($foreignShared);
+
+            try {
+                $this->expectException(RestoreAttachmentRollbackException::class);
+                $this->service()->rollback($foreignShared, $swap);
+            } finally {
+                $foreignShared->release();
+            }
         } finally {
-            $foreignShared->release();
             $handle->release();
         }
     }
@@ -724,22 +733,26 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $manifest = $this->manifestFor([$this->stageAttachment($workspace, 'receipts/new.jpg', 'new-content')], 11);
 
         $handle = $this->exclusiveHandle();
-        $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
-
-        // Hold an open read handle on a file inside quarantine so Windows
-        // refuses to delete it — deterministically forcing the deletion to
-        // fail without depending on real OS permission errors.
-        $quarantinedFile = $this->paths->quarantineRoot(self::UUID).DIRECTORY_SEPARATOR.'receipts'.DIRECTORY_SEPARATOR.'original.jpg';
-        $openHandle = fopen($quarantinedFile, 'r');
-        $this->assertNotFalse($openHandle);
 
         try {
-            $this->expectException(RestoreAttachmentFinalizationException::class);
-            $this->service()->finalize($handle, $swap);
+            $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+
+            // Hold an open read handle on a file inside quarantine so Windows
+            // refuses to delete it — deterministically forcing the deletion to
+            // fail without depending on real OS permission errors.
+            $quarantinedFile = $this->paths->quarantineRoot(self::UUID).DIRECTORY_SEPARATOR.'receipts'.DIRECTORY_SEPARATOR.'original.jpg';
+            $openHandle = fopen($quarantinedFile, 'r');
+            $this->assertNotFalse($openHandle);
+
+            try {
+                $this->expectException(RestoreAttachmentFinalizationException::class);
+                $this->service()->finalize($handle, $swap);
+            } finally {
+                fclose($openHandle);
+                $this->assertTrue(Storage::disk('attachments')->exists('receipts/new.jpg'), 'A failed finalize() must never touch the restored live tree.');
+                $this->assertSame(AttachmentSwapState::Activated, $this->inspect(), 'A partial/failed deletion must never be reported as Finalized — it must remain safely retryable.');
+            }
         } finally {
-            fclose($openHandle);
-            $this->assertTrue(Storage::disk('attachments')->exists('receipts/new.jpg'), 'A failed finalize() must never touch the restored live tree.');
-            $this->assertSame(AttachmentSwapState::Activated, $this->inspect(), 'A partial/failed deletion must never be reported as Finalized — it must remain safely retryable.');
             $handle->release();
         }
     }
@@ -752,12 +765,13 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $manifest = $this->manifestFor([$this->stageAttachment($workspace, 'receipts/new.jpg', 'new-content')], 11);
 
         $handle = $this->exclusiveHandle();
-        $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
-
-        // 1st write (FinalizationStarted) succeeds; 2nd write (Finalized) fails.
-        $markerWriter = $this->markerWriterFailingOnCall(2);
 
         try {
+            $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+
+            // 1st write (FinalizationStarted) succeeds; 2nd write (Finalized) fails.
+            $markerWriter = $this->markerWriterFailingOnCall(2);
+
             $exception = null;
 
             try {
@@ -787,17 +801,21 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $manifest = $this->manifestFor([$this->stageAttachment($workspace, 'receipts/new.jpg', 'new-content')], 11);
 
         $handle = $this->exclusiveHandle();
-        $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
-
-        $foreignPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'oms-foreign-lock-'.bin2hex(random_bytes(8)).'.lock';
-        $foreignShared = (new BackupSubsystemLock($foreignPath))->acquireShared();
-        $this->assertNotNull($foreignShared);
 
         try {
-            $this->expectException(RestoreAttachmentFinalizationException::class);
-            $this->service()->finalize($foreignShared, $swap);
+            $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+
+            $foreignPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'oms-foreign-lock-'.bin2hex(random_bytes(8)).'.lock';
+            $foreignShared = (new BackupSubsystemLock($foreignPath))->acquireShared();
+            $this->assertNotNull($foreignShared);
+
+            try {
+                $this->expectException(RestoreAttachmentFinalizationException::class);
+                $this->service()->finalize($foreignShared, $swap);
+            } finally {
+                $foreignShared->release();
+            }
         } finally {
-            $foreignShared->release();
             $handle->release();
         }
     }

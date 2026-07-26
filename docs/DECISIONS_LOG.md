@@ -1166,3 +1166,17 @@ By the time a post-mutation marker write fails, something is already wrong with 
 
 ### Impact
 A marker-update-after-mutation failure always leaves both of that operation's trees exactly where the last successful mutation put them (verified by dedicated tests for all three lifecycle methods) and always reports `InconsistentNeedsManualReview` on the next inspection — this is intentionally the ONLY path in this class that can reach that terminal-looking-but-actually-safe state, and the future Task 7C.7+ recovery flow must treat it as "everything is physically fine, only the audit trail needs a human to confirm and re-stamp," not as data loss.
+
+---
+
+### Date
+2026-07-26 (test-stability pass)
+
+### Decision
+Every test that acquires a real `BackupSubsystemLock` handle must wrap the ENTIRE span from acquisition through every subsequent operation (including `activate()`/`rollback()`/`finalize()` calls that can themselves throw) in a single `try { ... } finally { $handle->release(); }` — never acquire-then-operate-outside-the-guard-then-release-inside-it.
+
+### Reason
+A real `flock()`-backed lock has no per-test scoping of its own — it is a genuine OS resource shared across the entire PHPUnit process, at a fixed on-disk path that `Storage::fake()` does not meaningfully reset (it wipes directory contents, not an already-open file descriptor's lock). A handle leaked by ANY unguarded code path between acquisition and release therefore doesn't just fail its own test — it silently blocks every other test in the same process that needs the same lock, including tests in entirely unrelated files (`BackupCreationOrchestratorTest`, in the incident this decision responds to). This is exactly the class of bug the fix for `docs/TASKS_LOG.md`'s 2026-07-26 "test-stability pass" entry addressed: 7 methods called `activate()` (a real-filesystem-mutating call) before entering their `try` block.
+
+### Impact
+Any future test added to `tests/Feature/Restore/Attachments/RestoreAttachmentActivationServiceTest.php` (or any other test acquiring `BackupSubsystemLock` directly) must follow this pattern: acquire, then IMMEDIATELY open the `try`, do everything (including calls that are expected to succeed, not just the ones under test) inside it, and release only in `finally`. Code review of new tests in this area should treat "operation between acquire and try" as a defect on sight, not a style nit.

@@ -1,6 +1,20 @@
 # Prompts Log
 
 ### Date
+2026-07-26 (test-stability pass — stabilize backup restore regression tests)
+
+### Prompt
+**"Task 7C.6 is approved architecturally and already committed. Before starting 7C.7, perform one narrowly focused test-stability pass only."** Investigate the one flaky failure from the prior pass's broader regression run (`BackupCreationOrchestratorTest::...pre_publish_verification_fails` — 742/738/1-failed/3-skipped, passes in isolation, reported as pre-existing test-order flakiness): (1) reproduce with the smallest test combination (starting with the orchestrator test class plus directly preceding/following restore/backup classes, order controls/random order only as needed, no full suite); (2) identify leaked shared state among a specific list of likely sources (container bindings, `Storage::fake()`, config mutations, `Carbon::setTestNow()`, Cache locks, filesystem `flock()` handles, `RestoreActivityGuard` state, progress/marker files, static/`once()` memoization, env vars, DB rows, mock expectations, process runner fakes); (3) fix the root cause, not the assertion — no weakening, no retries, no skipping, no reordering as the fix; (4) specifically review `once()`/memoized state in the backup subsystem for staleness across tests/operations; (5) verify with the specific test run 10+ times, the full orchestrator class, the same broader regression subset, and once in randomized order — required final result 0 failures; (6) commit policy — update only required docs, commit as `stabilize backup restore regression tests` if anything changed, run `graphify update .` only if production code changed (separate commit if so); if nothing needed to change and repeated runs are clean, report exactly what did/didn't reproduce rather than an empty commit. Do not run the full suite, do not push, do not start 7C.7.
+
+### Purpose
+Task 7C.6's crash-safety correction pass left one unexplained flaky failure in an unrelated pre-existing test. Rather than assume it away, this pass exists to actually prove whether it was a genuine regression (a real bug this session's changes introduced into shared/global state) or a pre-existing issue merely surfaced by the new test suite's presence — and either way, to leave the regression suite in a state where "0 failures" is a real, verified property, not an assumption, before building the much larger 7C.7 orchestrator on top of it.
+
+### Result
+Root-caused as a genuine test-isolation bug (not a production bug): 7 methods in `RestoreAttachmentActivationServiceTest.php` called `activate()` (a real-filesystem-mutating, real-`flock()`-holding operation) before entering the `try/finally` that releases the lock — a leaked handle from any of them could block `BackupCreationOrchestrator::run()`'s own lock acquisition in a later, unrelated test in the same PHPUnit process. Fixed by restructuring all 7 methods so the entire acquire-to-release span is inside one `try/finally`. No `once()` memoization issue found (the subsystem's only usage, in `BackupDeletionService`, is correctly per-instance-scoped and unrelated). Verified: specific test 10/10 clean; `BackupCreationOrchestratorTest` 25/25; combined filter 54/54; broader `Restore|Backup` regression 742/739/0-failed/3-skipped in both default and randomized order. Test-file-only change (76 insertions, 58 deletions) — no production code touched, so `graphify update .` was not run. See `docs/TASKS_LOG.md`/`docs/DECISIONS_LOG.md` (2026-07-26 "test-stability pass" entries) for full detail.
+
+---
+
+### Date
 2026-07-26 (OMS Task 7C.6 crash-safety correction pass — signed/durable swap marker, write-ahead phase protocol, InterruptedDuringRollback state, validated attachment manifest value object)
 
 ### Prompt
