@@ -1825,28 +1825,28 @@
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1785051509.8532455,
-    "ast_hash": "eb13c80e2a45d3b01322a2d09fc06a92",
+    "mtime": 1785056331.028814,
+    "ast_hash": "f14a264a0ace92e1383f33a04d022586",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
-    "mtime": 1785051557.112038,
-    "ast_hash": "c52c62473217612b8eff4ca5e4007e48",
+    "mtime": 1785056453.6910162,
+    "ast_hash": "4c3b19ff28156c1530bcbadf28861b23",
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1785051614.1622345,
-    "ast_hash": "431ece1aba3d5b4ae39dc46a90768a95",
+    "mtime": 1785056538.9239676,
+    "ast_hash": "924fb056d5ef25d0369a2d26ff11dc25",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
-    "mtime": 1785051591.1422765,
-    "ast_hash": "0ed4e70cf1b7c411c9dedb093abc5547",
+    "mtime": 1785056486.1270378,
+    "ast_hash": "0ac16cb87c0ff37b5bfc0e92ca385e7e",
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1785051482.3287992,
-    "ast_hash": "244ed825194240f4f13837df581a2709",
+    "mtime": 1785056421.938329,
+    "ast_hash": "f3d6eb1002d449c8b56f03602b849ddf",
     "semantic_hash": ""
   },
   "app/Services/Reports/ProjectFinancialDetailsWordExportService.php": {
@@ -2460,8 +2460,8 @@
     "semantic_hash": ""
   },
   "config/oms.php": {
-    "mtime": 1784965905.3517783,
-    "ast_hash": "5b962a5becf8e49f26cd9db97abf6ba5",
+    "mtime": 1785052752.2269428,
+    "ast_hash": "5c80b6969ed10465029e143dd2e66cab",
     "semantic_hash": ""
   },
   "app/Policies/AccountPolicy.php": {
@@ -3730,8 +3730,8 @@
     "semantic_hash": ""
   },
   "tests/Support/Restore/FakeRestoreProgressDurability.php": {
-    "mtime": 1784961076.2424717,
-    "ast_hash": "c69524ffc9e05ec6e504aedf9c61d0c6",
+    "mtime": 1785055372.9896514,
+    "ast_hash": "3d9ccaf37e1ee8b59f82ca80a0c98a98",
     "semantic_hash": ""
   },
   "app/Services/Restore/Contracts/CurrentDatabaseSizeEstimator.php": {
@@ -4112,6 +4112,166 @@
   "tests/Unit/Services/Restore/SymfonyProcessStreamInputRunnerIntegrationTest.php": {
     "mtime": 1785051012.0319786,
     "ast_hash": "a488101a5688f86c2bca36fe942f256b",
+    "semantic_hash": ""
+  },
+  "app/Services/Restore/Attachments/AttachmentSwapHandle.php": {
+    "mtime": 1785052821.8489344,
+    "ast_hash": "0f28be1275e4c5a6527a250f6ba927fc",
+    "semantic_hash": ""
+  },
+  "app/Services/Restore/Attachments/AttachmentSwapMarker.php": {
+    "mtime": 1785054868.3134456,
+    "ast_hash": "91a476be73402972bb5652cb5a496e37",
+    "semantic_hash": ""
+  },
+  "app/Services/Restore/Attachments/AttachmentSwapMarkerReader.php": {
+    "mtime": 1785054906.7459986,
+    "ast_hash": "f9037006cb93e885cc633050cab73696",
+    "semantic_hash": ""
+  },
+  "app/Services/Restore/Attachments/AttachmentSwapMarkerSigner.php": {
+    "mtime": 1785054875.9701695,
+    "ast_hash": "bd6afffb4dbb70fcf39311ebc6d75e13",
+    "semantic_hash": ""
+  },
+  "app/Services/Restore/Attachments/AttachmentSwapMarkerWriter.php": {
+    "mtime": 1785054891.2550597,
+    "ast_hash": "bb718e0978cd5380d599d023fefe656a",
+    "semantic_hash": ""
+  },
+  "app/Services/Restore/Attachments/AttachmentSwapPhase.php": {
+    "mtime": 1785054858.7123468,
+    "ast_hash": "e40b15748f27d9c885d874140f7a4c00",
+    "semantic_hash": ""
+  },
+  "app/Services/Restore/Attachments/AttachmentSwapState.php": {
+    "mtime": 1785054929.162757,
+    "ast_hash": "f5713c6a681d4a0cab399c3c10d91c42",
+    "semantic_hash": ""
+  },
+  "app/Services/Restore/Attachments/AttachmentSwapStateInspector.php": {
+    "mtime": 1785054961.976061,
+    "ast_hash": "8e5b117c36c1c5c7ae54511074083c53",
+    "semantic_hash": ""
+  },
+  "app/Services/Restore/Attachments/NativeAttachmentMoveRunner.php": {
+    "mtime": 1785053018.790966,
+    "ast_hash": "c3d09e633036cc175cd35889b4c0d7f7",
+    "semantic_hash": ""
+  },
+  "app/Services/Restore/Attachments/RestoreAttachmentActivationService.php": {
+    "mtime": 1785055338.6420174,
+    "ast_hash": "95c3a4b45fa4ec03bfd647bf9d07ba7f",
+    "semantic_hash": ""
+  },
+  "app/Services/Restore/Attachments/RestoreAttachmentManifest.php": {
+    "mtime": 1785054987.4341464,
+    "ast_hash": "da6c65d86f0275330cd804eddfc03481",
+    "semantic_hash": ""
+  },
+  "app/Services/Restore/Attachments/RestoreAttachmentPaths.php": {
+    "mtime": 1785054944.4802258,
+    "ast_hash": "08fcb75e85c1833009077e8ae8fb06d0",
+    "semantic_hash": ""
+  },
+  "app/Services/Restore/Attachments/RestoreAttachmentRevalidator.php": {
+    "mtime": 1785055013.7216902,
+    "ast_hash": "9a7543f78ffd4ee6d8c3e58ea66ab6f8",
+    "semantic_hash": ""
+  },
+  "app/Services/Restore/Contracts/AttachmentMoveRunner.php": {
+    "mtime": 1785052853.4834194,
+    "ast_hash": "4594336b7fd4bd60901cc8b1d540b80a",
+    "semantic_hash": ""
+  },
+  "app/Services/Restore/Exceptions/RestoreAttachmentFinalizationException.php": {
+    "mtime": 1785055053.0754132,
+    "ast_hash": "9b1511590fcfa03dee194d69a19aa2b2",
+    "semantic_hash": ""
+  },
+  "app/Services/Restore/Exceptions/RestoreAttachmentMarkerException.php": {
+    "mtime": 1785054849.930653,
+    "ast_hash": "c53ce65abea242656ed833be78e36a87",
+    "semantic_hash": ""
+  },
+  "app/Services/Restore/Exceptions/RestoreAttachmentRollbackException.php": {
+    "mtime": 1785055044.1199076,
+    "ast_hash": "f78cf3accfa0f17ec9911e2479a09b26",
+    "semantic_hash": ""
+  },
+  "app/Services/Restore/Exceptions/RestoreAttachmentSwapException.php": {
+    "mtime": 1785055035.4779437,
+    "ast_hash": "d524a0d8e6c03802397ff120a8994242",
+    "semantic_hash": ""
+  },
+  "app/Services/Restore/Exceptions/RestoreAttachmentValidationException.php": {
+    "mtime": 1785054973.2085183,
+    "ast_hash": "e2f0c5ae1f45f03ca08283f53cc5ed1e",
+    "semantic_hash": ""
+  },
+  "app/Services/Restore/Exceptions/RestoreAttachmentsException.php": {
+    "mtime": 1785052758.4780488,
+    "ast_hash": "af0f65f31b1543c8ab3dac90ef463c7e",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/1fd59bac3370307b67c55d64c8ddecb0.php": {
+    "mtime": 1785053583.8006873,
+    "ast_hash": "d36ca226a36b1c769c16ba1f46d00f3b",
+    "semantic_hash": ""
+  },
+  "storage/framework/views/4ce9744e56837f8490a77b22f6857e0a.php": {
+    "mtime": 1785053575.2914705,
+    "ast_hash": "4f5d6f301e4bbedcaa49429510ac8bcb",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Restore/Attachments/RestoreAttachmentActivationServiceTest.php": {
+    "mtime": 1785055900.0039792,
+    "ast_hash": "9e5c1b4d3b7472fe1f1c61071c0c0990",
+    "semantic_hash": ""
+  },
+  "tests/Support/Restore/FakeAttachmentMoveRunner.php": {
+    "mtime": 1785053027.726973,
+    "ast_hash": "27a0e5e8bc0bf487edbb0135068273d7",
+    "semantic_hash": ""
+  },
+  "tests/Unit/Services/Attachments/AttachmentStorageServiceRestorePolicyTest.php": {
+    "mtime": 1785053366.4296591,
+    "ast_hash": "abdbcb9d24bd77240eefc4ac42ae980d",
+    "semantic_hash": ""
+  },
+  "tests/Unit/Services/Restore/Attachments/AttachmentSwapMarkerWriterReaderTest.php": {
+    "mtime": 1785055305.8780224,
+    "ast_hash": "399036559982b20dd282ab1dd867f419",
+    "semantic_hash": ""
+  },
+  "tests/Unit/Services/Restore/Attachments/AttachmentSwapStateInspectorTest.php": {
+    "mtime": 1785055661.1685538,
+    "ast_hash": "571d0fe6e93ed071c4d86957ab9e8a7c",
+    "semantic_hash": ""
+  },
+  "tests/Unit/Services/Restore/Attachments/NativeAttachmentMoveRunnerTest.php": {
+    "mtime": 1785053315.7686434,
+    "ast_hash": "b2b87c73c9059da4b5e8f969d31b4b7b",
+    "semantic_hash": ""
+  },
+  "tests/Unit/Services/Restore/Attachments/RestoreAttachmentManifestTest.php": {
+    "mtime": 1785055191.0903552,
+    "ast_hash": "c2a38eb454df202c96437dbe03cb008a",
+    "semantic_hash": ""
+  },
+  "tests/Unit/Services/Restore/Attachments/RestoreAttachmentPathsTest.php": {
+    "mtime": 1785053065.048367,
+    "ast_hash": "3fb10eda34cee388f90acff79e6aa7a1",
+    "semantic_hash": ""
+  },
+  "tests/Unit/Services/Restore/Attachments/RestoreAttachmentRevalidatorTest.php": {
+    "mtime": 1785055228.7745235,
+    "ast_hash": "3f00e71cb84a11f6780672fde09bc817",
+    "semantic_hash": ""
+  },
+  "storage/framework/testing/disks/attachments/receipts/1.jpg": {
+    "mtime": 1785056279.7519872,
+    "ast_hash": "0f018fcc1f24819f9d99818de552239f",
     "semantic_hash": ""
   }
 }
