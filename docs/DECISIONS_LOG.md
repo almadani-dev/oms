@@ -1082,3 +1082,87 @@ The parent policies' shared `AuthorizesCrud::view()` already denies a trashed re
 
 ### Impact
 `AttachmentController`'s controller-level trashed-parent check is intentionally redundant with `AuthorizesCrud::view()`'s own trashed exclusion — both independently deny a trashed parent, by design, for two different reasons (information-leak avoidance here vs. general "don't operate on trashed records" elsewhere). Do not remove the controller-level check on the assumption that the policy already covers it; they serve different purposes even though the practical effect (denial) overlaps for an *authorized* user, and differs from the policy alone for an *unauthorized* user's ability to distinguish 403-vs-404.
+
+---
+
+### Date
+2026-07-26 (OMS Task 7C.6 — attachment restore primitives)
+
+### Decision
+The attachment-swap state marker (`AttachmentSwapMarker`, phases `quarantined`/`activated`/`rolled_back`/`finalized`) is stored as a small JSON file at a **sibling path** of the quarantine directory (`attachments.pre_restore.{uuid}.state.json`), never inside the quarantine directory itself.
+
+### Reason
+`activate()`/`rollback()` both move the quarantine directory wholesale via `rename()`. Anything stored inside it would travel with it — a marker written to `{quarantine}/.state.json` after quarantining live attachments would get silently moved back into the live tree the moment `rollback()` restores it, contaminating restored attachment content with restore-internal bookkeeping. Storing it as an independent sibling file means every rename of the quarantine/live directories leaves the marker exactly where it is, so it reliably survives a crash at any point and is never mistaken for an attachment. It is also what makes `NotActivated` and `Finalized` distinguishable at all in `AttachmentSwapStateInspector` — both states leave an identical live-exists/no-quarantine directory layout, so without a persistent marker they would be structurally indistinguishable from filesystem facts alone.
+
+### Impact
+The marker file is a permanent audit artifact under `storage/app/private/` once an activation has ever been attempted for a given restore UUID — it is never deleted by `activate()`/`rollback()`/`finalize()` (only quarantine's own directory is deleted, by `finalize()`). Whether/when to eventually clean up marker files for long-finalized restores is left to a future recovery/retention phase (Task 7C.7+), not decided here.
+
+---
+
+### Date
+2026-07-26 (OMS Task 7C.6 — attachment restore primitives)
+
+### Decision
+Quarantine, rollback-discard, and the swap marker are always placed as direct siblings of the live `attachments` disk root (`storage/app/private/attachments.pre_restore.{uuid}`, etc.) — never nested under the `restores` disk (`storage/app/private/restores/{uuid}/quarantine`), even though `RestoreWorkspace`'s own docblock (Task 7C.3) anticipated a "future quarantine directory" as a sibling of its own `workspace`/progress-file subtree.
+
+### Reason
+Two independent requirements ruled out nesting under the `restores` disk: (1) the task's explicit requirement that quarantine and live attachments be renamed on the **same filesystem** — the `restores` disk is a separate, independently-configured disk (see `config/filesystems.php`) with no guarantee of sharing a filesystem/mount with `attachments`, whereas a direct sibling of `attachments` itself is guaranteed to share one by construction; (2) `RestoreWorkspace::cleanup()` only ever removes its own `workspace` subtree, but nothing in the restore pipeline guarantees the *whole* `{uuid}` directory under `restores` survives for the entire window between activation and finalization — keeping attachment quarantine entirely independent of the `restores` disk's own lifecycle removes that coupling risk entirely.
+
+### Impact
+`RestoreAttachmentPaths` never reads or depends on `config('oms.backup.restore.disk')` at all — only `config('filesystems.disks.attachments.root')` (via `Storage::disk('attachments')->path('')`). A future `RestoreOrchestrator` must track quarantine state for attachments independently of however it tracks the `restores` disk's own per-UUID directory; the two are deliberately uncoupled.
+
+---
+
+### Date
+2026-07-26 (OMS Task 7C.6 — attachment restore primitives)
+
+### Decision
+`RestoreAttachmentRevalidator::revalidate()` accepts an explicit `array $expectedFiles` (path/sha256/size per entry) and `int $expectedTotalBytes` parameter, rather than accepting `PreparedRestore` and reading the expected file list from it.
+
+### Reason
+`PreparedRestore::$manifestSummary` (built by `RestoreArchiveExtractor::buildManifestSummary()` in Task 7C.3) is deliberately bounded and explicitly excludes the full per-file attachment list, by design — carrying an unbounded per-file list on a value object meant to survive as small, loggable state was ruled out at that time. Since this phase's task scope forbids building the full `RestoreOrchestrator` or wiring these primitives to anything yet, the revalidator is written against the same shape `RestoreArchiveExtractor` itself already consumes (`manifest['attachments']['files']`) rather than inventing a dependency on a field `PreparedRestore` doesn't have.
+
+### Impact
+The future `RestoreOrchestrator` (Task 7C.7+) must supply the manifest's attachment file list to `activate()` itself — either by retaining it in-process from the same `BackupArchiveContentVerifier::verify()` call that already produced it during preparation, or by persisting a bounded subset (path/sha256/size only) to disk for crash-recovery scenarios where activation happens in a different process invocation than preparation. Which of those two the orchestrator uses is an open design question for that later phase, not decided here — flagged as a risk in `docs/TASKS_LOG.md`'s 2026-07-26 Task 7C.6 entry.
+
+---
+
+### Date
+2026-07-26 (OMS Task 7C.6 crash-safety correction pass)
+
+### Decision
+The attachment-swap marker was upgraded from a plain, unsigned JSON file to a signed (HMAC-SHA256, purpose-derived from `APP_KEY` with its own distinct context `oms-restore-attachment-swap-v1`), durably-written (fsync'd, atomic-rename) value object — reusing the existing `RestoreProgressDurability` contract/`NativeRestoreProgressDurability` implementation rather than writing a second durability mechanism.
+
+### Reason
+The original implementation's own report already stated the marker is the ONLY thing distinguishing `NotActivated` from `Finalized` (both leave an identical live-exists/no-quarantine directory layout) — meaning its integrity is safety-critical to correct crash recovery, not diagnostic. An unsigned file is trivially editable by anything with filesystem access (a stray script, manual "fix", or a bug elsewhere) into claiming any phase, which could cause a future recovery flow to authorize `rollback()`/`finalize()` from a fabricated state. Reusing `RestoreProgressDurability` (rather than inventing a parallel durability implementation) keeps exactly one crash-safety discipline in this codebase to reason about and test, consistent with the project's own "don't introduce a second implementation of an already-solved problem" instinct.
+
+### Impact
+`AttachmentSwapStateInspector` now treats ANY marker-read failure (missing signature, invalid signature, UUID mismatch, unsupported phase, malformed schema, oversized) identically — `InconsistentNeedsManualReview` — never distinguishing "probably fine, just weird" from "actively tampered." This is deliberately conservative: a future recovery flow (Task 7C.7+) gets exactly one signal for "don't trust this restore's attachment state," never a partial-trust gradient.
+
+---
+
+### Date
+2026-07-26 (OMS Task 7C.6 crash-safety correction pass)
+
+### Decision
+Several write-ahead marker phases (`RollbackStarted`, `RollbackLiveDiscarded`, `FinalizationStarted`) are accepted by `AttachmentSwapStateInspector` against MORE THAN ONE directory-fact pattern, each resolving to a different (but still correct and safe) state — rather than requiring one single fixed fact pattern per phase.
+
+### Reason
+These phases are each reachable from more than one prior state. `RollbackStarted` is written whether resuming from `Activated` (a normal fresh tree at live) or from `InterruptedDuringActivation` (no tree was ever restored to live at all, since activation crashed before its second rename) — the marker's job is only to say "about to attempt the quarantine-restoring move," not which of those two starting points led here. Similarly `RollbackLiveDiscarded` is reached either with a genuine discard tree present (a live tree really was moved aside) or without one (there was nothing to move aside, functionally identical to `InterruptedDuringActivation`). Requiring one exact fact pattern per phase would have forced inventing additional phases purely to distinguish starting points that don't actually change what needs to happen next, adding complexity without adding safety.
+
+### Impact
+Anyone extending this state machine must remember that phase alone does not always determine state — the directory facts at read time are load-bearing for these three phases specifically. Every accepted (phase, facts) combination is enumerated explicitly in `AttachmentSwapStateInspector::inspect()` (nested `match(true)` blocks) — no combination is inferred or defaulted; anything not explicitly listed there is `InconsistentNeedsManualReview`.
+
+---
+
+### Date
+2026-07-26 (OMS Task 7C.6 crash-safety correction pass)
+
+### Decision
+A marker-durability failure occurring immediately AFTER a destructive filesystem mutation succeeded does NOT trigger an automatic corrective action (e.g. attempting to move the just-mutated tree back) — it throws a distinct `marker_update_failed_after_mutation` exception and leaves the filesystem exactly as the mutation left it.
+
+### Reason
+By the time a post-mutation marker write fails, something is already wrong with the marker-writing path itself (e.g. a full disk, a permissions change) that a same-process automatic "let me also try to undo the mutation" action would run through the exact same suspect write path, or would act on a filesystem state whose bookkeeping is already known to be unreliable. Compounding an already-abnormal situation with a second automatic mutation risks making a recoverable situation (both trees fully intact, just unrecorded) into a genuinely lost one. This is the concrete application of "do not blindly continue to the next mutation" and "preserve recoverable trees" from the correction request: the safest action when the bookkeeping itself is failing is to stop touching the filesystem at all and surface the problem.
+
+### Impact
+A marker-update-after-mutation failure always leaves both of that operation's trees exactly where the last successful mutation put them (verified by dedicated tests for all three lifecycle methods) and always reports `InconsistentNeedsManualReview` on the next inspection — this is intentionally the ONLY path in this class that can reach that terminal-looking-but-actually-safe state, and the future Task 7C.7+ recovery flow must treat it as "everything is physically fine, only the audit trail needs a human to confirm and re-stamp," not as data loss.

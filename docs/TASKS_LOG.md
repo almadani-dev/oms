@@ -1523,3 +1523,108 @@ The six pre-existing orphan files under `storage/app/public/{execution-payments,
 
 ### Commit Hash
 Committed as `add private attachment security foundation` — see `git log -1 --format=%H` for the exact hash.
+
+---
+
+### Date
+2026-07-26 (OMS Task 7C.6 — attachment restore primitives: staged revalidation, three-phase activate/rollback/finalize lifecycle, crash-state inspector, Windows retry seam)
+
+### Task
+Implement OMS Task 7C.6 only — safe attachment restoration primitives (staged pre-activation revalidation, quarantine swap, rollback, finalization) — explicitly NOT connected to `RestoreCommand` and NOT the full `RestoreOrchestrator`. Required: first report what `AttachmentStorageService` currently allows/validates; a three-explicit-phase lifecycle (`activate()`/`rollback()`/`finalize()`, never one irreversible call); exclusive-lock enforcement on all three destructive methods with no second lock acquired; a deterministic UUID-derived quarantine layout outside the live attachments root; complete staged-tree revalidation immediately before the first live rename; a Linux authoritative rename sequence with Windows bounded retry via an injectable move seam; a read-only crash-state inspector; focused tests only; no migration, no full-suite run, no commit.
+
+### Result
+**AttachmentStorageService finding**: it has no extension/MIME allowlist at all — only `Attachment::APPROVED_DISKS` disk gating and relative-path traversal safety. The only "mutable upload allowlist" in the Attachments namespace is `AttachmentUploadService::ALLOWED_DIRECTORIES`/`ALLOWED_PREFIXES` (new-upload-time directory/prefix rule, never consulted by `AttachmentStorageService` or anything in the restore pipeline) — so restore was already structurally independent of it before this phase; confirmed and proven in a new dedicated test.
+
+**New classes** (`app/Services/Restore/Attachments/`): `RestoreAttachmentPaths` (deterministic sibling-of-live-root layout: quarantine `attachments.pre_restore.{uuid}`, rollback-discard `attachments.rollback_discard.{uuid}`, marker `attachments.pre_restore.{uuid}.state.json`), `AttachmentSwapHandle` (bounded, crash-reconstructable proof-of-activation value object), `AttachmentSwapState` (6-case enum: `NotActivated`/`Activated`/`InterruptedDuringActivation`/`RolledBack`/`Finalized`/`InconsistentNeedsManualReview`), `AttachmentSwapMarker` (small JSON audit record — the only thing that makes `NotActivated` and `Finalized` distinguishable, since both otherwise leave an identical directory layout), `AttachmentSwapStateInspector` (read-only, no automatic repair), `RestoreAttachmentRevalidator` (full staged-tree revalidation against a manifest file list — exact set, uniqueness, symlink/special-file rejection, size/hash/total-byte match, case-insensitive compound-safe denylist), `RestoreAttachmentActivationService` (`activate()`/`rollback()`/`finalize()`), `NativeAttachmentMoveRunner` (production `AttachmentMoveRunner`, Linux single attempt / Windows bounded retry+backoff via an injectable rename-attempt seam).
+
+**New contract**: `App\Services\Restore\Contracts\AttachmentMoveRunner`.
+
+**New exceptions** (`app/Services/Restore/Exceptions/`): `RestoreAttachmentsException`, `RestoreAttachmentValidationException`, `RestoreAttachmentSwapException`, `RestoreAttachmentRollbackException`, `RestoreAttachmentFinalizationException` — all bounded, sanitized, reasonCode-carrying, never a raw path/content/secret.
+
+**Config**: `config/oms.php` gained `oms.backup.restore.attachment_move_retry_attempts`/`attachment_move_retry_delay_ms` (defaults 5/200ms, env-overridable).
+
+**A real gap caught before any test was written against it**: `finalize()`'s recursive symlink-safe delete suppresses individual unlink/rmdir errors by design (best-effort traversal), which meant a silently-failed deletion (e.g. an open file handle) would still let `finalize()` report success. Fixed by adding an explicit post-delete `file_exists()` check that throws `RestoreAttachmentFinalizationException::deletionFailed()` if the quarantine path is still present — proven with a dedicated test that holds an open read handle on a quarantined file to deterministically force the deletion to fail.
+
+**Known interface-contract note**: `RestoreAttachmentRevalidator::revalidate()` takes an explicit `$expectedFiles`/`$expectedTotalBytes` parameter rather than consuming `PreparedRestore` directly, because `PreparedRestore::$manifestSummary` (Task 7C.3) is deliberately bounded and excludes the per-file attachment list. The future `RestoreOrchestrator` (Task 7C.7+) must supply the manifest's attachment file list itself (retained in-process from `BackupArchiveContentVerifier::verify()`, or read back from a persisted subset) — this was a design decision made to keep this phase's primitives decoupled from how the orchestrator eventually sources that list; see `docs/DECISIONS_LOG.md`.
+
+### Changed Files
+- `config/oms.php` — two new config keys.
+- `app/Services/Restore/Attachments/RestoreAttachmentPaths.php` — new.
+- `app/Services/Restore/Attachments/AttachmentSwapHandle.php` — new.
+- `app/Services/Restore/Attachments/AttachmentSwapState.php` — new.
+- `app/Services/Restore/Attachments/AttachmentSwapMarker.php` — new.
+- `app/Services/Restore/Attachments/AttachmentSwapStateInspector.php` — new.
+- `app/Services/Restore/Attachments/RestoreAttachmentRevalidator.php` — new.
+- `app/Services/Restore/Attachments/RestoreAttachmentActivationService.php` — new.
+- `app/Services/Restore/Attachments/NativeAttachmentMoveRunner.php` — new.
+- `app/Services/Restore/Contracts/AttachmentMoveRunner.php` — new.
+- `app/Services/Restore/Exceptions/RestoreAttachmentsException.php` — new.
+- `app/Services/Restore/Exceptions/RestoreAttachmentValidationException.php` — new.
+- `app/Services/Restore/Exceptions/RestoreAttachmentSwapException.php` — new.
+- `app/Services/Restore/Exceptions/RestoreAttachmentRollbackException.php` — new.
+- `app/Services/Restore/Exceptions/RestoreAttachmentFinalizationException.php` — new.
+- `tests/Support/Restore/FakeAttachmentMoveRunner.php` — new.
+- `tests/Unit/Services/Restore/Attachments/RestoreAttachmentPathsTest.php` — new.
+- `tests/Unit/Services/Restore/Attachments/RestoreAttachmentRevalidatorTest.php` — new.
+- `tests/Unit/Services/Restore/Attachments/AttachmentSwapStateInspectorTest.php` — new.
+- `tests/Unit/Services/Restore/Attachments/NativeAttachmentMoveRunnerTest.php` — new.
+- `tests/Feature/Restore/Attachments/RestoreAttachmentActivationServiceTest.php` — new.
+- `tests/Unit/Services/Attachments/AttachmentStorageServiceRestorePolicyTest.php` — new.
+- No existing production file was modified except `config/oms.php` (additive keys only). `AttachmentStorageService`, `AttachmentUploadService`, `RestoreArchiveExtractor`, `RestoreWorkspace`, `PreparedRestore`, `BackupSubsystemLock(Handle)` were read but not changed.
+- No migration. No `RestoreCommand`/orchestrator wiring.
+
+### Verification
+1. `php -l` on every new/changed PHP file — all clean.
+2. `git diff --check` — no whitespace errors.
+3. Targeted suite (`Restore|AttachmentSwapState|NativeAttachmentMoveRunner|AttachmentStorageServiceRestorePolicy` filter): **65 tests, 64 passed, 0 failed, 1 skipped (Linux-only branch on this Windows host), 122 assertions**.
+4. Broader regression (`Restore|Backup|Attachment` filter): **894 tests, 890 passed, 0 failed, 4 skipped, 2222 assertions** — no regression.
+5. Full suite was NOT run (out of scope per task instructions).
+
+### Commit Hash
+Not committed — awaiting explicit approval, per instructions.
+
+---
+
+### Date
+2026-07-26 (OMS Task 7C.6 crash-safety correction pass — signed/durable swap marker, write-ahead phase protocol, InterruptedDuringRollback state, validated attachment manifest value object)
+
+### Task
+A same-day, pre-commit crash-safety review/correction pass on the just-implemented Task 7C.6, requested before any commit: (1) harden `AttachmentSwapMarker` into a signed, tamper-evident marker (purpose-derived HMAC from `APP_KEY`, distinct context, strict bounded schema, fixed allowed phases only); (2) make marker writes crash-safe/durable, reusing `RestoreProgressDurability` rather than inventing a new durability implementation; (3) make the swap state machine write-ahead/crash-consistent with explicit durable phases before and after every destructive transition; (4) fix the `NotActivated` vs `Finalized` ambiguity so a marker/facts disagreement or a tampered marker always yields `InconsistentNeedsManualReview`, never a guessed state; (5) rename the rollback-discard path to a clearer deterministic name and cover the four listed crash windows (A–D) including a new distinct interrupted-rollback state; (6) replace the raw manifest array input to `RestoreAttachmentRevalidator` with a small immutable validated value object; (7) confirm all three destructive methods re-inspect lock + marker + filesystem facts at entry rather than trusting only an earlier handle; (8) fix finalization marker ordering so `finalized` is never recorded before quarantine deletion is verified complete; (9) add focused crash-window/marker-integrity tests; (10)-(11) report exact file counts and run only directly affected tests + `php -l` + `git diff --check`, then commit, run `graphify update .`, and commit that separately.
+
+### Result
+**Signed/durable marker**: `AttachmentSwapMarker` is now a strict immutable value object (`create()` — validated UUID, real `AttachmentSwapPhase` enum, required timestamp); new `AttachmentSwapMarkerSigner` (HMAC-SHA256, context `oms-restore-attachment-swap-v1`, purpose-derived from `APP_KEY`, distinct from `RestoreProgressSigner`'s own context); new `AttachmentSwapMarkerWriter`/`AttachmentSwapMarkerReader` reusing the exact `RestoreProgressDurability`/`NativeRestoreProgressDurability` seam already established for restore progress files (temp file → fwrite → fflush → fsync → close → atomic rename → best-effort parent-directory fsync; a failed write never replaces the previous valid marker). The reader verifies signature, exact bounded schema, UUID match, and phase validity before trusting anything; `read()` returns `null` only when no marker file exists at all, and throws `RestoreAttachmentMarkerException` (new) for every other integrity failure.
+
+**Write-ahead phase protocol**: 8 fixed phases (`ActivationStarted`/`LiveQuarantined`/`Activated`/`RollbackStarted`/`RollbackLiveDiscarded`/`RolledBack`/`FinalizationStarted`/`Finalized`, new `AttachmentSwapPhase` backed enum) are persisted before each destructive rename and again after each success, before the next mutation. A marker-write failure before any mutation reports `marker_write_failed`; a marker-update failure immediately after a mutation reports a distinct `marker_update_failed_after_mutation` and the method stops rather than continuing to the next step.
+
+**State machine**: `AttachmentSwapStateInspector` rewritten around verified-marker-phase × directory-facts, with a new `InterruptedDuringRollback` state (quarantine intact, live missing, discard populated — the process died between moving the restored tree aside and restoring quarantine). `rollback()` now accepts resuming from `Activated`, `InterruptedDuringActivation`, or `InterruptedDuringRollback`. The discard path is renamed `attachments.rollback_discard.{uuid}` → `attachments.restore_discard.{uuid}` (naming only, same layout/guarantees). `activate()`/`rollback()`/`finalize()` all independently re-inspect the lock and real current state at entry — never trusting only an `AttachmentSwapHandle` from an earlier call.
+
+**Validated manifest value object**: new `RestoreAttachmentManifest::fromManifestFiles()` — validates every entry once (safe/unique normalized path, real 64-hex SHA-256, bounded non-negative size, bounded non-negative total) and exposes only bounded accessors; `RestoreAttachmentRevalidator::revalidate()` now requires this object, never a raw array.
+
+**Finalization ordering**: unchanged from the original pass's own fix (already verified quarantine-gone before writing `finalized`) — re-confirmed correct under the new marker/phase model and covered by a new dedicated test forcing the marker-update-after-deletion failure path.
+
+### Changed Files
+Exact `git diff --name-status` (36 files: 29 added, 7 modified, 0 deleted):
+
+**Added (29)**:
+- `app/Services/Restore/Attachments/{AttachmentSwapHandle,AttachmentSwapMarker,AttachmentSwapMarkerReader,AttachmentSwapMarkerSigner,AttachmentSwapMarkerWriter,AttachmentSwapPhase,AttachmentSwapState,AttachmentSwapStateInspector,NativeAttachmentMoveRunner,RestoreAttachmentActivationService,RestoreAttachmentManifest,RestoreAttachmentPaths,RestoreAttachmentRevalidator}.php` (13)
+- `app/Services/Restore/Contracts/AttachmentMoveRunner.php` (1)
+- `app/Services/Restore/Exceptions/{RestoreAttachmentFinalizationException,RestoreAttachmentMarkerException,RestoreAttachmentRollbackException,RestoreAttachmentSwapException,RestoreAttachmentValidationException,RestoreAttachmentsException}.php` (6)
+- `tests/Feature/Restore/Attachments/RestoreAttachmentActivationServiceTest.php` (1)
+- `tests/Support/Restore/FakeAttachmentMoveRunner.php` (1)
+- `tests/Unit/Services/Attachments/AttachmentStorageServiceRestorePolicyTest.php` (1)
+- `tests/Unit/Services/Restore/Attachments/{AttachmentSwapMarkerWriterReaderTest,AttachmentSwapStateInspectorTest,NativeAttachmentMoveRunnerTest,RestoreAttachmentManifestTest,RestoreAttachmentPathsTest,RestoreAttachmentRevalidatorTest}.php` (6)
+
+**Modified (7)**:
+- `config/oms.php` (unchanged this pass — same two keys as the original 7C.6 pass)
+- `docs/AI_PROJECT_MEMORY.md`, `docs/DECISIONS_LOG.md`, `docs/NEXT_STEPS.md`, `docs/PROMPTS_LOG.md`, `docs/TASKS_LOG.md`
+- `tests/Support/Restore/FakeRestoreProgressDurability.php` — additive `onSyncFile` per-call-index hook (backward compatible, existing callers unaffected) so a test can make e.g. only the 2nd marker write fail.
+
+### Verification
+1. `php -l` on every new/changed PHP file — all clean.
+2. `git diff --check` — no whitespace errors.
+3. Targeted attachment suite (`--filter=Attachment`): **326 tests, 323 passed, 0 failed, 3 skipped (pre-existing), 770 assertions**.
+4. Broader regression (`--filter="Restore|Backup"`): **742 tests, 738 passed, 1 failed, 3 skipped, 1768 assertions** — the 1 failure (`BackupCreationOrchestratorTest::test_creation_never_reaches_completed_when_pre_publish_verification_fails`) passes in isolation (re-run: 1/1 passed) and touches no file this pass changed — pre-existing test-order flakiness, not a regression.
+5. Full suite was NOT run (out of scope per instructions).
+
+### Commit Hash
+See the commit immediately following this entry.

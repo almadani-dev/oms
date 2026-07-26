@@ -184,6 +184,17 @@ return [
                 'php', 'phtml', 'phar', 'exe', 'sh', 'bat', 'cmd', 'dll', 'htaccess',
             ],
 
+            // OMS Task 7C.6 — bounded retry/backoff around the live<->quarantine
+            // attachment directory rename during activation/rollback. Linux
+            // (production) never needs more than the first attempt (rename()
+            // is atomic there); this exists for Windows/Laragon local dev,
+            // where an open file handle or AV scanner can cause a transient
+            // failure. Never infinite — exhausting these attempts triggers
+            // the documented rollback-on-failure path instead of retrying
+            // forever.
+            'attachment_move_retry_attempts' => (int) env('OMS_RESTORE_ATTACHMENT_MOVE_RETRY_ATTEMPTS', 5),
+            'attachment_move_retry_delay_ms' => (int) env('OMS_RESTORE_ATTACHMENT_MOVE_RETRY_DELAY_MS', 200),
+
             // Seconds. Applies to the streamed `mysql` import subprocess
             // only — mirrors 'dump_timeout' above for the reverse direction.
             'mysql_import_timeout' => (int) env('OMS_RESTORE_MYSQL_IMPORT_TIMEOUT', 3600),
