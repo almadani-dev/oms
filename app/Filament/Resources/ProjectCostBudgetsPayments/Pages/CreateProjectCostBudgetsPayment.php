@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ProjectCostBudgetsPayments\Pages;
 
+use App\Filament\Concerns\GeneratesSequentialTransactionNumbers;
 use App\Filament\Concerns\RedirectsToResourceView;
 use App\Enums\TransactionLineRole;
 use App\Filament\Resources\ProjectCostBudgetsPayments\ProjectCostBudgetsPaymentResource;
@@ -24,6 +25,7 @@ use Illuminate\Support\Facades\Log;
 
 class CreateProjectCostBudgetsPayment extends CreateRecord
 {
+    use GeneratesSequentialTransactionNumbers;
     use RedirectsToResourceView;
 
     protected static string $resource = ProjectCostBudgetsPaymentResource::class;
@@ -101,7 +103,7 @@ class CreateProjectCostBudgetsPayment extends CreateRecord
             (int) $costCurrencyId, (int) $data['disbursement_currency_id']
         );
 
-        return DB::transaction(function () use (
+        return $this->retryOnTransactionNumberCollision(fn () => DB::transaction(function () use (
             $data, $projectCost, $projectCostId, $costCurrencyId,
             $original, $adminPct, $transferPct, $adminAmount, $transferAmount, $afterDeduct, $finalAmount, $fxRate,
             $accounts, $lines
@@ -182,30 +184,7 @@ class CreateProjectCostBudgetsPayment extends CreateRecord
                 ->send();
 
             return $budget;
-        });
-    }
-
-    /**
-     * Build the next transaction number for the given prefix (e.g. "BUD-2026-").
-     *
-     * Uses the real MAX of the existing numeric suffixes — including soft-deleted
-     * rows — instead of a row count, so deletions can never cause a duplicate.
-     * A row-level lock guards against concurrent inserts within the transaction.
-     */
-    protected function generateTransactionNumber(string $prefix): string
-    {
-        $numbers = Transaction::withTrashed()
-            ->where('transaction_number', 'like', $prefix . '%')
-            ->lockForUpdate()
-            ->pluck('transaction_number');
-
-        $max = 0;
-        foreach ($numbers as $number) {
-            $suffix = (int) substr((string) $number, strrpos((string) $number, '-') + 1);
-            $max    = max($max, $suffix);
-        }
-
-        return $prefix . str_pad($max + 1, 4, '0', STR_PAD_LEFT);
+        }));
     }
 
     /**

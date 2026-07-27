@@ -1342,3 +1342,45 @@ The task instructions explicitly required keeping "legitimate backup/restore his
 
 ### Impact
 A future reviewer of the local `oms` database's `backup_operations` table will see a real, legitimate trail of Task 7C.9's three successful restore cycles (plus the one instructive failed-then-fixed attempt) and should not mistake their presence for leftover test clutter needing further cleanup — they were kept intentionally, per instructions, as acceptance evidence.
+
+---
+
+### Date
+2026-07-27 (OMS Task 8 — `debit_base`/`credit_base` are per-line own-currency values; multi-currency balance is the FX equation, never a raw cross-currency sum)
+
+### Decision
+The financial integrity checker's `JournalBalanceIntegrityChecker` treats `transaction_lines.debit_base`/`credit_base` as each line's own-currency amount (identical to `amount_currency`) and validates a 4-line multi-currency transaction (general exchange / budget disbursement) via `FinancialTransactionBalanceGuard::assertBalancedMultiCurrencyLines()`'s real FX equation — never via `SUM(debit_base) = SUM(credit_base)` across the whole transaction.
+
+### Reason
+The task's own instructions offered a hypothetical example implying `debit_base`/`credit_base` might be a company-base-currency-normalized value (e.g. `credit_base = amount × fx_rate`) and explicitly warned not to assume this without checking the real code. Auditing every real write path (all six financial Create/Edit pages) and three independent pre-existing docblocks (`TrialBalanceReportService`, `TrialBalancePage`, `ComprehensiveFinancialTransactionsPage` — all stating "despite the column names") confirmed the opposite: `debit_base`/`credit_base` are never fx-multiplied: only the destination line of a 4-line exchange carries a real `fx_rate`, and even there `debit_base` equals `amount_currency` (the already-converted destination-currency amount), not `amount_currency × fx_rate` computed a second time. A raw `SUM(debit_base)=SUM(credit_base)` across a 4-line exchange would therefore silently sum two different currencies (exactly the `1000 USD != 3000 ILS` mistake the task explicitly forbade) and would falsely reject every legitimate multi-currency exchange whose FX rate isn't exactly 1.
+
+### Impact
+Any future financial-integrity or reporting code touching multi-currency transactions must classify by `line_role` set first (2-line single-currency vs. the 4-line `source`/`administrative_deduction`/`transfer_fee`/`destination` shape) and apply the matching invariant — never a blanket cross-currency sum. A transaction whose `line_role` set matches neither known shape (including every pre-2026-07-14 historical row where `line_role` is `NULL`) is reported as a bounded WARNING ("unclassified structure, requires manual review"), never guessed at as balanced or unbalanced. See `docs/AI_PROJECT_MEMORY.md` (2026-07-27, "OMS Task 8") for the full audit trail and `tests/Feature/Integrity/JournalBalanceIntegrityCheckerTest.php` for the proof (a valid 1000→2999.94 exchange passes; the same shape with a wrong FX conversion is caught; a naive raw-sum check is proven never used).
+
+---
+
+### Date
+2026-07-27 (OMS Task 8 — schema/migration-history drift documented, not fixed)
+
+### Decision
+`bank_accounts` (plus `transactions.bank_account_id` and `accounts.parent_id`, both real FKs into it/itself) exist live in the local MySQL database with no corresponding migration file anywhere on disk — discovered while auditing FK coverage for Task 8. Per explicit user decision (offered three options: document only / add a reconciling migration now / ignore entirely), this is **documented only in this task; no migration was added and no schema was touched.**
+
+### Reason
+This drift is outside Task 8's named scope (financial integrity + Trial Balance), and reconstructing a migration for schema that already exists live carries its own risk of getting the historical column order/defaults subtly wrong without a clear, separate review of the real intent. The `migrations` DB table has 66 rows but only 63 files exist on disk; the other two missing files (`create_budget_lines_table`, `create_project_activities_table`) are harmless since both tables were later dropped by a migration that is still on disk — only the `bank_accounts` family is a live, unreproducible gap.
+
+### Impact
+A `migrate:fresh` on this project today would NOT recreate `bank_accounts`, `transactions.bank_account_id`, or `accounts.parent_id` — a future fresh install/CI setup would break at whichever migration/seeder first touches one of these. This should be tracked as its own explicitly-scoped follow-up task, not assumed fixed by Task 8. `tests/Support/Integrity/IntegrityTestFixtures.php::shimUndocumentedSchemaDrift()` adds a minimal test-only SQLite shim for these three items so Task 8's own relationship-integrity tests can still exercise the (real, already-correct) checks against them — this shim never touches the real migrations directory or the real database.
+
+---
+
+### Date
+2026-07-27 (OMS Task 8 — transaction-number generation: shared trait + bounded retry, not a redesign)
+
+### Decision
+The six near-identical `generateTransactionNumber()` MAX+1 implementations (one per financial Create page, byte-identical) are deduplicated into one shared `App\Filament\Concerns\GeneratesSequentialTransactionNumbers` trait with the exact same logic/format, unchanged. Each page's `handleRecordCreation()` now wraps its existing `DB::transaction()` call in the trait's new `retryOnTransactionNumberCollision()` — a bounded 3-attempt retry that catches only a `UniqueConstraintViolationException` whose message mentions `transaction_number`, re-running the whole closure (which recomputes MAX fresh) on each attempt.
+
+### Reason
+The audit found `transaction_number` already carries a real DB UNIQUE constraint and `lockForUpdate()` already serializes concurrent creates against any EXISTING row matching a prefix — so no historical duplicate is possible today. The one real gap is the very first number under a brand-new prefix: `lockForUpdate()` cannot lock rows that don't exist yet, so two concurrent creates racing to be "the first REC-2026-" could both compute suffix 0001, and the loser would previously surface as an uncaught `QueryException` (ungraceful, but never a duplicate row — the DB constraint already prevented actual corruption). The task explicitly required "preserve the existing visible numbering format" and "do NOT redesign numbering unless objectively necessary" — a bounded retry closes the ungraceful-failure gap without changing the number format, the generator's own logic, or introducing a new numbering scheme.
+
+### Impact
+Any future financial Create page needing sequential transaction numbering should use this same trait rather than re-implementing `generateTransactionNumber()`/its own retry logic. `tests/Unit/Filament/Concerns/GeneratesSequentialTransactionNumbersTest.php` pins the retry contract directly (pure unit test, no DB): succeeds without retry on the happy path, retries only on a genuine `transaction_number` collision, rethrows immediately for any unrelated exception (including a `UniqueConstraintViolationException` for a different table's constraint), and rethrows after exhausting `maxAttempts`.

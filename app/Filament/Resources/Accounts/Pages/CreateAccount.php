@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Accounts\Pages;
 
+use App\Filament\Concerns\GeneratesSequentialTransactionNumbers;
 use App\Filament\Concerns\RedirectsToResourceView;
 use App\Enums\TransactionLineRole;
 use App\Filament\Resources\Accounts\AccountResource;
@@ -23,6 +24,7 @@ use Illuminate\Validation\ValidationException;
 
 class CreateAccount extends CreateRecord
 {
+    use GeneratesSequentialTransactionNumbers;
     use RedirectsToResourceView;
 
     protected static string $resource = AccountResource::class;
@@ -46,7 +48,7 @@ class CreateAccount extends CreateRecord
             return static::getModel()::create($data);
         }
 
-        return DB::transaction(function () use ($data, $openingBalance, $openingDate, $openingFxRate) {
+        return $this->retryOnTransactionNumberCollision(fn () => DB::transaction(function () use ($data, $openingBalance, $openingDate, $openingFxRate) {
             // STEP 1 - Create the account (current_balance starts at 0)
             $account = Account::create($data);
 
@@ -105,7 +107,7 @@ class CreateAccount extends CreateRecord
                 ->send();
 
             return $account;
-        });
+        }));
     }
 
     /**
@@ -237,19 +239,4 @@ class CreateAccount extends CreateRecord
      * Uses the real MAX of the existing numeric suffixes - including soft-deleted
      * rows - instead of a row count, so deletions can never cause a duplicate.
      */
-    protected function generateTransactionNumber(string $prefix): string
-    {
-        $numbers = Transaction::withTrashed()
-            ->where('transaction_number', 'like', $prefix . '%')
-            ->lockForUpdate()
-            ->pluck('transaction_number');
-
-        $max = 0;
-        foreach ($numbers as $number) {
-            $suffix = (int) substr((string) $number, strrpos((string) $number, '-') + 1);
-            $max    = max($max, $suffix);
-        }
-
-        return $prefix . str_pad($max + 1, 4, '0', STR_PAD_LEFT);
-    }
 }

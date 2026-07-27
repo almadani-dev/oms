@@ -1827,3 +1827,34 @@ See `docs/AI_PROJECT_MEMORY.md` (2026-07-27, "OMS Task 7C.9") for full technical
 
 ### Commit Hash
 Not committed — awaiting review, per instructions.
+
+---
+
+### Date
+2026-07-27 (OMS Task 8 — Financial & Database Integrity + Trial Balance Correctness Review)
+
+### Task
+High-risk financial/data-integrity phase: read-only audit of FK enforcement, uniqueness, transaction-number generation, indexes, multi-currency accounting rules, account/currency integrity, orphan detection, and persisted-balance consistency; a focused correctness review of the Trial Balance page/exports for multi-currency handling; a new read-only `php artisan oms:check-financial-integrity` command; safe automated tests; and one real read-only scan against the local DB. Explicit instruction: never call a multi-currency transaction unbalanced merely because raw amounts in different currencies differ, and never silently repair historical data.
+
+### Result
+See `docs/AI_PROJECT_MEMORY.md` (2026-07-27, "OMS Task 8") for full technical detail. Summary: audit found `transaction_lines.debit_base`/`credit_base` are each line's own-currency amount (never a company-base-currency conversion, despite the column names) — confirmed against every real write path and three pre-existing docblocks — so the integrity checker replays `FinancialTransactionBalanceGuard`'s real FX equation for 4-line multi-currency transactions rather than a raw cross-currency `SUM(debit_base)=SUM(credit_base)`. Real local DB preflight was clean (0 orphans/duplicates/mismatches across 4 transactions, 8 lines, 3 accounts); `accounts.current_balance` is a real persisted column, reconciled with 0 discrepancies. Trial Balance's current "Phase 1" design (period-only totals, no opening/closing balance) was confirmed as an intentional, already-documented 2026-07-05 decision, not a defect — 14 new tests fill its previously-zero calculation-coverage gap, including the canonical 1000→2999.94 multi-currency exchange case proving neither currency's report ever blends the other's raw amount. A real, unplanned schema/migration-history drift was found (`bank_accounts`, `accounts.parent_id`, `transactions.bank_account_id` live in the DB with no corresponding migration file) — per explicit user decision, documented only, no code change. Implemented the full read-only integrity checker (`app/Services/Integrity/*`, four focused collaborators) and `oms:check-financial-integrity` (`--json`, exit 0/1/2). Per explicit user approval: added two proven-missing supporting indexes and bounded (3-attempt) retry-on-collision hardening for the six duplicated transaction-number generators, deduplicated into one shared trait. Attachment single-active-attachment rule: still never formally approved — deferred, no schema change.
+
+### Changed Files
+- `app/Filament/Concerns/GeneratesSequentialTransactionNumbers.php` (new) — shared `generateTransactionNumber()` + `retryOnTransactionNumberCollision()`.
+- `app/Filament/Resources/{ProjectCostReceipts,ProjectCostBudgetsPayments,GeneralExpenses,GeneralExchanges,ExecutionPayments,Accounts}/Pages/Create*.php` — wrap the existing `DB::transaction()` call in the new retry trait; per-file duplicated `generateTransactionNumber()` removed (now inherited).
+- `app/Services/Integrity/{FinancialIntegrityChecker,DatabaseRelationshipIntegrityChecker,TransactionNumberIntegrityChecker,JournalBalanceIntegrityChecker,AccountCurrencyIntegrityChecker,IntegrityCheckReport,IntegrityViolation}.php` (all new).
+- `app/Console/Commands/CheckFinancialIntegrity.php` (new) — `oms:check-financial-integrity`.
+- `database/migrations/2026_07_27_100000_add_supporting_indexes_for_financial_integrity.php` (new) — additive-only; `transaction_lines(account_id, currency_id)`, `transactions(transaction_time)`; applied to the real local DB.
+- Tests (new): `tests/Support/Integrity/IntegrityTestFixtures.php`; `tests/Feature/Integrity/{DatabaseRelationshipIntegrityCheckerTest,TransactionNumberIntegrityCheckerTest,JournalBalanceIntegrityCheckerTest,AccountCurrencyIntegrityCheckerTest}.php`; `tests/Feature/Commands/CheckFinancialIntegrityCommandTest.php`; `tests/Feature/Reports/TrialBalanceReportServiceTest.php`; `tests/Unit/Filament/Concerns/GeneratesSequentialTransactionNumbersTest.php`.
+- Docs: this entry plus `docs/AI_PROJECT_MEMORY.md`, `docs/DECISIONS_LOG.md`, `docs/NEXT_STEPS.md`, `docs/PROMPTS_LOG.md`.
+
+### Verification
+1. `php -l` on every changed/new PHP file — clean.
+2. Targeted Task 8 suite (Integrity checkers + command + Trial Balance + numbering trait) — **44 tests, 44 passed, 108 assertions**.
+3. Broader financial-workflow regression (6 modified Create pages + Reports + Commands) — **234 tests, 234 passed, 700 assertions**.
+4. Real local DB scan: `php artisan oms:check-financial-integrity` — 12 relationships / 4 transactions / 3 live journal transactions / 6 lines / 3 accounts checked, **0 violations**, exit 0.
+5. Real Trial Balance run against every local currency: USD 3 accounts debit=credit=125000 balanced; ILS/EUR no accounts, trivially balanced.
+6. Final full application suite (the one required run): **1919 tests, 1913 passed, 0 failed, 0 errors, 6 skipped, 5767 assertions** — exactly the 44 new tests added on top of the prior 1875/1869 baseline; same 6 pre-existing skips, none new.
+
+### Commit Hash
+Not committed — awaiting review, per instructions.
