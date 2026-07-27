@@ -22,7 +22,7 @@ class RestoreMaintenanceModeTest extends TestCase
         $this->assertTrue($mode->isActive());
     }
 
-    public function test_enter_calls_down_with_a_generic_arabic_message(): void
+    public function test_enter_calls_down_with_no_unsupported_options(): void
     {
         $controller = new FakeMaintenanceModeController(active: false);
         $mode = new RestoreMaintenanceMode($controller, $controller);
@@ -32,8 +32,7 @@ class RestoreMaintenanceModeTest extends TestCase
         $this->assertTrue($mode->isActive());
         $this->assertCount(1, $controller->calls);
         $this->assertSame('down', $controller->calls[0]['command']);
-        $this->assertArrayHasKey('--message', $controller->calls[0]['parameters']);
-        $this->assertNotSame('', $controller->calls[0]['parameters']['--message']);
+        $this->assertSame([], $controller->calls[0]['parameters']);
     }
 
     public function test_enter_throws_when_the_artisan_command_fails(): void

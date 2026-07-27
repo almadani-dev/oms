@@ -307,6 +307,30 @@ Check `progress.json`'s `phase_history` for `maintenance_enabled` and
   `mysql`/`mysqldump` binaries are runnable on Windows — preflight and
   `DatabaseRestorer` both treat an existing regular file as sufficient
   there, unlike Linux where the real executable bit is required.
+- **Confirmed during OMS Task 7C.9's real local acceptance testing**: the
+  detached restore-process launcher (`WindowsDetachedRestoreProcessLauncher`,
+  `Process::start()` with `disableOutput()`) does not reliably keep the
+  spawned `php artisan oms:restore {uuid}` process running/progressing
+  independently of the web request that launched it, on this Laragon setup.
+  Observed symptom: after clicking "استعادة" in the UI, the claimed restore
+  row (`status = Restoring`) and its signed `progress.json` both sit frozen
+  at `phase = launching` indefinitely — no visible `php.exe` process, and no
+  error surfaces anywhere, since `disableOutput()` discards the child's
+  stdout/stderr by design. **This is not a data-safety issue** — nothing
+  destructive has happened yet at that phase — but it means a locally
+  clicked restore may need manual help to actually run. **Safe, verified
+  recovery**: re-run the exact same command in the foreground,
+  `php artisan oms:restore {uuid}` (the same UUID shown as
+  frozen/`Restoring`) — `RestoreCommand::isClaimedForExecution()` only
+  requires `status = Restoring`, `started_at` set, and `launch_nonce` null
+  (all already true for a row stuck at `launching`), so it picks the claim
+  up cleanly and runs the real, unmodified `RestoreOrchestrator` to
+  completion in the foreground. Do **not** re-click "استعادة" again for the
+  same backup while a row is in this state — that would attempt to claim a
+  brand-new restore while the frozen one is still non-terminal, which
+  `RestoreActivityGuard` correctly rejects. Production (Linux/Hostinger)
+  uses the separate `setsid`-based `LinuxDetachedRestoreProcessLauncher` and
+  is unaffected by this — this note is Windows/local-dev-only.
 - These differences affect local reproduction of an issue, never the
   actual recovery guidance above, which applies identically on both
   platforms.

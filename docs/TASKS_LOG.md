@@ -1791,3 +1791,39 @@ See the corresponding `docs/AI_PROJECT_MEMORY.md` entry (2026-07-27) for full te
 
 ### Commit Hash
 See the commit immediately following this entry.
+
+---
+
+### Date
+2026-07-27 (OMS Task 7C.9 — real local Windows/Laragon end-to-end backup/restore acceptance)
+
+### Task
+Perform the final acceptance phase for Task 7C: real, local, destructive backup/restore testing on Windows/Laragon against the actual local MySQL database and private filesystem disks (not `Storage::fake()`/mocks) — pre-flight safety checks, an independent emergency baseline, controlled E2E fixtures, a real manual full backup, database-only/files-only/full restore cycles each with independent before/after markers and SHA-256 verification, a safe pre-irreversible-boundary failure drill, a documented review of post-DB-import/partial coverage, a safe stale/crash acknowledgment drill, a post-restore application smoke check, an existing-guards-only financial integrity check, cleanup of every temporary fixture, and exactly one final full application test-suite run.
+
+### Result
+See `docs/AI_PROJECT_MEMORY.md` (2026-07-27, "OMS Task 7C.9") for full technical detail. One real, proven, E2E-only defect was found and fixed: `RestoreMaintenanceMode::enter()` called the real Artisan `down` command with a `--message` option that does not exist in this Laravel version, causing every real restore to fail 100% of the time at preflight — invisible to all 854 prior mocked tests since the test fake never validated real Artisan option signatures. Fixed by removing the unsupported option (no new view/feature added). One real, documented Windows-only operational limitation was confirmed (not a defect): the detached restore-process launcher does not reliably keep running independently of the launching web request in this local Laragon environment; the safe, verified recovery is to re-run `php artisan oms:restore {uuid}` in the foreground for the same already-claimed row, which completes the exact same real orchestrator. All three restore scopes (database-only, files-only, full) were run end-to-end through the real Filament UI and real orchestrator, each with independent before/after markers, and all reverted correctly. A safe corrupted-archive preflight-failure drill and a safe stale/crash-acknowledgment drill were both completed without touching any real backup or killing any real process; a genuine post-DB-import/partial failure was deliberately NOT injected against the real environment (would require an uncontrolled crash or a new production-only hook) and is instead documented as already covered by 7C.7's existing deterministic `RestoreOrchestratorTest` coverage. Post-restore smoke check and an existing-guards-only financial integrity check both passed cleanly. All temporary fixtures (test GeneralExpense record + balances, Setting markers, synthetic failure-drill rows/files, temporary Super Admin) were cleaned up via the real application services/UI, while every genuine backup/restore row produced by an actual UI action was kept as acceptance evidence. Final full application suite: **1875 tests, 1869 passed, 0 failed, 0 errors, 6 skipped, 5659 assertions** — all skips pre-existing and individually documented/environment-conditional.
+
+### Changed Files
+- `app/Services/Restore/RestoreMaintenanceMode.php` — removed the unsupported `--message` option from the `down` Artisan call; updated docblock.
+- `tests/Unit/Services/Restore/RestoreMaintenanceModeTest.php` — updated the one test that asserted the old (incorrect) `--message` behavior.
+- `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md`, `docs/NEXT_STEPS.md`, `docs/PROMPTS_LOG.md`, `docs/RESTORE_RECOVERY.md` — this task's documentation.
+- No other application code changed. No migrations. No new views/features/schema.
+- Real local database/filesystem state: multiple genuine `backup_operations` rows (backups + safety backups + restores) created via the real pipeline across Sections C–F and I remain in the live database as acceptance evidence (see the corresponding `AI_PROJECT_MEMORY.md` entry for the exact list); all Task 7C.9-specific temporary fixtures (test expense/transaction/balances, Setting markers, synthetic failure-drill rows, temporary Super Admin) were removed during cleanup.
+
+### Verification
+1. Pre-flight: working tree clean, both prior commits present, `d686fe3`'s files confirmed 100% `graphify-out/**`, APP_ENV=local, DB host=127.0.0.1, no PHPUnit/queue-worker/orphan process running, maintenance mode OFF, no stale locks.
+2. Independent emergency baseline created outside the project tree (`mysqldump` + attachments copy + SHA-256 manifest); kept pending formal acceptance.
+3. Real manual full backup created via UI + real queue worker; `verified_at` populated, encrypted archive confirmed on disk with matching size.
+4. Database-only restore: real UI + real orchestrator (via foreground `oms:restore` after the Windows detached-launcher limitation was confirmed) — marker correctly reverted, safety backup verified, maintenance exited, Super Admin usable, FK relationships correct, queue restart signal set.
+5. Files-only restore: attachment content correctly reverted byte-for-byte (SHA-256 match), DB control marker confirmed untouched, no quarantine/discard residue, safety backup verified, maintenance exited.
+6. Full restore: DB marker and attachment content both correctly reverted together; post-import UUID-based FK reconciliation confirmed directly.
+7. Pre-irreversible-boundary failure drill: clean `RestoreFailed` (never `RestorePartial`), DB/attachments unchanged, no auto-retry, signed terminal progress, `RestoreActivityGuard` Inactive afterward.
+8. Post-DB-import/partial: documented as covered by existing 7C.7 `RestoreOrchestratorTest` coverage — no new injection performed.
+9. Stale/crash drill: watchdog detection-only confirmed; live-lock and tampered-progress both correctly blocked acknowledgment; valid stale restore terminalized via the real UI acknowledgment flow with full operator-recovery metadata recorded; `RestoreActivityGuard` Inactive only once both gates were terminal.
+10. Post-restore smoke check: dashboard/Projects/Accounts/Trial Balance (`متوازن`)/Backup Management all loaded correctly; secure attachment controller served the file; direct filesystem URL returned 403; restore-action eligibility correct.
+11. Financial integrity: `BalanceGuardIntegrationTest` (all 5 resources) + `FinancialTransactionBalanceGuardTest` — **91 tests, 91 passed, 218 assertions**; zero dangling backup FK references; zero broken Account relationships; zero orphaned TransactionLine rows.
+12. Cleanup verified: account balances back to exact baseline, 0 leftover Setting markers, active users back to baseline count, maintenance mode UP, no orphan processes, no residue directories, `RestoreActivityGuard` Inactive.
+13. Final full application suite (the one required run): **1875 tests, 1869 passed, 0 failed, 0 errors, 6 skipped, 5659 assertions**, run once as instructed.
+
+### Commit Hash
+Not committed — awaiting review, per instructions.

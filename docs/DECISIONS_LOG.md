@@ -1316,3 +1316,29 @@ The acceptance pass required a deterministic test proving finalize()-failure com
 
 ### Impact
 A future reader should not mistake this interface for a sign that attachment lifecycle behavior is meant to be pluggable in production — there is exactly one bound implementation (`AppServiceProvider`), and the interface exists purely for the one test double (`FinalizeFailingAttachmentLifecycle`) that needs it.
+
+---
+
+### Date
+2026-07-27 (OMS Task 7C.9 — dropped the unsupported `--message` option from the real `down` call rather than adding a custom maintenance view)
+
+### Decision
+`RestoreMaintenanceMode::enter()` now calls Laravel's real `down` Artisan command with no options at all (`$this->artisan->run('down', [])`), instead of trying to restore a custom Arabic maintenance message some other way (e.g. a new `--render` Blade view).
+
+### Reason
+Real E2E testing against the actual local Laragon environment proved every restore failed 100% of the time at preflight with `The "--message" option does not exist.` — this Laravel version's `down` command never had that option (it was replaced project-wide, several Laravel major versions ago, by `--render`, which points at a prerendered Blade view rather than accepting a free-text string). The maintenance message was never functionally required — it only affects what a visitor to the maintenance page sees during the brief restore window — so building a new Blade view to preserve the exact original Arabic text would be a real feature addition to fix what is fundamentally a bug in an unrelated 854-mocked-tests-blind-spot, and Task 7C.9's own instructions explicitly forbid feature expansion for a proven E2E defect. Dropping the option is the narrowest change that makes every real restore work again.
+
+### Impact
+Anyone re-adding a custom maintenance message in the future must use Laravel's real `--render`/`--secret`/`--retry`/`--refresh` option set (confirmed via `php artisan down --help` against the actual installed Laravel version, not assumed from memory or an older version's documentation) and must add a real, deterministic test against the actual Artisan command (not only a hand-rolled fake command-runner double, which is exactly what let this defect through undetected for the entire 7C.1–7C.8 phase).
+
+### Date
+2026-07-27 (OMS Task 7C.9 — kept every genuine backup/restore row from real UI actions as acceptance evidence; deleted only manually-constructed synthetic drill rows)
+
+### Decision
+After all Task 7C.9 E2E scenarios, cleanup hard-deleted only the `backup_operations` rows and files that were manually constructed in the database/filesystem to simulate a failure (the corrupted-archive preflight-failure drill, and the stale/crashed-restore drill) — every backup/safety-backup/restore row that was actually produced by clicking through the real Filament UI and running the real orchestrator (across the database-only, files-only, and full restore cycles, including the one restore attempt that failed on the real `--message` bug before it was fixed) was deliberately left in the live database.
+
+### Reason
+The task instructions explicitly required keeping "legitimate backup/restore history if needed for acceptance evidence" while removing only temporary fixtures. Rows produced by the real pipeline are genuine evidence that the real UI + real orchestrator worked correctly end to end (including the failed-then-fixed attempt, which is direct evidence of the defect found and its correction); the corrupted-archive and stale-crash rows were never produced by the real pipeline at all — they were rows I inserted directly into the database (and a deliberately corrupted archive copy) purely to exercise failure-handling code paths without risking a real backup or a real crashed process, so removing them afterward does not remove any genuine application history.
+
+### Impact
+A future reviewer of the local `oms` database's `backup_operations` table will see a real, legitimate trail of Task 7C.9's three successful restore cycles (plus the one instructive failed-then-fixed attempt) and should not mistake their presence for leftover test clutter needing further cleanup — they were kept intentionally, per instructions, as acceptance evidence.

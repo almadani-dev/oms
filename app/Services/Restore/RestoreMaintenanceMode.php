@@ -23,14 +23,16 @@ use App\Services\Restore\Exceptions\RestoreMaintenanceModeException;
  * restore started, the restore must never automatically bring it up
  * afterward.
  *
- * The maintenance message is a fixed, generic, Arabic sentence — it never
- * exposes the restore UUID, the source/safety backup identity, or any
- * internal failure detail to a public visitor of the maintenance page.
+ * Laravel's `down` command has no free-text `--message` option (it was
+ * removed in favor of `--render`, a prerendered Blade view) — enter() must
+ * never pass one, since a real Artisan `down` invocation rejects any option
+ * it does not define. The maintenance page shown during a restore is
+ * whatever the application's default/configured maintenance view already
+ * renders; it never exposes the restore UUID, the source/safety backup
+ * identity, or any internal failure detail to a public visitor.
  */
 final class RestoreMaintenanceMode
 {
-    private const MESSAGE = 'النظام قيد الصيانة لإجراء عملية استعادة آمنة.';
-
     public function __construct(
         private readonly ArtisanCommandRunner $artisan = new LaravelArtisanCommandRunner(),
         private readonly MaintenanceModeInspector $inspector = new LaravelMaintenanceModeInspector(),
@@ -47,7 +49,7 @@ final class RestoreMaintenanceMode
      */
     public function enter(): void
     {
-        $exitCode = $this->artisan->run('down', ['--message' => self::MESSAGE]);
+        $exitCode = $this->artisan->run('down', []);
 
         if ($exitCode !== 0 || ! $this->isActive()) {
             throw RestoreMaintenanceModeException::enterFailed();
