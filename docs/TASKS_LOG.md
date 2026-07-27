@@ -1659,3 +1659,81 @@ Investigate and stabilize the one flaky failure (`BackupCreationOrchestratorTest
 
 ### Commit Hash
 See the commit immediately following this entry (`graphify update .` was NOT run — no production code changed).
+
+---
+
+### Date
+2026-07-26 (OMS Task 7C.7 — the real RestoreOrchestrator: full secure restore orchestration, compensation matrix, maintenance mode, mandatory safety backup, heartbeat/progress, stale-detection watchdog, recovery runbook)
+
+### Task
+Implement OMS Task 7C.7: the highest-risk integration phase of the Restore engine — a real `RestoreOrchestrator` that executes an already-claimed restore operation end to end (preflight → maintenance mode → mandatory full pre-restore safety backup → decrypt/verify/stage → attachment activation → database import → reconciliation → attachment finalization → maintenance exit → terminal result), replacing `RestoreCommand`'s permanent fail-closed placeholder. Required: an explicit phase-aware failure/compensation matrix (Restored/RestoreFailed/RestorePartial), correct maintenance-mode ownership tracking, the database-row-may-disappear-mid-import design honored structurally, a detection-only stale-restore watchdog, and an operator recovery runbook — all without rewriting any working 7C.1–7C.6 primitive except where a genuine integration gap required it.
+
+### Result
+See the corresponding `docs/AI_PROJECT_MEMORY.md` entry (2026-07-26, OMS Task 7C.7) for full technical detail. Summary: `RestoreOrchestrator` implements the exact required sequence and compensation matrix; `RestoreMaintenanceMode` is the sole `artisan down`/`up` seam with correct ownership semantics; `RestoreTerminalResultWriter` centralizes every terminal signed-progress + DB-row write, always re-fetching the restore row fresh by UUID and tolerating its absence; `RestoreStaleDetector`/`oms:restore-watchdog` (scheduled every minute) is detection-only, never mutates/retries/resumes; `RestoreCommand` now calls the real orchestrator instead of `failClosed()`, with its permanent Task 7C.4 claim/lock shape completely untouched. Two small, justified gaps in already-built 7C.6 primitives were closed (never rewritten): `AttachmentMoveRunner` was never bound in the container, and `PreparedRestore` never carried the verified attachment manifest file list forward — both fixed additively with backward-compatible defaults. `docs/RESTORE_RECOVERY.md` (new) is the operator runbook.
+
+### Changed Files
+- `app/Services/Restore/RestoreOrchestrator.php` (new) — the execution engine.
+- `app/Services/Restore/RestoreMaintenanceMode.php` (new), `app/Services/Restore/Contracts/MaintenanceModeInspector.php` (new), `app/Services/Restore/LaravelMaintenanceModeInspector.php` (new).
+- `app/Services/Restore/RestoreTerminalResultWriter.php` (new).
+- `app/Services/Restore/RestoreStaleDetector.php` (new), `app/Services/Restore/StaleRestoreObservation.php` (new).
+- `app/Console/Commands/RestoreWatchdogCommand.php` (new).
+- `app/Services/Restore/Exceptions/RestoreMaintenanceModeException.php` (new), `app/Services/Restore/Exceptions/RestoreOrchestrationException.php` (new).
+- `app/Console/Commands/RestoreCommand.php` — `failClosed()` removed; `handle()` now calls `RestoreOrchestrator::orchestrate()`.
+- `app/Services/Restore/PreparedRestore.php` — two new trailing constructor parameters (`attachmentManifestFiles`, `attachmentsTotalSizeBytes`), defaulted for backward compatibility.
+- `app/Services/Restore/RestoreArchivePreparer.php` — populates the two new `PreparedRestore` fields from the already-verified manifest.
+- `app/Providers/AppServiceProvider.php` — binds `AttachmentMoveRunner` (config-driven `NativeAttachmentMoveRunner`) and `MaintenanceModeInspector`.
+- `app/Notifications/BackupNotificationEvent.php` — added `RestoreSucceeded`/`RestoreFailed`/`RestorePartial`/`RestoreStale` cases with Arabic titles.
+- `config/oms.php` — added `oms.backup.restore.watchdog_notification_cooldown_minutes`.
+- `bootstrap/app.php` — scheduled `oms:restore-watchdog` every minute.
+- `docs/RESTORE_RECOVERY.md` (new) — operator recovery runbook.
+- Tests (new): `tests/Feature/Restore/RestoreOrchestratorTest.php` (18 tests), `tests/Unit/Services/Restore/RestoreMaintenanceModeTest.php` (5), `tests/Feature/Restore/RestoreStaleDetectorTest.php` (5), `tests/Feature/Console/RestoreWatchdogCommandTest.php` (4), `tests/Support/Restore/FakeMaintenanceModeController.php`.
+
+### Verification
+1. `php -l` on every changed/new PHP file — clean.
+2. `git diff --check` — no whitespace errors.
+3. Targeted 7C.7 suite (`RestoreOrchestratorTest` + `RestoreMaintenanceModeTest` + `RestoreStaleDetectorTest` + `RestoreWatchdogCommandTest` + `RestoreCommandTest`) — **44 tests, 44 passed, 0 failed, 158 assertions**.
+4. Broader `Restore|Backup` regression, default order — **774 tests, 771 passed, 0 failed, 3 skipped (pre-existing, unrelated), 1895 assertions**.
+5. Same broader regression, `--order-by=random` — **774 tests, 771 passed, 0 failed, 3 skipped, 1895 assertions**. A first random-order attempt showed one intermittent failure (`RestoreAttachmentActivationServiceTest::test_rollback_restores_the_original_attachments`); investigated and confirmed pre-existing and unrelated to this task — it passes 100% reliably in isolation (3/3 random-order reruns of its own file) and the flake traces to a hardcoded UUID (`aaaaaaaa-1111-1111-1111-111111111111`) reused across several **pre-existing** test files this task never touched (`RestoreWorkspaceTest`, `AttachmentSwapStateInspectorTest`, `AttachmentSwapMarkerWriterReaderTest`, `RestoreAttachmentPathsTest`) whose quarantine/marker sibling paths (outside `Storage::fake()`'s cleaned disk root) can collide under certain random interleavings — the same class of issue the 2026-07-26 "test-stability pass" previously fixed for a lock leak, not something this task introduced (confirmed via grep: none of the 4 new 7C.7 test files reference this UUID). A second random-order run of the full filter passed cleanly with identical totals to default order.
+6. Full application suite was NOT run (out of scope per instructions).
+
+### Commit Hash
+Not committed — awaiting review, per instructions.
+
+---
+
+### Date
+2026-07-27 (OMS Task 7C.7 final acceptance/hardening pass)
+
+### Task
+Perform a focused acceptance/hardening pass on the just-implemented Task 7C.7 before committing: (1) implement TRUE long-phase heartbeats (not just phase-transition writes) so a healthy long-running restore is never misclassified stale, with an honest timer-driven mechanism for the otherwise-silent `mysql` import specifically; (2) add a deterministic RestoreOrchestrator test proving finalize()-failure compensation, introducing the smallest justified seam if the concrete 7C.6 service can't be failed deterministically; (3) properly fix (not just accept a rerun of) the pre-existing random-order flake tied to a duplicated hardcoded UUID; (4) review and hardened RestoreStaleDetector/the watchdog for database/cache unavailability during a restore, with focused tests; (5) clean any Graphify contamination before the main commit; (6) final acceptance verification (targeted + default + randomized regression, twice) before committing main 7C.7 and Graphify output separately.
+
+### Result
+See the corresponding `docs/AI_PROJECT_MEMORY.md` entry (2026-07-27) for full technical detail. Summary: new `RestoreHeartbeat` (Carbon-based, testable via `Carbon::setTestNow()`) threaded into every long phase via new trailing optional `?callable $onTick` parameters on the existing primitives (never rewriting their own logic), including a genuine `Process::start()` + poll-loop mechanism in `SymfonyProcessStreamInputRunner` for the `mysql` import specifically (verified against the installed symfony/process source that `isRunning()` alone never enforces the timeout). New `RestoreAttachmentLifecycle` interface (implemented by the unchanged `RestoreAttachmentActivationService`) enables a deterministic finalize()-failure test via a delegating test double. The original hardcoded-UUID flake's two affected test files now generate a fresh UUID per test instead of relying solely on their own cleanup discipline. `RestoreStaleDetector`/`RestoreWatchdogCommand` now degrade gracefully under database/cache unavailability instead of crashing. A SECOND, more consequential flake was found and fixed during this pass's own stress-testing: heartbeats increased `RestoreProgressWriter::write()`'s call frequency enough to expose a real intermittent Windows `rename()` failure (~40% failure rate over 10 stress runs) — fixed with a bounded Windows-only retry mirroring `NativeAttachmentMoveRunner`'s existing pattern, verified at 10/10 clean afterward. Graphify tracked output (`graphify-out/*`) was reverted to its pre-session state; no untracked Graphify cache artifacts were present.
+
+### Changed Files
+- `app/Services/Restore/RestoreHeartbeat.php` (new).
+- `app/Services/Restore/Attachments/RestoreAttachmentLifecycle.php` (new) — implemented by `RestoreAttachmentActivationService` (modified: `implements` clause + optional `$onTick` param threaded to `RestoreAttachmentRevalidator::revalidate()`).
+- `app/Services/Restore/RestoreOrchestrator.php` — heartbeats wired into every long phase; depends on `RestoreAttachmentLifecycle` instead of the concrete class; `restore_failed_phase` pinning fix for the maintenance-exit-failure case.
+- `app/Services/Restore/RestoreTerminalResultWriter.php` — new `$failedPhaseOverride` parameter.
+- `app/Services/Restore/RestoreProgressWriter.php` — `renameWithRetry()` (Windows-only bounded retry).
+- `app/Services/Restore/RestoreStaleDetector.php` — Carbon-based timestamps; DB/disk-scan failures individually caught and degraded gracefully.
+- `app/Console/Commands/RestoreWatchdogCommand.php` — outer bounded try/catch; best-effort Cache calls.
+- `app/Services/Restore/Attachments/RestoreAttachmentRevalidator.php`, `app/Services/Restore/RestoreArchiveExtractor.php`, `app/Services/Backup/SecretstreamEnvelope.php`, `app/Services/Backup/DatabaseDumper.php`, `app/Services/Backup/BackupCreationOrchestrator.php`, `app/Services/Restore/RestoreArchivePreparer.php`, `app/Services/Restore/DatabaseRestorer.php`, `app/Services/Restore/SymfonyProcessStreamInputRunner.php`, `app/Services/Restore/Contracts/ProcessStreamInputRunner.php`, `app/Services/Restore/RestoreReconciler.php` — all gained a new trailing, defaulted `?callable $onTick = null` parameter; every existing caller unaffected.
+- `app/Providers/AppServiceProvider.php` — binds `RestoreAttachmentLifecycle`.
+- `config/oms.php` — new `progress_publish_retry_attempts`/`progress_publish_retry_delay_ms`.
+- Tests (new): `tests/Feature/Restore/RestoreOrchestratorHeartbeatTest.php` (6), finalization-failure test added to `RestoreOrchestratorTest.php`, DB/cache-unavailability tests added to `RestoreStaleDetectorTest.php`/`RestoreWatchdogCommandTest.php`, `tests/Support/Restore/FinalizeFailingAttachmentLifecycle.php`, `tests/Support/Restore/RestoreOrchestratorTestFixtures.php` (shared trait extracted from `RestoreOrchestratorTest`).
+- Tests (modified): `tests/Feature/Restore/Attachments/RestoreAttachmentActivationServiceTest.php`, `tests/Unit/Services/Restore/Attachments/AttachmentSwapStateInspectorTest.php` (fixed UUID constants → per-test `Str::uuid()`), `tests/Support/Restore/FakeProcessStreamInputRunner.php` (tick simulation support).
+
+### Verification
+1. `php -l` on every changed/new PHP file — clean.
+2. `git diff --check` — no whitespace errors.
+3. Targeted 7C.7 suite (heartbeat + orchestrator + stale detector/watchdog + previously-flaky classes + `RestoreMaintenanceModeTest` + `RestoreCommandTest`) — **112 tests, 112 passed, 350 assertions**.
+4. Previously-failing test (`RestoreAttachmentActivationServiceTest::test_rollback_restores_the_original_attachments`) run 10 consecutive times — 10/10 passed.
+5. Broader `Restore|Backup` regression, default order — **785 tests, 782 passed, 0 failed, 3 skipped, 1954 assertions**.
+6. Same regression, `--order-by=random` (default seed) — identical totals, 0 failed.
+7. Same regression, `--order-by=random --random-order-seed=987654` — identical totals, 0 failed.
+8. (Diagnostic, not part of final acceptance) 10x `--order-by=random` stress runs of the two heaviest-I/O files caught the `RestoreProgressWriter` rename flake (4/10 failed before the fix) and confirmed its fix (10/10 clean after).
+9. Full application suite was NOT run (out of scope per instructions).
+
+### Commit Hash
+See the commit immediately following this entry.

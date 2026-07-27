@@ -22,14 +22,20 @@ use App\Services\Backup\Contracts\SymlinkDetector;
 use App\Services\Backup\NativeSymlinkDetector;
 use App\Services\Backup\SecretstreamEnvelope;
 use App\Services\Backup\SymfonyProcessRunner;
+use App\Services\Restore\Attachments\NativeAttachmentMoveRunner;
+use App\Services\Restore\Attachments\RestoreAttachmentActivationService;
+use App\Services\Restore\Attachments\RestoreAttachmentLifecycle;
 use App\Services\Restore\Contracts\ArtisanCommandRunner;
+use App\Services\Restore\Contracts\AttachmentMoveRunner;
 use App\Services\Restore\Contracts\FilesystemIdentity;
 use App\Services\Restore\Contracts\ProcessStreamInputRunner;
 use App\Services\Restore\Contracts\RestoreDatabaseConnectionResetter;
 use App\Services\Restore\Contracts\RestoreEphemeralTableCleaner;
+use App\Services\Restore\Contracts\MaintenanceModeInspector;
 use App\Services\Restore\Contracts\RestoreMetadataReconstructor;
 use App\Services\Restore\Contracts\RestoreProcessLauncher;
 use App\Services\Restore\LaravelArtisanCommandRunner;
+use App\Services\Restore\LaravelMaintenanceModeInspector;
 use App\Services\Restore\LaravelRestoreDatabaseConnectionResetter;
 use App\Services\Restore\NativeFilesystemIdentity;
 use App\Services\Restore\RestoreEphemeralTablePolicy;
@@ -104,6 +110,24 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(ArtisanCommandRunner::class, LaravelArtisanCommandRunner::class);
         $this->app->bind(RestoreMetadataReconstructor::class, RestoreMetadataUpserter::class);
         $this->app->bind(RestoreEphemeralTableCleaner::class, RestoreEphemeralTablePolicy::class);
+
+        // OMS Task 7C.7: production binding for the attachment live<->quarantine
+        // move seam RestoreAttachmentActivationService depends on — the first
+        // real caller (RestoreOrchestrator) resolves the service via the
+        // container, so this was never bound until now. Test suite always
+        // constructs RestoreAttachmentActivationService directly with a fake,
+        // so this binding is never exercised by tests.
+        $this->app->bind(AttachmentMoveRunner::class, fn (): AttachmentMoveRunner => new NativeAttachmentMoveRunner(
+            maxAttempts: (int) config('oms.backup.restore.attachment_move_retry_attempts', 5),
+            retryDelayMs: (int) config('oms.backup.restore.attachment_move_retry_delay_ms', 200),
+        ));
+        $this->app->bind(MaintenanceModeInspector::class, LaravelMaintenanceModeInspector::class);
+
+        // OMS Task 7C.7 hardening pass: RestoreOrchestrator depends on this
+        // interface (not the concrete final class) purely so its own tests
+        // can inject a deterministic test double for finalize()-failure
+        // scenarios — see RestoreAttachmentLifecycle's own docblock.
+        $this->app->bind(RestoreAttachmentLifecycle::class, RestoreAttachmentActivationService::class);
     }
 
     /**

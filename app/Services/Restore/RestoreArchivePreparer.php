@@ -51,12 +51,18 @@ final class RestoreArchivePreparer
     }
 
     /**
+     * OMS Task 7C.7 hardening pass — $onTick, when given, is forwarded to
+     * both SecretstreamEnvelope::decryptFile() (once per decrypted chunk)
+     * and RestoreArchiveExtractor::extract() (once per extracted entry) so
+     * a restore's signed progress heartbeat can stay alive for the whole
+     * duration of decrypting and staging a large archive.
+     *
      * @throws RestorePreflightException
      * @throws RestoreInsufficientDiskSpaceException
      * @throws RestoreArchivePreparationException
      * @throws RestoreArchiveExtractionException
      */
-    public function prepare(string $sourceBackupUuid, BackupScope $selectedScope, string $restoreUuid): PreparedRestore
+    public function prepare(string $sourceBackupUuid, BackupScope $selectedScope, string $restoreUuid, ?callable $onTick = null): PreparedRestore
     {
         // Preflight runs, and must pass, BEFORE the workspace exists at
         // all — including the disk-space check, which is why insufficient
@@ -82,6 +88,7 @@ final class RestoreArchivePreparer
                     $encryptedAbsolutePath,
                     $decryptedPath,
                     fn (string $keyId): string => $this->keyRing->resolve($keyId),
+                    $onTick,
                 );
             } catch (Throwable) {
                 throw RestoreArchivePreparationException::decryptionFailed();
@@ -98,7 +105,9 @@ final class RestoreArchivePreparer
                 throw RestoreArchivePreparationException::verificationFailed();
             }
 
-            $extraction = $this->extractor->extract($decryptedPath, $manifest, $selectedScope, $workspace);
+            $extraction = $this->extractor->extract($decryptedPath, $manifest, $selectedScope, $workspace, $onTick);
+
+            $attachments = is_array($manifest['attachments'] ?? null) ? $manifest['attachments'] : null;
 
             return new PreparedRestore(
                 restoreUuid: $restoreUuid,
@@ -110,6 +119,12 @@ final class RestoreArchivePreparer
                 manifestSummary: $extraction->manifestSummary,
                 declaredTotalBytes: $extraction->declaredTotalBytes,
                 extractedTotalBytes: $extraction->extractedTotalBytes,
+                // OMS Task 7C.7 — carried forward only when the selected
+                // scope actually includes files; RestoreOrchestrator builds
+                // a RestoreAttachmentManifest from exactly this already-
+                // verified data, never from a raw caller-supplied array.
+                attachmentManifestFiles: $selectedScope->includesFiles() && is_array($attachments['files'] ?? null) ? $attachments['files'] : [],
+                attachmentsTotalSizeBytes: $selectedScope->includesFiles() ? (int) ($attachments['total_size_bytes'] ?? 0) : 0,
             );
         } catch (RestoreArchivePreparationException|RestoreArchiveExtractionException $e) {
             $this->cleanupBestEffort($workspace);

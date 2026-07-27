@@ -33,13 +33,45 @@ use Symfony\Component\Process\Process;
  * every STDOUT/STDERR chunk as it arrives (Process::buildCallback() only
  * skips its OWN internal buffering when output is disabled — the callback
  * itself is still invoked either way, confirmed directly in Process.php).
+ *
+ * OMS Task 7C.7 hardening pass — $onTick honesty: `mysql` can run silently
+ * for the entire duration of a long import, so relying on STDOUT/STDERR
+ * arrival to drive a heartbeat would leave it stalled for exactly that
+ * whole window. Instead of the single blocking `Process::run($callback)`
+ * call used previously, this runner now calls `Process::start($callback)`
+ * (verified directly against the installed symfony/process 7.4.13 source:
+ * `start()` still applies the identical callback-driven pipe-reading setup
+ * `run()` itself used) and then polls `isRunning()` on its own fixed real
+ * timer (`POLL_INTERVAL_MICROSECONDS`) for as long as the child is alive,
+ * invoking $onTick on every poll — a real, timer-driven tick that fires
+ * regardless of whether the child has produced a single byte of output.
+ * `checkTimeout()` is called explicitly on every iteration because
+ * `isRunning()` alone does NOT enforce the configured timeout by itself
+ * (confirmed directly in Process.php — only `wait()`'s own loop calls it) —
+ * this runner must keep that guarantee itself now that it no longer calls
+ * `wait()` to drive the loop. `$onTick` is responsible for its own
+ * throttling (see RestoreHeartbeat) — this runner intentionally invokes it
+ * on every single poll tick without deciding for itself whether that's "too
+ * often."
  */
 final class SymfonyProcessStreamInputRunner implements ProcessStreamInputRunner
 {
     /** Never let a captured stderr blob balloon a stored error_summary. */
     private const MAX_STDERR_BYTES = 4096;
 
-    public function run(array $command, array $env, ?float $timeoutSeconds, string $inputFileAbsolutePath): ProcessRunResult
+    /**
+     * Real wall-clock polling cadence while the child process is alive —
+     * the only mechanism $onTick has to fire during a silent `mysql`
+     * import. Deliberately NOT configurable: this is a low-level liveness
+     * poll interval, not the heartbeat write interval itself (that's
+     * `RestoreHeartbeat`'s own, coarser, configured throttle) — keeping it
+     * fixed and small (200ms) means the actual heartbeat-write cadence is
+     * governed entirely by $onTick's own throttling, never by this poll
+     * rate.
+     */
+    private const POLL_INTERVAL_MICROSECONDS = 200_000;
+
+    public function run(array $command, array $env, ?float $timeoutSeconds, string $inputFileAbsolutePath, ?callable $onTick = null): ProcessRunResult
     {
         $handle = @fopen($inputFileAbsolutePath, 'rb');
 
@@ -55,12 +87,34 @@ final class SymfonyProcessStreamInputRunner implements ProcessStreamInputRunner
         $stderr = '';
         $timedOut = false;
 
+        $callback = function (string $type, string $data) use (&$stderr): void {
+            if ($type === Process::ERR && strlen($stderr) < self::MAX_STDERR_BYTES) {
+                $stderr .= $data;
+            }
+        };
+
         try {
-            $process->run(function (string $type, string $data) use (&$stderr): void {
-                if ($type === Process::ERR && strlen($stderr) < self::MAX_STDERR_BYTES) {
-                    $stderr .= $data;
+            $process->start($callback);
+
+            while ($process->isRunning()) {
+                // Enforced explicitly — isRunning() alone never checks the
+                // configured timeout (only wait()'s own loop does), and
+                // this runner no longer calls wait() to drive the loop.
+                $process->checkTimeout();
+
+                if ($onTick !== null) {
+                    $onTick();
                 }
-            });
+
+                usleep(self::POLL_INTERVAL_MICROSECONDS);
+            }
+
+            // The child has already exited by this point (isRunning() ==
+            // false) — wait() here finalizes pipe/output reading and the
+            // exit code rather than driving the wait itself, and still
+            // enforces the timeout one last time for a child that exits
+            // exactly at the boundary.
+            $process->wait();
         } catch (ProcessTimedOutException) {
             $timedOut = true;
         } finally {

@@ -195,6 +195,15 @@ return [
             'attachment_move_retry_attempts' => (int) env('OMS_RESTORE_ATTACHMENT_MOVE_RETRY_ATTEMPTS', 5),
             'attachment_move_retry_delay_ms' => (int) env('OMS_RESTORE_ATTACHMENT_MOVE_RETRY_DELAY_MS', 200),
 
+            // OMS Task 7C.7 hardening pass — the identical bounded retry/
+            // backoff pattern as attachment_move_retry_* above, applied to
+            // RestoreProgressWriter's final rename() publish step. Became
+            // necessary once RestoreHeartbeat made progress.json writes
+            // happen far more frequently in rapid succession — Windows/
+            // Laragon local dev only; Linux (production) never retries.
+            'progress_publish_retry_attempts' => (int) env('OMS_RESTORE_PROGRESS_PUBLISH_RETRY_ATTEMPTS', 5),
+            'progress_publish_retry_delay_ms' => (int) env('OMS_RESTORE_PROGRESS_PUBLISH_RETRY_DELAY_MS', 200),
+
             // Seconds. Applies to the streamed `mysql` import subprocess
             // only — mirrors 'dump_timeout' above for the reverse direction.
             'mysql_import_timeout' => (int) env('OMS_RESTORE_MYSQL_IMPORT_TIMEOUT', 3600),
@@ -220,6 +229,15 @@ return [
             // same lock briefly while writing the initial progress file.
             'launch_lock_retry_timeout_seconds' => (int) env('OMS_RESTORE_LAUNCH_LOCK_RETRY_TIMEOUT', 30),
             'launch_lock_retry_interval_ms' => (int) env('OMS_RESTORE_LAUNCH_LOCK_RETRY_INTERVAL_MS', 200),
+
+            // OMS Task 7C.7 — RestoreWatchdogCommand's bounded notification
+            // cooldown per (restore UUID, reason code), via a plain Cache
+            // key — never a new column/table. A stale restore is not
+            // expected to resolve itself between one-minute schedule ticks,
+            // so this is purely spam prevention, not a safety mechanism: the
+            // watchdog itself never mutates, retries, or resumes anything
+            // regardless of this value.
+            'watchdog_notification_cooldown_minutes' => (int) env('OMS_RESTORE_WATCHDOG_NOTIFICATION_COOLDOWN_MINUTES', 60),
         ],
     ],
 

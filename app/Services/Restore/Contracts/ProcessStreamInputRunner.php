@@ -13,8 +13,18 @@ use App\Services\Backup\Contracts\ProcessRunResult;
  * by string concatenation. $inputFileAbsolutePath is opened as a binary
  * read stream and fed into the child's STDIN incrementally; a conforming
  * implementation must never load the whole file into a PHP string.
+ *
+ * OMS Task 7C.7 hardening pass — $onTick, when given, is invoked
+ * periodically WHILE the child process is still alive, independent of any
+ * STDOUT/STDERR activity — `mysql` can stay completely silent for the whole
+ * duration of a long import, so a conforming implementation must poll the
+ * process's own liveness on a real timer, never rely on output arrival as
+ * its only signal that time is passing. $onTick itself decides its own
+ * throttling (see RestoreHeartbeat) — a conforming implementation may call
+ * it as often as it likes on its own poll cadence. Optional and defaulted
+ * to null so every existing caller/implementation is unaffected.
  */
 interface ProcessStreamInputRunner
 {
-    public function run(array $command, array $env, ?float $timeoutSeconds, string $inputFileAbsolutePath): ProcessRunResult;
+    public function run(array $command, array $env, ?float $timeoutSeconds, string $inputFileAbsolutePath, ?callable $onTick = null): ProcessRunResult;
 }

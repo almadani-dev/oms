@@ -19,9 +19,18 @@ final class DatabaseDumper
     }
 
     /**
+     * OMS Task 7C.7 hardening pass — $onTick, when given, is invoked once
+     * per streamed stdout chunk (throttling is the tick callback's own
+     * responsibility — see RestoreHeartbeat) so a mandatory pre-restore
+     * safety backup can keep a restore's signed progress heartbeat alive
+     * for as long as `mysqldump` keeps producing output, which it does
+     * continuously for any non-trivial dump — unlike the `mysql` import
+     * direction (see ProcessStreamInputRunner's own docblock), stdout
+     * activity is a genuine, real signal here, not something to work around.
+     *
      * @throws DatabaseDumpException
      */
-    public function dump(string $destinationAbsolutePath): DumpResult
+    public function dump(string $destinationAbsolutePath, ?callable $onTick = null): DumpResult
     {
         $connectionName = (string) (config('oms.backup.database_connection') ?: config('database.default'));
         $connection = config("database.connections.{$connectionName}");
@@ -75,8 +84,9 @@ final class DatabaseDumper
                 array_values($command),
                 $env,
                 (float) config('oms.backup.dump_timeout', 1800),
-                static function (string $chunk) use ($handle): void {
+                static function (string $chunk) use ($handle, $onTick): void {
                     fwrite($handle, $chunk);
+                    if ($onTick !== null) { $onTick(); }
                 },
             );
         } finally {

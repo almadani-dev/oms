@@ -33,7 +33,16 @@ use Tests\Support\Restore\FakeRestoreProgressDurability;
  */
 class RestoreAttachmentActivationServiceTest extends BackupTestCase
 {
-    private const UUID = 'aaaaaaaa-1111-1111-1111-111111111111';
+    // OMS Task 7C.7 hardening pass — generated fresh per test (was
+    // previously a fixed class constant shared by every test method here)
+    // so this file can never collide with another test file's own
+    // quarantine/discard/marker sibling-path state for the "same" UUID,
+    // regardless of execution order. The explicit cleanupSwapArtifacts()
+    // calls below are kept anyway as defense in depth (e.g. a crashed prior
+    // run that never reached tearDown()), but a fresh UUID means this
+    // file's own tests can never depend on — or be defeated by — another
+    // test class's cleanup discipline.
+    private string $uuid;
 
     private RestoreAttachmentPaths $paths;
 
@@ -41,6 +50,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
     {
         parent::setUp();
 
+        $this->uuid = (string) \Illuminate\Support\Str::uuid();
         $this->paths = new RestoreAttachmentPaths();
         $this->cleanupSwapArtifacts();
     }
@@ -61,10 +71,10 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
      */
     private function cleanupSwapArtifacts(): void
     {
-        $this->removeDirectory($this->paths->quarantineRoot(self::UUID));
-        $this->removeDirectory($this->paths->rollbackDiscardRoot(self::UUID));
+        $this->removeDirectory($this->paths->quarantineRoot($this->uuid));
+        $this->removeDirectory($this->paths->rollbackDiscardRoot($this->uuid));
 
-        $marker = $this->paths->markerPath(self::UUID);
+        $marker = $this->paths->markerPath($this->uuid);
 
         if (is_file($marker)) {
             unlink($marker);
@@ -113,7 +123,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
 
     private function preparedWorkspace(): RestoreWorkspace
     {
-        $workspace = new RestoreWorkspace(self::UUID);
+        $workspace = new RestoreWorkspace($this->uuid);
         $workspace->prepare();
 
         return $workspace;
@@ -133,7 +143,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
 
     private function inspect(): AttachmentSwapState
     {
-        return (new AttachmentSwapStateInspector())->inspect(self::UUID);
+        return (new AttachmentSwapStateInspector())->inspect($this->uuid);
     }
 
     private function failingMarkerWriter(): AttachmentSwapMarkerWriter
@@ -162,7 +172,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $handle = $this->exclusiveHandle();
 
         try {
-            $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+            $swap = $this->service()->activate($handle, $this->uuid, $workspace, $manifest);
 
             $this->assertInstanceOf(AttachmentSwapHandle::class, $swap);
             $this->assertTrue(Storage::disk('attachments')->exists('receipts/new.jpg'));
@@ -184,9 +194,9 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $handle = $this->exclusiveHandle();
 
         try {
-            $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+            $this->service()->activate($handle, $this->uuid, $workspace, $manifest);
 
-            $quarantine = $this->paths->quarantineRoot(self::UUID);
+            $quarantine = $this->paths->quarantineRoot($this->uuid);
             $this->assertTrue(is_dir($quarantine));
             $this->assertSame('original-content', file_get_contents($quarantine.DIRECTORY_SEPARATOR.'receipts'.DIRECTORY_SEPARATOR.'original.jpg'));
         } finally {
@@ -202,7 +212,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $handle = $this->exclusiveHandle();
 
         try {
-            $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+            $this->service()->activate($handle, $this->uuid, $workspace, $manifest);
 
             $this->assertTrue(Storage::disk('attachments')->exists('receipts/new.jpg'));
         } finally {
@@ -221,7 +231,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $handle = $this->exclusiveHandle();
 
         try {
-            $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+            $this->service()->activate($handle, $this->uuid, $workspace, $manifest);
 
             $this->assertTrue(Storage::disk('attachments')->exists('receipts/new.jpg'));
         } finally {
@@ -241,10 +251,10 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
 
         try {
             $this->expectException(RestoreAttachmentSwapException::class);
-            $this->service($mover)->activate($handle, self::UUID, $workspace, $manifest);
+            $this->service($mover)->activate($handle, $this->uuid, $workspace, $manifest);
         } finally {
             $this->assertTrue(Storage::disk('attachments')->exists('receipts/original.jpg'));
-            $this->assertFalse(is_dir($this->paths->quarantineRoot(self::UUID)));
+            $this->assertFalse(is_dir($this->paths->quarantineRoot($this->uuid)));
             $handle->release();
         }
     }
@@ -262,10 +272,10 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
 
         try {
             $this->expectException(RestoreAttachmentSwapException::class);
-            $this->service($mover)->activate($handle, self::UUID, $workspace, $manifest);
+            $this->service($mover)->activate($handle, $this->uuid, $workspace, $manifest);
         } finally {
             $this->assertTrue(Storage::disk('attachments')->exists('receipts/original.jpg'), 'Live attachments must never be left missing after a failed activation.');
-            $this->assertFalse(is_dir($this->paths->quarantineRoot(self::UUID)), 'Quarantine must be reabsorbed back into live after an emergency rollback.');
+            $this->assertFalse(is_dir($this->paths->quarantineRoot($this->uuid)), 'Quarantine must be reabsorbed back into live after an emergency rollback.');
             $this->assertSame(AttachmentSwapState::RolledBack, $this->inspect());
             $handle->release();
         }
@@ -273,7 +283,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
 
     public function test_unexpected_existing_quarantine_refuses_to_activate(): void
     {
-        mkdir($this->paths->quarantineRoot(self::UUID), 0700, true);
+        mkdir($this->paths->quarantineRoot($this->uuid), 0700, true);
 
         $workspace = $this->preparedWorkspace();
         $manifest = $this->manifestFor([$this->stageAttachment($workspace, 'receipts/new.jpg', 'new-content')], 11);
@@ -282,7 +292,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
 
         try {
             $this->expectException(RestoreAttachmentSwapException::class);
-            $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+            $this->service()->activate($handle, $this->uuid, $workspace, $manifest);
         } finally {
             $handle->release();
         }
@@ -302,10 +312,10 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
 
         try {
             $this->expectException(RestoreAttachmentValidationException::class);
-            $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+            $this->service()->activate($handle, $this->uuid, $workspace, $manifest);
         } finally {
             $this->assertTrue(Storage::disk('attachments')->exists('receipts/original.jpg'));
-            $this->assertFalse(is_dir($this->paths->quarantineRoot(self::UUID)));
+            $this->assertFalse(is_dir($this->paths->quarantineRoot($this->uuid)));
             $handle->release();
         }
     }
@@ -323,11 +333,11 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
 
         try {
             $this->expectException(RestoreAttachmentSwapException::class);
-            $this->service(markerWriter: $this->failingMarkerWriter())->activate($handle, self::UUID, $workspace, $manifest);
+            $this->service(markerWriter: $this->failingMarkerWriter())->activate($handle, $this->uuid, $workspace, $manifest);
         } finally {
             $this->assertTrue(Storage::disk('attachments')->exists('receipts/original.jpg'));
-            $this->assertFalse(is_dir($this->paths->quarantineRoot(self::UUID)));
-            $this->assertNull((new AttachmentSwapMarkerReader())->read($this->paths->markerPath(self::UUID), self::UUID));
+            $this->assertFalse(is_dir($this->paths->quarantineRoot($this->uuid)));
+            $this->assertNull((new AttachmentSwapMarkerReader())->read($this->paths->markerPath($this->uuid), $this->uuid));
             $handle->release();
         }
     }
@@ -347,7 +357,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
             $exception = null;
 
             try {
-                $this->service(markerWriter: $markerWriter)->activate($handle, self::UUID, $workspace, $manifest);
+                $this->service(markerWriter: $markerWriter)->activate($handle, $this->uuid, $workspace, $manifest);
             } catch (RestoreAttachmentSwapException $e) {
                 $exception = $e;
             }
@@ -357,7 +367,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
 
             // The rename DID succeed even though its marker update failed —
             // the original tree must still be fully recoverable in quarantine.
-            $this->assertTrue(is_dir($this->paths->quarantineRoot(self::UUID)));
+            $this->assertTrue(is_dir($this->paths->quarantineRoot($this->uuid)));
             $this->assertSame(
                 AttachmentSwapState::InconsistentNeedsManualReview,
                 $this->inspect(),
@@ -383,7 +393,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
             $exception = null;
 
             try {
-                $this->service(markerWriter: $markerWriter)->activate($handle, self::UUID, $workspace, $manifest);
+                $this->service(markerWriter: $markerWriter)->activate($handle, $this->uuid, $workspace, $manifest);
             } catch (RestoreAttachmentSwapException $e) {
                 $exception = $e;
             }
@@ -393,7 +403,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
 
             // Both trees are fully intact — only the bookkeeping is stale.
             $this->assertTrue(Storage::disk('attachments')->exists('receipts/new.jpg'));
-            $this->assertTrue(is_dir($this->paths->quarantineRoot(self::UUID)));
+            $this->assertTrue(is_dir($this->paths->quarantineRoot($this->uuid)));
             $this->assertSame(AttachmentSwapState::InconsistentNeedsManualReview, $this->inspect());
         } finally {
             $handle->release();
@@ -412,7 +422,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
 
         try {
             $this->expectException(RestoreAttachmentSwapException::class);
-            $this->service()->activate($shared, self::UUID, $workspace, $manifest);
+            $this->service()->activate($shared, $this->uuid, $workspace, $manifest);
         } finally {
             $shared->release();
         }
@@ -427,7 +437,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $handle->release();
 
         $this->expectException(RestoreAttachmentSwapException::class);
-        $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+        $this->service()->activate($handle, $this->uuid, $workspace, $manifest);
     }
 
     public function test_activate_rejects_a_foreign_path_handle(): void
@@ -441,7 +451,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
 
         try {
             $this->expectException(RestoreAttachmentSwapException::class);
-            $this->service()->activate($foreignHandle, self::UUID, $workspace, $manifest);
+            $this->service()->activate($foreignHandle, $this->uuid, $workspace, $manifest);
         } finally {
             $foreignHandle->release();
         }
@@ -455,7 +465,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $handle = $this->exclusiveHandle();
 
         try {
-            $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+            $this->service()->activate($handle, $this->uuid, $workspace, $manifest);
 
             $locksDir = rtrim(Storage::disk('restores')->path('.locks'), '/\\');
             $entries = array_values(array_diff(scandir($locksDir), ['.', '..']));
@@ -478,7 +488,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $handle = $this->exclusiveHandle();
 
         try {
-            $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+            $swap = $this->service()->activate($handle, $this->uuid, $workspace, $manifest);
             $this->service()->rollback($handle, $swap);
 
             $this->assertTrue(Storage::disk('attachments')->exists('receipts/original.jpg'));
@@ -500,10 +510,10 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $handle = $this->exclusiveHandle();
 
         try {
-            $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+            $swap = $this->service()->activate($handle, $this->uuid, $workspace, $manifest);
             $this->service()->rollback($handle, $swap);
 
-            $discard = $this->paths->rollbackDiscardRoot(self::UUID);
+            $discard = $this->paths->rollbackDiscardRoot($this->uuid);
             $this->assertFalse(is_dir($discard), 'The discarded restored tree must be cleaned up once rollback succeeds.');
         } finally {
             $handle->release();
@@ -520,7 +530,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $handle = $this->exclusiveHandle();
 
         try {
-            $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+            $swap = $this->service()->activate($handle, $this->uuid, $workspace, $manifest);
 
             // Rollback's own moves: [0] live(restored)->discard succeeds, [1]
             // quarantine->live fails, [2] the method's own best-effort recovery
@@ -560,7 +570,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $handle = $this->exclusiveHandle();
 
         try {
-            $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+            $swap = $this->service()->activate($handle, $this->uuid, $workspace, $manifest);
 
             // Rollback's own moves: [0] live(restored)->discard succeeds, [1] quarantine->live fails.
             $mover = new FakeAttachmentMoveRunner([false, true]);
@@ -570,10 +580,10 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         } finally {
             // Nothing that still holds the only copy of either tree was deleted.
             $this->assertTrue(
-                is_dir($this->paths->rollbackDiscardRoot(self::UUID)) || Storage::disk('attachments')->exists('receipts/new.jpg'),
+                is_dir($this->paths->rollbackDiscardRoot($this->uuid)) || Storage::disk('attachments')->exists('receipts/new.jpg'),
                 'The restored tree must still exist somewhere recoverable.',
             );
-            $this->assertTrue(is_dir($this->paths->quarantineRoot(self::UUID)) || Storage::disk('attachments')->exists('receipts/original.jpg'));
+            $this->assertTrue(is_dir($this->paths->quarantineRoot($this->uuid)) || Storage::disk('attachments')->exists('receipts/original.jpg'));
             $handle->release();
         }
     }
@@ -588,7 +598,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $handle = $this->exclusiveHandle();
 
         try {
-            $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+            $swap = $this->service()->activate($handle, $this->uuid, $workspace, $manifest);
 
             // 1st write (RollbackStarted) succeeds; 2nd write (RollbackLiveDiscarded) fails.
             $markerWriter = $this->markerWriterFailingOnCall(2);
@@ -619,7 +629,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $handle = $this->exclusiveHandle();
 
         try {
-            $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+            $swap = $this->service()->activate($handle, $this->uuid, $workspace, $manifest);
             $this->service()->rollback($handle, $swap);
             $this->service()->rollback($handle, $swap);
 
@@ -632,7 +642,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
     public function test_rollback_before_activation_is_rejected(): void
     {
         $handle = $this->exclusiveHandle();
-        $swap = AttachmentSwapHandle::forRestore(self::UUID);
+        $swap = AttachmentSwapHandle::forRestore($this->uuid);
 
         try {
             $this->expectException(RestoreAttachmentRollbackException::class);
@@ -652,7 +662,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $handle = $this->exclusiveHandle();
 
         try {
-            $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+            $swap = $this->service()->activate($handle, $this->uuid, $workspace, $manifest);
 
             $foreignPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'oms-foreign-lock-'.bin2hex(random_bytes(8)).'.lock';
             $foreignShared = (new BackupSubsystemLock($foreignPath))->acquireShared();
@@ -681,10 +691,10 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $handle = $this->exclusiveHandle();
 
         try {
-            $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+            $swap = $this->service()->activate($handle, $this->uuid, $workspace, $manifest);
             $this->service()->finalize($handle, $swap);
 
-            $this->assertFalse(is_dir($this->paths->quarantineRoot(self::UUID)));
+            $this->assertFalse(is_dir($this->paths->quarantineRoot($this->uuid)));
             $this->assertTrue(Storage::disk('attachments')->exists('receipts/new.jpg'));
             $this->assertSame(AttachmentSwapState::Finalized, $this->inspect());
         } finally {
@@ -702,7 +712,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $handle = $this->exclusiveHandle();
 
         try {
-            $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+            $swap = $this->service()->activate($handle, $this->uuid, $workspace, $manifest);
             $this->service()->finalize($handle, $swap);
             $this->service()->finalize($handle, $swap);
 
@@ -715,7 +725,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
     public function test_finalize_before_activation_is_rejected(): void
     {
         $handle = $this->exclusiveHandle();
-        $swap = AttachmentSwapHandle::forRestore(self::UUID);
+        $swap = AttachmentSwapHandle::forRestore($this->uuid);
 
         try {
             $this->expectException(RestoreAttachmentFinalizationException::class);
@@ -735,12 +745,12 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $handle = $this->exclusiveHandle();
 
         try {
-            $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+            $swap = $this->service()->activate($handle, $this->uuid, $workspace, $manifest);
 
             // Hold an open read handle on a file inside quarantine so Windows
             // refuses to delete it — deterministically forcing the deletion to
             // fail without depending on real OS permission errors.
-            $quarantinedFile = $this->paths->quarantineRoot(self::UUID).DIRECTORY_SEPARATOR.'receipts'.DIRECTORY_SEPARATOR.'original.jpg';
+            $quarantinedFile = $this->paths->quarantineRoot($this->uuid).DIRECTORY_SEPARATOR.'receipts'.DIRECTORY_SEPARATOR.'original.jpg';
             $openHandle = fopen($quarantinedFile, 'r');
             $this->assertNotFalse($openHandle);
 
@@ -767,7 +777,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $handle = $this->exclusiveHandle();
 
         try {
-            $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+            $swap = $this->service()->activate($handle, $this->uuid, $workspace, $manifest);
 
             // 1st write (FinalizationStarted) succeeds; 2nd write (Finalized) fails.
             $markerWriter = $this->markerWriterFailingOnCall(2);
@@ -782,7 +792,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
 
             $this->assertNotNull($exception);
             $this->assertSame('marker_update_failed_after_mutation', $exception->reasonCode);
-            $this->assertFalse(is_dir($this->paths->quarantineRoot(self::UUID)), 'Quarantine deletion genuinely succeeded.');
+            $this->assertFalse(is_dir($this->paths->quarantineRoot($this->uuid)), 'Quarantine deletion genuinely succeeded.');
             $this->assertSame(
                 AttachmentSwapState::InconsistentNeedsManualReview,
                 $this->inspect(),
@@ -803,7 +813,7 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         $handle = $this->exclusiveHandle();
 
         try {
-            $swap = $this->service()->activate($handle, self::UUID, $workspace, $manifest);
+            $swap = $this->service()->activate($handle, $this->uuid, $workspace, $manifest);
 
             $foreignPath = sys_get_temp_dir().DIRECTORY_SEPARATOR.'oms-foreign-lock-'.bin2hex(random_bytes(8)).'.lock';
             $foreignShared = (new BackupSubsystemLock($foreignPath))->acquireShared();

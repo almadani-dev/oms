@@ -11,6 +11,16 @@ enum BackupNotificationEvent: string
     case DeletionSucceeded = 'deletion_succeeded';
     case DeletionFailed = 'deletion_failed';
 
+    // OMS Task 7C.7 — restore terminal outcomes. RestorePartial is flagged
+    // as a failure by isFailure() below even though it isn't literally the
+    // opposite of success: a degraded restore always requires manual review,
+    // exactly like BackupStatus::isSuccessfulOutcome() already treats it as
+    // distinct from a clean Restored.
+    case RestoreSucceeded = 'restore_succeeded';
+    case RestoreFailed = 'restore_failed';
+    case RestorePartial = 'restore_partial';
+    case RestoreStale = 'restore_stale';
+
     public function title(): string
     {
         return match ($this) {
@@ -20,13 +30,18 @@ enum BackupNotificationEvent: string
             self::VerificationFailed => 'فشل التحقق من سلامة النسخة الاحتياطية',
             self::DeletionSucceeded => 'تم حذف النسخة الاحتياطية بنجاح',
             self::DeletionFailed => 'فشل حذف النسخة الاحتياطية',
+            self::RestoreSucceeded => 'اكتملت عملية الاستعادة بنجاح',
+            self::RestoreFailed => 'فشلت عملية الاستعادة',
+            self::RestorePartial => 'اكتملت عملية الاستعادة جزئياً وتتطلب مراجعة يدوية',
+            self::RestoreStale => 'عملية الاستعادة قد تكون متوقفة وتتطلب مراجعة يدوية',
         };
     }
 
     public function isFailure(): bool
     {
         return match ($this) {
-            self::BackupFailed, self::VerificationFailed, self::DeletionFailed => true,
+            self::BackupFailed, self::VerificationFailed, self::DeletionFailed,
+            self::RestoreFailed, self::RestorePartial, self::RestoreStale => true,
             default => false,
         };
     }

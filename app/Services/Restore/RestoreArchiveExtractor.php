@@ -51,9 +51,14 @@ final class RestoreArchiveExtractor
      *                                           BackupArchiveContentVerifier::verify()
      *                                           call against $decryptedZipPath
      *
+     * OMS Task 7C.7 hardening pass — $onTick, when given, is invoked once
+     * per extracted entry (the dump, and each staged attachment file) so a
+     * restore's signed progress heartbeat can stay alive while staging an
+     * archive with many/large files.
+     *
      * @throws RestoreArchiveExtractionException
      */
-    public function extract(string $decryptedZipPath, array $manifest, BackupScope $selectedScope, RestoreWorkspace $workspace): RestoreExtractionResult
+    public function extract(string $decryptedZipPath, array $manifest, BackupScope $selectedScope, RestoreWorkspace $workspace, ?callable $onTick = null): RestoreExtractionResult
     {
         $zip = new ZipArchive();
 
@@ -62,13 +67,13 @@ final class RestoreArchiveExtractor
         }
 
         try {
-            return $this->extractFromOpenZip($zip, $manifest, $selectedScope, $workspace);
+            return $this->extractFromOpenZip($zip, $manifest, $selectedScope, $workspace, $onTick);
         } finally {
             $zip->close();
         }
     }
 
-    private function extractFromOpenZip(ZipArchive $zip, array $manifest, BackupScope $selectedScope, RestoreWorkspace $workspace): RestoreExtractionResult
+    private function extractFromOpenZip(ZipArchive $zip, array $manifest, BackupScope $selectedScope, RestoreWorkspace $workspace, ?callable $onTick = null): RestoreExtractionResult
     {
         // OMS Task 7C.3 correction: BackupArchiveContentVerifier already
         // proved the entry set/hashes match at verify() time, but that was
@@ -107,6 +112,7 @@ final class RestoreArchiveExtractor
             $destination = $workspace->stagedDumpPath();
             $extractedTotal += $this->extractSingleEntry($zip, 'database/dump.sql', $destination, (int) $dump['size_bytes'], (string) $dump['sha256'], $workspace, $budgetRemaining);
             $stagedDumpRelativePath = 'database/dump.sql';
+            if ($onTick !== null) { $onTick(); }
         }
 
         if ($selectedScope->includesFiles()) {
@@ -142,6 +148,7 @@ final class RestoreArchiveExtractor
 
                 $extractedTotal += $this->extractSingleEntry($zip, $entryName, $destination, (int) $file['size'], (string) $file['sha256'], $workspace, $budgetRemaining);
                 $stagedAttachmentsCount++;
+                if ($onTick !== null) { $onTick(); }
             }
         }
 

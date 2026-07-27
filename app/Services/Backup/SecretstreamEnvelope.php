@@ -148,9 +148,15 @@ final class SecretstreamEnvelope
      * must return the matching 32-byte binary key (typically
      * BackupKeyRing::resolve()) or throw.
      *
+     * OMS Task 7C.7 hardening pass — $onTick, when given, is invoked once
+     * per decrypted chunk (throttling is the tick callback's own
+     * responsibility — see RestoreHeartbeat), so a restore's signed
+     * progress heartbeat can stay alive for the whole duration of
+     * decrypting a large archive, not just before/after it.
+     *
      * @return array{key_id: string}
      */
-    public function decryptFile(string $sourcePath, string $destinationPath, callable $keyResolver): array
+    public function decryptFile(string $sourcePath, string $destinationPath, callable $keyResolver, ?callable $onTick = null): array
     {
         $in = fopen($sourcePath, 'rb');
 
@@ -222,6 +228,8 @@ final class SecretstreamEnvelope
                 if ($tag === SODIUM_CRYPTO_SECRETSTREAM_XCHACHA20POLY1305_TAG_FINAL) {
                     $sawFinal = true;
                 }
+
+                if ($onTick !== null) { $onTick(); }
             }
 
             if (! $sawFinal) {

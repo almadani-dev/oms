@@ -187,19 +187,24 @@ final class BackupCreationOrchestrator
      * operation begins; merely being an instance of BackupSubsystemLockHandle
      * is never sufficient. Ordinary callers must keep using run().
      *
+     * OMS Task 7C.7 hardening pass — $onTick, when given, is forwarded to
+     * DatabaseDumper::dump() so RestoreOrchestrator can keep a restore's
+     * signed progress heartbeat alive for the whole duration of the
+     * mandatory pre-restore safety backup, not just before/after it.
+     *
      * @throws BackupOperationException if $handle fails validation, or on
      *                                    any creation-pipeline failure.
      */
-    public function runWithLockAlreadyHeld(int $operationId, BackupSubsystemLockHandle $handle): BackupOperation
+    public function runWithLockAlreadyHeld(int $operationId, BackupSubsystemLockHandle $handle, ?callable $onTick = null): BackupOperation
     {
         if (! $this->subsystemLock->validateHandle($handle, LockMode::Exclusive)) {
             throw new BackupOperationException('Refusing to run the backup pipeline: the supplied lock handle is not a live, exclusive, matching subsystem lock.');
         }
 
-        return $this->execute($operationId);
+        return $this->execute($operationId, $onTick);
     }
 
-    private function execute(int $operationId): BackupOperation
+    private function execute(int $operationId, ?callable $onTick = null): BackupOperation
     {
         $operation = BackupOperation::findOrFail($operationId);
         $disk = Storage::disk($operation->disk);
@@ -215,7 +220,7 @@ final class BackupCreationOrchestrator
             $workingAbsolute = $disk->path($workingDir);
 
             $dump = $operation->scope->includesDatabase()
-                ? $this->dumper->dump($workingAbsolute.DIRECTORY_SEPARATOR.'dump.sql')
+                ? $this->dumper->dump($workingAbsolute.DIRECTORY_SEPARATOR.'dump.sql', $onTick)
                 : null;
 
             $attachments = $operation->scope->includesFiles()

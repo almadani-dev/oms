@@ -1180,3 +1180,69 @@ A real `flock()`-backed lock has no per-test scoping of its own — it is a genu
 
 ### Impact
 Any future test added to `tests/Feature/Restore/Attachments/RestoreAttachmentActivationServiceTest.php` (or any other test acquiring `BackupSubsystemLock` directly) must follow this pattern: acquire, then IMMEDIATELY open the `try`, do everything (including calls that are expected to succeed, not just the ones under test) inside it, and release only in `finally`. Code review of new tests in this area should treat "operation between acquire and try" as a defect on sight, not a style nit.
+
+---
+
+### Date
+2026-07-26 (OMS Task 7C.7 — restore_failed_phase stays within the fixed ALLOWED_PHASES vocabulary)
+
+### Decision
+`RestoreOrchestrator` never invents new phase strings for `restore_failed_phase` (e.g. no `database_import`, `preflight_completed`, `staging_completed`, `attachments_activated`, `reconciliation_completed`). Every failure branch reports the value of `RestoreProgressSnapshot::ALLOWED_PHASES` the restore was actually AT when the failure occurred (e.g. `lock_acquired` for a preflight failure, `attachments_swapped`/`staging` for a database-import failure depending on scope, `reconciling` for a reconciliation failure, and the literal value `maintenance_disabled` specifically for a maintenance-exit failure).
+
+### Reason
+`RestoreProgressSnapshot::ALLOWED_PHASES` is explicitly documented as "fixed now so the progress-file schema is already fixed and cannot silently drift once [orchestration] is built" — every `create()` call validates `restore_failed_phase` against that same fixed list via `assertAllowed()`, so passing an invented string would throw `InvalidArgumentException` at the exact moment a terminal failure is being recorded, which is the worst possible place for an unexpected exception. A small `RestoreTerminalResultWriter::finish($failedPhaseOverride)` parameter was added so the literal failing phase can be pinned explicitly when a later, unrelated bookkeeping `advance()` call (writing `maintenance_disabled` on the way to a terminal write) would otherwise silently overwrite it with the wrong value.
+
+### Impact
+Anyone reading a terminal `restore_failed_phase` should treat it as "the last phase the restore reached before this failure," not as a dedicated per-failure-type enum — the accompanying (sanitized) `error_summary` text is what disambiguates the specific cause (e.g. the database-import-failure branches append an explicit sentence pointing at the safety backup for recovery). Any future phase added to the restore flow must go through `RestoreProgressSnapshot::ALLOWED_PHASES` first, never be introduced ad hoc in the orchestrator.
+
+---
+
+### Date
+2026-07-26 (OMS Task 7C.7 — closing two 7C.6 integration gaps additively, not by rewriting)
+
+### Decision
+Two gaps discovered while wiring `RestoreOrchestrator` were closed with small, additive, backward-compatible changes rather than reworking the 7C.6 primitives themselves: (1) `App\Services\Restore\Contracts\AttachmentMoveRunner` was bound in `AppServiceProvider` for the first time (config-driven `NativeAttachmentMoveRunner`), since nothing had ever resolved `RestoreAttachmentActivationService` via the container before this task. (2) `PreparedRestore` gained two new trailing, defaulted constructor parameters (`attachmentManifestFiles`, `attachmentsTotalSizeBytes`), populated by `RestoreArchivePreparer::prepare()` directly from the already-verified archive manifest it already had in scope.
+
+### Reason
+The 7C.6 correction pass explicitly left "how does the future orchestrator source a `RestoreAttachmentManifest`" as an open question (see that entry's own docblock note: "the future RestoreOrchestrator (Task 7C.7+) recreates this object from the already-verified archive manifest immediately before activation"), but `PreparedRestore` — the only object `RestoreArchivePreparer::prepare()` returns to any caller — never actually carried that manifest data forward; only a bounded summary (`manifestSummary`, no per-file list) reached the caller. Rebuilding trust from scratch (e.g. re-opening/re-verifying the decrypted archive a second time in the orchestrator) would have duplicated already-correct, already-tested verification logic for no safety benefit. Adding the two fields is the minimal change that lets the orchestrator build a `RestoreAttachmentManifest` from data that was already fully authenticated by `BackupArchiveContentVerifier` moments earlier in the same call — never a second, independent trust source, and never accepted from the UI or `progress.json`.
+
+### Impact
+`PreparedRestore`'s constructor is not considered a stable, closed API — a future phase needing more already-verified manifest data forward should extend it the same way (new trailing, defaulted parameters), not by re-deriving trust independently elsewhere. The one other test file constructing `PreparedRestore` directly (`DatabaseRestorerTest`) needed no changes, confirming the defaults are genuinely backward compatible.
+
+### Date
+2026-07-26 (OMS Task 7C.7 — watchdog notification spam bounded via Cache, not a new column)
+
+### Decision
+`RestoreWatchdogCommand` deduplicates its own persistent notifications per (restore UUID, reason code) using a plain `Cache::has()`/`Cache::put()` cooldown key (`config('oms.backup.restore.watchdog_notification_cooldown_minutes')`, default 60), not a new `backup_operations` column or a new table.
+
+### Reason
+The watchdog runs every minute and is explicitly detection-only — it must never mutate a restore row (see its own docblock and `RestoreStaleDetector`'s "never mutates" contract). Recording "already notified" as a DB-persisted fact on the restore row itself would blur that line and risk being mistaken for restore state a future recovery flow might read as authoritative. A `Cache` key carries no such risk: it is explicitly disposable bookkeeping (losing it merely means one extra notification gets sent, never a correctness issue), and the underlying `oms.backup.restore.stale_after_minutes` mechanism plus `RestoreStaleDetector` re-evaluating from scratch every run mean the cooldown is purely a spam-prevention nicety, never a safety mechanism.
+
+### Impact
+If the application's cache store is ever cleared/flushed in production, the watchdog will simply re-notify once for every currently-stale restore on its next run — a harmless, self-correcting outcome, not a bug to chase.
+
+---
+
+### Date
+2026-07-27 (OMS Task 7C.7 final hardening pass — RestoreProgressWriter Windows rename retry)
+
+### Decision
+`RestoreProgressWriter::write()`'s final publish step (`rename($tempPath, $finalPath)`) now retries on a small, bounded, Windows-only schedule (`renameWithRetry()`, new config `oms.backup.restore.progress_publish_retry_attempts`/`progress_publish_retry_delay_ms`, mirroring `NativeAttachmentMoveRunner`'s existing pattern exactly) instead of failing on the first attempt.
+
+### Reason
+Introducing `RestoreHeartbeat` (this same pass) made this exact rename() run far more frequently, in rapid succession, against the same `progress.json` path than it ever had before. Empirical stress-testing (10x `--order-by=random` runs of the two heaviest-I/O new test files) showed a real ~40% intermittent failure rate on this Windows/Laragon host, always with the identical sanitized `RestoreProgressWriteException::cannotPublish()` diagnostic — the same class of transient open-handle/AV-scanner interference already documented and retried for in `NativeAttachmentMoveRunner`, just never triggered here before because write frequency was too low to expose it.
+
+### Impact
+Any future feature that increases `RestoreProgressWriter::write()`'s call frequency further should re-run this same kind of `--order-by=random` stress test (not just a single clean run) before considering the change safe on Windows/Laragon — a single green run is not sufficient evidence given this class of flake's low-but-nonzero per-call failure rate. Linux/production is unaffected: `rename(2)` there is atomic and reliable, and `renameWithRetry()` makes exactly one attempt on that platform, identical to the pre-fix behavior.
+
+### Date
+2026-07-27 (OMS Task 7C.7 final hardening pass — RestoreAttachmentLifecycle interface introduced solely for deterministic testing)
+
+### Decision
+`RestoreOrchestrator` depends on a new `RestoreAttachmentLifecycle` interface (implemented by the unchanged, still-`final` `RestoreAttachmentActivationService`) instead of the concrete class directly.
+
+### Reason
+The acceptance pass required a deterministic test proving finalize()-failure compensation (RestorePartial, quarantine preserved, maintenance exit still attempted). `RestoreAttachmentActivationService` is `final` and forcing a real finalize() failure deterministically and cross-platform (e.g. via filesystem permissions) is not reliable enough to build a test on. The interface is the minimal seam needed — it changes no behavior in the real implementation and is never used to bypass any of that class's own safety rules (lock validation, state re-inspection, write-ahead marker protocol), all of which remain entirely inside `RestoreAttachmentActivationService` itself.
+
+### Impact
+A future reader should not mistake this interface for a sign that attachment lifecycle behavior is meant to be pluggable in production — there is exactly one bound implementation (`AppServiceProvider`), and the interface exists purely for the one test double (`FinalizeFailingAttachmentLifecycle`) that needs it.

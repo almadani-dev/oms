@@ -61,6 +61,24 @@ use Illuminate\Support\Facades\Storage;
  *     ever touched by the rename itself — copied to progress.previous.json
  *     first, never unlinked ahead of a fully-written replacement — so even a
  *     torn/failed Windows replace can never leave zero valid progress files.
+ *
+ * OMS Task 7C.7 hardening pass — Windows rename() retry: once heartbeat
+ * writes (RestoreHeartbeat) made this class's rename() run far more
+ * frequently in rapid succession against the SAME progress.json path than
+ * before, real intermittent `rename()` failures started appearing on
+ * Windows/Laragon under normal test load (confirmed via
+ * RestoreProgressWriteException::cannotPublish()'s own sanitized message
+ * surfacing in test diagnostics) — the same class of transient
+ * open-handle/AV-scanner interference `NativeAttachmentMoveRunner` already
+ * documents and retries for on Windows. `renameWithRetry()` mirrors that
+ * exact, already-approved pattern: a single attempt on Linux (rename(2) is
+ * atomic and reliable there — no retry is needed or attempted), a small
+ * bounded retry with linear backoff on Windows only
+ * (`oms.backup.restore.progress_publish_retry_attempts`/
+ * `progress_publish_retry_delay_ms`), never retried indefinitely. This never
+ * changes what gets published or the atomicity guarantee itself — only
+ * whether a transient, recoverable OS-level failure is retried before being
+ * escalated to `RestoreProgressWriteException::cannotPublish()`.
  */
 final class RestoreProgressWriter
 {
@@ -132,7 +150,7 @@ final class RestoreProgressWriter
             @copy($finalPath, $previousPath);
         }
 
-        if (! @rename($tempPath, $finalPath)) {
+        if (! $this->renameWithRetry($tempPath, $finalPath)) {
             @unlink($tempPath);
 
             throw RestoreProgressWriteException::cannotPublish();
@@ -145,6 +163,34 @@ final class RestoreProgressWriter
         // never corrupts the already-swapped file, so it is deliberately not
         // escalated to an exception.
         $this->durability->syncDirectory($absoluteDir);
+    }
+
+    /**
+     * A single attempt on Linux (production authority — rename(2) is
+     * atomic and reliable, no retry needed). On Windows only, a small
+     * bounded retry with linear backoff — mirrors
+     * NativeAttachmentMoveRunner's own documented, already-approved pattern
+     * for the identical class of transient open-handle/AV-scanner
+     * interference.
+     */
+    private function renameWithRetry(string $tempPath, string $finalPath): bool
+    {
+        $attempts = PHP_OS_FAMILY === 'Windows'
+            ? max(1, (int) config('oms.backup.restore.progress_publish_retry_attempts', 5))
+            : 1;
+        $delayMs = max(0, (int) config('oms.backup.restore.progress_publish_retry_delay_ms', 200));
+
+        for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+            if (@rename($tempPath, $finalPath)) {
+                return true;
+            }
+
+            if ($attempt < $attempts) {
+                usleep($delayMs * 1000 * $attempt);
+            }
+        }
+
+        return false;
     }
 
     private function buildSignedJson(RestoreProgressSnapshot $snapshot): string

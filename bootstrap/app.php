@@ -58,4 +58,14 @@ return Application::configure(basePath: dirname(__DIR__))
             ->dailyAt('03:00')
             ->withoutOverlapping()
             ->onOneServer();
+
+        // OMS Task 7C.7 — detection only (see RestoreStaleDetector's own
+        // docblock): never retries, resumes, relaunches, or mutates a
+        // restore's status. Every minute is justified here precisely
+        // because the command itself is read-only and its own notification
+        // spam is already bounded by a Cache cooldown key.
+        $schedule->command('oms:restore-watchdog')
+            ->everyMinute()
+            ->withoutOverlapping()
+            ->onOneServer();
     })->create();

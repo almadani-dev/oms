@@ -8,10 +8,10 @@ use App\Models\BackupOperation;
 use App\Services\Backup\BackupSubsystemLock;
 use App\Services\Backup\BackupSubsystemLockHandle;
 use App\Services\Restore\Exceptions\RestoreProgressIntegrityException;
+use App\Services\Restore\RestoreOrchestrator;
 use App\Services\Restore\RestoreProgressReader;
 use App\Services\Restore\RestoreProgressSnapshot;
 use App\Services\Restore\RestoreProgressWriter;
-use App\Support\Backup\BackupErrorSanitizer;
 use Illuminate\Console\Command;
 
 /**
@@ -21,15 +21,14 @@ use Illuminate\Console\Command;
  * in). Deliberately never acquires the Cache lock either, for the same
  * reason BackupSubsystemLock exists as a plain flock() (see its docblock).
  *
- * This phase does not implement the destructive restore engine yet —
- * failClosed() is the exact, isolated seam OMS Task 7C.7 replaces with a
- * real RestoreOrchestrator call. Everything above it in handle() (claim
- * verification, bounded-retry lock acquisition, the post-lock re-check) is
- * the permanent shape and must not need to change when that happens.
- * Because there is no real engine yet, this command always fails closed: it
- * writes a terminal, sanitized "engine not connected" progress snapshot and
- * moves the DB row to RestoreFailed rather than ever leaving a permanently
- * active restore behind.
+ * OMS Task 7C.7 — orchestrate() (RestoreOrchestrator) replaces this class's
+ * former fail-closed placeholder. Everything above the orchestrator call in
+ * handle() (claim verification, bounded-retry lock acquisition, the
+ * post-lock re-check, advanceToLockAcquired()) is the permanent shape from
+ * Task 7C.4 and did not need to change: this class still never runs through
+ * the database queue and never acquires the Cache lock, it only now hands
+ * the claimed row/progress/lock handle to the real execution engine instead
+ * of always failing closed.
  *
  * OMS Task 7C.4 correction pass: `phase=lock_acquired` is only ever written
  * by THIS class, and only after it has genuinely acquired the lifetime
@@ -46,7 +45,7 @@ class RestoreCommand extends Command
 
     protected $description = 'Execute an already-launched, claimed restore operation (OMS Task 7C).';
 
-    public function handle(RestoreProgressReader $reader, RestoreProgressWriter $writer, BackupSubsystemLock $subsystemLock): int
+    public function handle(RestoreProgressReader $reader, RestoreProgressWriter $writer, BackupSubsystemLock $subsystemLock, RestoreOrchestrator $orchestrator): int
     {
         $uuid = (string) $this->argument('uuid');
 
@@ -88,9 +87,15 @@ class RestoreCommand extends Command
             // the parent writes it before this child exists.
             $progress = $this->advanceToLockAcquired($progress, $writer);
 
-            $this->failClosed($row, $progress, $writer);
+            $result = $orchestrator->orchestrate($row, $progress, $lockHandle);
 
-            $this->error('Restore execution engine is not yet connected (OMS Task 7C.7 pending) — restore marked failed.');
+            if ($result === BackupStatus::Restored) {
+                $this->info('Restore completed successfully.');
+
+                return self::SUCCESS;
+            }
+
+            $this->error("Restore did not complete successfully (status: {$result->value}).");
 
             return self::FAILURE;
         } finally {
@@ -163,9 +168,9 @@ class RestoreCommand extends Command
      * the parent left (`launching`) to `lock_acquired`, now that this
      * process genuinely holds the lifetime exclusive BackupSubsystemLock.
      * A write failure here is non-fatal — it falls back to the snapshot as
-     * read, so failClosed() still runs and the DB row still reaches a
-     * terminal state either way; only the progress file's own phase
-     * reporting would be less precise.
+     * read, so orchestrate() still runs and reaches a terminal state either
+     * way; only the progress file's own phase reporting would be less
+     * precise.
      */
     private function advanceToLockAcquired(RestoreProgressSnapshot $progress, RestoreProgressWriter $writer): RestoreProgressSnapshot
     {
@@ -198,47 +203,5 @@ class RestoreCommand extends Command
         } catch (\Throwable) {
             return $progress;
         }
-    }
-
-    /**
-     * OMS Task 7C.7 replaces this method's body with a real
-     * RestoreOrchestrator call — everything in handle() above it stays
-     * untouched. Never destructive: only ever writes a terminal, sanitized
-     * failure state.
-     */
-    private function failClosed(BackupOperation $row, RestoreProgressSnapshot $progress, RestoreProgressWriter $writer): void
-    {
-        $now = now();
-        $sanitized = BackupErrorSanitizer::sanitize('Restore execution engine is not yet implemented (OMS Task 7C.7 pending).');
-
-        try {
-            $terminal = RestoreProgressSnapshot::create(
-                restoreUuid: $progress->restoreUuid,
-                requestedBy: $progress->requestedBy,
-                requestedAt: $progress->requestedAt,
-                reason: $progress->reason,
-                scope: $progress->scope,
-                sourceBackupUuid: $progress->sourceBackupUuid,
-                preRestoreSafetyBackupUuid: $progress->preRestoreSafetyBackupUuid,
-                phase: 'restore_failed',
-                phaseHistory: $progress->phaseHistory,
-                lastHeartbeatAt: $now->format(RestoreProgressSnapshot::TIMESTAMP_FORMAT),
-                result: 'restore_failed',
-                restoreFailedPhase: $progress->phase,
-                errorSummary: $sanitized,
-            );
-
-            $writer->write($terminal);
-        } catch (\Throwable) {
-            // Best-effort — the DB update below is the authoritative
-            // terminal record even if the progress file could not be
-            // updated.
-        }
-
-        $row->forceFill([
-            'status' => BackupStatus::RestoreFailed,
-            'failed_at' => $now,
-            'error_summary' => $sanitized,
-        ])->save();
     }
 }

@@ -53,47 +53,62 @@ final class RestoreReconciler
     }
 
     /**
+     * OMS Task 7C.7 hardening pass — $onTick, when given, is invoked once
+     * immediately after each of the seven steps below succeeds (never
+     * mid-step — each step here is expected to be individually bounded/
+     * short) so a restore's signed progress heartbeat can stay alive across
+     * the whole reconciliation sequence even if one or more steps
+     * (`migrate --force` especially) takes a while.
+     *
      * @throws RestoreReconciliationException
      */
     public function reconcile(
         BackupOperationSnapshot $sourceBackup,
         BackupOperationSnapshot $safetyBackup,
         RestoreOperationSnapshot $restoreOperation,
+        ?callable $onTick = null,
     ): void {
         $this->step(
             fn () => $this->connectionResetter->reset((string) config('database.default')),
             RestoreReconciliationException::connectionResetFailed(...),
         );
+        if ($onTick !== null) { $onTick(); }
 
         $this->step(
             fn () => $this->runArtisan('migrate', ['--force' => true]),
             RestoreReconciliationException::migrationFailed(...),
         );
+        if ($onTick !== null) { $onTick(); }
 
         $this->step(
             fn () => $this->runArtisan('oms:sync-permissions'),
             RestoreReconciliationException::permissionSyncFailed(...),
         );
+        if ($onTick !== null) { $onTick(); }
 
         $this->step(
             fn () => $this->runArtisan('permission:cache-reset'),
             RestoreReconciliationException::permissionCacheResetFailed(...),
         );
+        if ($onTick !== null) { $onTick(); }
 
         $this->step(
             fn () => $this->metadataReconstructor->reconstruct($sourceBackup, $safetyBackup, $restoreOperation),
             RestoreReconciliationException::metadataReconstructionFailed(...),
         );
+        if ($onTick !== null) { $onTick(); }
 
         $this->step(
             fn () => $this->ephemeralTableCleaner->clean(),
             RestoreReconciliationException::ephemeralCleanupFailed(...),
         );
+        if ($onTick !== null) { $onTick(); }
 
         $this->step(
             fn () => $this->runArtisan('queue:restart'),
             RestoreReconciliationException::queueRestartFailed(...),
         );
+        if ($onTick !== null) { $onTick(); }
     }
 
     /**

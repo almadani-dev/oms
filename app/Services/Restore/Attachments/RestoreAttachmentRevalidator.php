@@ -35,9 +35,15 @@ final class RestoreAttachmentRevalidator
     }
 
     /**
+     * OMS Task 7C.7 hardening pass — $onTick, when given, is invoked once
+     * per verified file (throttling is the tick callback's own
+     * responsibility — see RestoreHeartbeat) so a restore's signed progress
+     * heartbeat can stay alive while hashing a large number of staged
+     * attachments.
+     *
      * @throws RestoreAttachmentValidationException
      */
-    public function revalidate(string $stagedAttachmentsRoot, RestoreAttachmentManifest $manifest): void
+    public function revalidate(string $stagedAttachmentsRoot, RestoreAttachmentManifest $manifest, ?callable $onTick = null): void
     {
         $denylist = array_map('strtolower', array_map('strval', (array) config('oms.backup.restore.attachments_denied_extensions', [])));
 
@@ -73,6 +79,7 @@ final class RestoreAttachmentRevalidator
             }
 
             $totalBytes += $actualSize;
+            if ($onTick !== null) { $onTick(); }
         }
 
         if ($totalBytes !== $manifest->expectedTotalBytes) {

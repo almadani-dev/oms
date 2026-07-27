@@ -46,9 +46,14 @@ final class DatabaseRestorer
     }
 
     /**
+     * $onTick, when given, is forwarded unchanged to the injected
+     * ProcessStreamInputRunner — see its own contract docblock for why a
+     * real timer-driven tick (not STDOUT/STDERR activity) is required for a
+     * `mysql` import specifically.
+     *
      * @throws RestoreDatabaseException
      */
-    public function restore(PreparedRestore $prepared): void
+    public function restore(PreparedRestore $prepared, ?callable $onTick = null): void
     {
         if (! $prepared->selectedScope->includesDatabase()) {
             throw RestoreDatabaseException::scopeExcludesDatabase();
@@ -87,7 +92,7 @@ final class DatabaseRestorer
         $timeoutSeconds = (float) config('oms.backup.restore.mysql_import_timeout', 3600);
 
         try {
-            $result = $this->processRunner->run($command, $env, $timeoutSeconds, $dumpAbsolutePath);
+            $result = $this->processRunner->run($command, $env, $timeoutSeconds, $dumpAbsolutePath, $onTick);
         } catch (Throwable) {
             throw RestoreDatabaseException::processLaunchFailed();
         }

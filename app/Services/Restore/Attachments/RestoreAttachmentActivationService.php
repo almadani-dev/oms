@@ -45,7 +45,7 @@ use Throwable;
  * trees exactly as they are (never attempting a second guess at automatic
  * recovery on top of an already-untrustworthy bookkeeping failure).
  */
-final class RestoreAttachmentActivationService
+final class RestoreAttachmentActivationService implements RestoreAttachmentLifecycle
 {
     public function __construct(
         private readonly RestoreAttachmentRevalidator $revalidator,
@@ -67,6 +67,12 @@ final class RestoreAttachmentActivationService
      * attempting a further automatic action on top of untrustworthy
      * bookkeeping.
      *
+     * OMS Task 7C.7 hardening pass — $onTick, when given, is forwarded to
+     * RestoreAttachmentRevalidator::revalidate() (once per verified file) so
+     * a restore's signed progress heartbeat can stay alive while
+     * revalidating a large number of staged attachments before the first
+     * live rename.
+     *
      * @throws RestoreAttachmentSwapException
      */
     public function activate(
@@ -74,6 +80,7 @@ final class RestoreAttachmentActivationService
         string $restoreUuid,
         RestoreWorkspace $workspace,
         RestoreAttachmentManifest $manifest,
+        ?callable $onTick = null,
     ): AttachmentSwapHandle {
         $this->assertExclusiveHandle($lockHandle);
 
@@ -95,7 +102,7 @@ final class RestoreAttachmentActivationService
         // the staged tree against the verified manifest. Nothing above this
         // line ever touches the live 'attachments' disk; a failure here
         // leaves live attachments completely unchanged.
-        $this->revalidator->revalidate($workspace->stagedAttachmentsRoot(), $manifest);
+        $this->revalidator->revalidate($workspace->stagedAttachmentsRoot(), $manifest, $onTick);
 
         // Write-ahead: persist "about to mutate" BEFORE the first destructive
         // rename. A failure here means nothing has been mutated yet.
