@@ -238,6 +238,14 @@ return [
             // watchdog itself never mutates, retries, or resumes anything
             // regardless of this value.
             'watchdog_notification_cooldown_minutes' => (int) env('OMS_RESTORE_WATCHDOG_NOTIFICATION_COOLDOWN_MINUTES', 60),
+
+            // OMS Task 7C.8 — how long the DB-independent signed progress
+            // polling URL (RestoreProgressPollController, see routes/web.php)
+            // stays valid, generated once by BackupManagementPage right when
+            // a restore becomes active. Must comfortably outlive the longest
+            // realistic restore (safety backup + decrypt/verify/stage +
+            // mysql import + reconciliation), never indefinite.
+            'progress_poll_url_ttl_hours' => (int) env('OMS_RESTORE_PROGRESS_POLL_URL_TTL_HOURS', 24),
         ],
     ],
 

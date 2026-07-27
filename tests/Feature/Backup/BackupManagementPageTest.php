@@ -31,7 +31,7 @@ class BackupManagementPageTest extends BackupTestCase
 {
     private const ALL_BACKUP_PERMISSIONS = [
         'backups.view_any', 'backups.view', 'backups.create',
-        'backups.verify', 'backups.download', 'backups.delete',
+        'backups.verify', 'backups.download', 'backups.delete', 'backups.restore',
     ];
 
     private function guard(): string
@@ -158,21 +158,29 @@ class BackupManagementPageTest extends BackupTestCase
         $this->assertSame('النظام', $property->getValue());
     }
 
-    public function test_no_restore_action_exists_on_the_table(): void
+    /**
+     * OMS Task 7C.8 superseded the "restore is not implemented yet" guard
+     * these two tests originally proved — restore is now real. Kept here
+     * (renamed) as the structural counterpart: the row action now DOES
+     * exist and is visible for a Super Admin against an eligible backup.
+     * The full authorization/eligibility matrix lives in
+     * tests/Feature/Restore/RestoreRequestFlowTest.php.
+     */
+    public function test_restore_action_exists_for_an_eligible_backup(): void
     {
         $this->actingAs($this->makeSuperAdmin());
-        $operation = $this->makeCompletedOperation();
+        $operation = $this->makeCompletedOperation(['verified_at' => now()]);
 
         Livewire::test(BackupManagementPage::class)
-            ->assertTableActionDoesNotExist('restore', record: $operation->getKey());
+            ->assertTableActionExists('restore', record: $operation->getKey());
     }
 
-    public function test_restore_not_available_notice_is_displayed(): void
+    public function test_restore_not_available_notice_is_no_longer_displayed(): void
     {
         $this->actingAs($this->makeSuperAdmin());
 
         Livewire::test(BackupManagementPage::class)
-            ->assertSee('سيتم تفعيل الاستعادة بعد استكمال محرك الاستعادة الآمن واختباره.');
+            ->assertDontSee('سيتم تفعيل الاستعادة بعد استكمال محرك الاستعادة الآمن واختباره.');
     }
 
     // =========================================================
@@ -292,8 +300,15 @@ class BackupManagementPageTest extends BackupTestCase
         DB::disableQueryLog();
 
         // Bounded regardless of row count: exactly one query for
-        // createdBy (`whereIn`) rather than one per row.
-        $this->assertLessThan(20, $queryCount, 'Expected a bounded, eager-loaded query count.');
+        // createdBy (`whereIn`) rather than one per row. The threshold was
+        // raised from 20 (OMS Task 7C.8) to account for a small, FIXED
+        // number of additional restore-activity/stale-detection queries
+        // (RestoreActivityGuard::isActive(), RestoreStaleDetector::detect(),
+        // the active-restore lookup) that now run once per render,
+        // independent of row count — see
+        // test_query_count_remains_bounded_as_row_count_increases() below
+        // for the test that actually guards against row-count scaling.
+        $this->assertLessThan(35, $queryCount, 'Expected a bounded, eager-loaded query count.');
     }
 
     public function test_scheduler_created_row_displays_system_label(): void
@@ -802,20 +817,24 @@ class BackupManagementPageTest extends BackupTestCase
     }
 
     /**
-     * OMS Task 7C.4 added exactly one restore-related route — the signed,
-     * authenticated launch endpoint (see RestoreLaunchControllerTest for its
-     * own authorization/signature coverage) — and nothing else. This guard
-     * now proves that no OTHER restore surface (a request-creation route, a
-     * UI-linked action route, etc.) has been added alongside it.
+     * OMS Task 7C.4 added the signed, authenticated launch endpoint; OMS
+     * Task 7C.8 added exactly one more — the DB-independent signed progress
+     * polling endpoint (see RestoreLaunchControllerTest and
+     * RestoreProgressPollControllerTest for their own authorization/
+     * signature coverage). This guard proves no OTHER restore surface (a
+     * request-creation route, a UI-linked action route, etc.) exists beyond
+     * these two.
      */
-    public function test_only_the_signed_restore_launch_route_exists(): void
+    public function test_only_the_signed_restore_routes_exist(): void
     {
         $restoreRoutes = collect(app('router')->getRoutes())
             ->filter(fn ($r) => str_contains($r->uri(), 'restore'))
             ->map(fn ($r) => $r->uri())
+            ->values()
+            ->sort()
             ->values();
 
-        $this->assertSame(['restores/{uuid}/launch'], $restoreRoutes->all());
+        $this->assertSame(['restores/{uuid}/launch', 'restores/{uuid}/progress'], $restoreRoutes->all());
     }
 
     public function test_no_direct_backup_operation_edit_or_create_resource_exists(): void
@@ -887,7 +906,9 @@ class BackupManagementPageTest extends BackupTestCase
         $source = file_get_contents($reflection->getFileName());
 
         // Every mutating action body calls BackupAuthorization explicitly,
-        // independent of ->visible().
-        $this->assertSame(4, substr_count($source, 'BackupAuthorization::authorize('));
+        // independent of ->visible(). OMS Task 7C.8 added two more such
+        // actions (restore request/launch, stale-restore acknowledgment),
+        // each re-authorizing the same way.
+        $this->assertSame(6, substr_count($source, 'BackupAuthorization::authorize('));
     }
 }

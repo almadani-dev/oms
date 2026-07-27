@@ -3,7 +3,13 @@
 use App\Http\Controllers\Attachments\AttachmentController;
 use App\Http\Controllers\Backups\BackupDownloadController;
 use App\Http\Controllers\Restores\RestoreLaunchController;
+use App\Http\Controllers\Restores\RestoreProgressPollController;
+use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
+use Illuminate\Cookie\Middleware\EncryptCookies;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
+use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
+use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 Route::get('/', function () {
     return view('welcome');
@@ -62,3 +68,30 @@ Route::post('/restores/{uuid}/launch', [RestoreLaunchController::class, 'launch'
     ->where('uuid', '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}')
     ->middleware([\Filament\Http\Middleware\Authenticate::class, 'signed'])
     ->name('restores.launch');
+
+// OMS Task 7C.8 section H — the DB-independent private restore progress
+// polling endpoint. Deliberately NOT behind Filament's Authenticate
+// middleware (which resolves a session-backed guard) and NOT inside the
+// normal 'web' group's DB-touching members: this app's session AND cache
+// stores are both the `database` driver (see config/session.php,
+// config/cache.php), so StartSession alone would issue a query on every
+// request — exactly what must never happen here, since this endpoint's
+// whole purpose is staying answerable while the database a restore is
+// actively replacing is unreachable. Authorization is the `signed`
+// middleware alone: a short-lived Laravel signed URL bound to this exact
+// {uuid}, carrying only the restore UUID, an expiration, and a signature —
+// itself a pure HMAC-over-URL computation against APP_KEY, needing no
+// database, cache, or session either. See bootstrap/app.php for the
+// matching maintenance-mode exception that keeps this one path (and no
+// other admin/API surface) reachable during `php artisan down`.
+Route::get('/restores/{uuid}/progress', [RestoreProgressPollController::class, 'show'])
+    ->where('uuid', '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}')
+    ->middleware('signed')
+    ->withoutMiddleware([
+        EncryptCookies::class,
+        AddQueuedCookiesToResponse::class,
+        StartSession::class,
+        ShareErrorsFromSession::class,
+        PreventRequestForgery::class,
+    ])
+    ->name('restores.progress.poll');

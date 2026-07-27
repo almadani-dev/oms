@@ -16,6 +16,16 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             \App\Http\Middleware\SetLocale::class,
         ]);
+
+        // OMS Task 7C.8 — the ONLY route reachable while
+        // `php artisan down` is active besides the framework's own health
+        // check. Everything else, including the entire Filament admin
+        // panel, still 503s during maintenance mode exactly as before; this
+        // is deliberately a single exact path pattern, never a broad
+        // prefix, so no other route is ever accidentally exempted.
+        $middleware->preventRequestsDuringMaintenance(except: [
+            'restores/*/progress',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

@@ -31,6 +31,54 @@ mutates, retries, resumes, or acquires any lock** — it is detection only.
 Treat its notification as a prompt to start this runbook, not as the
 recovery action itself.
 
+### 1a. The normal first step for a genuinely stale restore (OMS Task 7C.8)
+
+Since Task 7C.8, "النسخ الاحتياطي والاستعادة" (`BackupManagementPage`) shows a
+warning banner and a Super-Admin-only "تأكيد أن عملية الاستعادة السابقة
+متوقفة" action whenever `RestoreStaleAcknowledgmentService` confirms a
+restore is eligible — this is now the normal way to clear a genuinely
+crashed restore, not a replacement for the manual investigation below.
+
+- **Eligibility is narrow by design**: only a restore whose progress file is
+  validly signed, non-terminal, and has a heartbeat older than
+  `stale_after_minutes` qualifies, AND only while no live process still
+  holds the restore subsystem's exclusive lock. Anything else (a tampered/
+  unreadable progress file, a healthy heartbeat, a live lock) hides the
+  action entirely — that is exactly when you fall back to the manual
+  sections below.
+- **What it does — and only this**: writes a terminal signed progress
+  snapshot (`result = restore_failed`, `restore_failed_phase =
+  crashed_acknowledged` — a value only this action ever writes, distinct
+  from a phase the orchestrator itself failed at) and updates the
+  `backup_operations` row to `RestoreFailed`, with a bounded audit record
+  (`restore_metadata.stale_acknowledgment`: who, when, and the typed
+  reason).
+- **What it never does**: no rollback, no maintenance-mode change, no
+  workspace/quarantine deletion, no relaunch. If `restore_failed_phase` is
+  `crashed_acknowledged`, treat every other section of this runbook exactly
+  as if the restore had failed at whatever phase `phase_history`'s last
+  entry before that shows — the acknowledgment only closes the safety gate
+  that blocks a *new* restore from starting; it does not itself resolve
+  whatever data/attachment/maintenance-mode state the crash actually left
+  behind.
+- A restore whose progress file is tampered/unreadable is never offered
+  this action (the UI shows "تم اكتشاف حالة استعادة غير موثوقة" instead) —
+  that state requires the manual investigation in this document, not the
+  UI acknowledgment.
+
+### 1b. Viewing live progress without the admin panel
+
+`GET /restores/{uuid}/progress` (a short-lived Laravel-signed URL,
+`RestoreProgressPollController`) returns the same sanitized phase/heartbeat/
+result fields the admin page's live widget polls, and — unlike the rest of
+the admin panel — stays reachable even while the application is in
+maintenance mode and the database is unavailable, since it reads only the
+signed `progress.json` file. Useful for confirming a restore's live phase
+from the CLI/browser during an incident without needing the database back
+online first: `curl` the signed URL the admin page generated (visible in
+that page's HTML source while it was still reachable), or read the file
+directly per §2 below if the URL has already expired.
+
 ## 2. How to locate signed progress safely
 
 ```
@@ -46,7 +94,10 @@ than being silently ignored. Read it (e.g. `cat`/`Get-Content`, or a PHP
 
 Key fields to read: `phase`, `phase_history`, `result`,
 `restore_failed_phase`, `error_summary`, `last_heartbeat_at`,
-`reconciliation_snapshot`.
+`reconciliation_snapshot`. `restore_failed_phase = crashed_acknowledged`
+(OMS Task 7C.8) means a Super Admin used the UI acknowledgment action
+(§1a) — the real failing phase is whatever `phase_history`'s last entry
+before the terminal one shows, not `crashed_acknowledged` itself.
 
 ## 3. How to identify the safety-backup UUID
 

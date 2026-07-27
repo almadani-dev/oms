@@ -60,6 +60,15 @@ final class RestoreProgressSnapshot
      * be inaccurate — nothing has acquired the lifetime lock yet. Only the
      * command itself, after truly acquiring that lock, ever writes
      * `lock_acquired`.
+     *
+     * OMS Task 7C.8 — `crashed_acknowledged` was added as a
+     * `restore_failed_phase`-only value (never written to `phase` or
+     * `phase_history`): it is what the explicit, human-reviewed Super Admin
+     * "confirm this stale restore is stopped" action
+     * (RestoreStaleAcknowledgmentService) writes so the terminalized record
+     * is honestly distinguishable from a restore the engine itself decided
+     * to fail. Purely additive — an older progress file with no such value
+     * decodes exactly as before.
      */
     public const ALLOWED_PHASES = [
         'launching',
@@ -79,6 +88,7 @@ final class RestoreProgressSnapshot
         'restored',
         'restore_partial',
         'restore_failed',
+        'crashed_acknowledged',
     ];
 
     public const ALLOWED_RESULTS = ['restored', 'restore_partial', 'restore_failed'];

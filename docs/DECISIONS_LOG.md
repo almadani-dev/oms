@@ -27,6 +27,76 @@ A restore can never partially succeed against the wrong database. If `OMS_BACKUP
 ---
 
 ### Date
+2026-07-27 (OMS Task 7C.8 — call RestoreLaunchService directly instead of a real self-HTTP POST)
+
+### Decision
+`BackupManagementPage::processRestoreRequest()` invokes `app(RestoreLaunchService::class)->launch($uuid, $nonce)` directly after creating the queued row, rather than performing a genuine outbound HTTP POST to the existing signed `restores.launch` route from inside the Livewire request.
+
+### Reason
+The task asked for "the existing POST signed route" to be used and explicitly offered an alternative: "or invoke a safe shared service path that preserves the exact same authorization + replay-safe semantics." `RestoreLaunchController` itself does nothing beyond two `abort_unless` checks (real Super Admin + `backups.restore`, both already re-checked in the Filament action via `BackupAuthorization::authorize()`) before delegating to `RestoreLaunchService::launch()` — the actual replay-safety (the nonce comparison, the atomic conditional UPDATE, the lock) lives entirely inside the service, not in the HTTP/signed-URL layer. A real self-HTTP call from within the same PHP process would need to either fabricate the current session/CSRF state for a synthetic request (fragile, untestable without a real HTTP server, and provides no additional security since the signature would just be generated and immediately consumed by the same process) or dispatch through the HTTP kernel as a sub-request (session/CSRF/cookie plumbing risk for zero real benefit). Calling the service directly reuses 100% of the authoritative claim/lock/progress-init/spawn logic with nothing duplicated, and is what the codebase's own existing tests (`RestoreLaunchServiceTest`) already treat as the service's real contract independent of the controller.
+
+### Impact
+The signed `POST /restores/{uuid}/launch` route remains the sole entry point for a genuinely external/API-driven launch request (still reachable, still tested by `RestoreLaunchControllerTest`, completely unmodified) — but the Filament UI takes the shorter, safer, more testable path through the shared service. `test_backup_management_page_never_references_the_launch_route_or_controller` (an existing 7C.4 guard) continues to pass unmodified, confirming the UI genuinely never references the route/controller string.
+
+---
+
+### Date
+2026-07-27 (OMS Task 7C.8 — add `crashed_acknowledged` to `RestoreProgressSnapshot::ALLOWED_PHASES`)
+
+### Decision
+Added exactly one new value, `crashed_acknowledged`, to the previously fixed `RestoreProgressSnapshot::ALLOWED_PHASES` vocabulary — used only as `restore_failed_phase`, never as `phase`/a `phase_history` entry — written exclusively by the new `RestoreStaleAcknowledgmentService`.
+
+### Reason
+The task explicitly required the stale-acknowledgment action to write `restore_failed_phase: crashed_acknowledged` on success, so a human-terminalized restore is honestly distinguishable from one the orchestrator itself decided to fail at some real execution phase. `RestoreProgressSnapshot::create()` validates `restoreFailedPhase` against the exact same `ALLOWED_PHASES` list used for `phase`/`phase_history` (by design, a single fixed vocabulary — see the class's own docblock on why phases are locked in ahead of time), so satisfying this requirement was impossible without extending that list by one value. This is the one place this task touched the restore engine's own schema, and it is purely additive: an older progress file with no such value decodes exactly as before, no `schema_version` bump was needed, and no existing writer (`RestoreOrchestrator`, `RestoreCommand`, `RestoreTerminalResultWriter`) was changed or gained a new code path that could produce this value — only the new service does.
+
+### Impact
+`docs/RESTORE_RECOVERY.md` §2's "key fields to read" note was updated so an operator reading a terminal progress file knows `restore_failed_phase = crashed_acknowledged` means "a Super Admin used the UI acknowledgment action," not "the orchestrator failed at a phase literally named that" — the real failing phase is whatever `phase_history`'s last entry before the terminal one shows.
+
+---
+
+### Date
+2026-07-27 (OMS Task 7C.8 acceptance pass — raise RestoreAttachmentActivationServiceTest's default mover retry margin)
+
+### Decision
+`RestoreAttachmentActivationServiceTest::service()`'s default `NativeAttachmentMoveRunner` (used by every test that doesn't inject its own `FakeAttachmentMoveRunner`) now uses `maxAttempts: 5` instead of `maxAttempts: 1`, keeping `retryDelayMs: 0`.
+
+### Reason
+A real default-order regression run failed once with `test_rollback_rejects_a_shared_handle` throwing `RestoreAttachmentSwapException::liveToQuarantineFailed()` — a test that asserts LOCK rejection behavior, not move-retry behavior. Traced to the exact cause: `RestoreAttachmentActivationService::activate()` catches `Throwable` from `$this->mover->move()` and always rethrows this one exception, and the test file's default mover had zero retry margin (`maxAttempts: 1`) versus the real production binding's config-driven default of 5 attempts (`AppServiceProvider`, `oms.backup.restore.attachment_move_retry_attempts`). Every "happy path" test in the file inherited this artificially fragile default, making it susceptible to the exact class of one-off Windows/Laragon transient rename contention `NativeAttachmentMoveRunner`'s own retry logic exists to absorb — confirmed by 10/10 clean re-runs of the specific test and 29/29 clean re-runs of the whole class after the fix, versus the single environmental failure before it (never reproduced again across two full `--order-by=random` regression runs either). Tests that need an EXACT, deterministic failure count already inject their own `FakeAttachmentMoveRunner` and are unaffected — this change only affects tests where a rename is expected to genuinely succeed.
+
+### Impact
+This is a test-file-only change with zero effect on production retry behavior (`AppServiceProvider`'s real binding was never `maxAttempts: 1` — only this one test helper was). Any FUTURE test file that constructs its own `NativeAttachmentMoveRunner` directly (rather than using this file's `service()` helper) should default to a retry count matching production, not `1`, for the same reason.
+
+---
+
+### Date
+2026-07-27 (OMS Task 7C.8 acceptance pass — never run background and foreground `php artisan test` concurrently)
+
+### Decision
+Established as a hard testing-process rule for this codebase (not a code change): never run a background `php artisan test` invocation while a foreground one is also running, and never run two backgrounds simultaneously.
+
+### Reason
+While investigating a second wave of seemingly-flaky failures spanning `BackupManagementPageTest`, `RestoreWatchdogCommandTest`, `RestoreArchivePreparerTest`, `RestoreOrchestratorHeartbeatTest`, `RestoreStaleDetectorTest`, and `BackupNotificationTest` — none of which share any obvious relationship — the actual cause was traced to a background `php artisan test --filter="Restore|Backup"` run still executing while several foreground `php artisan test` commands were also being run in the same session. `Storage::fake()` in this codebase resolves to FIXED, non-per-process-randomized physical paths (`storage/framework/testing/disks/{disk}`) rather than a unique temp directory per process, so two concurrent PHPUnit processes genuinely corrupt each other's fake filesystem state (one process's `cleanDirectory()`/file writes racing the other's reads) and contend for the same real restore-subsystem `flock()` file. Every failure in that second wave was reproduced-then-explained by this and, critically, every single affected file/class came back 100% clean when re-run individually with zero concurrent test processes.
+
+### Impact
+No production or test code needed to change for this — it was a process discipline gap, not a defect. Documented here so a future session (human or AI) does not waste time root-causing what looks like flaky/order-dependent test behavior when the actual cause is simply two `php artisan test` processes running at the same time. The large `Restore|Backup` regression runs in this codebase should always be run one at a time, waited on to completion, before starting anything else that touches the database or `Storage::fake()` disks.
+
+---
+
+### Date
+2026-07-27 (OMS Task 7C.8 acceptance pass — re-check scope compatibility against a freshly-read source record)
+
+### Decision
+`RestoreRequestService::createQueuedRestore()` now calls `RestoreScopeCompatibility::isCompatible()` a second time, inside the locked section, against `$freshSource->scope` (the just-re-fetched database row) — not only the pre-lock check against the caller's original, possibly-stale `$sourceBackup->scope`.
+
+### Reason
+Every OTHER eligibility field (`type`, `status`, `verified_at`, archive existence — all inside `assertSourceEligible()`) was already re-derived from a freshly-`fresh()`-fetched record at the exact moment the lock is held, closing the gap between "what the caller's in-memory object shows" and "what the database actually says right now." Scope compatibility was the one exception, checked only once, before the lock, against the caller-supplied instance. `scope` is effectively immutable in this codebase today (nothing currently updates it after creation), so the real-world risk was low — but the inconsistency with every sibling check was real, and the acceptance review specifically asked to confirm every eligibility condition is genuinely re-verified at execution time, not just visibility time.
+
+### Impact
+Two new tests (`test_eligibility_is_rechecked_against_a_fresh_read_not_the_callers_stale_instance`, `test_scope_compatibility_is_rechecked_against_a_fresh_read`) prove this by mutating the underlying database row directly — bypassing the caller's in-memory object entirely — and confirming the service still rejects. If `scope` ever becomes mutable in a future phase, this recheck is already in place rather than needing to be added reactively.
+
+---
+
+### Date
 2026-07-26 (OMS Task 7C.5 correction pass — durable reconciliation snapshots)
 
 ### Decision

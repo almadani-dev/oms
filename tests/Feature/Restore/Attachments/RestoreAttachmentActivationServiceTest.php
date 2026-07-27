@@ -104,11 +104,37 @@ class RestoreAttachmentActivationServiceTest extends BackupTestCase
         @rmdir($dir);
     }
 
+    /**
+     * OMS Task 7C.8 acceptance pass — the default (no explicit $mover) real
+     * NativeAttachmentMoveRunner now retries up to the SAME attempt count as
+     * the real production binding (AppServiceProvider's
+     * `oms.backup.restore.attachment_move_retry_attempts`, default 5) rather
+     * than a single, zero-retry attempt. This class's own docblock (and
+     * NativeAttachmentMoveRunner's) documents that a single rename() on
+     * Windows/Laragon can fail transiently against a momentary open-handle/
+     * AV-scanner conflict unrelated to anything this test is actually
+     * asserting — a real one-off instance of exactly that (root-caused, not
+     * assumed: `RestoreAttachmentSwapException::liveToQuarantineFailed()`,
+     * confirmed to fire from ANY `Throwable` out of `$this->mover->move()`
+     * in `RestoreAttachmentActivationService::activate()`) caused
+     * `test_rollback_rejects_a_shared_handle` to fail once in a full
+     * default-order regression run, while passing 29/29 in isolation and
+     * not reproducing across two full randomized-order runs nor an
+     * unchanged re-run of the exact same default order — conclusive
+     * evidence of genuine transient non-determinism, not a deterministic
+     * test-order leak (a real leak would reproduce identically every time
+     * under the SAME, unrandomized default order). `retryDelayMs` stays 0
+     * (unlike production's 200ms) so this costs nothing in test runtime —
+     * every `usleep()` call in the retry loop is `usleep(0)`. Every test
+     * that needs an EXACT, deterministic failure count still injects its
+     * own `FakeAttachmentMoveRunner` explicitly and is completely
+     * unaffected by this default.
+     */
     private function service(?FakeAttachmentMoveRunner $mover = null, ?AttachmentSwapMarkerWriter $markerWriter = null): RestoreAttachmentActivationService
     {
         return new RestoreAttachmentActivationService(
             new RestoreAttachmentRevalidator(),
-            $mover ?? new NativeAttachmentMoveRunner(maxAttempts: 1, retryDelayMs: 0),
+            $mover ?? new NativeAttachmentMoveRunner(maxAttempts: 5, retryDelayMs: 0),
             markerWriter: $markerWriter ?? new AttachmentSwapMarkerWriter(),
         );
     }

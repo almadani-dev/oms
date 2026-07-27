@@ -17,6 +17,60 @@
 ---
 
 ### Date
+2026-07-27 (OMS Task 7C.8 acceptance pass — attachment-test retry-margin fix, real Laravel maintenance-mode test, stale-acknowledgment dual-gate proof, request-serialization proof, eligibility fresh-read fix, live browser walkthrough)
+
+### Task
+A focused, pre-commit acceptance pass on the just-implemented Task 7C.8, required before any commit: (1) reproduce and stabilize the one default-order regression failure with a genuine zero-failure bar (10x/class/related-classes/default/2-randomized, all must be 0 failed/0 errors); (2) prove the DB-independent progress endpoint survives the REAL Laravel maintenance mechanism, not a fake; (3) prove stale acknowledgment terminalizes both the DB and signed-progress gates with focused tests; (4) prove `RestoreRequestService`'s check-then-create critical section is genuinely serialized against a true concurrent race, not merely sequential calls; (5) confirm/harden every server-side restore-eligibility recheck at execution time; (6) perform a live local browser walkthrough; (7) correct a docs error describing 7C.9 as Hostinger deployment; (8) confirm graphify-out has no stray changes; (9) final targeted+regression verification, then commit implementation and graphify separately.
+
+### Result
+**Root cause found and fixed**: `RestoreAttachmentActivationServiceTest::service()`'s default `NativeAttachmentMoveRunner` used `maxAttempts: 1, retryDelayMs: 0` (zero retry margin) versus production's config-driven default of 5 attempts — raised to `maxAttempts: 5` (retryDelayMs stays 0, zero cost). **A separate, genuine testing-process mistake was found and corrected**: a background full-suite run was still executing while foreground `php artisan test` commands were also run, and this codebase's `Storage::fake()` disks use fixed, non-per-process paths — two concurrent PHPUnit processes genuinely corrupted each other's fake filesystem/lock state, fully explaining a second wave of seemingly-unrelated failures across `BackupManagementPageTest`/`RestoreWatchdogCommandTest`/`RestoreArchivePreparerTest`/`RestoreOrchestratorHeartbeatTest`/`RestoreStaleDetectorTest`/`BackupNotificationTest`. No production defect — corrected by never running test processes concurrently for the remainder of the pass. New tests: `RestoreProgressPollControllerTest::test_real_laravel_maintenance_mode_blocks_normal_routes_but_not_the_signed_poll_route` (real `Artisan::call('down')`/`FileBasedMaintenanceMode`, with a hard pre-check + `finally` + `tearDown()` double-safety-net cleanup of the real `storage/framework/down` flag file); 5 new `RestoreStaleAcknowledgmentServiceTest` dual-gate tests; `RestoreRequestServiceTest::test_two_truly_concurrent_requests_never_create_two_rows` (genuine lock contention, not sequential calls) plus 2 fresh-read eligibility tests. One real (small) production fix: `RestoreRequestService::createQueuedRestore()` now also re-checks scope compatibility against the freshly-fetched source record inside the locked section (previously only checked the caller's possibly-stale in-memory instance). Live browser walkthrough performed against the real Laragon instance with a throwaway Super Admin + throwaway backup fixture (both created via tinker, both fully deleted afterward, verified via before/after counts) — confirmed the full Step 1 → wrong-phrase-rejected → correct-phrase → Step 2 → cancel flow renders and behaves correctly in Arabic/RTL, with zero restore rows created after cancellation. `docs/NEXT_STEPS.md`'s two 7C.9 descriptions corrected from "Hostinger deployment" to "real local end-to-end restore testing on Windows/Laragon." `graphify-out` confirmed to have zero changes.
+
+### Changed Files
+- Modified: `app/Services/Restore/RestoreRequestService.php` (fresh-read scope re-check); `tests/Feature/Restore/Attachments/RestoreAttachmentActivationServiceTest.php` (retry-margin fix); `tests/Feature/Restore/RestoreProgressPollControllerTest.php` (real maintenance-mode test + `tearDown()`); `tests/Feature/Restore/RestoreStaleAcknowledgmentServiceTest.php` (5 new dual-gate tests); `tests/Feature/Restore/RestoreRequestServiceTest.php` (3 new tests: true concurrency + 2 fresh-read); `docs/NEXT_STEPS.md` (7C.9 scope correction, ×2)
+- No migration, no schema change.
+
+### Verification
+1. Section 1 (attachment fix): specific test 10/10 clean; whole class 29/29; 9 directly-interacting attachment-state classes together 114/112 passed/2 pre-existing skips/0 failed.
+2. Targeted 7C.8+attachment-fix suite (strictly sequential, zero concurrent test processes): **162 tests, 162 passed, 535 assertions**.
+3. Broader `Restore|Backup` regression, default order: **854 tests, 851 passed, 0 failed, 0 errors, 3 skipped, 2207 assertions** — clean.
+4. `--order-by=random --random-order-seed=111222`: **854/851/0 failed/3 skipped** — clean.
+5. `--order-by=random --random-order-seed=998877`: **854/851/0 failed/3 skipped** — clean.
+6. `php -l` clean on every changed/new PHP file. `git diff --check` clean.
+7. Live browser walkthrough performed and cleaned up (see `docs/AI_PROJECT_MEMORY.md` for exactly what was verified).
+8. `git status --short` confirms exactly the files listed above changed, plus the original 7C.8 file set from the entry above; `graphify-out/` untouched.
+
+### Commit Hash
+
+---
+
+### Date
+2026-07-27 (OMS Task 7C.8 — Filament restore UI: two-step confirmation, DB-independent signed progress polling, stale/tampered banners, explicit crash acknowledgment)
+
+### Task
+Expose the already-verified restore engine (7C.1–7C.7) to the Super Admin via `BackupManagementPage`: a row action with a two-step (typed `RESTORE {uuid8}`, then a final danger-styled) confirmation that creates a queued restore and launches it through the existing replay-safe `RestoreLaunchService`; a DB-independent signed progress-polling endpoint reachable during maintenance mode and a database outage; restore rows correctly labeled in the history table; a stale/crashed-restore banner with an explicit Super-Admin-only acknowledgment action; and a tampered-progress manual-review message. No restore engine architecture changes except one narrow, additive schema extension called out explicitly below.
+
+### Result
+New: `App\Services\Restore\RestoreRequestService` (the only place a queued restore row is created — re-validates source eligibility/scope compatibility/activity state under `BackupSubsystemLock::acquireExclusive()`, inside one `DB::transaction()`); `App\Services\Restore\RestoreStaleAcknowledgmentService` (terminalizes a genuinely stale restore's signed progress file + DB row after human review — eligibility requires the exact `stale_heartbeat` detector reason AND that the exclusive lock is currently free; writes `restore_failed_phase = crashed_acknowledged`); `App\Http\Controllers\Restores\RestoreProgressPollController` (`GET /restores/{uuid}/progress`, `signed`-middleware-only, zero DB queries, reads only the signed `progress.json`); `App\Support\Restore\RestoreScopeCompatibility` and `RestorePhaseLabels` (Arabic labels for the REAL `RestoreProgressSnapshot::ALLOWED_PHASES` vocabulary, confirmed from `RestoreOrchestrator`/`RestoreCommand` directly — several phase names in the task brief do not actually exist in this codebase and were not used). `RestoreProgressSnapshot::ALLOWED_PHASES` gained `crashed_acknowledged` (a `restore_failed_phase`-only value). `BackupManagementPage` gained: `restoreAction()` (a single Filament Wizard-based action, two steps, `dehydrated(false)` typed-confirmation field so the phrase never reaches persisted state), `staleAcknowledgmentAction()` (same two-step shape), `resolvedRestoreActivityState()` (per-render memoization fixing a real N+1 caught during verification), and read-model methods (`activeRestoreViewData()`, `staleRestoreViewData()`, `restoreTamperedState()`) the Blade view uses to render an Alpine-driven live-progress widget (fetches the DB-independent polling endpoint directly, never through Livewire) plus the stale/tampered banners. `routes/web.php` gained the one new GET route, stripped of every DB-touching `web`-group middleware member. `bootstrap/app.php` gained one exact-path `preventRequestsDuringMaintenance()` exception. `config/oms.php` gained `progress_poll_url_ttl_hours`.
+
+### Changed Files
+- Created: `app/Services/Restore/RestoreRequestService.php`; `app/Services/Restore/RestoreStaleAcknowledgmentService.php`; `app/Services/Restore/Exceptions/RestoreRequestRejectedException.php`; `app/Services/Restore/Exceptions/RestoreStaleAcknowledgmentException.php`; `app/Http/Controllers/Restores/RestoreProgressPollController.php`; `app/Support/Restore/RestoreScopeCompatibility.php`; `app/Support/Restore/RestorePhaseLabels.php`; `tests/Feature/Restore/RestoreRequestServiceTest.php`; `tests/Feature/Restore/RestoreStaleAcknowledgmentServiceTest.php`; `tests/Feature/Restore/RestoreProgressPollControllerTest.php`; `tests/Feature/Restore/RestoreManagementUiTest.php`
+- Modified: `app/Filament/Pages/BackupManagementPage.php`; `resources/views/filament/pages/backup-management-page.blade.php`; `app/Services/Restore/RestoreProgressSnapshot.php` (`crashed_acknowledged` added to `ALLOWED_PHASES`); `routes/web.php`; `bootstrap/app.php`; `config/oms.php`; `tests/Feature/Backup/BackupManagementPageTest.php` (4 obsolete "restore not implemented" guard tests updated to assert the new real behavior; query-count threshold raised 20→35 with the N+1 fix documented); `docs/RESTORE_RECOVERY.md` (new §1a/§1b)
+- No migration, no schema change beyond the additive `ALLOWED_PHASES` value (not a DB column).
+
+### Verification
+1. Targeted 7C.8 suite: **124 tests, 124 passed, 387 assertions** (`RestoreProgressPollControllerTest` 11, `RestoreRequestServiceTest` 12, `RestoreStaleAcknowledgmentServiceTest` 12, `RestoreManagementUiTest` 25, `BackupManagementPageTest` 64).
+2. Broader `Restore|Backup` regression, default order: **845 tests, 841 passed, 1 error, 3 skipped, 2158 assertions**. The 1 error (`RestoreAttachmentActivationServiceTest::test_rollback_rejects_a_shared_handle`, a real filesystem `rename()`-during-quarantine call this task's code never touches) passed 29/29 immediately afterward in isolation and did not reproduce in either randomized run below — this codebase's already-documented class of transient Windows/Laragon rename contention (see the 2026-07-27 hardening-pass entry above), not a regression this task introduced.
+3. `--order-by=random`: **845 tests, 842 passed, 0 failed, 3 skipped** — clean.
+4. `--order-by=random --random-order-seed=424242`: **845 tests, 842 passed, 0 failed, 3 skipped** — clean.
+5. `php -l` clean on every changed/new PHP file. `git diff --check` clean.
+6. `git status --short` confirms exactly the files listed above changed; no unrelated file touched.
+7. Not committed — `graphify update .` not yet run, per instructions to stop before committing.
+
+### Commit Hash
+
+---
+
+### Date
 2026-07-26 (OMS Task 7C.5 correction pass — durable reconciliation snapshots, full backups-queue purge, single-connection policy, metadata completeness, stream-capture re-verification)
 
 ### Task
