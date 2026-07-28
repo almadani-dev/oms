@@ -1913,3 +1913,30 @@ Read-only audit found the original `create_accounts_table` migration (unchanged 
 
 ### Commit Hash
 Not committed — awaiting review, per instructions (STOP before commit).
+
+---
+
+### Date
+2026-07-28 (OMS Task 8.3 — Accounts User-Tracking Schema Reconciliation)
+
+### Task
+Resolve the last remaining named drift Task 8.2 discovered and deferred: `accounts.created_by`/`updated_by` exist live with no migration file. Determine whether they are part of the approved current Account design (ACTIVE_REQUIRED / DEAD_UNUSED / AMBIGUOUS) and make fresh installations match the intended live schema safely, without starting the Audit Log task.
+
+### Result
+Read-only audit found zero code usage on `Account` (the `created_by`/`updated_by` writes inside `CreateAccount.php` are all for the opening-balance `Transaction`/`TransactionLine` rows, never the `Account` row) and zero non-null values, both currently (0 of 5) and in the earliest captured historical backup (0 of 16) — an unbroken always-NULL history. Classified **ACTIVE_REQUIRED** anyway (not DEAD_UNUSED): the column shape exactly matches the active `HasUserTracking` convention used by 20+ models and `accounts_type`'s already-reconciled twin, and removing now would likely mean re-adding for the upcoming Task 9 Audit Log. Applied a guarded migration (`2026_07_28_120000_reconcile_accounts_user_tracking_schema_drift.php`) that repairs only a missing column or missing FK, never duplicating either — on the real local DB both already existed correctly, so `up()` was a complete no-op. `down()` is intentionally irreversible, mirroring Task 8.2's `accounts_type` precedent. `Account` was **not** wired to `HasUserTracking` — schema reconciled only, behavioral tracking explicitly deferred to Task 9. Isolated scratch-DB scenarios (fresh install + simulated live drift, real `oms` never targeted) both passed, including a direct proof that the FK's `ON DELETE SET NULL` nulls the tracking reference when the referenced user is deleted. Fresh-vs-live parity confirmed exact for `accounts`. Zero data modified. Focused regression: 178/178 passed (unchanged, since no application code changed). Real local `oms:check-financial-integrity` — Result: OK, exit code 0.
+
+### Changed Files
+- New: `database/migrations/2026_07_28_120000_reconcile_accounts_user_tracking_schema_drift.php`
+- Modified: `OMS_Master_Reference.md` (accounts.created_by/updated_by schema note added); `docs/AI_PROJECT_MEMORY.md`, `docs/DECISIONS_LOG.md`, `docs/NEXT_STEPS.md`, `docs/PROMPTS_LOG.md`
+- Local DB schema change: none (both columns/FKs already existed correctly on the real `oms` database; migration recorded as `Ran` with zero actual DDL executed)
+
+### Verification
+1. Pre-task backup: `C:\Users\laptop\oms_db_backups\oms_pre_task8.3_20260728_110404.sql`.
+2. Focused suite: `tests/Feature/Integrity`, `CheckFinancialIntegrityCommandTest`, `tests/Feature/Reports`, `FinancialAccountGuardTest`, all 5 `BalanceGuardIntegrationTest` suites, 4 account-validation tests, `ExecutionPaymentCreditAccountTest`, `GeneratesSequentialTransactionNumbersTest` — **178/178 passed**.
+3. Isolated scratch-DB scenarios (real `oms` never targeted by `migrate:fresh`/rollback): Scenario A (fresh install) — columns/FK/indexes correct, rollback no-op, no error. Scenario B (simulated live drift, via the no-op `down()` itself) — re-running the migration against pre-existing columns/FK produced zero duplicates and preserved a harmless row's tracking values byte-identical through a second rollback. A third scratch check proved `ON DELETE SET NULL` end-to-end (deleting the referenced user nulled both columns).
+4. Fresh-vs-live parity: isolated scratch database — `accounts`' full `SHOW CREATE TABLE` now matches the real local DB exactly.
+5. Real local DB: `migrate:status` — new migration `Ran`. `php artisan oms:check-financial-integrity` — **Result: OK, exit code 0**. 0 non-null `created_by`/`updated_by` before and after; `current_balance` sum and all row counts unchanged.
+6. Real (read-only) smoke checks: `/admin/login` → HTTP 200; `/admin/accounts`, `/admin/accounts/create` → HTTP 302 (correct auth redirect); `Account` Eloquent loads, `AccountForm` schema build, `TrialBalanceReportService`, `AccountStatementReportService` all executed cleanly.
+
+### Commit Hash
+Not committed — awaiting review, per instructions (STOP before commit).
