@@ -1518,3 +1518,101 @@ Empirically observed: running `graphify update .` with the new `.graphifyignore`
 
 ### Impact
 Documented here as the correct procedure for any future Graphify exclusion change in this repository: back up `graph.json`/`manifest.json`/`GRAPH_REPORT.md` (and check the dated `graphify-out/<date>/` "curated backup" snapshot too — it can independently carry forward stale content from an intermediate attempt, exactly as happened here, since its own backup step only fires when a prior `graph.json` exists to snapshot from), delete the three top-level output files, then run `graphify update .` fresh. Simply adding `.graphifyignore` and re-running `update` is not sufficient on its own when a prior graph already exists.
+
+---
+
+### Date
+2026-07-28 (OMS Task 9B.2 — general CRUD auditing is owned by a service, never by model observers)
+
+### Decision
+General-CRUD audit events for the eleven approved models are written exclusively by `App\Services\Audit\Crud\AuditedCrudService`, which opens its own `DB::transaction()` around **both** the business mutation and the `AuditLogger::record()` call. No `created`/`updated`/`deleted`/`restored` model observer, and no global model hook, writes an audit event.
+
+### Reason
+A read-only audit of the real write paths found that **no Filament write path in this application currently runs inside a database transaction**. `Filament\Pages\Concerns\CanUseDatabaseTransactions::hasDatabaseTransactions()` falls back to the panel's setting, and the OMS admin panel never calls `->databaseTransactions()`; `Filament\Actions\Concerns\CanUseDatabaseTransactions::$hasDatabaseTransactions` defaults to `false` and no action sets it. An `updated` observer would therefore fire with the row already committed, so a failing REQUIRED audit insert would leave a business mutation permanently un-audited — exactly what Task 9B.2 forbids. Enabling panel-wide transactions instead was rejected as a far larger blast radius: it would silently change the commit semantics of every financial flow in the application, none of which was in this phase's scope.
+
+### Impact
+Auditing and the mutation are atomic by construction, and nesting is savepoint-safe — a rollback of a caller's surrounding transaction discards the audit row too (both directions proven in `AuditedCrudAtomicityTest`). It also makes duplicate prevention structural rather than defensive: `HasUserTracking`, `ProjectObserver`/`ProjectCostObserver` and Filament lifecycle callbacks cannot manufacture a second event, because none of them can write one. The cost is that every new audited write path must be routed through the service or its Filament concerns explicitly; a model saved directly (seeder, migration, factory, `php artisan tinker`) produces no audit history. Later phases (9B.3+) that audit financial workflows already have their own `DB::transaction()` and should call `AuditLogger` from inside it directly, exactly as 9B.1 designed — they do not need this CRUD service.
+
+---
+
+### Date
+2026-07-28 (OMS Task 9B.2 — no audit-suppression switch was built)
+
+### Decision
+No `withoutAuditing()`/`disableAuditing()` mechanism was introduced, for seeders, factories, tests, permission synchronisation, or anything else.
+
+### Reason
+It is unnecessary given the decision above. Because auditing lives only in `AuditedCrudService` and not in a model hook, code that deliberately writes these tables outside a real user action — `DatabaseSeeder::seedSettings()`, migrations, `UserFactory`, test fixtures, `PermissionSyncService` — simply never produces an audit event. Adding a suppression switch would have created a bypass primitive with no legitimate caller, and a permanent risk that a future HTTP path reaches for it.
+
+### Impact
+There is no way to turn auditing off for a real user action, because there is nothing to turn off. If a future phase ever genuinely needs bulk unaudited writes, it must be introduced then, explicitly scoped, `try`/`finally`-restored, and unavailable to HTTP flows — not inherited from this phase.
+
+---
+
+### Date
+2026-07-28 (OMS Task 9B.2 — `settings.value` is fail-closed; the `settings.key` column stays redacted in payloads) — **the `settings.key` half of this was SUPERSEDED the same day by the `setting_name` alias decision below; the `settings.value` fail-closed policy still stands**
+
+### Decision
+`settings.value` is stored in an audit payload only when neither the setting's key nor its value looks credential-shaped; otherwise it is `[REDACTED]`. The key check reuses `AuditRedactor`'s own already-reviewed rules after normalizing separators (so `mail.password` and `stripe-secret` segment the same way a column name would), and the value check rejects PEM blocks and long whitespace-free opaque token/base64/hex strings. Separately, the literal `key` **column** is left to `AuditRedactor`'s existing `key` segment rule — i.e. it is masked inside `old_values`/`new_values` — and the real setting key is carried in `subject_label` instead, which is not run through the redactor.
+
+### Reason
+`settings` is a free-form key/value table: nothing in `app/` reads a fixed key (verified — there is no `Setting::` read anywhere), users create arbitrary keys through `SettingResource`, and `value` is a plain textarea. A per-key allowlist cannot be enumerated honestly, so fail-closed is the only defensible policy — the first time somebody adds an `smtp_password` row, its value must not enter the permanent audit trail. Loosening `AuditRedactor` so a bare `key` field survives redaction was rejected outright: that denylist is a security-reviewed 9B.1 component and weakening it would affect every future phase's payloads, not just settings.
+
+### Impact
+Renaming a setting's key is recorded as a real change (`changed_fields` contains `key`) with both sides masked, while the key itself remains legible in `subject_label` — accountability is preserved without a global redaction weakening. Over-redaction of a non-secret setting value is possible and accepted (a 40+ character whitespace-free value is masked even under an innocent key); under-redaction of a secret is not. See `docs/NEXT_STEPS.md` for the one residual gap: on a key rename, the pre-change key is not recoverable from the event.
+
+---
+
+### Date
+2026-07-28 (OMS Task 9B.2 — audited-field allowlists, not technical-field denylists)
+
+### Decision
+Each audited subject declares a closed allowlist of real business columns in `AuditSubjectRegistry`. Technical columns are never filtered out after the fact.
+
+### Reason
+A denylist has to be maintained in step with every future migration; the first column somebody forgets to add lands in the permanent audit trail. An allowlist fails the safe way — a new column is simply not audited until it is deliberately registered. `AuditSubjectRegistry::TECHNICAL_FIELDS` still exists, but only as the assertion target for a test that proves no registration ever lets `created_at`/`updated_at`/`deleted_at`/`created_by`/`updated_by`/`remember_token`/`is_dirty` back in.
+
+### Impact
+`updated_by` in particular never appears in `changed_fields`, so `HasUserTracking`'s per-save rewrite adds no noise, and the event's own actor snapshot remains the single source of "who did this". Adding a column to an audited model is a deliberate two-step change: migrate, then register.
+
+---
+
+### Date
+2026-07-28 (OMS Task 9B.2 — relationships are stored as FK + one bounded label, and only on the post-change side) — **SUPERSEDED the same day: both sides are now labelled, each from its own foreign key value. See the correction entry below. The FK-scalar-plus-bounded-label rule itself still stands.**
+
+### Decision
+A foreign key is always stored as its scalar. One bounded human-readable label may be stored alongside it under a derived key (`project_id` → `project_label`), and only `ProjectCost.project_id` uses this in 9B.2. On the pre-change side of an update, the label is deliberately omitted.
+
+### Reason
+Serializing a related model or collection would blow the 8 KiB payload bound, leak unrelated columns and risk N+1 queries. A single label per logical action is cheap and materially improves accountability, since a raw FK is unreadable once the referenced row is renamed or deleted. The old side omits the label because the relationship reachable from the model reflects its **current** foreign key — labelling the previous FK with it would be a plain factual error, and re-querying the old row would add a query per event for marginal value.
+
+### Impact
+`old_values` for an FK change carries the scalar alone; `new_values` carries scalar plus label. Any future subject that adds a relation label inherits the same rule automatically from `AuditModelSnapshotter`.
+
+---
+
+### Date
+2026-07-28 (OMS Task 9B.2 review correction — `settings.key` is aliased to `setting_name`, superseding the earlier "key stays redacted" decision)
+
+### Decision
+`settings.key` is emitted into audit payloads under the safe semantic field name `setting_name`, via a new `AuditSubjectDefinition::$fieldAliases` map. The raw column name `key` is never supplied to `AuditLogger`. This **supersedes** the earlier 9B.2 decision to leave the column redacted and rely on `subject_label` alone. `AuditRedactor` is unchanged: no general `key` safe exception was added and no denylist rule was weakened.
+
+### Reason
+The original decision accepted a real accountability loss: renaming a setting's key produced `key: [REDACTED] → [REDACTED]`, so the previous key was unrecoverable from the event and `subject_label` only ever carried the post-change key. The review correctly rejected that trade. The fix has to sit in the Setting subject's own snapshot policy rather than in the global redactor, because a bare `key` field genuinely is secret-shaped for every other subject — this one column is an identifier that merely shares its name with the denylist. Renaming the payload key is the narrowest possible intervention: it changes what a field is called, never what passes redaction.
+
+### Impact
+`created`, `updated` and `deleted` Setting events now carry `setting_name`, and `changed_fields` contains `setting_name` when the column changed. `settings.value` is completely unaffected — it still passes `SettingValuePolicy` first and the central `AuditRedactor` after, so a rename of `smtp_password` to `mail.password` records both **names** while both **values** stay `[REDACTED]`. `$fieldAliases` is deliberately scoped as a collision remedy only: a future subject may use it when a legitimate business column's literal name collides with the denylist, never to smuggle a genuinely sensitive column past redaction. `settings.key` is the only alias in the codebase today.
+
+---
+
+### Date
+2026-07-28 (OMS Task 9B.2 review correction — relation labels resolve from the foreign key VALUE, superseding the earlier "no label on the old side" decision)
+
+### Decision
+A relation-label resolver is handed the foreign key **value**, not the owning model, and both sides of an FK change are labelled from their own value. This **supersedes** the earlier 9B.2 decision to omit the label on the pre-change side. `changed_fields` still lists the semantic business field (`project_id`) and never the label key.
+
+### Reason
+The earlier decision was right about the hazard and wrong about the remedy. The hazard is real — `$cost->project` on the pre-change side already reflects the NEW foreign key, so labelling the old id with it would record a factual error — but omitting the label entirely just moved the accountability loss elsewhere: a reassignment recorded an old `project_id` that becomes unreadable the moment that project is renamed or retired, which is exactly when the audit trail matters. Resolving each side from its own id removes the hazard without the loss. `withTrashed()` is used because a cost line is very often reassigned away from a project that is then soft-deleted, and a bare id in that case is worthless.
+
+### Impact
+`old_values` and `new_values` each carry `project_id` plus their own `project_label`. Lookups select three columns (`id`, `code`, `name`) and are memoized per logical action in `AuditModelSnapshotter::$labelCache`, so a reassignment costs two bounded primary-key lookups and an update that does not touch `project_id` costs none. No related model or collection is ever serialized, and a soft-deleted previous project still resolves to a readable label. Any future subject that registers a relation label inherits this behavior automatically.

@@ -2,8 +2,8 @@
 
 namespace App\Filament\Resources\Settings\Tables;
 
+use App\Filament\Concerns\AuditedActions;
 use Filament\Actions\BulkActionGroup;
-use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
@@ -48,7 +48,7 @@ class SettingsTable
             ])
             ->recordActions([ViewAction::make(), EditAction::make()])
             ->toolbarActions([
-                BulkActionGroup::make([DeleteBulkAction::make()]),
+                BulkActionGroup::make([AuditedActions::deleteBulk()]),
             ]);
     }
 }

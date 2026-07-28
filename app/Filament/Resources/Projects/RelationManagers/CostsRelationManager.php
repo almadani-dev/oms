@@ -2,12 +2,9 @@
 
 namespace App\Filament\Resources\Projects\RelationManagers;
 
+use App\Filament\Concerns\AuditedActions;
 use App\Models\Currency;
 use Filament\Actions\BulkActionGroup;
-use Filament\Actions\CreateAction;
-use Filament\Actions\DeleteAction;
-use Filament\Actions\DeleteBulkAction;
-use Filament\Actions\EditAction;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -56,8 +53,11 @@ class CostsRelationManager extends RelationManager
                 TextColumn::make('currency.name')->label('العملة')->sortable(),
                 TextColumn::make('notes')->label('ملاحظات')->wrap(),
             ])
-            ->headerActions([CreateAction::make()])
-            ->recordActions([EditAction::make(), DeleteAction::make()])
-            ->toolbarActions([BulkActionGroup::make([DeleteBulkAction::make()])]);
+            // Unlike the resource tables, a relation manager has no related
+            // resource to link to, so these three really do write in place —
+            // they must go through AuditedActions (OMS Task 9B.2).
+            ->headerActions([AuditedActions::relationCreate()])
+            ->recordActions([AuditedActions::edit(), AuditedActions::delete()])
+            ->toolbarActions([BulkActionGroup::make([AuditedActions::deleteBulk()])]);
     }
 }

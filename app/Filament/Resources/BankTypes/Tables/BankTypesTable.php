@@ -2,8 +2,8 @@
 
 namespace App\Filament\Resources\BankTypes\Tables;
 
+use App\Filament\Concerns\AuditedActions;
 use Filament\Actions\BulkActionGroup;
-use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
@@ -26,7 +26,7 @@ class BankTypesTable
             ->recordActions([ViewAction::make(), EditAction::make()])
             ->toolbarActions([
                 BulkActionGroup::make([
-                    DeleteBulkAction::make(),
+                    AuditedActions::deleteBulk(),
                 ]),
             ]);
     }

@@ -2016,3 +2016,74 @@ Two test bugs were found and fixed during the first focused-suite run (both pre-
 
 ### Commit Hash
 Not committed — awaiting review, per instructions (STOP before commit).
+
+---
+
+### Date
+2026-07-28 (OMS Task 9B.2 — Audit Log: general CRUD integration)
+
+### Task
+Wire the accepted 9B.1 audit foundation to the real application write paths of eleven general/master-data models only — `Project`, `ProjectCost`, `Partner`, `PartnerType`, `ProjectSuper`, `ProjectStatus`, `BankType`, `FiscalYear`, `TransactionType`, `TransactionSuperType`, `Setting` — with `created`/`updated`/`deleted`/`restored` events in strict `AuditFailureMode::Required` mode, guaranteed atomic with their business mutation. No financial workflow model, no `Transaction`/`TransactionLine`, no `User`/`Role`/`Permission`, no auth listeners, no attachments/exports, no backup/restore integration, no audit UI, no audit permissions, no schema change, no `HasUserTracking` on `Account`/`AccountType`. No Graphify run, no commit, no push, no 9B.3.
+
+### Result
+**Targeted read-only audit first** established the decisive constraint: **no Filament write path in this application runs inside a database transaction**. The panel never calls `->databaseTransactions()`, so `Filament\Pages\Concerns\CanUseDatabaseTransactions::hasDatabaseTransactions()` is false for every Create/Edit page, and `Filament\Actions\Concerns\CanUseDatabaseTransactions` defaults to false for every Action. A model observer would therefore fire with the business row already committed — the exact design 9B.2 forbids. Auditing is consequently owned by a service that wraps the mutation and the audit insert in one `DB::transaction()`, not by observers.
+
+The same audit also established: all 11 resources use Filament's stock Create/Edit/Delete handlers (no custom overrides); on a resource page a table's `CreateAction`/`EditAction`/`ViewAction` are plain links to the Create/Edit/View pages (`Filament\Resources\Pages\Page::getDefaultActionUrl`) and perform no write; the only in-place modal write path is `CostsRelationManager` (Projects → تكاليف المشروع) for `ProjectCost`; no restore action exists anywhere in the UI (OMS removed every Restore/ForceDelete action by design); `astrotomic/laravel-translatable` is installed but **no target model uses it**, so every Arabic display value is a plain column; and `ProjectObserver`/`ProjectCostObserver` only flip `ProjectFinancialSnapshot.is_dirty` on a different, unaudited table.
+
+**Built** (`app/Services/Audit/Crud/`): `AuditedCrudService` (owns the transaction; `create`/`createViaRelationship`/`update`/`delete`/`restore`), `AuditSubjectRegistry` (closed model→alias allowlist; unregistered classes throw `AuditSubjectNotRegisteredException` instead of falling back to a derived alias, which is what structurally guarantees no FQCN ever reaches `subject_type`), `AuditSubjectDefinition`, `AuditModelSnapshotter` + `AuditFieldDiff`, `SettingValuePolicy`; plus `app/Services/Audit/AuditActorResolver.php` and `app/Services/Audit/Exceptions/AuditSubjectNotRegisteredException.php`. **Filament seam** (`app/Filament/Concerns/`): `AuditsRecordCreation`, `AuditsRecordUpdate` (replace `handleRecordCreation()`/`handleRecordUpdate()` identically) and `AuditedActions` (stock actions with only their process closure swapped via `->using()`; `deleteBulk()` pins `fetchSelectedRecords()` so Filament's mass query-level delete branch can never bypass the models).
+
+Aliases: `project`, `project_cost`, `partner`, `partner_type`, `project_super`, `project_status`, `bank_type`, `fiscal_year`, `transaction_type`, `transaction_super_type`, `setting`; category `crud` for every event. Each subject declares a **closed allowlist of business columns**, so `id`/`created_at`/`updated_at`/`deleted_at`/`created_by`/`updated_by`/`remember_token`/observer flags are excluded by construction. `created` = full snapshot, `updated` = changed audited fields only (no event when nothing audited changed), `deleted` = pre-delete snapshot with the primary key preserved, `restored` = post-restore snapshot. Date casts store plain `Y-m-d`. `ProjectCost` stores `project_id` plus one bounded `project_label`; no relation object or collection is ever serialized. `settings.value` uses a fail-closed policy (credential-shaped key — judged by `AuditRedactor`'s own rules after separator normalization so `mail.password` is caught — or PEM/long-opaque value ⇒ `[REDACTED]`); the `key` column is masked in the payload by the foundation's existing `key` segment rule and stays legible in `subject_label`.
+
+Duplicate prevention is structural (auditing exists only in the service), so no suppression switch was built or needed — seeders, migrations, factories, permission sync and test fixtures write these tables directly and produce no audit history.
+
+### Changed Files
+- New: `app/Services/Audit/Crud/AuditedCrudService.php`, `AuditSubjectRegistry.php`, `AuditSubjectDefinition.php`, `AuditModelSnapshotter.php`, `AuditFieldDiff.php`, `SettingValuePolicy.php`; `app/Services/Audit/AuditActorResolver.php`; `app/Services/Audit/Exceptions/AuditSubjectNotRegisteredException.php`; `app/Filament/Concerns/AuditsRecordCreation.php`, `AuditsRecordUpdate.php`, `AuditedActions.php`.
+- New tests: `tests/Feature/Audit/Crud/AuditedCrudTestCase.php`, `AuditCrudInfrastructureTest.php`, `AuditedCrudServiceTest.php`, `AuditedCrudAtomicityTest.php`, `SettingAuditPolicyTest.php`, `AuditedFilamentCrudTest.php`.
+- Modified (34 Filament files): the 11 `Create*` pages (+`AuditsRecordCreation`), the 11 `Edit*` pages (+`AuditsRecordUpdate`, `DeleteAction::make()` → `AuditedActions::delete()`), the 11 resource `*Table` classes (`DeleteBulkAction::make()` → `AuditedActions::deleteBulk()`), and `app/Filament/Resources/Projects/RelationManagers/CostsRelationManager.php` (all four write actions).
+- Modified docs: `OMS_Master_Reference.md`, `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md`, `docs/NEXT_STEPS.md`, `docs/PROMPTS_LOG.md`.
+- **No migration, no schema change, no model change, no policy change.**
+
+### Verification
+1. Focused suite `tests/Feature/Audit` — **86/86 passed, 486 assertions** (53 pre-existing 9B.1 + 33 new). New coverage: alias stability and no-FQCN, unregistered-model rejection (`Transaction`/`Account`/`User`/`AuditEvent`), technical-field exclusion, 255-char label bounding, no-op update, one-event-per-logical-action, event immutability, per-model create/update/delete/restore content, actor snapshot, `updated_by` never in `changed_fields`, the Project dirty-flag observer producing no noise, FK+bounded-label relationship handling, Setting key/value redaction and 8 KiB/1000-char bounding, four forced-REQUIRED-audit-failure rollbacks (create/update/delete/restore) and the surrounding-business-transaction rollback, plus Filament regression (create→View, edit→View, delete→List, notifications, bulk delete one-event-per-record, relation-manager CRUD, policies still enforced).
+2. Regression: `tests/Feature/Crud` + `tests/Unit/Filament` + `tests/Unit/Policies` — **117/117 passed**. `tests/Feature/Permissions` — **341 tests, 338 passed, 3 skipped** (both skip sites pre-existing and by design: `CrudPolicyBehaviorTest` for non-SoftDeletes models, `ResourceHttpAuthorizationTest` for read-only audit resources).
+3. `php -l` clean on every new and modified file. PHPUnit never run concurrently.
+4. Real local DB: `audit_events` still **0 rows** — no artificial audit events were created; all target/business row counts unchanged (`projects` 0, `projects_costs` 0, `partners` 2, `partners_types` 3, `projects_super` 4, `projects_status` 2, `bank_types` 6, `fiscal_years` 1, `transactions_types` 11, `transaction_super_types` 7, `settings` 8, `transactions` 8, `transaction_lines` 22, `accounts` 5, `users` 5). No migration was run.
+5. Real local `oms:check-financial-integrity` — **Result: OK, exit code 0**.
+6. Real smoke check: `/admin/login` → HTTP 200; `/admin/partner-types`, `/admin/settings`, `/admin/projects`, `/admin/fiscal-years`, `/admin/bank-types` → 302 to `/admin/login` (correct unauthenticated behavior).
+7. Full application suite intentionally not run, per instructions. No Graphify run.
+
+### Commit Hash
+Not committed — awaiting review, per instructions (STOP before commit).
+
+---
+
+### Date
+2026-07-28 (OMS Task 9B.2 review corrections — Setting semantic field, ProjectCost old-side relation label, Filament lifecycle regression proof)
+
+### Task
+Task 9B.2 accepted in principle. Correct two audit-accountability defects found in review, without weakening the central `AuditRedactor` and without redesigning Filament: (1) a `Setting` key rename lost the previous key, because `settings.key` is treated as secret-shaped by the global redactor; (2) a `ProjectCost.project_id` change labelled only the new side, leaving the old side with a bare foreign key. Then review the complete diff section by section, confirm the Filament wrappers preserve authorization/hooks/validation/relationship saving/notifications/redirects/bulk failure reporting/deselection, and run only the directly relevant tests. No full suite, no Graphify, no commit, no push, no 9B.3.
+
+### Result
+**1. `settings.key` → `setting_name`.** Added `AuditSubjectDefinition::$fieldAliases` (column name → emitted audit field name) and `auditFieldName()`. `AuditModelSnapshotter` now assembles every row keyed by real **column** names — which is what value policies and relation-label lookups need — and renames to semantic audit field names once, as the final step, for `old_values`, `new_values` and `changed_fields` alike. `Setting` registers `['key' => 'setting_name']`. The raw field name `key` is never supplied to `AuditLogger`. `AuditRedactor` is untouched and no general `key` safe exception was added; `settings.value` still passes `SettingValuePolicy` and then the central redactor, so renaming `smtp_password` to `mail.password` records both **names** while both **values** stay `[REDACTED]`.
+
+**2. `ProjectCost` old-side relation label.** Relation-label resolvers now receive the foreign key **value** instead of the owning model — `AuditSubjectDefinition::relationLabel(string $foreignKey, mixed $foreignKeyValue)` — so each side of a diff is labelled from its own id rather than from a relationship object that already reflects the new one. `AuditSubjectRegistry::projectLabel()` resolves through `Project::withTrashed()->select(['id','code','name'])->find()`, so a cost line reassigned away from a since-retired project still records a readable old label, and only three columns are ever read (no model is serialized). `AuditModelSnapshotter::$labelCache` memoizes per logical action, and a foreign key absent from the changed set triggers no lookup at all. `changed_fields` deliberately still lists `project_id` only — a label is a readability snapshot attached to its FK, not a field a user changed.
+
+**3. Filament lifecycle review.** Traced every wrapper against the vendor sources and found **no behavior lost**: `authorizeAccess()` and action authorization run before the replaced closures; `beforeValidate`/`afterValidate`/`beforeCreate`/`afterCreate`/`beforeSave`/`afterSave` and the `RecordCreated`/`RecordUpdated`/`RecordSaved` events all live in the page around `handleRecord*`, not inside it; validation (`$this->form->getState()`) precedes the handler; `saveRelationships()` still runs after it (and is a no-op for these 11 resources — every relationship on their forms is a BelongsTo `Select`, written as an FK column on the record itself, so the audited snapshot inside the transaction is already complete); `DeleteAction`'s `if (! $result) failure()` still works because the swapped closure returns the same `bool`; `AuditedActions::deleteBulk()` mirrors Filament's own per-record failure reporting including the report-only-the-first-exception rule; `deselectRecordsAfterCompletion()` comes from `DeleteBulkAction::setUp()` and is not overridden. One genuinely uncovered area — hooks, validation-blocks-the-event, bulk failure reporting, deselection, BelongsTo capture — got a new `AuditedFilamentLifecycleTest` (7 tests).
+
+### Changed Files
+- Modified: `app/Services/Audit/Crud/AuditSubjectDefinition.php` (added `$fieldAliases`/`auditFieldName()`; `relationLabel()` now takes the FK value; label bounding centralized in one `bound()` helper), `app/Services/Audit/Crud/AuditModelSnapshotter.php` (column-keyed assembly + final alias pass; per-side relation labelling; `$labelCache`), `app/Services/Audit/Crud/AuditSubjectRegistry.php` (`projectReference()` → `projectLabel(mixed $projectId)` using `withTrashed()`; `Setting` gains `fieldAliases`).
+- Modified tests: `tests/Feature/Audit/Crud/AuditedCrudServiceTest.php`, `tests/Feature/Audit/Crud/SettingAuditPolicyTest.php`.
+- New test: `tests/Feature/Audit/Crud/AuditedFilamentLifecycleTest.php`.
+- Modified docs: `OMS_Master_Reference.md`, `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md` (two superseding entries plus supersession notes on the two originals), `docs/NEXT_STEPS.md`.
+- **No production Filament file, model, policy, migration or schema was changed by this correction pass.**
+
+### Verification
+1. `tests/Feature/Audit` — **98/98 passed, 557 assertions** (was 86/486; +12 tests: 4 Setting semantic-name, 1 ProjectCost soft-deleted old label, 1 unrelated-field-no-labelling, plus the 7-test lifecycle file, with 1 pre-existing ProjectCost test rewritten).
+2. `tests/Feature/Crud` + `tests/Unit/Filament` + `tests/Unit/Policies` — **117/117 passed**.
+3. `php -l` clean; `git diff --check` clean. Full suite not run; PHPUnit never run concurrently.
+4. Real local DB: `audit_events` still **0 rows**; no migration run; `graphify-out/` untouched.
+5. `php artisan oms:check-financial-integrity` — **Result: OK, exit code 0**.
+6. No excluded 9B.3+ integration introduced — `AuditSubjectRegistry` still registers exactly the same eleven models, proven by an exact-map assertion plus explicit rejection tests for `Transaction`/`Account`/`User`/`AuditEvent`.
+
+### Commit Hash
+Not committed — awaiting review, per instructions (STOP before commit).
