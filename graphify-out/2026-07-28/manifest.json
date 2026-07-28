@@ -3990,23 +3990,23 @@
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1785229273.1818204,
-    "ast_hash": "51732c237de8b48e072823eccd21c869",
+    "mtime": 1785231860.1876404,
+    "ast_hash": "cdd9cd95a98d00678585ff32174557eb",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
-    "mtime": 1785229373.6894274,
-    "ast_hash": "6693d8ea62c67c281e36df2ef35bb69b",
+    "mtime": 1785231903.7667992,
+    "ast_hash": "12bca82b9477c2629c824cd6f1e804c4",
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1785229387.9902036,
-    "ast_hash": "2542d4d8017ac737182685b8cba49471",
+    "mtime": 1785231914.5738902,
+    "ast_hash": "fc65fdf074f45d3da4d65d3d2c44f511",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
-    "mtime": 1785229428.12113,
-    "ast_hash": "9c8e703b28e8056e9dbe6f8a5738eb32",
+    "mtime": 1785231946.2758863,
+    "ast_hash": "05d36eb03cdaa980457e7dfaed2f6329",
     "semantic_hash": ""
   },
   "docs/RESTORE_RECOVERY.md": {
@@ -4015,8 +4015,8 @@
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1785229337.537399,
-    "ast_hash": "ff844f17d0ce7c649c4b0a04b21d7da2",
+    "mtime": 1785231883.1172018,
+    "ast_hash": "6078fc55f1d443cdb0775281d144626b",
     "semantic_hash": ""
   },
   "public/robots.txt": {

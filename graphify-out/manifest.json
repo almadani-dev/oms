@@ -235,13 +235,13 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/BankTypes/Pages/CreateBankType.php": {
-    "mtime": 1784716606.1864479,
-    "ast_hash": "7d538dbca357e5db4fa3c1fda2e76e83",
+    "mtime": 1785233638.6206858,
+    "ast_hash": "f68df8b042812875c7e69c0933884bef",
     "semantic_hash": ""
   },
   "app/Filament/Resources/BankTypes/Pages/EditBankType.php": {
-    "mtime": 1784716606.1995118,
-    "ast_hash": "c53fd43572799a1dd7448284700b8459",
+    "mtime": 1785233638.6206858,
+    "ast_hash": "81c903c0a6c5beac8d80aa58219e7b2b",
     "semantic_hash": ""
   },
   "app/Filament/Resources/BankTypes/Pages/ListBankTypes.php": {
@@ -260,8 +260,8 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/BankTypes/Tables/BankTypesTable.php": {
-    "mtime": 1782037526.574761,
-    "ast_hash": "80a76b60399cf8f086f6c7fa2c5eddb3",
+    "mtime": 1785233638.6216836,
+    "ast_hash": "5d34734bdde9bf1df5f0c28c1782711c",
     "semantic_hash": ""
   },
   "app/Filament/Resources/Currencies/CurrencyResource.php": {
@@ -380,13 +380,13 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/FiscalYears/Pages/CreateFiscalYear.php": {
-    "mtime": 1784716606.18746,
-    "ast_hash": "19d8afaaf2c496296e56969b1c8d882e",
+    "mtime": 1785233638.6216836,
+    "ast_hash": "7e1d451deecc06f525f18587071ba137",
     "semantic_hash": ""
   },
   "app/Filament/Resources/FiscalYears/Pages/EditFiscalYear.php": {
-    "mtime": 1784716606.200512,
-    "ast_hash": "f9d5ec42457ecb95503e37036c33706c",
+    "mtime": 1785233638.6216836,
+    "ast_hash": "19d95cef4a0db812359e4495b019ad3b",
     "semantic_hash": ""
   },
   "app/Filament/Resources/FiscalYears/Pages/ListFiscalYears.php": {
@@ -405,8 +405,8 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/FiscalYears/Tables/FiscalYearsTable.php": {
-    "mtime": 1782037523.3116817,
-    "ast_hash": "0f1c8a80a127c10d81a50bcec16fe0d0",
+    "mtime": 1785233638.6226845,
+    "ast_hash": "7b3417e8ae2b857bbd7fbba149dda2ee",
     "semantic_hash": ""
   },
   "app/Filament/Resources/GeneralExchanges/GeneralExchangeResource.php": {
@@ -480,13 +480,13 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/PartnerTypes/Pages/CreatePartnerType.php": {
-    "mtime": 1784716606.1904726,
-    "ast_hash": "910ae28ee2f0b83ce7620ac6d2585b4d",
+    "mtime": 1785233638.6171691,
+    "ast_hash": "511578ac7f0a453820375c905326c4f3",
     "semantic_hash": ""
   },
   "app/Filament/Resources/PartnerTypes/Pages/EditPartnerType.php": {
-    "mtime": 1784716606.2025137,
-    "ast_hash": "452f4e65af1872f9458a5a4b3144c3bd",
+    "mtime": 1785233638.6171691,
+    "ast_hash": "27c50a913a90465fc12468e9af17d90e",
     "semantic_hash": ""
   },
   "app/Filament/Resources/PartnerTypes/Pages/ListPartnerTypes.php": {
@@ -510,18 +510,18 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/PartnerTypes/Tables/PartnerTypesTable.php": {
-    "mtime": 1782037553.2480998,
-    "ast_hash": "4da74be98c129ea8691e4699607b2a84",
+    "mtime": 1785233638.6171691,
+    "ast_hash": "4d5988ae300a93e2a999c99a448a12a3",
     "semantic_hash": ""
   },
   "app/Filament/Resources/Partners/Pages/CreatePartner.php": {
-    "mtime": 1784716606.1904726,
-    "ast_hash": "b518ae1495bf51272677198ec32d6b5d",
+    "mtime": 1785233638.616168,
+    "ast_hash": "21860a1e4e29ca03780ee56cb93c2b6c",
     "semantic_hash": ""
   },
   "app/Filament/Resources/Partners/Pages/EditPartner.php": {
-    "mtime": 1784716606.2035124,
-    "ast_hash": "0f724d3cb5e8677534aeb1ac3d8e42cf",
+    "mtime": 1785233638.616168,
+    "ast_hash": "f3e6b61d34c3f4dacb7c8f853635f7d7",
     "semantic_hash": ""
   },
   "app/Filament/Resources/Partners/Pages/ListPartners.php": {
@@ -545,8 +545,8 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/Partners/Tables/PartnersTable.php": {
-    "mtime": 1782037513.4860506,
-    "ast_hash": "ab0cca345e09999d26404e931bf9aebc",
+    "mtime": 1785233638.616168,
+    "ast_hash": "917a8ade8717fb961d3e8d738181e263",
     "semantic_hash": ""
   },
   "app/Filament/Resources/Permissions/Pages/ListPermissions.php": {
@@ -645,13 +645,13 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectCosts/Pages/CreateProjectCost.php": {
-    "mtime": 1784716606.1924732,
-    "ast_hash": "e352cec9d5425c892826d7cc389a3604",
+    "mtime": 1785233638.6151688,
+    "ast_hash": "702f49c6956cfd4317d0336cdee35a6d",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectCosts/Pages/EditProjectCost.php": {
-    "mtime": 1784716606.2045126,
-    "ast_hash": "4a1b030d1dc2b2a884130a59083a6fbc",
+    "mtime": 1785233638.6151688,
+    "ast_hash": "65c6a9de2049698256ae0454d96cca9f",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectCosts/Pages/ListProjectCosts.php": {
@@ -685,18 +685,18 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectCosts/Tables/ProjectCostsTable.php": {
-    "mtime": 1782037503.9462612,
-    "ast_hash": "85816d9bf17ab21e1f943053429f2c4d",
+    "mtime": 1785233638.6151688,
+    "ast_hash": "ba03c478836024f5bdd2bf89f0c1dab5",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectStatuses/Pages/CreateProjectStatus.php": {
-    "mtime": 1784716606.1934724,
-    "ast_hash": "b3ce9f4cc904efdf85dffe0c9c1597c8",
+    "mtime": 1785233638.619676,
+    "ast_hash": "c516c72c8424a56a76815d58ef2d8993",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectStatuses/Pages/EditProjectStatus.php": {
-    "mtime": 1784716606.20551,
-    "ast_hash": "bc2937b9abb911201a4a843b518cea3b",
+    "mtime": 1785233638.619676,
+    "ast_hash": "81658b0645f36e4ce4d186930be77c75",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectStatuses/Pages/ListProjectStatuses.php": {
@@ -720,18 +720,18 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectStatuses/Tables/ProjectStatusesTable.php": {
-    "mtime": 1782037557.097057,
-    "ast_hash": "cb840f0d2b4a5493e343f3a20a3ce4c0",
+    "mtime": 1785233638.6206858,
+    "ast_hash": "f3b9e3b7891ff112b71378c952a002de",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectSupers/Pages/CreateProjectSuper.php": {
-    "mtime": 1784716606.1934724,
-    "ast_hash": "cc713d270d52c721aba4106037400b56",
+    "mtime": 1785233638.6181688,
+    "ast_hash": "552e35c200cd676e041c121f58a5523f",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectSupers/Pages/EditProjectSuper.php": {
-    "mtime": 1784716606.20551,
-    "ast_hash": "ecc4b79b1f3447f34871a7f30e81746a",
+    "mtime": 1785233638.6181688,
+    "ast_hash": "07af70c0a8a8eca3698af1e8f99e2180",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectSupers/Pages/ListProjectSupers.php": {
@@ -760,18 +760,18 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectSupers/Tables/ProjectSupersTable.php": {
-    "mtime": 1782037529.412404,
-    "ast_hash": "9e20fbe4bd1324c0ccff5bc7581219aa",
+    "mtime": 1785233638.6191692,
+    "ast_hash": "8f06b3a2984c5d9e428790fffe204773",
     "semantic_hash": ""
   },
   "app/Filament/Resources/Projects/Pages/CreateProject.php": {
-    "mtime": 1784716606.1944718,
-    "ast_hash": "fb9a7c1abd2f2b3d5b99ed1eb65a872a",
+    "mtime": 1785233638.61417,
+    "ast_hash": "b9143492ae19f60ad16b3a7f67e45a8d",
     "semantic_hash": ""
   },
   "app/Filament/Resources/Projects/Pages/EditProject.php": {
-    "mtime": 1784716606.2065098,
-    "ast_hash": "a690f33ef78714c23f89aa16f4064a1e",
+    "mtime": 1785233638.61417,
+    "ast_hash": "9bec6a681268d3c1468bcc5cb4b1bfed",
     "semantic_hash": ""
   },
   "app/Filament/Resources/Projects/Pages/ListProjects.php": {
@@ -790,8 +790,8 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/Projects/RelationManagers/CostsRelationManager.php": {
-    "mtime": 1782292279.663162,
-    "ast_hash": "34472638923488cd6746af1d611f1fb7",
+    "mtime": 1785233648.7800987,
+    "ast_hash": "bab0ac4863af4cafe9c5e1448822f3b2",
     "semantic_hash": ""
   },
   "app/Filament/Resources/Projects/Schemas/ProjectForm.php": {
@@ -805,8 +805,8 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/Projects/Tables/ProjectsTable.php": {
-    "mtime": 1782037510.1318183,
-    "ast_hash": "a9fd261784f7e1f6a5175fe996ea0dea",
+    "mtime": 1785233638.61417,
+    "ast_hash": "31b48e55d34417aa870bd180bfed99a5",
     "semantic_hash": ""
   },
   "app/Filament/Resources/Roles/Pages/CreateRole.php": {
@@ -845,13 +845,13 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/Settings/Pages/CreateSetting.php": {
-    "mtime": 1784716606.1954734,
-    "ast_hash": "22cbc3e296d65c5a4d58b7351db78f85",
+    "mtime": 1785233638.6256847,
+    "ast_hash": "4e7b59fc2c96d6cf296a9db16a4fbcee",
     "semantic_hash": ""
   },
   "app/Filament/Resources/Settings/Pages/EditSetting.php": {
-    "mtime": 1784716606.2070172,
-    "ast_hash": "b8270edfd49c70500f65810ad8cb49b1",
+    "mtime": 1785233638.6266859,
+    "ast_hash": "eaee1288e0d443cb376c9c6319f3b177",
     "semantic_hash": ""
   },
   "app/Filament/Resources/Settings/Pages/ListSettings.php": {
@@ -875,8 +875,8 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/Settings/Tables/SettingsTable.php": {
-    "mtime": 1781010235.6204493,
-    "ast_hash": "66a8fb7d7d7f83bc700590f30395ef1a",
+    "mtime": 1785233638.6266859,
+    "ast_hash": "e4b8e0a9a62d53aa61999dcbc2f3d30c",
     "semantic_hash": ""
   },
   "app/Filament/Resources/TransactionLines/Pages/ListTransactionLines.php": {
@@ -905,13 +905,13 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/TransactionSuperTypes/Pages/CreateTransactionSuperType.php": {
-    "mtime": 1784716606.196471,
-    "ast_hash": "5f86c29128542b5e6b63740a5c20558a",
+    "mtime": 1785233638.623685,
+    "ast_hash": "1a352c7af9c8780050f91a6ee4b60869",
     "semantic_hash": ""
   },
   "app/Filament/Resources/TransactionSuperTypes/Pages/EditTransactionSuperType.php": {
-    "mtime": 1784716606.2075255,
-    "ast_hash": "72aba752b57c3b8c58b171c94eaa3c49",
+    "mtime": 1785233638.6246843,
+    "ast_hash": "afdf13058f23e2cb8be9460ac3ed7820",
     "semantic_hash": ""
   },
   "app/Filament/Resources/TransactionSuperTypes/Pages/ListTransactionSuperTypes.php": {
@@ -930,8 +930,8 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/TransactionSuperTypes/Tables/TransactionSuperTypesTable.php": {
-    "mtime": 1782037542.437192,
-    "ast_hash": "ea1d5f51097163c628a6e9030f592e0c",
+    "mtime": 1785233638.6246843,
+    "ast_hash": "f0722a27aae03a965d20c189b690db19",
     "semantic_hash": ""
   },
   "app/Filament/Resources/TransactionSuperTypes/TransactionSuperTypeResource.php": {
@@ -940,13 +940,13 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/TransactionTypes/Pages/CreateTransactionType.php": {
-    "mtime": 1784716606.196471,
-    "ast_hash": "4e85dad5ec73f7f4eb7294eb5d584fb9",
+    "mtime": 1785233638.6226845,
+    "ast_hash": "bd01628ad3dfa7b705e649f591718c50",
     "semantic_hash": ""
   },
   "app/Filament/Resources/TransactionTypes/Pages/EditTransactionType.php": {
-    "mtime": 1784716606.2075255,
-    "ast_hash": "dd1c1d75bd6dbcb86c2fb8b4c22d6a2d",
+    "mtime": 1785233638.623685,
+    "ast_hash": "86512dd86fbfdfd22468fab97b42d617",
     "semantic_hash": ""
   },
   "app/Filament/Resources/TransactionTypes/Pages/ListTransactionTypes.php": {
@@ -965,8 +965,8 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/TransactionTypes/Tables/TransactionTypesTable.php": {
-    "mtime": 1782037532.656309,
-    "ast_hash": "be9a79b15a0807ef93ee720b8f1625e2",
+    "mtime": 1785233638.623685,
+    "ast_hash": "c0621597e90a966550a06cd98f2a0fba",
     "semantic_hash": ""
   },
   "app/Filament/Resources/TransactionTypes/TransactionTypeResource.php": {
@@ -3980,8 +3980,8 @@
     "semantic_hash": ""
   },
   "OMS_Master_Reference.md": {
-    "mtime": 1785229250.2496374,
-    "ast_hash": "bb7d1f33005d03783d42ec4a3f03d603",
+    "mtime": 1785235462.4661477,
+    "ast_hash": "1c7a889f27226d1de643f0d1bd9309bf",
     "semantic_hash": ""
   },
   "README.md": {
@@ -3990,23 +3990,23 @@
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1785231860.1876404,
-    "ast_hash": "cdd9cd95a98d00678585ff32174557eb",
+    "mtime": 1785235536.8415806,
+    "ast_hash": "4d3bedeebd0a027422158d9105331ee2",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
-    "mtime": 1785231903.7667992,
-    "ast_hash": "12bca82b9477c2629c824cd6f1e804c4",
+    "mtime": 1785235515.8119912,
+    "ast_hash": "df0972aed94bc8cdd0f828d7cf494700",
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1785231914.5738902,
-    "ast_hash": "fc65fdf074f45d3da4d65d3d2c44f511",
+    "mtime": 1785235481.133044,
+    "ast_hash": "29457ba00b8ccb2e5954edb8de73c50e",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
-    "mtime": 1785231946.2758863,
-    "ast_hash": "05d36eb03cdaa980457e7dfaed2f6329",
+    "mtime": 1785234616.5481403,
+    "ast_hash": "c2afa2446d76658702911de5b526e7d3",
     "semantic_hash": ""
   },
   "docs/RESTORE_RECOVERY.md": {
@@ -4015,13 +4015,103 @@
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1785231883.1172018,
-    "ast_hash": "6078fc55f1d443cdb0775281d144626b",
+    "mtime": 1785235573.0805767,
+    "ast_hash": "ec2bc5ff9dbf30b3659bf54d1b75d96b",
     "semantic_hash": ""
   },
   "public/robots.txt": {
     "mtime": 1779750712.0,
     "ast_hash": "b6216d61c03e6ce0c9aea6ca7808f7ca",
+    "semantic_hash": ""
+  },
+  "app/Filament/Concerns/AuditedActions.php": {
+    "mtime": 1785233595.267799,
+    "ast_hash": "deb5d8c3e5bc739a1557fc93a2d6e65a",
+    "semantic_hash": ""
+  },
+  "app/Filament/Concerns/AuditsRecordCreation.php": {
+    "mtime": 1785233417.474062,
+    "ast_hash": "469dd6f6997997e356c08b7ee7536cd1",
+    "semantic_hash": ""
+  },
+  "app/Filament/Concerns/AuditsRecordUpdate.php": {
+    "mtime": 1785233421.3212602,
+    "ast_hash": "137ea7b4658e95505cef0e781036458d",
+    "semantic_hash": ""
+  },
+  "app/Services/Audit/AuditActorResolver.php": {
+    "mtime": 1785233272.9964595,
+    "ast_hash": "ea4fade63c36def10d74654d9035e999",
+    "semantic_hash": ""
+  },
+  "app/Services/Audit/Crud/AuditFieldDiff.php": {
+    "mtime": 1785233356.0081873,
+    "ast_hash": "7011bd116adb331655b83cd184355515",
+    "semantic_hash": ""
+  },
+  "app/Services/Audit/Crud/AuditModelSnapshotter.php": {
+    "mtime": 1785235048.828117,
+    "ast_hash": "c5acb5cbdda22e8e97f0d7c43bc247de",
+    "semantic_hash": ""
+  },
+  "app/Services/Audit/Crud/AuditSubjectDefinition.php": {
+    "mtime": 1785235018.8624763,
+    "ast_hash": "b0a8356906e6c504a67767bf53ef8ad3",
+    "semantic_hash": ""
+  },
+  "app/Services/Audit/Crud/AuditSubjectRegistry.php": {
+    "mtime": 1785235075.4436114,
+    "ast_hash": "15c64a1f1dc17e1084b95de430acab31",
+    "semantic_hash": ""
+  },
+  "app/Services/Audit/Crud/AuditedCrudService.php": {
+    "mtime": 1785233409.988603,
+    "ast_hash": "94b7b0ef3731e42221dce16b8aaabeb7",
+    "semantic_hash": ""
+  },
+  "app/Services/Audit/Crud/SettingValuePolicy.php": {
+    "mtime": 1785233311.3808813,
+    "ast_hash": "1a8c66f2fe9c5bfbd484d0e2e3c7af35",
+    "semantic_hash": ""
+  },
+  "app/Services/Audit/Exceptions/AuditSubjectNotRegisteredException.php": {
+    "mtime": 1785233246.557966,
+    "ast_hash": "5f1f6a2c671ffe46fc168b7148f39649",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Crud/AuditCrudInfrastructureTest.php": {
+    "mtime": 1785233783.72318,
+    "ast_hash": "f98fc9694ddf8ebf82cf1bb20a154ece",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Crud/AuditedCrudAtomicityTest.php": {
+    "mtime": 1785233853.0467522,
+    "ast_hash": "7993fd551ebe6ceebcef2b53a19d600f",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Crud/AuditedCrudServiceTest.php": {
+    "mtime": 1785235099.2983944,
+    "ast_hash": "a9483d27946c450691cdb104a5dfe031",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Crud/AuditedCrudTestCase.php": {
+    "mtime": 1785233739.8537745,
+    "ast_hash": "5108e44ce969127e2fd73ee81c6ac374",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Crud/AuditedFilamentCrudTest.php": {
+    "mtime": 1785234045.2769146,
+    "ast_hash": "65b4e74bce7d201369a27eaf2c32bfef",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Crud/AuditedFilamentLifecycleTest.php": {
+    "mtime": 1785235311.9279637,
+    "ast_hash": "411f852a4879a0235df2a9ab9026333c",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Crud/SettingAuditPolicyTest.php": {
+    "mtime": 1785235117.2638943,
+    "ast_hash": "fd3c6bdfb15e265d34468da19acff3f7",
     "semantic_hash": ""
   }
 }
