@@ -1886,3 +1886,30 @@ Pre-task `mysqldump` backup created outside the project directory. Read-only aud
 
 ### Commit Hash
 Not committed — awaiting review, per instructions (STOP before commit).
+
+---
+
+### Date
+2026-07-28 (OMS Task 8.2 — Final Schema Drift Reconciliation)
+
+### Task
+Resolve the two remaining schema differences Task 8.1 discovered and deferred as out-of-scope: `accounts.account_code` (`NOT NULL` live vs. nullable fresh) and `accounts_type` (`nature`/`created_by`/`updated_by` live with no reproducing migration). Determine the approved current schema from evidence (code, git history, live data, docs) and make fresh installations reproduce it exactly, without modifying historical financial data.
+
+### Result
+Read-only audit found the original `create_accounts_table` migration (unchanged since the initial commit) has always declared `account_code` `->nullable()->unique()`; `AccountForm` explicitly sets `->nullable()`; and every read site across the codebase defensively guards `$account->account_code ? ... : ''` — the live `NOT NULL` was the drift. `accounts_type.nature` has zero code usage and `docs/AI_PROJECT_MEMORY.md` (2026-07-06, predating this audit) already documents "no account nature" as the current design — classified DEAD_UNUSED. `accounts_type.created_by`/`updated_by` match the exact audit-metadata convention (`App\Traits\HasUserTracking`) used by 20 other current models and carry real historical data (3 rows) — classified ACTIVE_REQUIRED, reproduced as schema only (no model wiring, to avoid starting the Audit Log task). Two guarded migrations applied to the real local DB. A real cross-database bug was found mid-task (a MySQL-only `information_schema` guard broke the SQLite test suite — 173/178 errored) and fixed with Laravel's driver-agnostic `Schema::getColumns()`. Fresh-vs-local comparison on an isolated scratch database (never the real `oms` DB) confirmed `accounts_type` and `accounts.account_code` now match exactly; rollback-safety check confirmed neither migration resurrects dead/never-existed constraints on a fresh install. Zero data modified. Focused regression: 178/178 + 158/158 passed. Real local `oms:check-financial-integrity` — Result: OK, exit code 0.
+
+### Changed Files
+- New: `database/migrations/2026_07_28_110000_make_account_code_nullable_on_accounts_table.php`; `database/migrations/2026_07_28_110001_reconcile_accounts_type_schema_drift.php`
+- Modified: `OMS_Master_Reference.md` (account_code/accounts_type schema notes updated); `docs/AI_PROJECT_MEMORY.md`, `docs/DECISIONS_LOG.md`, `docs/NEXT_STEPS.md`, `docs/PROMPTS_LOG.md`
+- Local DB schema change (not a code file): `accounts.account_code` relaxed to nullable; `accounts_type.nature` dropped; `accounts_type.created_by`/`updated_by` added with FKs to `users`
+
+### Verification
+1. Pre-task backup: `C:\Users\laptop\oms_db_backups\oms_pre_task8.2_20260728_103748.sql`.
+2. Focused suite: `tests/Feature/Integrity`, `CheckFinancialIntegrityCommandTest`, `tests/Feature/Reports`, `FinancialAccountGuardTest`, all 5 `BalanceGuardIntegrationTest` suites, 4 account-validation tests, `ExecutionPaymentCreditAccountTest`, `GeneratesSequentialTransactionNumbersTest` — **178/178 passed**.
+3. `tests/Feature/Crud`, `TransactionDescriptionBuilderTest`, `TransactionLineDescriptionBuilderTest`, `CleanOperationalDataCommandTest`, `BackfillTransactionDescriptionsCommandTest` — **158/158 passed**.
+4. Isolated fresh-install + rollback-safety check on scratch DB `oms_task82_freshcheck` (real `oms` DB never targeted by `migrate:fresh`) — 66/66 migrations clean; rollback of both new migrations confirmed no dead/never-existed schema resurrected.
+5. Real local DB: `migrate:status` — both new migrations `Ran`. `php artisan oms:check-financial-integrity` — **Result: OK, exit code 0**.
+6. Real (read-only) smoke checks: `Account`/`AccountType` Eloquent loads, `TrialBalanceReportService`/`AccountStatementReportService` both executed cleanly; `/admin/login` → HTTP 200; `/admin/accounts`, `/admin/account-types` → HTTP 302 (correct auth redirect). Transaction/line counts and balances confirmed byte-identical before/after.
+
+### Commit Hash
+Not committed — awaiting review, per instructions (STOP before commit).

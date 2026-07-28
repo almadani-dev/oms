@@ -65,7 +65,9 @@ The system is a Filament admin panel organized into navigation groups (in order)
 
 **Core:**
 - `partners` — has `is_donor`; id 1 = "جمعية كاف".
-- `accounts` — `account_code`, `currency_id`, `bank_type_id`, `current_balance` (STORED, updated via increment/decrement — never re-summed). (`parent_id` existed live with no migration file and zero usage; removed in OMS Task 8.1, 2026-07-28 — see docs/DECISIONS_LOG.md.)
+- `accounts` — `account_code` (nullable by design — see below), `currency_id`, `bank_type_id`, `current_balance` (STORED, updated via increment/decrement — never re-summed). (`parent_id` existed live with no migration file and zero usage; removed in OMS Task 8.1, 2026-07-28 — see docs/DECISIONS_LOG.md.)
+- `accounts.account_code` is nullable by design (original migration + `AccountForm` + every read site's `$account->account_code ? ... : ''` guard all agree); a live-only `NOT NULL` drift was reconciled to match in OMS Task 8.2, 2026-07-28.
+- `accounts_type` has no `nature` (asset/liability/equity) concept — the system has none, every account is uniformly debit-normal (see "Important Notes" in `docs/AI_PROJECT_MEMORY.md`). A live-only `nature` enum + `created_by`/`updated_by` audit columns (no migration file) were reconciled in OMS Task 8.2, 2026-07-28: `nature` dropped (dead), `created_by`/`updated_by` kept and reproduced (matches the `HasUserTracking` audit-column convention used by 20+ other models, though `AccountType` itself is not yet wired to it).
 
 **Projects (5 tables):**
 - `projects` — auto code `PREFIX_YYYYMMDD_001`; columns: `name`, `code`, `project_super_id`, `donor_id`, `project_status_id`, `approval_date`, `implementation_date`, `start_date`, `end_date`, `donor_project_name` (free text), `notes`. NOTE: `budget_amount`, `currency_id`, `approved_by` were dropped by later migrations.
