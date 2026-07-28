@@ -1490,3 +1490,31 @@ Task 9A's design audit's explicit failure-policy recommendation (confirmed and f
 
 ### Impact
 `AuditLoggerTransactionTest` proves this directly: a `record()` call inside a test-opened `DB::transaction()` that later throws rolls the audit row back with it, a normal commit persists it, and `DB::transactionLevel()` is unchanged immediately before/after a `record()` call. Any future 9B.2+ caller auditing a financial mutation in `Required` mode should call `record()` from inside its own existing transaction and can rely on this guarantee without adding any wrapping of its own.
+
+---
+
+### Date
+2026-07-28 (Graphify hygiene — project-local `.graphifyignore`, not `.gitignore`)
+
+### Decision
+Sensitive/runtime-path exclusion for Graphify is configured via a new project-root `.graphifyignore` file — not by editing the application's own `.gitignore`.
+
+### Reason
+`.gitignore`'s purpose is git tracking, not graph-indexing scope, and this repository's actual `.gitignore` deliberately does not exclude the bulk of `storage/` (only `/storage/*.key` and `/storage/pail`) — widening it to cover `storage/app/public`/`storage/framework` would be a git-tracking-behavior change well outside this task's scope and risk, and was never needed: confirmed directly against the installed Graphify package's source (`graphify/detect.py`'s `_load_graphifyignore()`) that `.graphifyignore` is a first-class, purpose-built mechanism, merged with `.gitignore` using gitignore's own last-match-wins semantics, and honored identically by both `graphify update` (CLI) and the post-commit hook's detached rebuild (`graphify.watch._rebuild_code`) — the same underlying `detect()`/ignore-pattern code path either way.
+
+### Impact
+`.graphifyignore` can only ever exclude more than `.gitignore` already does, never re-include anything — a safe, additive, narrowly-scoped file. Any future path that needs to stay out of the graph (a new upload directory, a new cache location) should be added here, not by broadening `.gitignore`.
+
+---
+
+### Date
+2026-07-28 (Graphify hygiene — `graphify update`/`--force` does not reliably prune stale nodes for newly-excluded files)
+
+### Decision
+A genuinely clean Graphify rebuild after adding new exclusions requires removing the existing `graph.json`/`manifest.json`/`GRAPH_REPORT.md` first (backed up beforehand) rather than relying on `graphify update .` or `graphify update . --force` alone against an existing graph.
+
+### Reason
+Empirically observed: running `graphify update .` with the new `.graphifyignore` in place against an existing `graph.json` left the 12 previously-indexed `storage/app/public/*` nodes in place unchanged (AST extraction correctly dropped to 804/1434 files, but the resulting merged graph still carried the old nodes forward). Re-running with `--force`/`GRAPHIFY_FORCE=1` did not fix it either — the run hit a separate "no topology changes detected — outputs left untouched" fast-path and skipped writing entirely. Only removing the three output files (so `graphify`'s own `backup_if_protected()`/merge logic had no prior `graph.json` to compare against or merge into) produced a truly fresh extraction that correctly omitted every newly-excluded path. This was independently reproduced twice (byte-identical SHA-256 hashes both times), confirming it is deterministic, not a fluke.
+
+### Impact
+Documented here as the correct procedure for any future Graphify exclusion change in this repository: back up `graph.json`/`manifest.json`/`GRAPH_REPORT.md` (and check the dated `graphify-out/<date>/` "curated backup" snapshot too — it can independently carry forward stale content from an intermediate attempt, exactly as happened here, since its own backup step only fires when a prior `graph.json` exists to snapshot from), delete the three top-level output files, then run `graphify update .` fresh. Simply adding `.graphifyignore` and re-running `update` is not sufficient on its own when a prior graph already exists.

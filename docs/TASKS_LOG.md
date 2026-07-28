@@ -1944,6 +1944,33 @@ Not committed — awaiting review, per instructions (STOP before commit).
 ---
 
 ### Date
+2026-07-28 (Graphify hygiene — project-local `.graphifyignore`)
+
+### Task
+Stop Graphify from indexing runtime-generated/uploaded/private/cached/backup/secret-bearing paths — specifically `storage/app/public/**` (uploaded attachment filenames) and `storage/framework/views/**` (compiled Blade cache) — discovered as a pre-existing issue during the Task 9B.1 lineage check. Determine the correct project-local exclusion mechanism, configure it narrowly, and produce a verified-deterministic, sensitive-path-free rebuild. No application code changes, no PHPUnit run, no push, no starting 9B.2.
+
+### Result
+Confirmed via the installed Graphify package's own source (`graphify/detect.py`) that a project-root `.graphifyignore` file (gitignore syntax, merged with `.gitignore`, honored by both `graphify update` and the post-commit hook) is the correct mechanism. Added `.graphifyignore` excluding `storage/**`, `bootstrap/cache/**`, `public/storage/**`, `vendor/**`, `node_modules/**`, `.git/**`, `graphify-out/**`, `.env`, `.env.*`, `*.sql`, while explicitly preserving `resources/views/vendor/filament-panels/**`. Found and worked around a real `graphify update`/`--force` limitation: neither reliably prunes nodes for newly-excluded files against an existing `graph.json` (a "no topology changes — outputs left untouched" fast-path can skip the rewrite entirely); a genuinely clean rebuild required removing the three regenerated output files first (backed up beforehand, restored/synced after) with no existing file to merge against. Also found and fixed a second-order copy of the same staleness: Graphify's own "curated graph" dated-snapshot backup (`graphify-out/2026-07-28/`) had captured the pre-fix, still-sensitive graph during an intermediate attempt and was not being refreshed by later runs (the backup step only fires when a prior `graph.json` exists to snapshot) — manually synced to match the final clean output. Verified deterministic: two independent from-scratch rebuilds (`PYTHONHASHSEED=0`) produced byte-identical SHA-256 hashes for `graph.json`/`manifest.json`/`GRAPH_REPORT.md`. Confirmed zero references to any sensitive path and full retention of every Task 9B.1 node and all legitimate source directories.
+
+### Changed Files
+- New: `.graphifyignore`
+- Modified: `graphify-out/graph.json`, `graphify-out/manifest.json`, `graphify-out/GRAPH_REPORT.md`, `graphify-out/.graphify_labels.json`, `graphify-out/2026-07-28/graph.json`, `graphify-out/2026-07-28/manifest.json`, `graphify-out/2026-07-28/GRAPH_REPORT.md`, `graphify-out/2026-07-28/.graphify_labels.json`
+- Modified (docs): `docs/AI_PROJECT_MEMORY.md`, `docs/DECISIONS_LOG.md`, `docs/NEXT_STEPS.md`, `docs/PROMPTS_LOG.md`
+
+### Verification
+1. Two independent `graphify update .` from-scratch rebuilds (`PYTHONHASHSEED=0`): byte-identical SHA-256 for `graph.json`/`manifest.json`/`GRAPH_REPORT.md`.
+2. Sensitive-path search (JSON + Markdown): zero hits for `storage/app/public`, `storage/app/private`, `storage/framework`, `storage/logs`, `public/storage`, `.env`, `*.sql`, composer `vendor/`, `node_modules`, uploaded `.jpg`/`.jpeg`/`.png` filenames.
+3. All 12 Task 9B.1 nodes/classes confirmed present; `app/Services/Audit` (47), `database/migrations` (219), `tests/Feature/Audit` (53), `tests/Unit/Services/Audit` (26), `resources/views/vendor/filament-panels` (33), `config/` (12), `routes/` (2) all confirmed still indexed.
+4. `git diff --check` — exit 0 (CRLF-normalization notices only).
+5. `php artisan oms:check-financial-integrity` — **Result: OK, exit code 0**.
+6. Full application suite intentionally not run, per instructions.
+
+### Commit Hash
+Not committed — awaiting review, per instructions (STOP before commit).
+
+---
+
+### Date
 2026-07-28 (OMS Task 9A — Audit Log design audit, read-only)
 
 ### Task

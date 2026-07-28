@@ -1,0 +1,36 @@
+# Graphify-specific exclusions (OMS Task 9B.1 follow-up — Graphify hygiene).
+#
+# Merged with .gitignore by graphify (outer .gitignore rules first, this
+# file last — gitignore last-match-wins semantics), so entries here can only
+# ever exclude MORE than .gitignore already does, never re-include anything.
+# This file exists because .gitignore's own scope is git-tracking, not graph
+# indexing — several of these paths (e.g. storage/app/public uploads) are
+# runtime-generated and were never meant to be walked by the AST extractor,
+# but .gitignore alone did not stop that (see docs/DECISIONS_LOG.md,
+# 2026-07-28 "Graphify hygiene" entry).
+#
+# Never index runtime/private/uploaded/cached/backup/secret-bearing content:
+# uploaded financial attachments (payment/receipt proof images), compiled
+# Blade view cache, session/queue-cache files, local backup archives, and
+# the storage-linked encryption key file all live under storage/.
+storage/**
+bootstrap/cache/**
+public/storage/**
+
+# Third-party dependency source — never project-authored code to graph.
+vendor/**
+node_modules/**
+
+# VCS internals and graphify's own output (also hardcoded by graphify itself,
+# listed here for explicitness).
+.git/**
+graphify-out/**
+
+# Secrets / environment configuration.
+.env
+.env.*
+
+# Local SQL dumps/backups anywhere in the tree (none are git-tracked today —
+# see the Task 9B.1 follow-up audit — but this stays fail-closed against a
+# future one landing inside the repo by accident).
+*.sql
