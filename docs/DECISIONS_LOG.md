@@ -1434,3 +1434,59 @@ Wiring `HasUserTracking` onto `Account` today was considered and explicitly reje
 
 ### Impact
 New guarded migration `2026_07_28_120000_reconcile_accounts_user_tracking_schema_drift.php`: per-column, it adds the column+FK only if the column is missing, or repairs only a missing FK if the column already exists without one (checked via Laravel's driver-agnostic `Schema::getForeignKeys()`) — so it can never duplicate a constraint/index name. `down()` is intentionally irreversible from the start (informed directly by the same-day `accounts_type` correction above) — the migration cannot tell whether it created the columns or whether they pre-existed as live drift, so rollback must never risk deleting real (or, once Task 9 populates them, historical) tracking data. Verified via two isolated scratch-DB scenarios (fresh install; simulated live drift recreated using the no-op `down()` itself, with a harmless real-valued row) that the migration is idempotent, non-duplicating, and fully rollback-safe, and via a third scratch check that the FK's `ON DELETE SET NULL` genuinely nulls the reference when the tracked user is deleted. Fresh-vs-live parity for `accounts` is now exact. No remaining named Account/AccountType schema drift exists. `docs/NEXT_STEPS.md` records that activating real `Account` creator/updater tracking is deferred to the future Task 9 Audit Log work.
+
+---
+
+### Date
+2026-07-28 (OMS Task 9A — recommended Audit Log architecture)
+
+### Decision
+A first-party, in-house Audit Log (one `audit_events` table + a shared CRUD-diffing layer + explicit domain audit calls) is recommended over adopting a third-party audit/activity-log Composer package.
+
+### Reason
+No audit package is currently installed (confirmed directly against `composer.json`, not from memory). A pure CRUD-logging package would only cover generic model-change events — every other required category (financial-transaction semantics, security/role events, attachment view/download, backup/restore lifecycle, report exports, background/system actors) needs first-party domain events regardless of what ships in any such package, and none of the mainstream options has been vetted against this app's specific Laravel 13/Filament 5/PHP 8.3 combination. This mirrors the identical reasoning already applied and documented for the Task 7B backup engine (built in-house rather than adopting `spatie/laravel-backup`, for materially the same "a package would only cover a fraction of the real requirement" reasoning).
+
+### Impact
+No Composer dependency was added or will be added for the Audit Log feature. `App\Services\Audit\AuditLogger`/`AuditRedactor`/`AuditPayloadBounder`/`AuditActorContext` (built in Task 9B.1) are the permanent foundation later phases (9B.2+) must build directly on top of, not re-derive.
+
+---
+
+### Date
+2026-07-28 (OMS Task 9B.1 — application-level immutability, no DB triggers)
+
+### Decision
+`App\Models\AuditEvent` enforces append-only behavior entirely at the Eloquent/application level (`updating`/`deleting`/`replicating` model-event hooks + an explicit `forceDelete()` override, all throwing `AuditImmutableRecordException`) — not via a database-level `REVOKE UPDATE, DELETE` grant or a DB trigger.
+
+### Reason
+This codebase's established pattern for "must never be mutated through the ordinary app" is already application-level and test-backed, not DB-enforced — see `PermissionResource`/`TransactionResource`'s structurally-hardcoded-`false` `canX()` methods, which survive even `Gate::before`'s Super Admin bypass by construction rather than by a database grant. A real `REVOKE` would need a per-purpose DB user (this app currently uses one shared DB user for everything, confirmed via `config('database.default')` being the only connection anything resolves), making a grant-level lockdown an operationally heavier change than this foundation phase's scope — and Task 9A's own design audit explicitly recommended it only as a later, defense-in-depth option for the eventual Hostinger VPS production deployment, not as part of the foundation.
+
+### Impact
+Every Eloquent mutation path on an existing `AuditEvent` row (`save()` after a dirty change, `update()`, `delete()`, `forceDelete()`, `replicate()`) throws `AuditImmutableRecordException` — proven directly by `AuditEventImmutabilityTest`. A future, explicitly-scoped maintenance task may still operate on `audit_events` via direct DB access (e.g. a real archival/retention job); ordinary application code must not, and nothing built in 9B.1 provides such a path. Revisit a DB-grant-level lockdown specifically as part of the future Hostinger production-deployment task, not before.
+
+---
+
+### Date
+2026-07-28 (OMS Task 9B.1 — redaction matches whole underscore segments, never a bare substring)
+
+### Decision
+`App\Services\Audit\AuditRedactor` flags a field as sensitive by exact name, by suffix (`_token`/`_secret`), or by exact underscore-delimited **segment** match against a denylist (`key`, `secret`, `token`, `password`, `credential`, `cookie`, `authorization`, etc.) — never by a bare `str_contains()` substring check — with one explicit, narrowly-scoped safe-exception list (currently just `encryption_key_id`) for confirmed non-secret identifiers a segment rule would otherwise catch.
+
+### Reason
+Task 9A's design audit explicitly flagged the risk of over-redaction: a naive substring check (`str_contains($key, 'key')`) would also match a real, safe, already-in-use identifier — `App\Models\BackupOperation::encryption_key_id` identifies which key encrypted an archive, it is never the key material itself (see `App\Services\Backup\BackupKeyRing`). Whole-segment matching (splitting the field name on `_` and checking for an exact segment match) means `encryption_key_id` is genuinely caught by the `key` segment rule and must be explicitly allowlisted back — proving the safe-exception mechanism actually does something — while a real field like `bank_type_id` is never at risk in the first place (no segment of its name matches any denylist entry). No other business field in this codebase currently needs a safe exception; per Task 9A's explicit instruction, none was added speculatively (e.g. no `account_key` exception, since no such field exists anywhere).
+
+### Impact
+Adding a new safe exception in the future requires confirming (the same way `encryption_key_id` was confirmed here) that the field is a real, non-secret identifier already in active use elsewhere in the codebase — never added defensively/speculatively. `AuditRedactorTest::test_encryption_key_id_safe_exception_is_preserved` pins this down directly; any future safe exception should get the same kind of dedicated test.
+
+---
+
+### Date
+2026-07-28 (OMS Task 9B.1 — AuditLogger never opens its own DB transaction)
+
+### Decision
+`App\Services\Audit\AuditLogger::record()` performs a single `AuditEvent::create()` call with no surrounding `DB::transaction()`/`DB::beginTransaction()` of its own.
+
+### Reason
+Task 9A's design audit's explicit failure-policy recommendation (confirmed and formalized as this task's approved `AuditFailureMode::Required` contract) requires that a future financial/security caller be able to invoke `record(..., AuditFailureMode::Required)` from *inside* its own existing `DB::transaction()`, so the business mutation and its required audit row commit — or roll back — as a single atomic unit. If `AuditLogger` opened its own nested transaction, Laravel's savepoint-based nested-transaction semantics would still make this work in the common case, but it would be an unnecessary, easy-to-regress implicit dependency on that nesting behavior rather than a structurally guaranteed property. Not opening any transaction at all makes the coupling unconditional and trivial to reason about.
+
+### Impact
+`AuditLoggerTransactionTest` proves this directly: a `record()` call inside a test-opened `DB::transaction()` that later throws rolls the audit row back with it, a normal commit persists it, and `DB::transactionLevel()` is unchanged immediately before/after a `record()` call. Any future 9B.2+ caller auditing a financial mutation in `Required` mode should call `record()` from inside its own existing transaction and can rely on this guarantee without adding any wrapping of its own.

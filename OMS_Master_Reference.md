@@ -109,6 +109,12 @@ Execution payment (PAY) — money paid to beneficiaries from a budget
 ```
 Each step writes a balanced transaction with ≥2 lines; account balances move accordingly.
 
+### Audit Log foundation (OMS Task 9B.1 — schema/service layer only, not yet wired to any existing operation)
+- New table `audit_events` (additive migration `2026_07_28_130000_create_audit_events_table.php`): `uuid` (unique), `event_category`/`event_action` (lowercase snake_case, validated), `subject_type` (a short **stable alias**, e.g. `account`/`general_exchange` — never a raw PHP class name) + `subject_key` + `subject_label`, `actor_user_id` (FK→`users`, `ON DELETE SET NULL`) + `actor_name`/`actor_email` snapshots + `actor_roles` (bounded JSON role-name array, never a permission dump) + `actor_type` (`user`/`system`/`scheduler`/`queue`/`command`), `old_values`/`new_values`/`changed_fields` (JSON, redacted + bounded), `reason`, `correlation_id`, `ip_address`/`user_agent`/`route_name`/`http_method` (interactive events only, never fabricated), `status` (`success`/`failure`), `created_at` only — **no `updated_at`/`deleted_at`/SoftDeletes**.
+- `App\Models\AuditEvent` is application-level immutable: `update()`/`delete()`/`forceDelete()`/`replicate()` all throw `AuditImmutableRecordException`. No Filament UI, no permissions, and no wiring into any existing model/controller/command exists yet — see `docs/NEXT_STEPS.md` for the phased rollout (9B.2+).
+- `App\Services\Audit\AuditLogger::record()` is the intended single write gateway, with two explicit failure modes (`App\Enums\AuditFailureMode`): `Required` (persistence failure throws `AuditPersistenceException`, propagating into whatever `DB::transaction()` the caller already has open — no independent transaction is ever opened by the logger itself) and `BestEffort` (failure is caught, logged sanitized via `Log::error()`, returns `null`).
+- `App\Services\Audit\AuditRedactor` centrally strips secrets (password/token/secret/key-material fields, recursively, whole-underscore-segment matched — never a bare substring match) before anything is bounded or persisted; `App\Services\Audit\AuditPayloadBounder` then caps every string to 1000 Unicode characters and each of `old_values`/`new_values` independently to 8192 encoded JSON bytes (dropping whole keys, never `substr()`-ing the encoded JSON, marking `_truncated: true` when it does).
+
 ---
 
 ## 3. KEY DECISIONS & THE REASONING

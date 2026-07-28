@@ -1940,3 +1940,52 @@ Read-only audit found zero code usage on `Account` (the `created_by`/`updated_by
 
 ### Commit Hash
 Not committed — awaiting review, per instructions (STOP before commit).
+
+---
+
+### Date
+2026-07-28 (OMS Task 9A — Audit Log design audit, read-only)
+
+### Task
+A read-only design and scope-definition phase for a production-ready, immutable, searchable Audit Log — determine what audit capability already exists, evaluate architecture options, define the event taxonomy, propose a schema, and recommend an implementation phase plan. Explicit: do not implement, modify code/data, create migrations, run Graphify, or start Monitoring/Performance/Security work.
+
+### Result
+Verified directly against `composer.json` that no audit/activity-log package is installed. Found `App\Traits\HasUserTracking` wired to 21 models (actor-pointer only, no history) but not `Account`/`AccountType`; zero old/new-value capture, security-event, attachment-access, or report-export logging anywhere. Recommended a first-party hybrid architecture (shared CRUD diffing + explicit domain audit calls) over adopting a Composer package, mirroring the Task 7B backup engine's own in-house rationale. Delivered a full 22-point report: event taxonomy (MUST_AUDIT/OPTIONAL/DO_NOT_AUDIT per category), a proposed `audit_events` schema, an application-level immutability design (no DB triggers), a central redaction policy, a financial-event bounded-snapshot payload policy, background/system actor typing, Super-Admin-only Filament UI design, and an 8-phase rollout plan (9B.1–9B.8).
+
+### Changed Files
+None — read-only design phase, no code/schema/data changes.
+
+### Verification
+Read-only discovery commands only (`composer.json` inspection, targeted grep/Graphify queries, `git status`/`git log`). No tests run (none needed — no code changed). `git status` confirmed clean working tree throughout.
+
+### Commit Hash
+N/A — no changes made.
+
+---
+
+### Date
+2026-07-28 (OMS Task 9B.1 — Audit Log foundation)
+
+### Task
+Implement only the Task 9A-approved Audit Log foundation: schema, immutable model, centralized redaction, payload bounding, actor/request context, strict (REQUIRED) vs best-effort (BEST_EFFORT) persistence modes, and focused tests. Explicit: do not wire into any existing model/controller/command, do not activate `HasUserTracking` on `Account`/`AccountType`, no Filament UI/permissions, no full suite run, no Graphify, no commit/push, no starting 9B.2.
+
+### Result
+Built the complete foundation layer with no application integration: `audit_events` migration (append-only, no `updated_at`/`deleted_at`/SoftDeletes, `subject_type` as a stable hand-maintained alias never a raw FQCN, `actor_user_id` FK→`users` `ON DELETE SET NULL`); `App\Models\AuditEvent` (Eloquent-level immutable via `updating`/`deleting`/`replicating` hooks + an explicit `forceDelete()` override, all throwing `AuditImmutableRecordException`; uuid always freshly generated, never caller-supplied); `App\Services\Audit\AuditRedactor` (recursive, whole-segment-matched secret denylist with one narrowly-scoped safe exception, `encryption_key_id`); `App\Services\Audit\AuditPayloadBounder` (1000-Unicode-char string cap, independent 8192-byte cap per `old_values`/`new_values` via deterministic key-dropping — never `substr()` on encoded JSON — with an explicit `_truncated` marker; safe DateTime/BackedEnum/resource/closure normalization); `App\Services\Audit\AuditActorContext` (typed factories for `user`/`system`/`scheduler`/`queue`/`command` actors — structurally enforces the approved login-failure rule that only a real, already-resolved `User` model, never a raw string, can populate an actor email); `App\Services\Audit\AuditLogger::record()` (`AuditFailureMode::Required` throws `AuditPersistenceException` on failure and preserves the original throwable; `AuditFailureMode::BestEffort` catches, logs sanitized via `Log::error()`, returns `null`; never opens its own DB transaction, so a future caller inside an existing financial `DB::transaction()` gets true commit/rollback coupling — proven directly by a dedicated transaction test). Three new enums (`AuditActorType`, `AuditStatus`, `AuditFailureMode`) and three new exceptions (`AuditImmutableRecordException`, `AuditPersistenceException`, `AuditValidationException`). No AppServiceProvider bindings were needed — every 9B.1 class is a concrete, container-autowireable dependency with no interface substitution point yet.
+
+Two test bugs were found and fixed during the first focused-suite run (both pre-existing-test defects, not production-code defects): a redaction test asserted nested-array access on a key (`credentials`) that the redactor correctly redacts as a whole subtree (segment-matched), and a payload-bounder stress test used a key-differentiation scheme that collided after the bounder's own 191-char key truncation, silently collapsing 2000 test entries into 1.
+
+### Changed Files
+- New: `database/migrations/2026_07_28_130000_create_audit_events_table.php`; `app/Enums/AuditActorType.php`; `app/Enums/AuditStatus.php`; `app/Enums/AuditFailureMode.php`; `app/Models/AuditEvent.php`; `app/Services/Audit/AuditActorContext.php`; `app/Services/Audit/AuditRecordRequest.php`; `app/Services/Audit/AuditRedactor.php`; `app/Services/Audit/AuditPayloadBounder.php`; `app/Services/Audit/AuditLogger.php`; `app/Services/Audit/Exceptions/AuditImmutableRecordException.php`; `app/Services/Audit/Exceptions/AuditPersistenceException.php`; `app/Services/Audit/Exceptions/AuditValidationException.php`; `tests/Feature/Audit/AuditTestCase.php`; `tests/Feature/Audit/AuditEventsMigrationTest.php`; `tests/Feature/Audit/AuditEventImmutabilityTest.php`; `tests/Feature/Audit/AuditActorContextTest.php`; `tests/Feature/Audit/AuditLoggerTest.php`; `tests/Feature/Audit/AuditLoggerTransactionTest.php`; `tests/Unit/Services/Audit/AuditRedactorTest.php`; `tests/Unit/Services/Audit/AuditPayloadBounderTest.php`
+- Modified: `OMS_Master_Reference.md`, `docs/AI_PROJECT_MEMORY.md`, `docs/DECISIONS_LOG.md`, `docs/NEXT_STEPS.md`, `docs/PROMPTS_LOG.md`
+- Local DB schema change: new `audit_events` table created on the real local `oms` database (empty — 0 rows)
+
+### Verification
+1. Pre-task backup: `C:\laragon\backups\oms\oms_before_audit_9b1_20260728_115843.sql`.
+2. Focused suite: `tests/Feature/Audit`, `tests/Unit/Services/Audit` — **53/53 passed, 197 assertions** (two test-file bugs found and fixed mid-task, both in the new test files, no production code affected).
+3. Real local DB: `migrate:status` — new migration `Ran`. `audit_events` confirmed empty (0 rows) after migration. `accounts` (5), `users` (5), `transactions` (8) row counts confirmed unchanged.
+4. Real local `oms:check-financial-integrity` — **Result: OK, exit code 0**.
+5. Real smoke check: `/admin/login` → HTTP 200.
+6. Full application suite intentionally not run, per instructions.
+
+### Commit Hash
+Not committed — awaiting review, per instructions (STOP before commit).
