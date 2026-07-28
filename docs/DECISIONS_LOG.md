@@ -1616,3 +1616,54 @@ The earlier decision was right about the hazard and wrong about the remedy. The 
 
 ### Impact
 `old_values` and `new_values` each carry `project_id` plus their own `project_label`. Lookups select three columns (`id`, `code`, `name`) and are memoized per logical action in `AuditModelSnapshotter::$labelCache`, so a reassignment costs two bounded primary-key lookups and an update that does not touch `project_id` costs none. No related model or collection is ever serialized, and a soft-deleted previous project still resolves to a readable label. Any future subject that registers a relation label inherits this behavior automatically.
+
+---
+
+### Date
+2026-07-28 (Graphify cache hygiene — `graphify-out/cache/**` is local generated cache and must never be tracked)
+
+### Decision
+`/graphify-out/cache/` was added to `.gitignore` and the 2157 previously-committed files under `graphify-out/cache/**` were removed from Git tracking with `git rm --cached -r` (index only — every file remains on disk). `.graphifyignore` was deliberately left unchanged. The tracked Graphify outputs remain exactly `graphify-out/graph.json`, `graphify-out/manifest.json`, `graphify-out/GRAPH_REPORT.md`, `graphify-out/cost.json`, the `.graphify_*` marker files, and the dated curated snapshots.
+
+> **SUPERSEDED the same day, in part:** the clause above retaining *"and the dated curated snapshots"* no longer holds — `graphify-out/20*/` is now ignored and untracked too, and `.graphifyignore` did change (it gained `.claude/**`). See the extension decision below. Everything else in this entry stands.
+
+### Reason
+The trigger was three stale absolute paths to local database-backup `.sql` files inside `graphify-out/cache/stat-index.json`. A read-only audit of the installed Graphify source showed the problem is structural, not a one-off:
+
+- `cache.py`'s own module docstring is "per-file extraction cache - skip unchanged files on re-run" — the whole directory is a pure speed optimisation.
+- The stat index is keyed by `str(p.resolve())`, i.e. an **absolute machine path**, by design. The cache *hash* deliberately uses a path relative to root "so shared caches and CI work correctly", but the index key does not. A file that records absolute local paths as its primary keys can never be portable or safe to commit.
+- Measured on the committed copy: **1511 keys, 100% absolute**, of which 695 were under `storage\` — 506 `storage\framework\testing`, 145 `storage\framework\views` (compiled Blade cache), 31 `storage\app\private` (including the 3 backup `.sql` names and `livewire-tmp` upload scratch files), 12 `storage\app\public` (uploaded financial-attachment filenames) — plus `.claude/settings.local.json`. The reported "three paths" were the visible corner of a much larger leak.
+- Nothing depends on it being tracked: a cache miss is non-fatal (both `load_cached()` call sites in `extract.py` fall through to a fresh extraction when it returns `None`), `_ensure_stat_index()` starts from `{}` when the file is absent, `cache_dir()` does `mkdir(parents=True, exist_ok=True)`, and `_flush_stat_index()` writes atomically and swallows `OSError`. There is no CI in the repo, and the post-commit hook's only "cache" references are its own `~/.cache/graphify-rebuild.log`.
+
+Redacting the three paths by hand was rejected outright: the file is regenerated on every run, so the leak would return on the next commit. A post-generation scrubber was rejected for the same reason — it would be a permanent moving part guarding a file that has no business being in version control at all. The durable fix is repository policy: the cache stays available locally and is never committed.
+
+### Impact
+`graphify update .` (verified, `PYTHONHASHSEED=0`) succeeds with the cache ignored and untracked, rewrites all 2157 local cache files, and produces **zero** untracked entries in `git status`. Graph content is unaffected — every Task 9B.1 foundation node and every Task 9B.2 CRUD-audit class remains indexed, 823 files stay covered, and the tracked outputs contain no `storage/**`, `public/storage/**`, `bootstrap/cache/**`, `node_modules`, `.env*`, `.sql`, or `livewire-tmp` reference. A fresh clone starts with a cold cache and simply re-extracts — slower once, never wrong. The one accepted trade-off is `cache/semantic/**` (14 entries), which Graphify deliberately leaves unversioned because "re-extraction costs LLM calls": a clone elsewhere would re-bill those if an LLM build were run there. Accepted, because this project's documented workflow is AST-only (`graphify update .`, no API cost), the local copies are untouched, and content-hashed semantic entries would be stale for most changed files anyway.
+
+No real backup file was read, moved, modified or deleted at any point.
+
+---
+
+### Date
+2026-07-28 (Graphify hygiene extension — dated snapshots untracked, `.claude/**` excluded from indexing; supersedes the snapshot-retention half of the entry above)
+
+### Decision
+Only the **canonical root-level** Graphify outputs are tracked. `/graphify-out/20*/` was added to `.gitignore` and all 75 files across the 15 dated snapshot directories were removed from Git tracking with `git rm --cached -r` (index only — all 75 remain on disk). Separately, `.claude/**` was added to `.graphifyignore` so local Claude Code state is never indexed. The repository-root `CLAUDE.md` is deliberately **not** excluded and remains indexed as project documentation.
+
+This explicitly supersedes the earlier decision's retention of "the dated curated snapshots" as tracked output.
+
+### Reason
+The dated directories are created by `graphify.export.backup_if_protected()`, a pre-overwrite safety snapshot: it copies a fixed artifact list into `graphify-out/<today>/`, keeps "one folder per day, always the latest pre-overwrite state", never raises (a failure only warns), and is disabled entirely by `GRAPHIFY_NO_BACKUP=1`. It is **write-only** — all four call sites (`watch.py:847`, `__main__.py:3533/4704/4819`) invoke `_backup(out)` and discard the return value, and nothing in Graphify enumerates, reads or restores from a dated folder. Nothing in this repository depends on them either: no application code, no CI (there is none), no hook reference, and the only tracked mention anywhere is prose in `docs/TASKS_LOG.md`.
+
+They were also the largest remaining leak of exactly the content the Task 9B.1 `.graphifyignore` work removed from the canonical outputs: because they are frozen copies taken *before* that work, the 15 directories still carried 2681 `storage/app` references, 85 `livewire-tmp`, 30 `.claude`, and 27 `.sql` across 42 files. Hand-redacting thousands of individual paths across frozen historical artifacts was never a serious option; the durable answer is that generated snapshots do not belong in version control at all.
+
+Git history is a strictly better retention mechanism for the same information: **75 commits** touch `graphify-out/graph.json`, versus 15 daily snapshots, and each is tied to the exact source revision that produced it.
+
+`.claude/**` was excluded because Graphify walked the git-ignored per-machine `.claude/settings.local.json` and recorded its filename in the tracked `manifest.json`. The whole directory is excluded rather than that one file so future local Claude runtime/config files are covered by default. `.claude/settings.json` (tracked project config) is also excluded from **indexing** — it is tool configuration, not project-authored source, so losing it from the graph costs nothing. Neither file's contents were read, and neither's git status changed.
+
+### Impact
+Tracked Graphify state is now exactly seven root-level files: `graph.json`, `manifest.json`, `GRAPH_REPORT.md` (the canonical outputs), `cost.json` and `.graphify_labels.json` (curated/cost metadata that is *not* regenerable — `.graphify_labels.json` holds human/skill-assigned community names, and its presence is what makes `backup_if_protected()` treat the graph as protected), plus the two `.graphify_*` markers. A clean deterministic rebuild (`PYTHONHASHSEED=0`, root outputs removed, run twice) produced **byte-identical** SHA-256 for all three canonical outputs, indexing 820 files with zero references to `storage/**`, `public/storage`, `bootstrap/cache`, `livewire-tmp`, uploaded attachment directories, `.sql`, `.claude/`, `settings.local.json`, `.env*`, `node_modules` or composer `vendor/` source — while every Task 9B.1 foundation node and Task 9B.2 CRUD-audit node, and all `app`/`tests`/`database`/`resources`/`config`/`routes` source (plus `CLAUDE.md`), remain indexed.
+
+Local disk is unchanged: 75 snapshot files and 2162 cache files all remain. No real backup file, uploaded attachment, or Claude local-configuration file was read, modified, moved or deleted.
+
+**One finding deliberately left for a separate decision:** `graphify-out/.graphify_python` is tracked and contains a single absolute machine-local interpreter path. It is a convenience probe only — the post-commit hook tries it second of four, and the path cannot exist on any other machine, so the probe simply fails through there. Untracking it (`/graphify-out/.graphify_python` in `.gitignore` + `git rm --cached`) is a zero-risk one-liner, but it was outside the two sources this task scoped, so it is reported rather than applied.

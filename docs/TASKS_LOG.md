@@ -2087,3 +2087,72 @@ Task 9B.2 accepted in principle. Correct two audit-accountability defects found 
 
 ### Commit Hash
 Not committed — awaiting review, per instructions (STOP before commit).
+
+---
+
+### Date
+2026-07-28 (Graphify cache-tracking hygiene — untrack `graphify-out/cache/**`)
+
+### Task
+Remove the tracked generated Graphify cache from version control. Trigger: `graphify-out/cache/stat-index.json` held three stale absolute paths naming real local database-backup `.sql` files under `storage/app/.../backups/`. Required a read-only audit of the installed Graphify source first to confirm the cache is fully generated and not required in Git, then the durable repository-policy fix (`.gitignore` + `git rm --cached`) rather than redacting the three paths or adding a scrubber. Explicitly forbidden: touching the real backup files, deleting the local cache from disk, starting Task 9B.3, pushing, running PHPUnit.
+
+### Result
+The audit confirmed the cache is fully generated, self-recreating and safe to untrack — and that the leak was materially broader than reported. `graphify-out/cache/stat-index.json` contained **1511 keys, 100% of them absolute machine paths**, because `cache.py` keys the index on `str(p.resolve())` by design (the cache *hash* is deliberately relative "so shared caches and CI work correctly"; the index key is not). Breakdown of the committed copy: 506 `storage\framework\testing`, 497 `app`, 169 `tests`, 145 `storage\framework\views`, 71 `database`, 44 `resources`, 31 `storage\app\private` (the 3 backup `.sql` names plus `livewire-tmp` upload scratch files), 12 `config`, 12 `storage\app\public` (uploaded financial-attachment filenames), 6 `bootstrap`, 6 `docs`, 2 `.claude`, 2 `public`, 2 `routes`. So 695 of the 1511 keys pointed under `storage\` — precisely the runtime/uploaded content the Task 9B.1 `.graphifyignore` work removed from `graph.json`/`manifest.json`/`GRAPH_REPORT.md`, but which the stat cache was never in scope to clean.
+
+Nothing depends on the cache being tracked: a miss is non-fatal (both `load_cached()` call sites in `extract.py` fall through to fresh extraction on `None`), `_ensure_stat_index()` starts empty when the file is absent, `cache_dir()` creates its own directories, `_flush_stat_index()` is best-effort and swallows `OSError`, the repo has no CI, and the post-commit hook's only "cache" mentions are its own `~/.cache/graphify-rebuild.log`. The only tracked references to `graphify-out/cache` anywhere in the repository are historical `docs/PROMPTS_LOG.md` entries that already instructed never to commit it — so this change restores the project's own long-standing stated intent.
+
+Applied: added `/graphify-out/cache/` to `.gitignore` (line 16) and ran `git rm --cached -r graphify-out/cache`, removing 2157 files from the index while leaving all 2157 on disk. `.graphifyignore` unchanged. No hand-redaction, no scrubber.
+
+### Changed Files
+- Modified: `.gitignore` (one added line: `/graphify-out/cache/`).
+- Untracked (index removal only, files retained on disk): 2157 files under `graphify-out/cache/**` — 2142 `cache/ast/v0.9.1/*.json`, 14 `cache/semantic/*.json`, 1 `cache/stat-index.json`.
+- Modified docs: `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md`, `docs/NEXT_STEPS.md`, `docs/PROMPTS_LOG.md`. `OMS_Master_Reference.md` deliberately untouched (it contains no Graphify content).
+- **No application code, test, migration, schema or real backup file was touched.**
+
+### Verification
+1. `git check-ignore -v graphify-out/cache/stat-index.json` → `.gitignore:16:/graphify-out/cache/`. Same rule matches a `cache/ast/` entry.
+2. `git ls-files graphify-out/cache` → **0** tracked files. `git status --porcelain --untracked-files=all | grep '^?? graphify-out/cache'` → **0** (correctly ignored, not merely unlisted). 2157 files still present on disk.
+3. Tracked outputs that remain: `graph.json`, `manifest.json`, `GRAPH_REPORT.md`, `cost.json`, the `.graphify_*` markers, and the dated curated snapshots.
+4. Functional check, `PYTHONHASHSEED=0 graphify update .` — succeeded (exit 0, 822/822 files, 12464 nodes / 31641 edges / 502 communities), rewrote all 2157 local cache files, produced **zero** untracked cache entries, and regenerated `stat-index.json` locally (ignored). Every Task 9B.1 foundation node and every Task 9B.2 CRUD-audit class remained indexed; 823 files covered; tracked outputs showed 0 hits for `storage/app`, `storage/framework`, `public/storage`, `bootstrap/cache`, `node_modules`, `.env`, `.sql`, `livewire-tmp`. No full rebuild was requested or required.
+5. The tracked graph outputs that this verification run rewrote were restored to HEAD (`git restore`), so the review diff contains only the hygiene change; `git diff -- graphify-out` is empty and the content is byte-identical ignoring line endings (`core.autocrlf = true`). The post-commit hook will regenerate them into a separate Graphify commit, per the established two-commit pattern.
+6. `git diff --check` — clean. `php artisan oms:check-financial-integrity` — **Result: OK, exit code 0**. PHPUnit deliberately not run.
+7. Real backup files were never read, moved, modified or deleted.
+
+### Commit Hash
+Not committed — awaiting review, per instructions (STOP before commit).
+
+---
+
+### Date
+2026-07-28 (Graphify hygiene extension — untrack dated snapshots, exclude `.claude/**`, clean deterministic rebuild)
+
+### Task
+Extend the accepted cache-untracking work to the two remaining tracked sensitive-path sources: (1) the historical dated Graphify snapshots under `graphify-out/20*/`, and (2) local `.claude/**` state being indexed into the tracked `manifest.json`. Required a read-only audit of whether the snapshots are generated and whether anything depends on them being tracked; the durable `.gitignore` + `git rm --cached` policy fix; a `.graphifyignore` rule excluding local Claude state but never the root `CLAUDE.md`; and a clean deterministic rebuild (`PYTHONHASHSEED=0`, outputs backed up outside the repo, root outputs removed, two runs, byte-identical SHA-256). Explicitly forbidden: touching real backup files or uploaded attachments, reading Claude local config contents, adding `.claude` files to git, running PHPUnit, starting Task 9B.3, pushing. The previously approved cache work had to be preserved, not reset.
+
+### Result
+**Dated snapshots are fully generated and write-only.** `graphify.export.backup_if_protected()` copies a fixed artifact list into `graphify-out/<today>/` before an overwrite, keeps one folder per day, never raises, and is disabled by `GRAPHIFY_NO_BACKUP=1`. All four call sites (`watch.py:847`, `__main__.py:3533/4704/4819`) call `_backup(out)` and **discard the return value**; nothing in Graphify enumerates, reads or restores a dated folder. No application code, hook or CI depends on them (the repo has no CI; the hook never references them; the only tracked mention is prose in `docs/TASKS_LOG.md`). Git history is strictly better retention: **75 commits** touch `graphify-out/graph.json` versus 15 daily snapshots, each tied to the source revision that produced it.
+
+They were also the largest remaining leak: as frozen pre-exclusion copies they still carried 2681 `storage/app` references, 85 `livewire-tmp`, 30 `.claude` and 27 `.sql` across 42 of the 75 files.
+
+Applied: `/graphify-out/20*/` added to `.gitignore` (verified with `git check-ignore --no-index` to match only dated directories — no root-level output file begins with `20`), and `git rm --cached -r graphify-out/20*` removed all 75 files from the index with all 75 retained on disk. `.claude/**` added to `.graphifyignore`; root `CLAUDE.md` deliberately not excluded and confirmed still indexed.
+
+Clean deterministic rebuild: root outputs backed up outside the repository, the three generated root files removed, `PYTHONHASHSEED=0 graphify update .` run twice as two independent from-scratch rebuilds (the three files removed again between runs so neither merged into a prior graph). Both runs produced 820 files, 12480 nodes, 31657 edges, 512 communities and **byte-identical SHA-256** for `graph.json`, `manifest.json` and `GRAPH_REPORT.md`. Indexed-file count fell 823 → 821 → 820 exactly as the `.claude` exclusions predict.
+
+### Changed Files
+- Modified: `.gitignore` (+1 line, `/graphify-out/20*/`, alongside the already-approved `/graphify-out/cache/`), `.graphifyignore` (+`.claude/**` with an explanatory comment).
+- Regenerated: `graphify-out/graph.json`, `graphify-out/manifest.json`, `graphify-out/GRAPH_REPORT.md` (deterministic clean rebuild).
+- Untracked (index removal only, all files retained on disk): 75 files across 15 `graphify-out/20*/` directories — this pass; plus the 2157 `graphify-out/cache/**` files from the previous, preserved pass.
+- Modified docs: `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md` (earlier snapshot-retention clause explicitly superseded), `docs/NEXT_STEPS.md`, `docs/PROMPTS_LOG.md`.
+- **No application code, test, migration, schema, real backup, uploaded attachment or Claude local-config file was touched.**
+
+### Verification
+1. `git ls-files "graphify-out/20*"` → **0**. `git ls-files graphify-out/cache` → **0**. `git check-ignore -v` resolves both to `.gitignore:16` and `.gitignore:17`.
+2. On disk: 75 snapshot files across 15 directories and 2162 cache files all still present.
+3. Deterministic rebuild, two independent from-scratch runs, `PYTHONHASHSEED=0` — `graph.json` `e80630da7d6c14d3…`, `manifest.json` `bdaf93e835964a29…`, `GRAPH_REPORT.md` `66bc5e3cca36c229…` — identical across both runs.
+4. Tracked-file leak check over the seven remaining tracked `graphify-out` files: **0 hits** for `storage/app`, `storage/framework`, `storage/logs`, `public/storage`, `bootstrap/cache`, `livewire-tmp`, uploaded attachment directories, `.sql` filenames, `.claude/`, `settings.local.json`, `.env*`, `node_modules`, composer `vendor/` source. Legitimate source identifiers survive and are distinguished from path leakage (`BackupCreationOrchestrator` 649, `RestoreCommand` 384, `AttachmentStorageService` 264, `AuditedCrudService` 387); `resources/views/vendor/**` remains indexed (33 references).
+5. Coverage intact: every Task 9B.1 foundation node and every Task 9B.2 CRUD-audit node present; 820 indexed files (`app` 480, `tests` 167, `database` 71, `resources` 44, `public` 30, `config` 12, `docs` 6, `routes` 2, `bootstrap` 2, plus root `CLAUDE.md`, `README.md`, `composer.json`, `package.json`, `artisan`, `vite.config.js`, `OMS_Master_Reference.md`).
+6. `git diff --check` — clean. `php artisan oms:check-financial-integrity` — **Result: OK, exit code 0**. PHPUnit deliberately not run.
+7. **One finding reported, not applied** (outside this task's two scoped sources): `graphify-out/.graphify_python` is tracked and holds a single absolute machine-local interpreter path. It is only the hook's second of four interpreter probes and cannot resolve on another machine. Untracking it is a zero-risk one-liner awaiting your decision.
+
+### Commit Hash
+Not committed — awaiting review, per instructions (STOP before commit).

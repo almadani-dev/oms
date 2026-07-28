@@ -1,14 +1,4 @@
 {
-  ".claude/settings.json": {
-    "mtime": 1783253486.7694583,
-    "ast_hash": "1e26283856d1486c3fe21c6114fdc9f3",
-    "semantic_hash": ""
-  },
-  ".claude/settings.local.json": {
-    "mtime": 1783240611.7158964,
-    "ast_hash": "666384cc82d8956b100967b4c4c2fc72",
-    "semantic_hash": ""
-  },
   "app/Console/Commands/BackfillTransactionDescriptions.php": {
     "mtime": 1784100845.7032971,
     "ast_hash": "0b9d9148847deaf29ba6a59aba2fd64f",
@@ -87,6 +77,21 @@
   "app/Enums/TransactionLineRole.php": {
     "mtime": 1785221253.680479,
     "ast_hash": "6b227d37d19bfb4ab13160ac70bef5b4",
+    "semantic_hash": ""
+  },
+  "app/Filament/Concerns/AuditedActions.php": {
+    "mtime": 1785233595.267799,
+    "ast_hash": "deb5d8c3e5bc739a1557fc93a2d6e65a",
+    "semantic_hash": ""
+  },
+  "app/Filament/Concerns/AuditsRecordCreation.php": {
+    "mtime": 1785233417.474062,
+    "ast_hash": "469dd6f6997997e356c08b7ee7536cd1",
+    "semantic_hash": ""
+  },
+  "app/Filament/Concerns/AuditsRecordUpdate.php": {
+    "mtime": 1785233421.3212602,
+    "ast_hash": "137ea7b4658e95505cef0e781036458d",
     "semantic_hash": ""
   },
   "app/Filament/Concerns/GeneratesSequentialTransactionNumbers.php": {
@@ -1444,6 +1449,11 @@
     "ast_hash": "898a89b4fef28c28eeb53f046677ba9f",
     "semantic_hash": ""
   },
+  "app/Services/Audit/AuditActorResolver.php": {
+    "mtime": 1785233272.9964595,
+    "ast_hash": "ea4fade63c36def10d74654d9035e999",
+    "semantic_hash": ""
+  },
   "app/Services/Audit/AuditLogger.php": {
     "mtime": 1785229631.4278374,
     "ast_hash": "4663a96dd192b0203fdd9319c9175c3f",
@@ -1464,6 +1474,36 @@
     "ast_hash": "71f85eaf1df0a42cc1e17a71bc41ee3e",
     "semantic_hash": ""
   },
+  "app/Services/Audit/Crud/AuditFieldDiff.php": {
+    "mtime": 1785233356.0081873,
+    "ast_hash": "7011bd116adb331655b83cd184355515",
+    "semantic_hash": ""
+  },
+  "app/Services/Audit/Crud/AuditModelSnapshotter.php": {
+    "mtime": 1785235048.828117,
+    "ast_hash": "c5acb5cbdda22e8e97f0d7c43bc247de",
+    "semantic_hash": ""
+  },
+  "app/Services/Audit/Crud/AuditSubjectDefinition.php": {
+    "mtime": 1785235018.8624763,
+    "ast_hash": "b0a8356906e6c504a67767bf53ef8ad3",
+    "semantic_hash": ""
+  },
+  "app/Services/Audit/Crud/AuditSubjectRegistry.php": {
+    "mtime": 1785235075.4436114,
+    "ast_hash": "15c64a1f1dc17e1084b95de430acab31",
+    "semantic_hash": ""
+  },
+  "app/Services/Audit/Crud/AuditedCrudService.php": {
+    "mtime": 1785233409.988603,
+    "ast_hash": "94b7b0ef3731e42221dce16b8aaabeb7",
+    "semantic_hash": ""
+  },
+  "app/Services/Audit/Crud/SettingValuePolicy.php": {
+    "mtime": 1785233311.3808813,
+    "ast_hash": "1a8c66f2fe9c5bfbd484d0e2e3c7af35",
+    "semantic_hash": ""
+  },
   "app/Services/Audit/Exceptions/AuditImmutableRecordException.php": {
     "mtime": 1785228482.9042926,
     "ast_hash": "c39b2e2ba4400effb920695ddf5c1aef",
@@ -1472,6 +1512,11 @@
   "app/Services/Audit/Exceptions/AuditPersistenceException.php": {
     "mtime": 1785228485.5148656,
     "ast_hash": "ad2407db1b07819171485815b2c43ad4",
+    "semantic_hash": ""
+  },
+  "app/Services/Audit/Exceptions/AuditSubjectNotRegisteredException.php": {
+    "mtime": 1785233246.557966,
+    "ast_hash": "5f1f6a2c671ffe46fc168b7148f39649",
     "semantic_hash": ""
   },
   "app/Services/Audit/Exceptions/AuditValidationException.php": {
@@ -3239,6 +3284,41 @@
     "ast_hash": "4f1f3110929dd4d3715e9171218f0c08",
     "semantic_hash": ""
   },
+  "tests/Feature/Audit/Crud/AuditCrudInfrastructureTest.php": {
+    "mtime": 1785233783.72318,
+    "ast_hash": "f98fc9694ddf8ebf82cf1bb20a154ece",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Crud/AuditedCrudAtomicityTest.php": {
+    "mtime": 1785233853.0467522,
+    "ast_hash": "7993fd551ebe6ceebcef2b53a19d600f",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Crud/AuditedCrudServiceTest.php": {
+    "mtime": 1785235099.2983944,
+    "ast_hash": "a9483d27946c450691cdb104a5dfe031",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Crud/AuditedCrudTestCase.php": {
+    "mtime": 1785233739.8537745,
+    "ast_hash": "5108e44ce969127e2fd73ee81c6ac374",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Crud/AuditedFilamentCrudTest.php": {
+    "mtime": 1785234045.2769146,
+    "ast_hash": "65b4e74bce7d201369a27eaf2c32bfef",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Crud/AuditedFilamentLifecycleTest.php": {
+    "mtime": 1785235311.9279637,
+    "ast_hash": "411f852a4879a0235df2a9ab9026333c",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Crud/SettingAuditPolicyTest.php": {
+    "mtime": 1785235117.2638943,
+    "ast_hash": "fd3c6bdfb15e265d34468da19acff3f7",
+    "semantic_hash": ""
+  },
   "tests/Feature/Backup/AttachmentCollectorTest.php": {
     "mtime": 1784724462.4263618,
     "ast_hash": "cbd0b6c65db1a4bcb8cd76410b179753",
@@ -3990,23 +4070,23 @@
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1785235536.8415806,
-    "ast_hash": "4d3bedeebd0a027422158d9105331ee2",
+    "mtime": 1785237709.8854983,
+    "ast_hash": "e710cd8640ad40bb2a3f8ec80a90026e",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
-    "mtime": 1785235515.8119912,
-    "ast_hash": "df0972aed94bc8cdd0f828d7cf494700",
+    "mtime": 1785237680.2180486,
+    "ast_hash": "821c0b7fadc398067726476a32e54a35",
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1785235481.133044,
-    "ast_hash": "29457ba00b8ccb2e5954edb8de73c50e",
+    "mtime": 1785237726.7320523,
+    "ast_hash": "8bf7b3910993545b9c2a1dec4ec95b87",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
-    "mtime": 1785234616.5481403,
-    "ast_hash": "c2afa2446d76658702911de5b526e7d3",
+    "mtime": 1785237761.2257226,
+    "ast_hash": "fe9ef17c869e8e6cc9e03178074016e5",
     "semantic_hash": ""
   },
   "docs/RESTORE_RECOVERY.md": {
@@ -4015,103 +4095,13 @@
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1785235573.0805767,
-    "ast_hash": "ec2bc5ff9dbf30b3659bf54d1b75d96b",
+    "mtime": 1785237680.1850085,
+    "ast_hash": "e607f8e00049fc3c46bc669f510f2521",
     "semantic_hash": ""
   },
   "public/robots.txt": {
     "mtime": 1779750712.0,
     "ast_hash": "b6216d61c03e6ce0c9aea6ca7808f7ca",
-    "semantic_hash": ""
-  },
-  "app/Filament/Concerns/AuditedActions.php": {
-    "mtime": 1785233595.267799,
-    "ast_hash": "deb5d8c3e5bc739a1557fc93a2d6e65a",
-    "semantic_hash": ""
-  },
-  "app/Filament/Concerns/AuditsRecordCreation.php": {
-    "mtime": 1785233417.474062,
-    "ast_hash": "469dd6f6997997e356c08b7ee7536cd1",
-    "semantic_hash": ""
-  },
-  "app/Filament/Concerns/AuditsRecordUpdate.php": {
-    "mtime": 1785233421.3212602,
-    "ast_hash": "137ea7b4658e95505cef0e781036458d",
-    "semantic_hash": ""
-  },
-  "app/Services/Audit/AuditActorResolver.php": {
-    "mtime": 1785233272.9964595,
-    "ast_hash": "ea4fade63c36def10d74654d9035e999",
-    "semantic_hash": ""
-  },
-  "app/Services/Audit/Crud/AuditFieldDiff.php": {
-    "mtime": 1785233356.0081873,
-    "ast_hash": "7011bd116adb331655b83cd184355515",
-    "semantic_hash": ""
-  },
-  "app/Services/Audit/Crud/AuditModelSnapshotter.php": {
-    "mtime": 1785235048.828117,
-    "ast_hash": "c5acb5cbdda22e8e97f0d7c43bc247de",
-    "semantic_hash": ""
-  },
-  "app/Services/Audit/Crud/AuditSubjectDefinition.php": {
-    "mtime": 1785235018.8624763,
-    "ast_hash": "b0a8356906e6c504a67767bf53ef8ad3",
-    "semantic_hash": ""
-  },
-  "app/Services/Audit/Crud/AuditSubjectRegistry.php": {
-    "mtime": 1785235075.4436114,
-    "ast_hash": "15c64a1f1dc17e1084b95de430acab31",
-    "semantic_hash": ""
-  },
-  "app/Services/Audit/Crud/AuditedCrudService.php": {
-    "mtime": 1785233409.988603,
-    "ast_hash": "94b7b0ef3731e42221dce16b8aaabeb7",
-    "semantic_hash": ""
-  },
-  "app/Services/Audit/Crud/SettingValuePolicy.php": {
-    "mtime": 1785233311.3808813,
-    "ast_hash": "1a8c66f2fe9c5bfbd484d0e2e3c7af35",
-    "semantic_hash": ""
-  },
-  "app/Services/Audit/Exceptions/AuditSubjectNotRegisteredException.php": {
-    "mtime": 1785233246.557966,
-    "ast_hash": "5f1f6a2c671ffe46fc168b7148f39649",
-    "semantic_hash": ""
-  },
-  "tests/Feature/Audit/Crud/AuditCrudInfrastructureTest.php": {
-    "mtime": 1785233783.72318,
-    "ast_hash": "f98fc9694ddf8ebf82cf1bb20a154ece",
-    "semantic_hash": ""
-  },
-  "tests/Feature/Audit/Crud/AuditedCrudAtomicityTest.php": {
-    "mtime": 1785233853.0467522,
-    "ast_hash": "7993fd551ebe6ceebcef2b53a19d600f",
-    "semantic_hash": ""
-  },
-  "tests/Feature/Audit/Crud/AuditedCrudServiceTest.php": {
-    "mtime": 1785235099.2983944,
-    "ast_hash": "a9483d27946c450691cdb104a5dfe031",
-    "semantic_hash": ""
-  },
-  "tests/Feature/Audit/Crud/AuditedCrudTestCase.php": {
-    "mtime": 1785233739.8537745,
-    "ast_hash": "5108e44ce969127e2fd73ee81c6ac374",
-    "semantic_hash": ""
-  },
-  "tests/Feature/Audit/Crud/AuditedFilamentCrudTest.php": {
-    "mtime": 1785234045.2769146,
-    "ast_hash": "65b4e74bce7d201369a27eaf2c32bfef",
-    "semantic_hash": ""
-  },
-  "tests/Feature/Audit/Crud/AuditedFilamentLifecycleTest.php": {
-    "mtime": 1785235311.9279637,
-    "ast_hash": "411f852a4879a0235df2a9ab9026333c",
-    "semantic_hash": ""
-  },
-  "tests/Feature/Audit/Crud/SettingAuditPolicyTest.php": {
-    "mtime": 1785235117.2638943,
-    "ast_hash": "fd3c6bdfb15e265d34468da19acff3f7",
     "semantic_hash": ""
   }
 }

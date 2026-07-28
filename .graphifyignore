@@ -30,6 +30,19 @@ graphify-out/**
 .env
 .env.*
 
+# Local Claude Code state. `.claude/settings.local.json` is git-ignored
+# per-machine configuration, yet Graphify still walked it and recorded its
+# filename in the tracked manifest.json. The whole directory is excluded so
+# any future local Claude runtime/config file is covered by default rather
+# than needing a new rule each time; `.claude/settings.json` (tracked
+# project config) is editor/tool configuration, not project-authored source,
+# so losing it from the graph costs nothing.
+#
+# This excludes the DIRECTORY only. The repository-root CLAUDE.md is real
+# project documentation and stays indexed. This rule affects Graphify
+# indexing only — it never changes what git tracks.
+.claude/**
+
 # Local SQL dumps/backups anywhere in the tree (none are git-tracked today —
 # see the Task 9B.1 follow-up audit — but this stays fail-closed against a
 # future one landing inside the repo by accident).
