@@ -10,10 +10,8 @@ use App\Models\FiscalYear;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Models\TransactionType;
-use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 /**
  * Shared SQLite-schema migration + minimal financial fixture builders for
@@ -45,44 +43,6 @@ trait IntegrityTestFixtures
             '--realpath' => false,
             '--force' => true,
         ]);
-
-        $this->shimUndocumentedSchemaDrift();
-    }
-
-    /**
-     * bank_accounts (with transactions.bank_account_id) and accounts.parent_id
-     * all exist in the real local MySQL database with real FK constraints,
-     * but have no migration file on disk at all — a pre-existing, documented
-     * schema/migration-history gap discovered during the OMS Task 8 audit
-     * (see docs/AI_PROJECT_MEMORY.md), out of this task's scope to fix. This
-     * is a minimal test-only shim (same pattern as ReportPageAccessTest's
-     * sqliteCreateFunction('FIELD', ...) workaround for a different
-     * MySQL-only gap) so DatabaseRelationshipIntegrityChecker's checks on
-     * these two real relationships — which ARE correct against the real
-     * schema — are testable at all under this project's SQLite convention.
-     */
-    private function shimUndocumentedSchemaDrift(): void
-    {
-        if (! Schema::hasTable('bank_accounts')) {
-            Schema::create('bank_accounts', function (Blueprint $table) {
-                $table->id();
-                $table->string('name');
-                $table->timestamps();
-                $table->softDeletes();
-            });
-        }
-
-        if (! Schema::hasColumn('transactions', 'bank_account_id')) {
-            Schema::table('transactions', function (Blueprint $table) {
-                $table->foreignId('bank_account_id')->nullable()->after('partner_id');
-            });
-        }
-
-        if (! Schema::hasColumn('accounts', 'parent_id')) {
-            Schema::table('accounts', function (Blueprint $table) {
-                $table->foreignId('parent_id')->nullable()->after('bank_type_id');
-            });
-        }
     }
 
     protected function makeCurrency(array $attrs = []): Currency

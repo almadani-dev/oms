@@ -1858,3 +1858,31 @@ See `docs/AI_PROJECT_MEMORY.md` (2026-07-27, "OMS Task 8") for full technical de
 
 ### Commit Hash
 Not committed — awaiting review, per instructions.
+
+---
+
+### Date
+2026-07-28 (OMS Task 8.1 — Schema Drift + Dead Schema Reconciliation)
+
+### Task
+Determine from evidence (not assumption) whether `bank_accounts`, `accounts.parent_id`, and `transactions.bank_account_id` — live in the local MySQL DB with real FK constraints but with no migration file on disk — are ACTIVE_REQUIRED, LEGACY_WITH_DATA, DEAD_UNUSED, or AMBIGUOUS, per Task 8's own 2026-07-27 deferred decision, then act accordingly (restore/create migration, stop-and-report, or safely remove) so `migrate:fresh` produces the intended current schema.
+
+### Result
+Pre-task `mysqldump` backup created outside the project directory. Read-only audit (code, git history, live DB) found zero application code usage of all three objects (no model, relationship, `$fillable` entry, resource/form field, factory, or seeder — only the Task 8 integrity checker's defensive FK check and its test shim) and zero non-null/live data currently and in the earliest captured historical backup (2026-07-06); the single `bank_accounts` row that ever existed (2026-06-09, placeholder-looking data) was already purged by the separate, user-approved 2026-07-06 operational data reset. Git history confirmed `create_bank_accounts_table` was never committed to this repo at all (all 64 migration files ever added still match all 64 on disk — nothing was ever deleted). Classified **DEAD_UNUSED** for all three (unanimous evidence). Applied a new guarded migration (`2026_07_28_100000_drop_dead_bank_accounts_schema.php`) to the real local `oms` database dropping `transactions.bank_account_id`, `accounts.parent_id`, and `bank_accounts`; removed the now-orphaned `migrations` table row for the never-existing `create_bank_accounts_table` file. Cleaned the two now-dead relationship checks out of `DatabaseRelationshipIntegrityChecker`, removed the now-unnecessary SQLite drift shim from `IntegrityTestFixtures`, updated the affected test's assertions, and corrected one stale schema claim in `OMS_Master_Reference.md`. Verified via an isolated scratch database (`oms_task81_freshcheck`, created and dropped on the same MySQL server, real `oms` DB never touched by `migrate:fresh`) that a clean install no longer differs from the reconciled local DB on `accounts`/`transactions`. Discovered (report-only, out of this task's named scope) two pre-existing, unrelated drifts as a side effect of the fresh-vs-local schema comparison: `accounts.account_code` NOT NULL live vs. nullable fresh, and `accounts_type` carrying a live `nature` enum + audit columns with no reproducing migration — both recommended as their own future tasks. Focused regression: 511/513 passed (2 pre-existing skips) + 58/58 report-authorization tests. Real local DB: `migrate:status` all 64 `Ran`; `php artisan oms:check-financial-integrity` — **Result: OK, exit code 0** (10 relationships checked, was 12). Real smoke checks (Trial Balance, Account Statement, Account/Transaction Eloquent loads, `/admin/login` HTTP 200) all passed against the reconciled real data. Working tree contains only the intended changes.
+
+### Changed Files
+- New: `database/migrations/2026_07_28_100000_drop_dead_bank_accounts_schema.php`
+- Modified: `app/Services/Integrity/DatabaseRelationshipIntegrityChecker.php` (removed 2 dead relationship entries); `tests/Support/Integrity/IntegrityTestFixtures.php` (removed `shimUndocumentedSchemaDrift()` + unused imports); `tests/Feature/Integrity/DatabaseRelationshipIntegrityCheckerTest.php` (assertion count 12→10, dropped dead `bank_account_id` reference); `OMS_Master_Reference.md` (removed stale `parent_id` claim from the `accounts` schema summary)
+- Local DB schema change (not a code file): dropped `bank_accounts` table, `accounts.parent_id`, `transactions.bank_account_id`, and their FKs/indexes from the real local `oms` database; deleted 1 orphaned `migrations` table row
+
+### Verification
+1. Pre-task backup: `C:\Users\laptop\oms_db_backups\oms_pre_task8.1_20260728_100905.sql`.
+2. Focused suite: `tests/Feature/Integrity`, `CheckFinancialIntegrityCommandTest`, `tests/Feature/Reports`, `tests/Feature/GeneralExchanges`, `tests/Feature/ProjectCostBudgetsPayments`, `GeneratesSequentialTransactionNumbersTest`, `tests/Unit/Services` — **511/513 passed, 2 skipped**.
+3. `ReportPageAccessTest` + `ReportExportAuthorizationTest` — **58/58 passed**.
+4. Isolated fresh-install check on scratch DB `oms_task81_freshcheck` (created/dropped on the same MySQL server, real `oms` DB never targeted by `migrate:fresh`) — 64/64 migrations ran cleanly; `bank_accounts`/`accounts.parent_id`/`transactions.bank_account_id` confirmed absent.
+5. Real local DB: `migrate:status` — all 64 `Ran`. `php artisan oms:check-financial-integrity` — **Result: OK, exit code 0** (0 relationship/numbering/balance/FX/currency-mismatch/persisted-balance violations).
+6. Real (read-only, not rolled back) smoke checks against reconciled local data: `TrialBalanceReportService`/`AccountStatementReportService` both executed cleanly; `Account`/`Transaction` Eloquent queries with relationships loaded cleanly; `/admin/login` → HTTP 200; `/admin/accounts` → HTTP 302 (correct auth redirect).
+7. `git status`/`git diff --stat` confirmed the working tree contains only the intended changes.
+
+### Commit Hash
+Not committed — awaiting review, per instructions (STOP before commit).

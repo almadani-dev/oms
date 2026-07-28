@@ -36,7 +36,7 @@ class DatabaseRelationshipIntegrityCheckerTest extends TestCase
         $report = $this->check();
 
         $this->assertFalse($report->hasViolations());
-        $this->assertSame(12, $report->stat('relationships_checked'));
+        $this->assertSame(10, $report->stat('relationships_checked'));
     }
 
     public function test_physical_orphan_is_detected(): void
@@ -78,7 +78,7 @@ class DatabaseRelationshipIntegrityCheckerTest extends TestCase
     {
         $currency = $this->makeCurrency();
         $account = $this->makeAccount($currency);
-        $transaction = $this->makeTransaction(['partner_id' => null, 'bank_account_id' => null]);
+        $transaction = $this->makeTransaction(['partner_id' => null]);
         $this->makeLine($transaction, $account, $currency, ['project_cost_id' => null]);
 
         $report = $this->check();

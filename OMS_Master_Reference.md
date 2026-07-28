@@ -65,7 +65,7 @@ The system is a Filament admin panel organized into navigation groups (in order)
 
 **Core:**
 - `partners` — has `is_donor`; id 1 = "جمعية كاف".
-- `accounts` — `account_code`, `parent_id`, `currency_id`, `bank_type_id`, `current_balance` (STORED, updated via increment/decrement — never re-summed).
+- `accounts` — `account_code`, `currency_id`, `bank_type_id`, `current_balance` (STORED, updated via increment/decrement — never re-summed). (`parent_id` existed live with no migration file and zero usage; removed in OMS Task 8.1, 2026-07-28 — see docs/DECISIONS_LOG.md.)
 
 **Projects (5 tables):**
 - `projects` — auto code `PREFIX_YYYYMMDD_001`; columns: `name`, `code`, `project_super_id`, `donor_id`, `project_status_id`, `approval_date`, `implementation_date`, `start_date`, `end_date`, `donor_project_name` (free text), `notes`. NOTE: `budget_amount`, `currency_id`, `approved_by` were dropped by later migrations.

@@ -35,11 +35,9 @@ class DatabaseRelationshipIntegrityChecker
         ['table' => 'transactions', 'column' => 'fiscal_year_id', 'references' => 'fiscal_years', 'nullable' => false],
         ['table' => 'transactions', 'column' => 'transaction_type_id', 'references' => 'transactions_types', 'nullable' => false],
         ['table' => 'transactions', 'column' => 'partner_id', 'references' => 'partners', 'nullable' => true],
-        ['table' => 'transactions', 'column' => 'bank_account_id', 'references' => 'bank_accounts', 'nullable' => true],
         ['table' => 'accounts', 'column' => 'account_type_id', 'references' => 'accounts_type', 'nullable' => false],
         ['table' => 'accounts', 'column' => 'currency_id', 'references' => 'currencies', 'nullable' => false],
         ['table' => 'accounts', 'column' => 'bank_type_id', 'references' => 'bank_types', 'nullable' => true],
-        ['table' => 'accounts', 'column' => 'parent_id', 'references' => 'accounts', 'nullable' => true],
     ];
 
     public function check(IntegrityCheckReport $report): void
