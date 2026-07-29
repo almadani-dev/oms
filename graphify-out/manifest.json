@@ -1420,8 +1420,8 @@
     "semantic_hash": ""
   },
   "app/Providers/AppServiceProvider.php": {
-    "mtime": 1785067518.7033825,
-    "ast_hash": "749deb6ffab8b3ea2eb3e8a45c502df0",
+    "mtime": 1785317160.8690155,
+    "ast_hash": "cb46ebc7444cfea9d646aef48a76c5a4",
     "semantic_hash": ""
   },
   "app/Providers/Filament/AdminPanelProvider.php": {
@@ -1450,8 +1450,8 @@
     "semantic_hash": ""
   },
   "app/Services/Audit/AuditActorResolver.php": {
-    "mtime": 1785233272.9964595,
-    "ast_hash": "ea4fade63c36def10d74654d9035e999",
+    "mtime": 1785317103.506499,
+    "ast_hash": "3d07b8098d458a87f0e8029c70222c4a",
     "semantic_hash": ""
   },
   "app/Services/Audit/AuditLogger.php": {
@@ -1470,8 +1470,8 @@
     "semantic_hash": ""
   },
   "app/Services/Audit/AuditRedactor.php": {
-    "mtime": 1785228532.9236162,
-    "ast_hash": "71f85eaf1df0a42cc1e17a71bc41ee3e",
+    "mtime": 1785317111.0195358,
+    "ast_hash": "feccf6d0e644a2decf377dc09452e8cf",
     "semantic_hash": ""
   },
   "app/Services/Audit/Crud/AuditFieldDiff.php": {
@@ -1775,8 +1775,8 @@
     "semantic_hash": ""
   },
   "app/Services/Permissions/PermissionSyncService.php": {
-    "mtime": 1784553834.0226097,
-    "ast_hash": "e1c210a785948bfbfd00e22ad4fa6443",
+    "mtime": 1785317304.5779622,
+    "ast_hash": "0e8bb27b4dc475f1875eab17da0439c6",
     "semantic_hash": ""
   },
   "app/Services/Reports/AccountStatementExcelExportService.php": {
@@ -2305,8 +2305,8 @@
     "semantic_hash": ""
   },
   "app/Services/Roles/RoleManagementService.php": {
-    "mtime": 1784560612.9615812,
-    "ast_hash": "de973a773f53ed0ea7cbb38747136fec",
+    "mtime": 1785317249.217561,
+    "ast_hash": "c92de6d49e52983b062cd00b19be090b",
     "semantic_hash": ""
   },
   "app/Services/Transactions/Backfill/ClassifiedTransaction.php": {
@@ -2340,8 +2340,8 @@
     "semantic_hash": ""
   },
   "app/Services/Users/UserManagementService.php": {
-    "mtime": 1784553834.1274734,
-    "ast_hash": "8d8a94de9cf2123af0d85aba55db5f31",
+    "mtime": 1785317216.2118912,
+    "ast_hash": "5a7b6cdb4a20ce89129201cdfe389461",
     "semantic_hash": ""
   },
   "app/Services/Validation/FinancialAccountGuard.php": {
@@ -4060,8 +4060,8 @@
     "semantic_hash": ""
   },
   "OMS_Master_Reference.md": {
-    "mtime": 1785315824.0292342,
-    "ast_hash": "e73cc5933561bcaefb136e2a0968a950",
+    "mtime": 1785319194.8370674,
+    "ast_hash": "084cbcf27fb34ef5a32602ad2aa74e83",
     "semantic_hash": ""
   },
   "README.md": {
@@ -4070,23 +4070,23 @@
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1785315887.9512074,
-    "ast_hash": "3addec7e49c48c97684e5de2a1ed93d1",
+    "mtime": 1785318764.5450354,
+    "ast_hash": "93adee05748541158bf89c439e2e575e",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
-    "mtime": 1785315940.4189937,
-    "ast_hash": "179a224f28d19c4da06c8a2e4a76819a",
+    "mtime": 1785319204.1975365,
+    "ast_hash": "d6222f316ad116162b54c1f719dba5ce",
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1785315987.3811061,
-    "ast_hash": "b432da14efc58d2856e343d0f7652de3",
+    "mtime": 1785319210.441106,
+    "ast_hash": "717d5ff1c7f1fe79252d44d660fd55a9",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
-    "mtime": 1785315967.6974292,
-    "ast_hash": "e823ea50b221d0bd4c98813a779f5148",
+    "mtime": 1785318894.7641585,
+    "ast_hash": "43d6b7fe37d1c6e7efdb6d8fc45864a2",
     "semantic_hash": ""
   },
   "docs/RESTORE_RECOVERY.md": {
@@ -4095,8 +4095,8 @@
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1785315869.993595,
-    "ast_hash": "efd486b53b912c041fdab50cc3efd237",
+    "mtime": 1785318806.4553597,
+    "ast_hash": "6de7bd884e490a98ebbc9b85aff321ca",
     "semantic_hash": ""
   },
   "public/robots.txt": {
@@ -4187,6 +4187,71 @@
   "tests/Feature/Audit/Financial/ProjectDisbursementAuditTest.php": {
     "mtime": 1785313866.8160157,
     "ast_hash": "a2f6c35bb7d17e6a44a42087191c507e",
+    "semantic_hash": ""
+  },
+  "app/Listeners/Auth/AuthenticationAuditSubscriber.php": {
+    "mtime": 1785317807.8832178,
+    "ast_hash": "1fa00f5ff628dc3a4c83a7c44925ef6f",
+    "semantic_hash": ""
+  },
+  "app/Services/Audit/Security/AuthenticationAuditRecorder.php": {
+    "mtime": 1785317094.4864507,
+    "ast_hash": "55a39decf35e201f905e6e3754b1a181",
+    "semantic_hash": ""
+  },
+  "app/Services/Audit/Security/SecurityAuditRecorder.php": {
+    "mtime": 1785317047.251203,
+    "ast_hash": "d95de5086aef03435d05f789dbed0edd",
+    "semantic_hash": ""
+  },
+  "app/Services/Audit/Security/SecurityAuditSubject.php": {
+    "mtime": 1785316953.9011893,
+    "ast_hash": "a10a54e9f597e401b01a65df62b4a728",
+    "semantic_hash": ""
+  },
+  "app/Services/Audit/Security/SecurityNameDiff.php": {
+    "mtime": 1785316967.5345688,
+    "ast_hash": "c7158d204fe83067718ca53b6779477f",
+    "semantic_hash": ""
+  },
+  "app/Services/Audit/Security/UserSecuritySnapshot.php": {
+    "mtime": 1785316987.732161,
+    "ast_hash": "03f6f7238aed2325cb4524622bbf594c",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Security/AuthenticationAuditTest.php": {
+    "mtime": 1785317825.0090127,
+    "ast_hash": "a3a294a70c6da0820796f3f19b77dc56",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Security/PermissionSyncAuditTest.php": {
+    "mtime": 1785317605.1284282,
+    "ast_hash": "45f3da91ff6d12aa589ab6ed1bc0c28a",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Security/RoleSecurityAuditTest.php": {
+    "mtime": 1785317494.2138474,
+    "ast_hash": "67b38a12cdf7ae4007138c39a3d4df52",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Security/SecurityAuditAtomicityTest.php": {
+    "mtime": 1785317559.178903,
+    "ast_hash": "1754978cc1bb7804742e622fef60d7dd",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Security/SecurityAuditPayloadPolicyTest.php": {
+    "mtime": 1785317879.0097346,
+    "ast_hash": "a5c6138ddf0bc0959cb0985e8b6e0b9f",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Security/SecurityAuditTestCase.php": {
+    "mtime": 1785317596.598912,
+    "ast_hash": "3c79fc7345aff3ec5e118058276894ba",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Security/UserSecurityAuditTest.php": {
+    "mtime": 1785317414.1048229,
+    "ast_hash": "28896aba7ae780802b2dfc3d053009eb",
     "semantic_hash": ""
   }
 }
