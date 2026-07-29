@@ -3,6 +3,8 @@
 namespace App\Services\Roles;
 
 use App\Models\User;
+use App\Services\Audit\Security\SecurityAuditRecorder;
+use App\Services\Audit\Security\SecurityNameDiff;
 use App\Support\Permissions\PermissionRegistry;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
@@ -20,11 +22,22 @@ use Spatie\Permission\PermissionRegistrar;
  * so the one rule that must also bind a Super Admin (never touch a system
  * role, never touch a role assigned to yourself) can only be guaranteed here
  * and in RoleResource's structural (non-Gate) canEdit()/canDelete() checks.
+ *
+ * OMS Task 9B.4 — also the single AUDITED role write path. Each method already
+ * owned a DB::transaction() spanning the role row and its `syncPermissions()`
+ * pivot writes, so the REQUIRED SecurityAuditRecorder call joins it: replacing
+ * a role's entire permission set produces exactly ONE `security` event with
+ * before/after/added/removed permission-name arrays, never one event per
+ * `role_has_permissions` row. Spatie's pivot writes have no independent audit
+ * path — neither Role nor Permission is registered in the general-CRUD
+ * AuditSubjectRegistry — so that is structural, not a convention.
  */
 class RoleManagementService
 {
-    public function __construct(private readonly PermissionRegistrar $registrar)
-    {
+    public function __construct(
+        private readonly PermissionRegistrar $registrar,
+        private readonly SecurityAuditRecorder $audit,
+    ) {
     }
 
     public function isSystemRole(Role $role): bool
@@ -131,6 +144,11 @@ class RoleManagementService
             $role = Role::create(['name' => $name, 'guard_name' => $guard]);
             $role->syncPermissions($validatedPermissionNames);
 
+            // Read back through the relation QUERY BUILDER, not the loaded
+            // relation or Spatie's cache, so the event records what actually
+            // landed in role_has_permissions.
+            $this->audit->roleCreated($role, $role->permissions()->pluck('name')->all());
+
             $this->registrar->forgetCachedPermissions();
 
             return $role;
@@ -148,6 +166,13 @@ class RoleManagementService
 
         return DB::transaction(function () use ($actor, $role, $data): Role {
             $role = $role->fresh();
+
+            // Captured before any rename or pivot write, from the committed
+            // database state.
+            $before = [
+                'name' => $role->name,
+                'permissions' => $role->permissions()->pluck('name')->all(),
+            ];
 
             if ($this->isSystemRole($role)) {
                 throw ValidationException::withMessages([
@@ -202,6 +227,13 @@ class RoleManagementService
             $role->save();
             $role->syncPermissions($validatedPermissionNames);
 
+            // ONE event for the rename AND the whole permission replacement.
+            // Writes nothing when the submission changed neither.
+            $this->audit->roleUpdated($role, $before, [
+                'name' => $role->name,
+                'permissions' => $role->permissions()->pluck('name')->all(),
+            ]);
+
             $this->registrar->forgetCachedPermissions();
 
             return $role;
@@ -241,7 +273,19 @@ class RoleManagementService
                 ]);
             }
 
+            // Spatie's Role has no SoftDeletes: both the row and its
+            // role_has_permissions pivots are really gone after delete(), so
+            // the snapshot has to be taken first.
+            $snapshot = [
+                'role_id' => $role->getKey(),
+                'name' => $role->name,
+                'permissions' => SecurityNameDiff::normalize($role->permissions()->pluck('name')->all()),
+            ];
+            $label = $role->name;
+
             $role->delete();
+
+            $this->audit->roleDeleted($role, $snapshot, $label);
 
             $this->registrar->forgetCachedPermissions();
         });

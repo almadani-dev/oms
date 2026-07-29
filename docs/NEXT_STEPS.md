@@ -1,6 +1,27 @@
 # Next Steps
 
-## Recommended Next Step (2026-07-29, OMS Task 9B.3 financial audit integration — implemented, focused tests green, real-DB verification OUTSTANDING, NOT committed)
+## Recommended Next Step (2026-07-29, OMS Task 9B.4 users/roles/permissions/authentication audit — implemented, focused tests green, real-DB verification DONE, NOT committed)
+
+**Implemented and verified; awaiting review before commit.** `event_category = security` now covers every real identity/privilege write path (`UserManagementService`, `RoleManagementService`, `PermissionSyncService`) in `AuditFailureMode::Required` inside each service's existing `DB::transaction()`, plus the three authentication events (`login_success`/`login_failed`/`logout`) in `BestEffort` via one event subscriber. One logical action = exactly one event throughout: a user edit that renames, deactivates, resets the password and replaces both roles is a single event, a role permission replacement is a single event, and a full permission-sync run is a single summary event.
+
+Verification already completed in this session: new security-audit suites **81 passed / 388 assertions**; `Users`+`Roles`+`Permissions` regression **493 tests, 490 passed, 3 pre-existing skips, 0 failed**; `Audit`+`Crud` regression **318 passed / 1741 assertions**; forced audit failure (the `audit_events` table dropped) proved full rollback for all eight mutation paths including Spatie pivots; real local DB read-only and **unchanged** (users 5 / roles 7 / permissions 186 / `model_has_roles` 4 / `model_has_permissions` 0 / `role_has_permissions` 599 / `audit_events` 0); `oms:check-financial-integrity` → **Result: OK, exit 0**; `/admin/login` → 200 and `/admin/users`, `/admin/roles`, `/admin/permissions`, `/admin/users/create` → 302 → `/admin/login` while unauthenticated, with `audit_events` still 0 afterwards.
+
+**Next: review the implementation and the diff together, then approve the commit.** The post-commit hook will produce a separate Graphify refresh commit; Graphify was deliberately **not** run before review, as instructed.
+
+Scope check for the reviewer — the brief's exclusions were all honoured: no attachments, no exports, no backup/restore, no Audit UI, no `audit.view` permission, no broadened authorization, no push, no full-suite run, no concurrent PHPUnit, and no test users/roles/permissions created in the real local database.
+
+### Three items a reviewer should consciously accept
+- **Seeding and post-restore reconciliation now write one audit event each.** `PermissionSyncService::sync()` is called by `DatabaseSeeder::run()` and by `RestoreReconciler` (as `oms:sync-permissions`, always after its `migrate --force` step), so both now produce one `permission_sync` event with `actor_type = command`. This deliberately narrows 9B.2's "seeders leave no audit trail" rule for this one service, because a seed and a restore reconciliation really do rewrite the five system roles' permission sets. No suppression switch was added. Verified green across `tests/Feature/Restore` + `tests/Feature/Console` + `tests/Feature/Commands` (**347 passed**).
+- **No direct-user-permission write path exists in this application**, so none was audited end-to-end. `UserForm` exposes roles only and nothing in `app/` calls `givePermissionTo()`/`revokePermissionTo()`/`syncPermissions()` on a `User`. The snapshot, diff and single-event payload are implemented and tested at the recorder level (`SecurityAuditPayloadPolicyTest`) so it is audited correctly the moment such a path is added — but inventing one would have meant creating a privilege-granting surface the application deliberately does not have.
+- **No password-reset flow exists** (`AdminPanelProvider` calls `->login()` but never `->passwordReset()`), so no `PasswordReset` listener was wired. An administrator resetting a user's password goes through `UserManagementService` and is covered by the single `user`/`updated` event's `password_changed` flag.
+
+### Answer to the item 9B.3 left open for this phase
+9B.3 asked whether `FinancialAuditRecorder`'s fail-closed `LogicException` outside an open transaction should stay a hard failure once non-HTTP callers appear. 9B.4 introduced exactly such a caller — `PermissionSyncService::sync()`, reachable from `oms:sync-permissions` — and the assertion was **kept as a hard failure**, with `SecurityAuditRecorder` following the same pattern. The command path already opens its own transaction, so the precondition cost nothing, and a `LogicException` at a wiring mistake is strictly better than a silently unaudited privilege change. Revisit only if a caller appears that genuinely cannot open a transaction.
+
+### After that: OMS Task 9B.5 — attachments and exports
+Attachment upload/replace/delete and report-export events. Not to be started without a fresh explicit request. Backup/restore auditing and the Audit UI (plus any `audit.view` permission) remain after that.
+
+## Previously Recommended Next Step (2026-07-29, OMS Task 9B.3 financial audit integration — DONE, committed as 7449eb5 / da8c1f4)
 
 **Do two things before commit, in this order.**
 

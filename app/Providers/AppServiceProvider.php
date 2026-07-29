@@ -13,8 +13,10 @@ use App\Observers\ProjectCostBudgetsPaymentObserver;
 use App\Observers\ProjectCostObserver;
 use App\Observers\ProjectCostReceiptObserver;
 use App\Observers\ProjectObserver;
+use App\Listeners\Auth\AuthenticationAuditSubscriber;
 use App\Policies\PermissionPolicy;
 use App\Policies\RolePolicy;
+use App\Services\Audit\Security\AuthenticationAuditRecorder;
 use App\Services\Backup\BackupArchiveContentVerifier;
 use App\Services\Backup\Contracts\BackupArchiveContentVerifier as BackupArchiveContentVerifierContract;
 use App\Services\Backup\Contracts\ProcessRunner;
@@ -45,6 +47,7 @@ use App\Services\Restore\SymfonyProcessStreamInputRunner;
 use App\Support\Permissions\PermissionRegistry;
 use Filament\Tables\Table;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Spatie\Permission\Models\Permission;
@@ -128,6 +131,17 @@ class AppServiceProvider extends ServiceProvider
         // can inject a deterministic test double for finalize()-failure
         // scenarios — see RestoreAttachmentLifecycle's own docblock.
         $this->app->bind(RestoreAttachmentLifecycle::class, RestoreAttachmentActivationService::class);
+
+        // OMS Task 9B.4: MUST be a singleton. Illuminate\Events\Dispatcher::
+        // subscribe() registers each handler as [SubscriberClass, 'method'],
+        // so AuthenticationAuditSubscriber is re-resolved from the container
+        // on every dispatched auth event. The recorder's per-attempt
+        // de-duplication window (opened by `Attempting`, consumed by
+        // `Failed`) therefore only survives from one event to the next if the
+        // recorder itself is shared — with a fresh instance per event, the
+        // duplicate `Failed` pair Filament dispatches for a panel-access
+        // denial would write two rows for one attempt.
+        $this->app->singleton(AuthenticationAuditRecorder::class);
     }
 
     /**
@@ -147,6 +161,13 @@ class AppServiceProvider extends ServiceProvider
 
             return $user->hasRole(PermissionRegistry::SUPER_ADMIN) ? true : null;
         });
+
+        // OMS Task 9B.4 — the ONLY registration of authentication auditing.
+        // See AuthenticationAuditSubscriber for the exact four-event mapping
+        // and, just as importantly, for which auth events are deliberately
+        // NOT subscribed (`Authenticated` above all — it fires on every
+        // authenticated request).
+        Event::subscribe(AuthenticationAuditSubscriber::class);
 
         // Spatie's Role model lives outside App\Models, so Laravel's
         // naming-convention policy discovery never guesses RolePolicy for

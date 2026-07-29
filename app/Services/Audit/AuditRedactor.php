@@ -87,9 +87,20 @@ final class AuditRedactor
      * never the key material itself (see BackupKeyRing). Nothing else is
      * added here — a hypothetical field like `account_key` does not exist
      * anywhere in this codebase, so it stays fail-closed per OMS Task 9A §F.
+     *
+     * `password_changed` (OMS Task 9B.4) is a BOOLEAN FLAG, not a credential:
+     * it is the only thing a security audit event ever records about a
+     * password change, and it exists precisely so the password itself never
+     * has to be represented. Its value is produced by
+     * App\Services\Audit\Security\SecurityAuditRecorder as a literal `true`,
+     * from a code path that never reads the `password` attribute at all (see
+     * UserSecuritySnapshot's closed field allowlist) — so redacting it would
+     * hide the one safe fact while protecting nothing. Note the bare field
+     * name `password` is NOT excepted and stays redacted for every subject.
      */
     private const SAFE_EXCEPTIONS = [
         'encryption_key_id',
+        'password_changed',
     ];
 
     /**

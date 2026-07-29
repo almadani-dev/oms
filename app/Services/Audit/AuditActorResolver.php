@@ -39,6 +39,36 @@ final class AuditActorResolver
             : AuditActorContext::command();
     }
 
+    /**
+     * The actor for an event whose subject the CALLER already knows, rather
+     * than one read from ambient auth state (OMS Task 9B.4). The two
+     * authentication events that need this are exactly the two where
+     * `Auth::user()` is unreliable at dispatch time:
+     *
+     *  - `Login` is fired by SessionGuard::login() BEFORE it calls
+     *    setUser(), so resolve() would have to re-read the session and
+     *    re-query the user to see the same person the event already carries;
+     *  - `Logout` is fired after clearUserDataFromStorage() has run, so the
+     *    session no longer describes anyone.
+     *
+     * Request metadata is still attached exactly as resolve() would.
+     */
+    public function forUser(User $user): AuditActorContext
+    {
+        return AuditActorContext::forUser($user, $this->httpRequest());
+    }
+
+    /**
+     * An interactive actor with deliberately NO resolved identity — the
+     * failed-login case. Keeps real IP/user-agent/route metadata while
+     * refusing to claim who was behind the attempt (see
+     * App\Services\Audit\Security\AuthenticationAuditRecorder::loginFailed()).
+     */
+    public function forGuest(): AuditActorContext
+    {
+        return AuditActorContext::guest($this->httpRequest());
+    }
+
     private function httpRequest(): ?Request
     {
         if (! app()->bound('request')) {

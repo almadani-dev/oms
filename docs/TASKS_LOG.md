@@ -17,6 +17,48 @@
 ---
 
 ### Date
+2026-07-29 (OMS Task 9B.4 — users, roles, permissions & authentication audit)
+
+### Task
+Audit every real security write path — User create/update/delete/restore, activation/deactivation, administrator password changes, role assignment/removal/replacement, direct user permissions, role permission management, `oms:sync-permissions`, and login success/failure/logout — under `event_category = security`, with REQUIRED atomicity inside each caller's existing `DB::transaction()` for mutations, BestEffort for authentication, one logical action = exactly one event, stable aliases (never FQCNs), strict credential redaction, and no broadening of any existing authorization rule. Required inspecting the **real** resources/services/auth flow rather than assuming standard Filament paths.
+
+### Result
+**The real write paths were already centralised in services**, which is where auditing was wired: `UserManagementService` (createUser / updateUser incl. its `applySelfUpdate()` branch / deleteUser / restoreUser), `RoleManagementService` (createRole / updateRole / deleteRole), and `PermissionSyncService::sync()` (reached identically by `oms:sync-permissions` and the `ListPermissions` `syncPermissions` header action via `PermissionManagementService`). Observers were rejected on the same grounds as 9B.2 and for one additional, decisive reason: `syncRoles()`/`syncPermissions()` write Spatie **pivot** rows that an Eloquent model observer cannot see at all. Each service method already owned a `DB::transaction()` spanning the model save, the pivot sync and the last-active-Super-Admin `lockForUpdate()`, so the REQUIRED audit insert simply joined it.
+
+New layer `app/Services/Audit/Security/` (5 classes): `SecurityAuditSubject` (5 aliases — `user`, `role`, `permission`, `authentication`, `permission_sync`), `SecurityNameDiff` (deterministic sorted/de-duplicated/re-indexed before-after-added-removed name diffs), `UserSecuritySnapshot` (closed six-field allowlist), `SecurityAuditRecorder` (the REQUIRED gateway — never opens a transaction, throws `LogicException` below `transactionLevel() >= 1`), and `AuthenticationAuditRecorder` (the BestEffort gateway, physically unable to emit a Required event). Plus `app/Listeners/Auth/AuthenticationAuditSubscriber`, registered once in `AppServiceProvider::boot()`.
+
+**Two real defects were found and fixed during the build, both caught by the new tests rather than assumed away.** (1) **Duplicate listener registration** — Laravel's framework-level `EventServiceProvider` auto-discovers public `handle*`/`__invoke` methods under `app/Listeners` and registers them *in addition to* an explicit `Event::subscribe()` mapping. With `handleLogin`/`handleLogout` names, every login and every logout wrote **two identical audit rows** (confirmed by dumping `Event::getRawListeners()`, which showed both `["Class","method"]` and `"Class@method"` registered). Methods were renamed to `onAttempting`/`onLogin`/`onFailed`/`onLogout`, and a regression test now asserts exactly one registered listener per auth event. (2) **Duplicate `Failed` dispatch** — when credentials are valid but `canAccessPanel()` denies entry, `Illuminate\Auth\SessionGuard::attemptWhen()` fires `Failed` when its callback returns false and `Filament\Auth\Pages\Login::authenticate()` (v5.6.7, lines 151-160) fires it again before throwing. De-duplication is scoped to one **attempt**, opened by the `Attempting` event — which is dispatched exactly once at the start of every attempt and never between the duplicate pair — rather than to a request or a time window, so two genuine attempts in one request still produce two events. This required binding `AuthenticationAuditRecorder` as a container **singleton**, because `Dispatcher::subscribe()` registers handlers as `[Class, 'method']` and therefore re-resolves the subscriber on every dispatched event.
+
+**Findings reported rather than worked around.** There is **no direct-user-permission write path** in this application: `UserForm` exposes roles only, and nothing in `app/` calls `givePermissionTo()`/`revokePermissionTo()`/`syncPermissions()` on a `User` (verified across the whole tree). The snapshot, diff and single-event payload for direct permissions are implemented and tested at the recorder level (`SecurityAuditPayloadPolicyTest`) so such a path is audited correctly the moment one is added — but none was invented, since that would mean creating a privilege-granting surface the application does not currently have. Likewise there is **no password-reset flow**: `AdminPanelProvider` calls `->login()` but never `->passwordReset()`, so no `PasswordReset` event was wired; an administrator resetting a user's password goes through `UserManagementService` and is covered by the single `user`/`updated` event.
+
+`AuditRedactor::SAFE_EXCEPTIONS` gained exactly one entry, `password_changed` — the boolean flag that exists precisely so the credential never has to be represented; without it the global `password` segment rule would have redacted the one safe fact while protecting nothing. The bare field name `password` was **not** excepted and stays redacted for every subject. `AuditActorResolver` gained `forUser()`/`forGuest()` for the two authentication cases where `Auth::user()` is unreliable at dispatch time (`Login` fires before `setUser()`; `Logout` fires after the session is cleared).
+
+**No authorization was broadened.** `Gate::before`, `UserPolicy` (including its permanently-false `forceDelete`), `RolePolicy`, `PermissionPolicy`, `RoleResource::canEdit()/canDelete()`, `canAccessPanel()` and every service safety rule are byte-for-byte unchanged. A rejected action writes no event, because the rejection happens inside the same transaction the event would have been written in — asserted for system-role edits, assigned-role deletions and the last-active-Super-Admin guard. No `audit.view` permission and no Audit UI were created.
+
+### Changed Files
+- **New (6 source):** `app/Services/Audit/Security/{SecurityAuditSubject,SecurityNameDiff,UserSecuritySnapshot,SecurityAuditRecorder,AuthenticationAuditRecorder}.php`, `app/Listeners/Auth/AuthenticationAuditSubscriber.php`
+- **New (6 test):** `tests/Feature/Audit/Security/{SecurityAuditTestCase,UserSecurityAuditTest,RoleSecurityAuditTest,PermissionSyncAuditTest,AuthenticationAuditTest,SecurityAuditAtomicityTest,SecurityAuditPayloadPolicyTest}.php`
+- **Modified — security services:** `app/Services/Users/UserManagementService.php` (constructor injection + 5 audit call sites incl. the self-update branch), `app/Services/Roles/RoleManagementService.php` (constructor + 3 call sites, pre-delete snapshot), `app/Services/Permissions/PermissionSyncService.php` (constructor + `recordAudit()` inside the existing transaction; `superAdminUserCount()` now computed once instead of twice)
+- **Modified — audit layer:** `app/Services/Audit/AuditActorResolver.php` (`forUser()`/`forGuest()`), `app/Services/Audit/AuditRedactor.php` (`password_changed` safe exception)
+- **Modified — wiring:** `app/Providers/AppServiceProvider.php` (`Event::subscribe(AuthenticationAuditSubscriber::class)` + `AuthenticationAuditRecorder` singleton)
+- **Unmodified, deliberately:** every Policy, `AuditSubjectRegistry`, `UserResource`/`RoleResource`/`PermissionResource` and all their pages/forms/tables, `PermissionManagementService`, `SyncPermissions` command, `PermissionRegistry`.
+
+### Verification
+Focused suites only, run strictly sequentially (never concurrent, never the full suite):
+- New security-audit suites: **81 passed / 388 assertions** (`UserSecurityAuditTest` 19, `SecurityAuditPayloadPolicyTest` 12, `AuthenticationAuditTest` 19, `RoleSecurityAuditTest` + `SecurityAuditAtomicityTest` 21, `PermissionSyncAuditTest` 9, and 1 shared case).
+- Regression — `tests/Feature/Users` + `tests/Feature/Roles` + `tests/Feature/Permissions`: **493 tests, 490 passed, 3 skipped, 0 failed** (the 3 skips are pre-existing data-driven skips in `CrudPolicyBehaviorTest`/`ResourceHttpAuthorizationTest` for non-SoftDeletes models and the read-only audit resource).
+- Regression — `tests/Feature/Audit` + `tests/Feature/Crud`: **318 passed / 1741 assertions**, confirming 9B.1/9B.2/9B.3 and the create→View / edit→View / delete→List redirect standard are untouched.
+- Forced-audit-failure (the `audit_events` table dropped so the insert raises a real driver error) proved rollback of: user creation incl. its role pivots; user update incl. rename, deactivation, password and role replacement; user soft delete; user restore; role creation incl. its permission pivots; role rename + permission replacement; role deletion; and the entire permission-sync run. The mirror case (an `AuditEvent` never surviving a caller's rolled-back transaction) and the fail-closed no-transaction case are also covered.
+- Real local DB (read-only, no test data created): users 5 (with trashed) / roles 7 / permissions 186 / `model_has_roles` 4 / `model_has_permissions` 0 / `role_has_permissions` 599 / `audit_events` **0** — identical before and after every check.
+- `php artisan oms:check-financial-integrity` → **`Result: OK`, exit 0**.
+- HTTP smoke (temporary `artisan serve` on port 8391, then stopped): `/admin/login` → **200**; `/admin/users`, `/admin/roles`, `/admin/permissions`, `/admin/users/create` → **302 → `/admin/login`** while unauthenticated. `audit_events` still 0 afterwards, confirming ordinary browsing writes nothing.
+
+### Commit Hash
+(pending — stopped before commit as instructed)
+
+---
+
+### Date
 2026-07-29 (OMS Task 9B.3 — financial audit integration)
 
 ### Task

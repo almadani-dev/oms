@@ -3,6 +3,8 @@
 namespace App\Services\Users;
 
 use App\Models\User;
+use App\Services\Audit\Security\SecurityAuditRecorder;
+use App\Services\Audit\Security\UserSecuritySnapshot;
 use App\Support\Permissions\PermissionRegistry;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -17,9 +19,28 @@ use Spatie\Permission\Models\Role;
  * skips UserPolicy entirely for a real Super Admin actor, so the rules that
  * must also bind a Super Admin (last-active-Super-Admin protection,
  * self-protection) can only be guaranteed here.
+ *
+ * OMS Task 9B.4 — this is also the single AUDITED user write path, and the
+ * reason auditing lives here rather than in a User observer: `created`/
+ * `updated`/`deleted` observers fire with the row already committed, and
+ * `syncRoles()` writes pivot rows an Eloquent observer cannot see at all. Each
+ * method below already owned a DB::transaction() spanning the model save, the
+ * role sync and the last-active-Super-Admin lock, so the REQUIRED
+ * SecurityAuditRecorder call simply joins it: the whole logical action —
+ * profile fields, activation state, password and every role pivot together —
+ * commits as one `security` event, or rolls back entirely.
+ *
+ * Because auditing lives here and not in a global model hook, code that
+ * deliberately creates users outside real administrator actions (DatabaseSeeder's
+ * bootstrap Super Admin, factories, test fixtures) produces no audit history —
+ * the same deliberate boundary as App\Services\Audit\Crud\AuditedCrudService.
  */
 class UserManagementService
 {
+    public function __construct(private readonly SecurityAuditRecorder $audit)
+    {
+    }
+
     public function isActiveSuperAdmin(User $user): bool
     {
         return ! $user->trashed()
@@ -127,6 +148,12 @@ class UserManagementService
 
             $user->syncRoles($requestedRoleNames);
 
+            // ONE event for the whole creation — the user row, its password
+            // and every role pivot syncRoles() just wrote. Recorded after the
+            // sync so the snapshot reflects the roles that actually landed,
+            // not the ones that were requested.
+            $this->audit->userCreated($user);
+
             return $user;
         });
     }
@@ -145,8 +172,14 @@ class UserManagementService
         return DB::transaction(function () use ($actor, $target, $data): User {
             $target = $target->fresh();
 
+            // Captured before ANY mutation and after fresh(), so the "before"
+            // side is the committed database state rather than whatever the
+            // in-memory model was carrying.
+            $before = UserSecuritySnapshot::of($target);
+            $passwordChanged = array_key_exists('password', $data) && filled($data['password']);
+
             if ($actor->is($target)) {
-                return $this->applySelfUpdate($target, $data);
+                return $this->applySelfUpdate($target, $data, $before, $passwordChanged);
             }
 
             if (! $this->canManageUser($actor, $target)) {
@@ -184,6 +217,12 @@ class UserManagementService
 
             $target->syncRoles($requestedRoleNames);
 
+            // ONE event covering everything this submission changed —
+            // profile fields, activation/deactivation, the password and the
+            // full role replacement. Never one event per changed field and
+            // never one per model_has_roles pivot row.
+            $this->audit->userUpdated($target, $before, UserSecuritySnapshot::of($target), $passwordChanged);
+
             return $target;
         });
     }
@@ -209,7 +248,15 @@ class UserManagementService
                 $this->assertLastActiveSuperAdminSurvives($target->id);
             }
 
+            // Captured while the account and its role pivots are still
+            // intact — after the soft delete this is the only remaining
+            // description of what access the removed account held.
+            $snapshot = UserSecuritySnapshot::of($target);
+            $label = UserSecuritySnapshot::label($target);
+
             $target->delete();
+
+            $this->audit->userDeleted($target, $snapshot, $label);
         });
     }
 
@@ -231,10 +278,15 @@ class UserManagementService
             }
 
             $target->restore();
+
+            $this->audit->userRestored($target);
         });
     }
 
-    private function applySelfUpdate(User $target, array $data): User
+    /**
+     * @param  array<string, mixed>  $before  UserSecuritySnapshot::of() taken by the caller
+     */
+    private function applySelfUpdate(User $target, array $data, array $before, bool $passwordChanged): User
     {
         if (array_key_exists('is_active', $data) && (bool) $data['is_active'] !== $target->is_active) {
             throw ValidationException::withMessages([
@@ -266,6 +318,13 @@ class UserManagementService
         }
 
         $target->save();
+
+        // A self-edit is still a security mutation (an administrator
+        // changing their own password is the main case) and gets the same
+        // single REQUIRED event as any other update. Runs inside the
+        // caller's transaction — this method is only ever reached from
+        // updateUser()'s DB::transaction() closure.
+        $this->audit->userUpdated($target, $before, UserSecuritySnapshot::of($target), $passwordChanged);
 
         return $target;
     }

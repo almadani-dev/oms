@@ -13,6 +13,106 @@
 ---
 
 ### Date
+2026-07-29 (OMS Task 9B.4 — authentication events are BestEffort, in a class that physically cannot emit a Required event)
+
+### Decision
+`login_success`, `login_failed` and `logout` are recorded by `App\Services\Audit\Security\AuthenticationAuditRecorder`, which hardcodes `AuditFailureMode::BestEffort` and opens no transaction. Every identity/privilege **mutation** is recorded by a separate class, `SecurityAuditRecorder`, which hardcodes `AuditFailureMode::Required` and asserts an open caller transaction. Neither class can emit the other's mode.
+
+### Reason
+All three authentication events describe something that has already happened by the time Laravel dispatches them: `Login` fires after `SessionGuard` wrote the session, `Logout` after the session was cleared, `Failed` after the credentials were rejected. There is nothing left to roll back. Making them Required would be actively harmful in the two directions that matter most: a failed audit insert on `Logout` would throw out of Filament's `LogoutController` *after* the session was destroyed, leaving a user unable to complete a legitimate sign-out; and a failed insert on `Login`/`Failed` would throw after the session was regenerated, turning an audit-storage outage into a **login loop that locks every administrator out of the system — including the ones who would have to log in to repair the audit storage**. Splitting the two modes across two classes rather than passing a mode parameter means a later edit at a call site cannot quietly downgrade a security mutation's atomicity guarantee.
+
+### Impact
+An audit-storage outage degrades the authentication trail (a sanitized `Log::error()` line instead of a row) but never blocks login or logout — asserted by three tests that drop the `audit_events` table and confirm login still authenticates, logout still ends the session, and a failed login still fails. Conversely a failed audit on any user/role/permission mutation rolls the entire mutation back, pivots included.
+
+---
+
+### Date
+2026-07-29 (OMS Task 9B.4 — a failed login is recorded against a resolved User, never against the submitted email string)
+
+### Decision
+`AuthenticationAuditSubscriber::onFailed()` reads **only** `$event->user` — the account Laravel's own user provider already resolved from the submitted credentials — and never touches `$event->credentials`. A matched account becomes the event's **subject** (`identified: true` + `user_id`/`email`/`is_active`); an unmatched attempt records a generic subject with `identified: false`, null `subject_key` and null `subject_label`. The **actor** is always `AuditActorContext::guest()` — real IP/user-agent/route, no identity — in both cases.
+
+### Reason
+`$event->credentials` carries the plaintext password *and* the raw, entirely attacker-controlled email string. Reading it at all is the risk; not reading it is the mitigation. Storing the submitted email would let anyone write arbitrary text — including text aimed at whoever later reads the audit log — into an immutable table simply by typing it into a public login form. Resolution is already performed by the auth provider, so consuming its result needs no second query on attacker-supplied input (which would itself add an unauthenticated per-attempt DB lookup). Separately, attributing the attempt to the matched account as the *actor* would be a fabricated identity claim: a failed attempt proves someone typed an email, never that the account owner was the one typing. This is also why `AuditActorContext` has no factory accepting a raw email string — the rule is enforced structurally, not by convention.
+
+### Impact
+An enumeration probe against a non-existent address produces a real, IP-bearing audit row with no attacker text in it. A wrong-password attempt against a real account is attributable to that account as a subject without ever implying the owner was responsible. A soft-deleted user's email does not resolve, so such an attempt records the generic unidentified subject — the deliberate fail-closed outcome.
+
+---
+
+### Date
+2026-07-29 (OMS Task 9B.4 — authentication de-duplication is scoped to one ATTEMPT, not one request or a time window)
+
+### Decision
+`AuthenticationAuditRecorder` keeps a per-attempt "already recorded" set, cleared by the `Attempting` event and consumed by `Login`/`Failed`. It is bound as a container **singleton** in `AppServiceProvider`. The subscriber's methods are named `onAttempting`/`onLogin`/`onFailed`/`onLogout` — never `handle*`.
+
+### Reason
+Two independent duplicate sources exist, and both were found empirically, not assumed. (1) One logical login attempt can dispatch `Failed` **twice**: when credentials are valid but `canAccessPanel()` denies entry, `Illuminate\Auth\SessionGuard::attemptWhen()` fires `Failed` when its callback returns false, and `Filament\Auth\Pages\Login::authenticate()` (filament/filament v5.6.7, lines 151-160) then fires it again before throwing. `Attempting` is the correct window boundary because Laravel and Filament each dispatch it exactly once at the start of an attempt and **never between the duplicate pair** — so the pair collapses to one row while two genuine attempts in one request stay two. Request-object identity or a wall-clock window would both have been guesses. (2) Laravel's framework-level `EventServiceProvider` auto-discovers public `handle*`/`__invoke` methods under `app/Listeners` (`Illuminate\Events\DiscoverEvents`) and registers them **in addition to** an explicit `Event::subscribe()` mapping; with `handleLogin`/`handleLogout` names, `Event::getRawListeners()` showed both `["Class","method"]` and `"Class@method"` registered, and every login and logout wrote two identical rows. The singleton is required because `Dispatcher::subscribe()` registers handlers as `[Class, 'method']` and therefore re-resolves the subscriber from the container on every dispatched event — with a fresh instance per event, the de-duplication set would never survive from `Attempting` to `Failed`.
+
+### Impact
+One login attempt, one event; one logout, one event — including the panel-access-denial path, which is the case an administrator most needs to see. Renaming any subscriber method to `handleX` silently reintroduces the double-write, so `AuthenticationAuditTest` asserts exactly one registered listener per auth event as a permanent regression guard.
+
+---
+
+### Date
+2026-07-29 (OMS Task 9B.4 — the User audit payload is a closed six-field allowlist, and a password change records one boolean)
+
+### Decision
+`UserSecuritySnapshot` reads exactly six fields — `user_id`, `name`, `email`, `is_active`, `roles`, `direct_permissions` — and nothing else. A password change is recorded as `"password_changed": true` and nothing else; `password` never appears in `changed_fields` either (the flag's own name is used). `password_changed` was added to `AuditRedactor::SAFE_EXCEPTIONS`; the bare name `password` was **not**. `direct_permissions` is Spatie's direct relation only, never the effective role-derived set.
+
+### Reason
+A closed allowlist cannot be out-argued the way a denylist can: `password`, `remember_token`, `email_verified_at`, session ids and reset tokens are never *read*, so no future field addition, cast change or `$hidden` regression can leak them. The redactor still runs afterwards as an independent second layer. `password_changed` needed an explicit exception because `AuditRedactor`'s whole-segment rule matches the `password` segment and would have erased the one safe fact while protecting nothing — the flag exists precisely so the credential never has to be represented. Storing a user's effective permission set was rejected on three grounds: it is the "full permission dump" the design forbids, it would routinely blow past `AuditPayloadBounder`'s 8 KB cap for a privileged user, and it duplicates information already implied by the role names on the same row.
+
+### Impact
+Every user event is small, bounded and provably credential-free (asserted by encoding the whole row and searching for the plaintext, both hashes and `$2y$`). A future field becomes auditable only by an explicit, reviewed addition to the allowlist.
+
+---
+
+### Date
+2026-07-29 (OMS Task 9B.4 — role/permission name arrays are sorted, de-duplicated and re-indexed)
+
+### Decision
+Every role-name and permission-name array in a security payload passes through `SecurityNameDiff`, which de-duplicates, `sort()`s and `array_values()`-reindexes it. "Unchanged" means set equality, not array equality, and a no-op update writes no event.
+
+### Reason
+Three concrete failure modes. **Stability:** `syncRoles(['Admin','Accountant'])` and `syncRoles(['Accountant','Admin'])` are the same logical action and must produce byte-identical payloads, or a diff between two audit rows reflects submission order rather than a real privilege change. Spatie's own pivot reads (`$role->permissions()->pluck('name')`) come back in whatever order the database returns, which guarantees nothing. **JSON shape:** `array_diff` preserves original keys, so without `array_values()` the added/removed arrays would serialize as JSON *objects* (`{"1":"a"}`) instead of arrays — a permanent, un-fixable inconsistency on immutable rows. **Noise:** without set-equality comparison, re-saving a form would write an event on every submission. Sorting is deliberately byte-wise and not locale-aware: role and permission names are stable ASCII identifiers, and a collation-sensitive sort would make stored payloads depend on the server's locale.
+
+### Impact
+Audit diffs are meaningful and reproducible. Determinism is asserted directly by tests that submit the same set in two different orders against two records and compare the stored arrays byte-for-byte.
+
+---
+
+### Date
+2026-07-29 (OMS Task 9B.4 — permission synchronisation is ONE summary event, and a no-op run still writes it)
+
+### Decision
+`PermissionSyncService::sync()` writes exactly one `security.synced` event on subject `permission_sync`, inside its existing `DB::transaction()`, in `AuditFailureMode::Required`. A completely idempotent run that changes nothing still writes its event. The payload explicitly records `permissions_removed: 0` and `obsolete_permissions_preserved: N` rather than leaving the non-destructive behavior implied. Actor attribution follows the real entry point: a terminal run is `actor_type = command` with null identity and null request metadata; the Filament header action records the real administrator.
+
+### Reason
+One run creates a row per registry permission (~186 today) and reconciles all five system roles' pivots. Per-row events would produce hundreds of rows describing a single administrative action — the exact duplication this phase forbids. The no-op rule is the accountability rule: executing a security-administration command that can rewrite five system roles' permissions is itself the accountable act, independently of whether the outcome changed. Recording `permissions_removed`/`obsolete_permissions_preserved` explicitly means an auditor reading one event can tell that nothing was revoked without knowing the implementation. Attribution is per entry point rather than a fixed `command` because labelling an administrator's UI click as a terminal command would be a factual error in the trail — the brief's `actor_type = command` requirement describes the command path, which is exactly what `AuditActorResolver` already yields there.
+
+### Impact
+Permission-sync history is one readable row per run. Because the audit insert is inside the service's own transaction, a failed audit rolls back every created permission and system role — verified by dropping `audit_events` and confirming the permission and role counts are unchanged.
+
+**Known, accepted consequence — this narrows 9B.2's "seeders leave no audit trail" rule.** `PermissionSyncService::sync()` has two non-interactive callers besides the command and the UI action: `DatabaseSeeder::run()`, and `RestoreReconciler`, which runs `oms:sync-permissions` as its third reconciliation step (always **after** `migrate --force`, so `audit_events` is guaranteed to exist). Both now write one `permission_sync` event with `actor_type = command` and null identity/request metadata. This was accepted rather than suppressed: a seed and a post-restore reconciliation genuinely do rewrite the five system roles' permission sets, so recording it is the correct outcome, and adding a suppression switch would create exactly the "audit can be turned off" affordance the whole design avoids. 9B.2's rule still holds unchanged for every *model* path — seeders, migrations and factories writing Users/Roles/Settings/master data directly still produce no audit history, because auditing lives at explicit service call sites and not in observers. Verified green: `tests/Feature/Restore` + `tests/Feature/Console` + `tests/Feature/Commands` (347 passed) and `DatabaseSeederSuperAdminTest`.
+
+---
+
+### Date
+2026-07-29 (OMS Task 9B.4 — no direct-user-permission write path was invented, and no password-reset flow was wired)
+
+### Decision
+Direct user permissions are captured in the snapshot and diffed into the single user event, and that contract is tested at the recorder level — but **no UI or service path for assigning/revoking a permission directly on a user was created**. Likewise no `PasswordReset` listener was wired.
+
+### Reason
+Both were listed in the brief's scope, and neither exists in this application. `UserForm` exposes roles only, and nothing anywhere in `app/` calls `givePermissionTo()`/`revokePermissionTo()`/`syncPermissions()` on a `User` (verified across the whole tree). `AdminPanelProvider` calls `->login()` but never `->passwordReset()`, so Laravel's `PasswordReset` event has no trigger at all. Adding a direct-permission assignment path to make the scope literally satisfiable would mean creating a new privilege-granting surface the application deliberately does not have — directly contrary to the same brief's instruction not to broaden any permission. Wiring a listener for an event that can never fire would be dead code presented as coverage.
+
+### Impact
+The capability is in place and asserted, so the moment a direct-permission path is added it is audited correctly as part of the same single user event — but the security surface is unchanged. An administrator resetting another user's password goes through `UserManagementService` and is already covered by the `user`/`updated` event's `password_changed` flag, which is the real flow this application has.
+
+---
+
+### Date
 2026-07-29 (OMS Task 9B.3 — financial audit subject aliases are keyed on the WORKFLOW, never the model class)
 
 ### Decision
