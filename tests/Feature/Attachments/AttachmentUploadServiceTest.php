@@ -63,9 +63,27 @@ class AttachmentUploadServiceTest extends TestCase
         parent::tearDown();
     }
 
+    /**
+     * Resolved from the container rather than hand-constructed: since OMS
+     * Task 9B.5 the service also depends on AttachmentAuditRecorder, and the
+     * container is the only place that wiring should be spelled out.
+     */
     private function service(): AttachmentUploadService
     {
-        return new AttachmentUploadService(new AttachmentStorageService());
+        return app(AttachmentUploadService::class);
+    }
+
+    /**
+     * A successful store() now records a REQUIRED attachment audit event,
+     * which (like every REQUIRED audit write in this codebase) must belong to
+     * the caller's own transaction — exactly as all ten real call sites in
+     * the five financial Create/Edit pages already do. These direct-service
+     * tests therefore open one too. Failure-path tests deliberately do not:
+     * they never reach the audit call at all.
+     */
+    private function storeInTransaction(callable $callback): Attachment
+    {
+        return DB::transaction($callback);
     }
 
     private function parent(): GeneralExpense
@@ -95,14 +113,14 @@ class AttachmentUploadServiceTest extends TestCase
         $parent = $this->parent();
         Storage::disk('attachments')->put('livewire-tmp/incoming.jpg', 'fake-bytes');
 
-        $attachment = $this->service()->store(
+        $attachment = $this->storeInTransaction(fn () => $this->service()->store(
             parent: $parent,
             tempPath: 'livewire-tmp/incoming.jpg',
             directory: $directory,
             prefix: $prefix,
             date: '2026-07-15',
             amount: 123.75,
-        );
+        ));
 
         $this->assertSame(1, Attachment::count());
         $this->assertSame(Attachment::DISK_ATTACHMENTS, $attachment->disk);
@@ -126,7 +144,7 @@ class AttachmentUploadServiceTest extends TestCase
         $parent = $this->parent();
         Storage::disk('attachments')->put('livewire-tmp/a.png', 'x');
 
-        $attachment = $this->service()->store($parent, 'livewire-tmp/a.png', 'general-expenses', 'gen', '2026-01-05', 99.999);
+        $attachment = $this->storeInTransaction(fn () => $this->service()->store($parent, 'livewire-tmp/a.png', 'general-expenses', 'gen', '2026-01-05', 99.999));
 
         $this->assertSame("gen_{$attachment->id}_20260105_99.png", $attachment->file_name);
     }
@@ -136,7 +154,7 @@ class AttachmentUploadServiceTest extends TestCase
         $parent = $this->parent();
         Storage::disk('attachments')->put('livewire-tmp/a.PDF', 'x');
 
-        $attachment = $this->service()->store($parent, 'livewire-tmp/a.PDF', 'general-expenses', 'gen', '2026-01-05', 10);
+        $attachment = $this->storeInTransaction(fn () => $this->service()->store($parent, 'livewire-tmp/a.PDF', 'general-expenses', 'gen', '2026-01-05', 10));
 
         $this->assertStringEndsWith('.pdf', $attachment->file_name);
     }

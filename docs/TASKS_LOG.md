@@ -17,6 +17,59 @@
 ---
 
 ### Date
+2026-07-29 (OMS Task 9B.5 — attachment & report-export audit integration)
+
+### Task
+Audit the real attachment paths (upload, replacement, deletion, authorized private access, and genuine 403 denials) and the real financial report exports, under two new categories `attachment` and `report_export` plus one new `security` action — with REQUIRED atomicity inside each caller's existing `DB::transaction()` for writes, Required-before-response for private file access, BestEffort for denials, bounded metadata and filter payloads that can never carry a path/disk/temp path/signed URL/token/file content/report row, one logical action = exactly one event, and no change to any existing authorization, 404 behavior, submission gate or Excel/Word generation. Explicitly out of scope: ordinary report page views, pagination/filtering, 404 attachment lookups, per-row export auditing, backup/restore (9B.6) and the Audit Log UI.
+
+### Result
+**The read-only audit answered the five open questions the brief asked, and two answers changed the design.**
+
+1. **View and download are genuinely distinct**, so both are recorded. `routes/web.php` declares `/attachments/{attachment}/{mode}` with `->whereIn('mode', ['view','download'])`, the controller re-validates against the same two literals, and the mode selects `Content-Disposition: inline` versus `attachment`. Nothing infers intent from a browser header. The dependency is documented so the actions collapse to one accurate `accessed` if that segment ever collapses.
+2. **Metadata becomes authoritative in exactly one place** — `AttachmentUploadService::store()`, after its `$disk->move()` and its finalizing `update()`. All ten upload call sites (5 Create + 5 Edit pages) already funnel through it, so that is the single audit choke point for `uploaded`/`replaced`. Whether a write is an upload or a replacement is stated by the caller via a new `replacing:` argument, never guessed.
+3. **Every one of the fifteen write call sites is already inside a `DB::transaction()`** (verified in all five Create pages, all five Edit pages and all five `Table::delete*()` methods).
+4. **Ten export paths across six pages**, all `response()->streamDownload(…)`, none producing a temporary file.
+5. **Nothing in this application ever deletes a prior attachment file from disk.** A replacement stores the new file first and soft-deletes the previous **row**; the five workflow delete methods soft-delete the row and explicitly keep the file "for audit". The §4 STOP condition therefore did **not** trigger, and the crash-safe ordering was left untouched.
+
+**New layer (5 source classes).** `app/Services/Audit/Attachments/`: `AttachmentAuditMetadata` (the closed metadata list + the replacement diff; all lookups `withTrashed()` because the workflow delete paths soft-delete the `Transaction` *before* reaching the attachment), `AttachmentAuditRecorder` (Required writes — never opens a transaction, throws `LogicException` below `transactionLevel() >= 1`), `AttachmentAccessAuditRecorder` (Required `viewed`/`downloaded`, BestEffort `security.attachment_access_denied`, physically unable to emit the other class's events). `app/Services/Audit/Reports/`: `ReportExportSubject` (six aliases, each taken from the page's own permission stem), `ReportExportFormat` (`xlsx`/`docx` only — **no export service in this codebase produces CSV or PDF**, so neither was invented), `ReportExportAuditRecorder`.
+
+**A real redaction collision was found by the new tests, not by inspection.** The payload's parent identifier was originally `parent_key`, which `AuditRedactor`'s (correct, global) `key`-segment rule redacted to `[REDACTED]` — erasing the one field linking an attachment event to its parent's `financial` event. Renamed to `parent_id`, following the existing `setting_name` precedent in `AuditSubjectRegistry`, rather than adding a `SAFE_EXCEPTIONS` entry that would weaken the redactor for every future subject.
+
+**Reported rather than fabricated:** the **original client filename does not exist in this application**. No financial form calls `preserveFilenames()`, so Filament stores the upload under a generated name and the browser-supplied one is gone before any application code — including `AttachmentUploadService` — ever sees it. `file_name` is the final deterministic stored name, sanitized through the same `safeDownloadName()` that guards `Content-Disposition`; no `original_file_name` was invented.
+
+**Export semantics: `export_requested`, not `export_completed`.** All nine export services build the document synchronously but serialize inside the `streamDownload` callback, which Symfony invokes only after the response is returned and headers are committed; the writer targets `php://output`, so no temporary file exists to prove success either. There is no point in the current synchronous code where successful generation is objectively known before the response returns, so a completion claim would be unsupported. Documented so a future queued/materialized implementation **adds** a completion event rather than substituting one.
+
+**Duplicate prevention is structural in all four directions the brief listed.** The shared `AuthorizesReportAccess` trait records nothing (only the page-specific export method does, once); nothing is recorded inside an export service or a `streamDownload` callback; uploads/replacements have exactly one origin (`AttachmentUploadService`); and there is no `Attachment` observer and no `Attachment` entry in `AuditSubjectRegistry`, so an Attachment save/delete has no independent audit route. A financial operation carrying a file produces exactly one `financial` event **plus** one `attachment` event — the financial event is never duplicated.
+
+**Nothing was broadened.** `authorizeReportExport()`, every `canExport()`/"عرض" gate, every report permission, all Excel/Word generation, `AttachmentController`'s allowlist and parent-policy delegation, and all of its 404 rules are unchanged apart from the added audit calls. No Audit UI, no `audit.view` permission.
+
+### Changed Files
+- **New (6 source):** `app/Services/Audit/Attachments/{AttachmentAuditMetadata,AttachmentAuditRecorder,AttachmentAccessAuditRecorder}.php`, `app/Services/Audit/Reports/{ReportExportSubject,ReportExportFormat,ReportExportAuditRecorder}.php`
+- **New (3 test):** `tests/Feature/Audit/Attachments/{AttachmentWriteAuditTest,AttachmentAccessAuditTest}.php`, `tests/Feature/Audit/Reports/ReportExportAuditTest.php`
+- **Modified — attachment layer:** `app/Services/Attachments/AttachmentUploadService.php` (recorder injection, new optional `replacing:` parameter, previous-metadata snapshot, one `uploaded`/`replaced` event after `refresh()`), `app/Http/Controllers/Attachments/AttachmentController.php` (recorder injection, `catch (AuthorizationException)` → BestEffort denial + re-throw, Required access event before the response)
+- **Modified — five Edit pages** (`EditProjectCostReceipt`, `EditProjectCostBudgetsPayment`, `EditExecutionPayment`, `EditGeneralExpense`, `EditGeneralExchange`): replacement branch passes `replacing:`; removal branch records `deleted` before the soft delete; `storeAttachment()` gained a `?Attachment $replacing` parameter (four of them)
+- **Modified — five Tables** (`ProjectCostReceiptsTable`, `ProjectCostBudgetsPaymentsTable`, `ExecutionPaymentsTable`, `GeneralExpensesTable`, `GeneralExchangesTable`): `deleted` recorded before each attachment soft delete, inside the existing transaction
+- **Modified — six report pages:** `AccountStatementPage`, `TrialBalancePage`, `DonorFinancialReportPage` (also gained a public `$appliedFilters` snapshot, cleared by `clearResults()`), `ComprehensiveFinancialTransactionsPage`, `ProjectsGeneralFinancialPage`, `ProjectFinancialDetailsPage`
+- **Modified — test:** `tests/Feature/Attachments/AttachmentUploadServiceTest.php` (service resolved from the container; the three success-path tests now open a transaction, matching all ten real call sites — failure-path tests deliberately do not, since they never reach the audit call)
+- **Unmodified, deliberately:** every Policy, `AuthorizesReportAccess`, `AttachmentStorageService`, `FinancialAttachmentRegistry`, `AttachmentResource` (already create/edit/delete-proof), `AuditSubjectRegistry`, `AuditRedactor`, all nine export services, all five Create pages.
+
+### Verification
+Focused suites only, run strictly sequentially (never concurrent, never the full suite):
+- New suites: `AttachmentWriteAuditTest` **10 passed / 94 assertions**, `AttachmentAccessAuditTest` **13 passed / 54 assertions**, `ReportExportAuditTest` **22 passed / 139 assertions**.
+- Regression — `tests/Feature/Audit` + `tests/Feature/Attachments` + `tests/Feature/Reports`: **529 passed / 2418 assertions, 0 failed**, covering 9B.1–9B.4 plus the Task 6A private-attachment authorization suite and the Task 2B export-authorization/gating suite unchanged.
+- Regression — the five financial workflow suites (`ExecutionPayments`, `GeneralExchanges`, `GeneralExpenses`, `ProjectCostBudgetsPayments`, `ProjectCostReceipts`): **70 passed / 285 assertions**.
+- Forced-audit-failure (the `audit_events` table dropped so the insert raises a real driver error) proved: a create-with-attachment rolls back the `Attachment` row **and** the `GeneralExpense` row; a private attachment is **not** served (the request does not return 200); and an export throws `AuditPersistenceException` instead of delivering a file. The BestEffort mirror proved a 403 stays a 403 under the same outage. The fail-closed no-transaction case is covered too.
+- No-event cases proved: a financial operation without a file, an ordinary report page view, a filter change, an export blocked by the "عرض" gate, an unauthorized export, and every 404 attachment path (unknown id, soft-deleted attachment, missing physical file, unsupported attachable type, guest).
+- Real local DB (read-only, no test data created): `audit_events` **0** / attachments 9 (7 trashed) / transactions 8 / transaction_lines 22 / general_expenses 3 / general_exchanges 3 / accounts 5 / users 5, sum of `current_balance` **0.00** — identical before and after every check. Attachment files on the private disk: **8**, unchanged.
+- `php artisan oms:check-financial-integrity` → **`Result: OK`, exit 0** (relationships 10/0 orphans, 8 transactions/0 duplicate numbers, 5 checked/0 unbalanced, 0 invalid FX, 0 currency mismatches, 0 balance mismatches).
+- HTTP smoke (against the running local vhost): `/admin/login` → **200**; `/attachments/9/view`, `/attachments/9/download`, `/admin/account-statement`, `/admin/trial-balance`, `/admin/donor-financial-report` → **302 → `http://oms.test/admin/login`** while unauthenticated. `audit_events` still **0** afterwards, confirming unauthenticated probing writes nothing.
+
+### Commit Hash
+(pending — stopped before commit as instructed)
+
+---
+
+### Date
 2026-07-29 (OMS Task 9B.4 — users, roles, permissions & authentication audit)
 
 ### Task

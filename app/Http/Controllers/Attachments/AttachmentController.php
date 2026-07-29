@@ -10,6 +10,8 @@ use App\Models\ProjectCostBudget;
 use App\Models\ProjectCostBudgetsPayment;
 use App\Models\ProjectCostReceipt;
 use App\Services\Attachments\AttachmentStorageService;
+use App\Services\Audit\Attachments\AttachmentAccessAuditRecorder;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -45,8 +47,13 @@ class AttachmentController extends Controller
         GeneralExchange::class,
     ];
 
-    public function show(Request $request, string $attachment, string $mode, AttachmentStorageService $storage): StreamedResponse
-    {
+    public function show(
+        Request $request,
+        string $attachment,
+        string $mode,
+        AttachmentStorageService $storage,
+        AttachmentAccessAuditRecorder $accessAudit,
+    ): StreamedResponse {
         abort_unless(in_array($mode, ['view', 'download'], true), 404);
 
         // The route already constrains {attachment} to \d+, but re-validate
@@ -79,7 +86,23 @@ class AttachmentController extends Controller
 
         // Only reached for an active parent, so this 403 always means
         // exactly one thing: authenticated, but not authorized to view it.
-        Gate::authorize('view', $parent);
+        //
+        // OMS Task 9B.5 - that single, unambiguous meaning is exactly why
+        // the denial is worth auditing here and nowhere else: $record and
+        // $parent are both already safely resolved from the digits-only
+        // route id, so the event carries real identifiers and never a
+        // caller-supplied string. Every 404 path above and below is left
+        // deliberately unaudited (see AttachmentAccessAuditRecorder), so a
+        // prober cannot write one row per guessed id. Best-effort, and the
+        // AuthorizationException is always re-thrown unchanged - the 403
+        // itself is never weakened by the audit.
+        try {
+            Gate::authorize('view', $parent);
+        } catch (AuthorizationException $e) {
+            $accessAudit->accessDenied($record);
+
+            throw $e;
+        }
 
         // Only reached once the user is confirmed authorized on the active
         // parent, so a soft-deleted Attachment row never leaks its
@@ -88,6 +111,13 @@ class AttachmentController extends Controller
 
         abort_unless($storage->resolveDisk($record) !== null, 404);
         abort_unless($storage->exists($record), 404);
+
+        // Written BEFORE a single byte is served, in AuditFailureMode::
+        // Required: if this access cannot be recorded, AuditPersistenceException
+        // propagates and the private financial attachment is not served at
+        // all. Placed after every 404 check so an unavailable file is never
+        // recorded as an access that happened.
+        $accessAudit->accessed($record, $mode);
 
         return $storage->toResponse($record, $mode === 'download' ? 'attachment' : 'inline');
     }

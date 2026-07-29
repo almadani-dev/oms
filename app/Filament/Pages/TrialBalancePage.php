@@ -5,6 +5,9 @@ namespace App\Filament\Pages;
 use App\Filament\Pages\Concerns\AuthorizesReportAccess;
 use App\Models\AccountType;
 use App\Models\Currency;
+use App\Services\Audit\Reports\ReportExportAuditRecorder;
+use App\Services\Audit\Reports\ReportExportFormat;
+use App\Services\Audit\Reports\ReportExportSubject;
 use App\Services\Reports\TrialBalanceExcelExportService;
 use App\Services\Reports\TrialBalanceReportService;
 use App\Services\Reports\TrialBalanceWordExportService;
@@ -235,6 +238,8 @@ class TrialBalancePage extends Page implements HasSchemas
             return null;
         }
 
+        $this->auditExport(ReportExportFormat::Xlsx);
+
         return app(TrialBalanceExcelExportService::class)->stream(
             $this->appliedDateFrom,
             $this->appliedDateTo,
@@ -259,6 +264,8 @@ class TrialBalancePage extends Page implements HasSchemas
             return null;
         }
 
+        $this->auditExport(ReportExportFormat::Docx);
+
         return app(TrialBalanceWordExportService::class)->stream(
             $this->appliedDateFrom,
             $this->appliedDateTo,
@@ -272,6 +279,31 @@ class TrialBalancePage extends Page implements HasSchemas
             $this->difference,
             $this->isBalanced,
             $this->accountsCount,
+        );
+    }
+
+    /**
+     * OMS Task 9B.5 — see AccountStatementPage::auditExport() for the shared
+     * placement rule. Filters come from the applied* snapshot only.
+     */
+    protected function auditExport(ReportExportFormat $format): void
+    {
+        app(ReportExportAuditRecorder::class)->exportRequested(
+            ReportExportSubject::TrialBalance,
+            $format,
+            [
+                'report_submitted' => $this->hasSubmitted,
+                'date_from' => $this->appliedDateFrom,
+                'date_to' => $this->appliedDateTo,
+                'currency_id' => $this->appliedCurrencyId,
+                'currency_code' => $this->appliedCurrencyCode,
+                'currency_label' => $this->currencyLabel,
+                'account_type_id' => $this->appliedAccountTypeId,
+                'account_type_label' => $this->appliedAccountTypeLabel,
+                'include_zero_accounts' => $this->appliedIncludeZeroAccounts,
+                'accounts_count' => $this->accountsCount,
+                'is_balanced' => $this->isBalanced,
+            ],
         );
     }
 

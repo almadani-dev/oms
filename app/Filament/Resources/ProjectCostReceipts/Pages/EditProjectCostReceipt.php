@@ -11,6 +11,7 @@ use App\Models\ProjectCostReceipt;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Services\Attachments\AttachmentUploadService;
+use App\Services\Audit\Attachments\AttachmentAuditRecorder;
 use App\Services\Audit\Financial\FinancialAccountRole;
 use App\Services\Audit\Financial\FinancialAuditRecorder;
 use App\Services\Audit\Financial\FinancialAuditSubject;
@@ -187,7 +188,10 @@ class EditProjectCostReceipt extends EditRecord
                 // Store the replacement first; only soft-delete the previous
                 // active attachment once the new one has succeeded. If
                 // store() throws, the whole DB::transaction() rolls back and
-                // the previous attachment is left untouched.
+                // the previous attachment is left untouched. Passing
+                // `replacing` makes this ONE attachment.replaced event
+                // carrying both files' metadata - never an uploaded plus a
+                // deleted - so the soft delete below adds no second event.
                 app(AttachmentUploadService::class)->store(
                     parent: $record,
                     tempPath: $newTempPath,
@@ -195,10 +199,14 @@ class EditProjectCostReceipt extends EditRecord
                     prefix: 'receive',
                     date: $record->date,
                     amount: (float) $record->amount,
+                    replacing: $existingAttachment,
                 );
 
                 $existingAttachment?->delete();
             } elseif ($removeRequested && $existingAttachment) {
+                // Recorded BEFORE the soft delete, while the metadata being
+                // preserved is still the metadata of an active attachment.
+                app(AttachmentAuditRecorder::class)->deleted($existingAttachment);
                 $existingAttachment->delete();
             }
 

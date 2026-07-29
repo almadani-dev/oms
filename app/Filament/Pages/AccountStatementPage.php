@@ -7,6 +7,9 @@ use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\BankType;
 use App\Models\Currency;
+use App\Services\Audit\Reports\ReportExportAuditRecorder;
+use App\Services\Audit\Reports\ReportExportFormat;
+use App\Services\Audit\Reports\ReportExportSubject;
 use App\Services\Reports\AccountStatementExcelExportService;
 use App\Services\Reports\AccountStatementReportService;
 use App\Services\Reports\AccountStatementWordExportService;
@@ -272,6 +275,8 @@ class AccountStatementPage extends Page implements HasSchemas
             return null;
         }
 
+        $this->auditExport(ReportExportFormat::Xlsx);
+
         return app(AccountStatementExcelExportService::class)->stream(
             $this->selectedAccount,
             $this->appliedDateFrom,
@@ -295,6 +300,8 @@ class AccountStatementPage extends Page implements HasSchemas
             return null;
         }
 
+        $this->auditExport(ReportExportFormat::Docx);
+
         return app(AccountStatementWordExportService::class)->stream(
             $this->selectedAccount,
             $this->appliedDateFrom,
@@ -307,6 +314,34 @@ class AccountStatementPage extends Page implements HasSchemas
             $this->movementsCount,
             $this->currencyCode,
             $this->hasMixedCurrencies,
+        );
+    }
+
+    /**
+     * OMS Task 9B.5 — one REQUIRED `report_export.export_requested` event per
+     * export, written after authorizeReportExport() AND after the "عرض"
+     * submission gate, so neither a 403 nor a blocked-and-warned export is
+     * ever recorded as an export. Filters describe the SNAPSHOT that is being
+     * exported (the applied* properties), never the live filter state, which
+     * is the same rule the export itself follows.
+     */
+    protected function auditExport(ReportExportFormat $format): void
+    {
+        app(ReportExportAuditRecorder::class)->exportRequested(
+            ReportExportSubject::AccountStatement,
+            $format,
+            [
+                'report_submitted' => $this->hasSubmitted,
+                'date_from' => $this->appliedDateFrom,
+                'date_to' => $this->appliedDateTo,
+                'account_id' => $this->selectedAccount?->getKey(),
+                'account_label' => $this->selectedAccount
+                    ? trim(($this->selectedAccount->account_code ? $this->selectedAccount->account_code.' - ' : '').$this->selectedAccount->name)
+                    : null,
+                'currency_code' => $this->currencyCode,
+                'movements_count' => $this->movementsCount,
+                'has_mixed_currencies' => $this->hasMixedCurrencies,
+            ],
         );
     }
 

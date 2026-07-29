@@ -13,6 +13,64 @@
 ---
 
 ### Date
+2026-07-29 (OMS Task 9B.5 — report exports record `export_requested`, never `export_completed`)
+
+### Decision
+`ReportExportAuditRecorder` hardcodes a single action, `export_requested`, for all ten export paths. No completion event exists.
+
+### Reason
+Every one of the nine services in `app/Services/Reports` ends the same way: `return response()->streamDownload(function () use ($doc) { $writer->save('php://output'); }, $filename, [...]);`. The in-memory `Spreadsheet`/`PhpWord` object is built synchronously before the response is constructed, but the **serialization** — the step that can still exhaust memory or throw inside PhpSpreadsheet/PhpWord — runs inside the `streamDownload` callback, which Symfony invokes only after the response has been returned and the headers are already committed. The writer targets `php://output` directly, so no temporary file is produced at any point either, meaning there is not even an artifact whose existence could prove success. There is therefore no point in the current synchronous code at which successful generation is objectively known before the response is returned. `export_completed` would be a claim this code cannot support; `export_requested` records exactly what *is* true at that moment — an authorized actor requested this export, of this report, in this format, over these filters.
+
+### Impact
+An export that begins and then dies during serialization is recorded as requested, which is accurate, rather than as completed, which would be false. If exports are ever moved behind a queued job or a materialized temporary file, a genuine completion event becomes possible and should be **added** alongside this one, not substituted for it.
+
+---
+
+### Date
+2026-07-29 (OMS Task 9B.5 — `viewed` and `downloaded` are separate actions because this application genuinely distinguishes them)
+
+### Decision
+An authorized private-attachment access records `attachment.viewed` or `attachment.downloaded`, not a single generic `accessed`.
+
+### Reason
+The distinction is explicit and application-level, not inferred. `routes/web.php` declares `/attachments/{attachment}/{mode}` with `->whereIn('mode', ['view','download'])`; `AttachmentController::show()` re-validates the segment against the same two literals with `abort_unless(in_array($mode, ['view','download'], true), 404)`; and the mode selects a materially different response — `Content-Disposition: inline` for a preview versus `attachment` for a download. Two distinct, explicitly requested operations are therefore two accurate actions. Crucially, nothing in the audit path reads `Accept`, `User-Agent`, `Sec-Fetch-Dest` or any other header to guess intent, which is what "do not invent download semantics from browser headers" rules out.
+
+### Impact
+The audit trail can answer "who previewed this payment proof" separately from "who took a copy of it". The dependency is documented at the top of `AttachmentAccessAuditRecorder`: if the `{mode}` segment is ever collapsed to a single path, these two actions must collapse to one accurate `accessed` action rather than start inferring intent from headers.
+
+---
+
+### Date
+2026-07-29 (OMS Task 9B.5 — attachment atomicity is claimed for the database only, never for the filesystem)
+
+### Decision
+`AttachmentAuditRecorder` guarantees that an Attachment row and its audit event commit or roll back together, and the documentation says so in exactly those terms. It does **not** claim filesystem atomicity, and the pre-existing file move/delete ordering was left untouched.
+
+### Reason
+The audit insert is `Required` and joins the caller's already-open `DB::transaction()` (asserted with a `LogicException` below `transactionLevel() >= 1`), so the database half is genuinely atomic. The filesystem half is not and cannot be made so here: `AttachmentUploadService` performs its `$disk->move()` before the surrounding transaction commits, so any rollback — audit failure included — leaves that one new file orphaned on the private disk. That was already true of every pre-9B.5 rollback in these workflows, and "fixing" it would mean rewriting crash-safe file handling inside an audit task.
+
+The §4 STOP condition ("if strict audit integration risks deleting the old file before the DB/audit commit is safe") was checked and does **not** apply: no path in this application deletes a prior attachment file from disk at all. A replacement stores the new file first and then soft-deletes the previous **row**; the five workflow delete methods soft-delete the row and explicitly keep the file "for audit". So a Required audit event can never cause an old file to be destroyed ahead of a commit — there is no code that destroys one.
+
+### Impact
+The guarantee that is documented is the guarantee that holds. A rollback can leave one orphaned new file (unchanged, pre-existing behavior); it can never lose a previous file, and it can never leave attachment metadata committed without its audit row.
+
+---
+
+### Date
+2026-07-29 (OMS Task 9B.5 — the attachment payload field is `parent_id`, not `parent_key`)
+
+### Decision
+The attachment metadata payload names the parent's primary key `parent_id`. `AuditRedactor` was **not** given another `SAFE_EXCEPTIONS` entry.
+
+### Reason
+`AuditRedactor` matches on whole underscore-delimited segments, so `parent_key` has a `key` segment and was redacted to `[REDACTED]` — caught by the new tests, not by inspection. The value is an ordinary foreign key, not key material, and redacting it erases the single identifier that links an attachment event to its parent's own `financial` event. The two available fixes are to allowlist the field name globally or to pick a safe semantic name; the codebase already has a precedent for the second (`AuditSubjectRegistry` emits `settings.key` as `setting_name` for exactly this reason, rather than weakening the redactor for every other subject). Adding `parent_key` to `SAFE_EXCEPTIONS` would exempt that name for **every** future subject, which is a broader concession than the problem needs.
+
+### Impact
+The redactor's fail-closed segment rule stays as strict as it was in 9B.1–9B.4. Any future audit payload should follow the same rule: prefer an accurate non-colliding field name over an exception entry.
+
+---
+
+### Date
 2026-07-29 (OMS Task 9B.4 — authentication events are BestEffort, in a class that physically cannot emit a Required event)
 
 ### Decision

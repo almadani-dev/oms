@@ -9,6 +9,9 @@ use App\Models\Currency;
 use App\Models\Project;
 use App\Models\TransactionSuperType;
 use App\Models\TransactionType;
+use App\Services\Audit\Reports\ReportExportAuditRecorder;
+use App\Services\Audit\Reports\ReportExportFormat;
+use App\Services\Audit\Reports\ReportExportSubject;
 use App\Services\Reports\ComprehensiveFinancialTransactionsExcelExportService;
 use App\Services\Reports\ComprehensiveFinancialTransactionsReportService;
 use App\Services\Reports\ComprehensiveFinancialTransactionsWordExportService;
@@ -301,6 +304,8 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
             return null;
         }
 
+        $this->auditExport(ReportExportFormat::Xlsx);
+
         return app(ComprehensiveFinancialTransactionsExcelExportService::class)->stream(
             $this->appliedDateFrom,
             $this->appliedDateTo,
@@ -323,6 +328,8 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
             return null;
         }
 
+        $this->auditExport(ReportExportFormat::Docx);
+
         return app(ComprehensiveFinancialTransactionsWordExportService::class)->stream(
             $this->appliedDateFrom,
             $this->appliedDateTo,
@@ -334,6 +341,41 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
             $this->transactionCount,
             $this->lineCount,
             $this->currenciesCount,
+        );
+    }
+
+    /**
+     * OMS Task 9B.5 — see AccountStatementPage::auditExport() for the shared
+     * placement rule. Filters come from the applied* snapshot only.
+     *
+     * $appliedFilterLabels is a flat map of already-humanized filter strings
+     * built by the report service, so it is passed through as a bounded flat
+     * list of "label: value" strings, never as report data.
+     */
+    protected function auditExport(ReportExportFormat $format): void
+    {
+        app(ReportExportAuditRecorder::class)->exportRequested(
+            ReportExportSubject::ComprehensiveFinancialTransactions,
+            $format,
+            [
+                'report_submitted' => $this->hasSubmitted,
+                'date_from' => $this->appliedDateFrom,
+                'date_to' => $this->appliedDateTo,
+                'currency_ids' => $this->appliedCurrencyIds,
+                'transaction_super_type_id' => $this->appliedTransactionSuperTypeId,
+                'transaction_type_id' => $this->appliedTransactionTypeId,
+                'account_id' => $this->appliedAccountId,
+                'account_type_id' => $this->appliedAccountTypeId,
+                'project_id' => $this->appliedProjectId,
+                'filter_labels' => array_map(
+                    static fn (string $key, mixed $value): string => $key.': '.(is_scalar($value) ? (string) $value : ''),
+                    array_keys($this->appliedFilterLabels),
+                    array_values($this->appliedFilterLabels),
+                ),
+                'transaction_count' => $this->transactionCount,
+                'line_count' => $this->lineCount,
+                'currencies_count' => $this->currenciesCount,
+            ],
         );
     }
 

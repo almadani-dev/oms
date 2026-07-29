@@ -8,9 +8,11 @@ use App\Filament\Resources\GeneralExchanges\GeneralExchangeResource;
 use App\Filament\Resources\GeneralExchanges\Schemas\GeneralExchangeForm;
 use App\Filament\Resources\GeneralExchanges\Tables\GeneralExchangesTable;
 use App\Models\Account;
+use App\Models\Attachment;
 use App\Models\GeneralExchange;
 use App\Models\TransactionLine;
 use App\Services\Attachments\AttachmentUploadService;
+use App\Services\Audit\Attachments\AttachmentAuditRecorder;
 use App\Services\Audit\Financial\FinancialAccountRole;
 use App\Services\Audit\Financial\FinancialAuditRecorder;
 use App\Services\Audit\Financial\FinancialAuditSubject;
@@ -287,10 +289,16 @@ class EditGeneralExchange extends EditRecord
 
             if ($newTempPath) {
                 // Store the replacement first; only soft-delete the previous
-                // active attachment once the new one has succeeded.
-                $this->storeAttachment($record, $newTempPath, $finalAmount);
+                // active attachment once the new one has succeeded. Passing
+                // $existing makes this ONE attachment.replaced event carrying
+                // both files' metadata - never an uploaded plus a deleted -
+                // so the soft delete below adds no second event.
+                $this->storeAttachment($record, $newTempPath, $finalAmount, $existing);
                 $existing?->delete();
             } elseif ($removeRequested && $existing) {
+                // Recorded BEFORE the soft delete, while the metadata being
+                // preserved is still the metadata of an active attachment.
+                app(AttachmentAuditRecorder::class)->deleted($existing);
                 $existing->delete();
             }
 
@@ -399,7 +407,7 @@ class EditGeneralExchange extends EditRecord
         ];
     }
 
-    protected function storeAttachment(GeneralExchange $exchange, string $tempPath, float $finalAmount): void
+    protected function storeAttachment(GeneralExchange $exchange, string $tempPath, float $finalAmount, ?Attachment $replacing = null): void
     {
         app(AttachmentUploadService::class)->store(
             parent: $exchange,
@@ -408,6 +416,7 @@ class EditGeneralExchange extends EditRecord
             prefix: 'ext',
             date: $exchange->date ?? now(),
             amount: $finalAmount,
+            replacing: $replacing,
         );
     }
 }

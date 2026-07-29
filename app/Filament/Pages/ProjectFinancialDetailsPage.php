@@ -5,6 +5,9 @@ namespace App\Filament\Pages;
 use App\Enums\TransactionLineRole;
 use App\Filament\Pages\Concerns\AuthorizesReportAccess;
 use App\Models\Reports\ProjectFinancialSnapshot;
+use App\Services\Audit\Reports\ReportExportAuditRecorder;
+use App\Services\Audit\Reports\ReportExportFormat;
+use App\Services\Audit\Reports\ReportExportSubject;
 use App\Services\Reports\ProjectFinancialDetailsWordExportService;
 use Filament\Actions\Action;
 use Filament\Pages\Page;
@@ -107,6 +110,26 @@ class ProjectFinancialDetailsPage extends Page
     public function exportWord(): StreamedResponse
     {
         $this->authorizeReportExport();
+
+        // OMS Task 9B.5 — one REQUIRED `report_export.export_requested` event,
+        // after authorization and before the document is built. This page has
+        // no filter form and no "عرض" gate: its single "filter" is the
+        // {project} route parameter already resolved in mount(), which is what
+        // the payload records. Only identifiers and bounded counts are sent —
+        // never $this->costs/$receipts/$budgets/$payments/$deductions.
+        app(ReportExportAuditRecorder::class)->exportRequested(
+            ReportExportSubject::ProjectFinancialDetails,
+            ReportExportFormat::Docx,
+            [
+                'project_id' => $this->snapshot['project_id'] ?? null,
+                'project_code' => $this->snapshot['project_code'] ?? null,
+                'project_name' => $this->snapshot['project_name'] ?? null,
+                'donor_name' => $this->snapshot['donor_name'] ?? null,
+                'project_status_name' => $this->snapshot['project_status_name'] ?? null,
+                'currencies' => $this->currencies,
+                'alerts_count' => count($this->alerts),
+            ],
+        );
 
         return app(ProjectFinancialDetailsWordExportService::class)->stream(
             $this->projectInfo,

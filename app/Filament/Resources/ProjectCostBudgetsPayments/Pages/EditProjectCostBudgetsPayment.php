@@ -6,10 +6,12 @@ use App\Filament\Concerns\RedirectsToResourceView;
 use App\Enums\TransactionLineRole;
 use App\Filament\Resources\ProjectCostBudgetsPayments\ProjectCostBudgetsPaymentResource;
 use App\Filament\Resources\ProjectCostBudgetsPayments\Tables\ProjectCostBudgetsPaymentsTable;
+use App\Models\Attachment;
 use App\Models\ProjectCost;
 use App\Models\ProjectCostBudget;
 use App\Models\TransactionLine;
 use App\Services\Attachments\AttachmentUploadService;
+use App\Services\Audit\Attachments\AttachmentAuditRecorder;
 use App\Services\Audit\Financial\FinancialAccountRole;
 use App\Services\Audit\Financial\FinancialAuditRecorder;
 use App\Services\Audit\Financial\FinancialAuditSubject;
@@ -298,10 +300,16 @@ class EditProjectCostBudgetsPayment extends EditRecord
 
             if ($newTempPath) {
                 // Store the replacement first; only soft-delete the previous
-                // active attachment once the new one has succeeded.
-                $this->storeAttachment($record, $newTempPath, $finalAmount);
+                // active attachment once the new one has succeeded. Passing
+                // $existing makes this ONE attachment.replaced event carrying
+                // both files' metadata - never an uploaded plus a deleted -
+                // so the soft delete below adds no second event.
+                $this->storeAttachment($record, $newTempPath, $finalAmount, $existing);
                 $existing?->delete();
             } elseif ($removeRequested && $existing) {
+                // Recorded BEFORE the soft delete, while the metadata being
+                // preserved is still the metadata of an active attachment.
+                app(AttachmentAuditRecorder::class)->deleted($existing);
                 $existing->delete();
             }
 
@@ -413,7 +421,7 @@ class EditProjectCostBudgetsPayment extends EditRecord
         ];
     }
 
-    protected function storeAttachment(ProjectCostBudget $budget, string $tempPath, float $amount): void
+    protected function storeAttachment(ProjectCostBudget $budget, string $tempPath, float $amount, ?Attachment $replacing = null): void
     {
         app(AttachmentUploadService::class)->store(
             parent: $budget,
@@ -422,6 +430,7 @@ class EditProjectCostBudgetsPayment extends EditRecord
             prefix: 'pay',
             date: $budget->transaction?->transaction_time ?? now(),
             amount: $amount,
+            replacing: $replacing,
         );
     }
 }

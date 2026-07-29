@@ -5,6 +5,7 @@ namespace App\Filament\Resources\GeneralExchanges\Tables;
 use App\Models\FiscalYear;
 use App\Models\GeneralExchange;
 use App\Models\Partner;
+use App\Services\Audit\Attachments\AttachmentAuditRecorder;
 use App\Services\Audit\Financial\FinancialAccountRole;
 use App\Services\Audit\Financial\FinancialAuditRecorder;
 use App\Services\Audit\Financial\FinancialAuditSubject;
@@ -269,6 +270,10 @@ class GeneralExchangesTable
             // STEP 5 - Soft delete the attachment record (keep the physical file for audit)
             $attachment = $record->attachments()->first();
             if ($attachment) {
+                // One attachment.deleted event, recorded BEFORE the soft delete so
+                // the preserved metadata is the pre-delete metadata. Distinct from,
+                // and never a duplicate of, the single financial event below.
+                app(AttachmentAuditRecorder::class)->deleted($attachment);
                 $attachment->delete();
             }
 

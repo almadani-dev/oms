@@ -7,6 +7,7 @@ use App\Models\Partner;
 use App\Models\Project;
 use App\Models\ProjectCostBudget;
 use App\Models\ProjectSuper;
+use App\Services\Audit\Attachments\AttachmentAuditRecorder;
 use App\Services\Audit\Financial\FinancialAccountRole;
 use App\Services\Audit\Financial\FinancialAuditRecorder;
 use App\Services\Audit\Financial\FinancialAuditSubject;
@@ -245,6 +246,10 @@ class ProjectCostBudgetsPaymentsTable
             // STEP 5 - Soft delete the attachment record (keep the physical file for audit)
             $attachment = $record->attachments()->first();
             if ($attachment) {
+                // One attachment.deleted event, recorded BEFORE the soft delete so
+                // the preserved metadata is the pre-delete metadata. Distinct from,
+                // and never a duplicate of, the single financial event below.
+                app(AttachmentAuditRecorder::class)->deleted($attachment);
                 $attachment->delete();
             }
 

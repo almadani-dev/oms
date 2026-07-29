@@ -5,6 +5,9 @@ namespace App\Filament\Pages;
 use App\Filament\Pages\Concerns\AuthorizesReportAccess;
 use App\Models\Project;
 use App\Models\Reports\ProjectFinancialSnapshot;
+use App\Services\Audit\Reports\ReportExportAuditRecorder;
+use App\Services\Audit\Reports\ReportExportFormat;
+use App\Services\Audit\Reports\ReportExportSubject;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;
 use Filament\Notifications\Notification;
@@ -350,6 +353,22 @@ class ProjectsGeneralFinancialPage extends Page implements HasTable
     public function exportXlsx(): StreamedResponse
     {
         $this->authorizeReportExport();
+
+        // OMS Task 9B.5 — one REQUIRED `report_export.export_requested` event,
+        // after authorization and before any workbook work begins. This page
+        // has no "عرض" submission gate to wait for (it is a table page whose
+        // export always covers every snapshot row, not a filtered on-screen
+        // result), so there is no second gate to place this behind.
+        //
+        // The table's own Filament filters are deliberately NOT recorded: the
+        // export below ignores them entirely — it re-queries
+        // ProjectFinancialSnapshot unfiltered — so recording them would
+        // describe the screen rather than the file that was requested.
+        app(ReportExportAuditRecorder::class)->exportRequested(
+            ReportExportSubject::ProjectsGeneralFinancial,
+            ReportExportFormat::Xlsx,
+            ['scope' => 'all_project_snapshots'],
+        );
 
         $headers = [
             'كود المشروع',

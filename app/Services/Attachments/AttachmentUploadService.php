@@ -3,6 +3,7 @@
 namespace App\Services\Attachments;
 
 use App\Models\Attachment;
+use App\Services\Audit\Attachments\AttachmentAuditRecorder;
 use Carbon\Carbon;
 use DateTimeInterface;
 use Illuminate\Contracts\Filesystem\Filesystem;
@@ -26,6 +27,16 @@ use Throwable;
  * attachment, never touches authorization, and never builds a download
  * response - those stay in the calling Resource page and in
  * AttachmentStorageService respectively.
+ *
+ * OMS Task 9B.5 - this is also the SINGLE audit choke point for attachment
+ * uploads and replacements. All ten real upload call sites (the five
+ * financial Create pages and the five Edit pages) already funnel through
+ * store(), and there is deliberately no Attachment model observer and no
+ * Attachment entry in the general-CRUD AuditSubjectRegistry, so an
+ * `attachment.uploaded`/`attachment.replaced` event has exactly one possible
+ * origin and cannot be emitted twice for one file action. Whether the write
+ * is an upload or a replacement is not guessed here: the caller states it by
+ * passing the outgoing attachment as $replacing.
  */
 class AttachmentUploadService
 {
@@ -44,8 +55,10 @@ class AttachmentUploadService
         'ext',
     ];
 
-    public function __construct(private readonly AttachmentStorageService $storage)
-    {
+    public function __construct(
+        private readonly AttachmentStorageService $storage,
+        private readonly AttachmentAuditRecorder $audit,
+    ) {
     }
 
     /**
@@ -58,6 +71,14 @@ class AttachmentUploadService
      * file_path) purely so its id is available for the final deterministic
      * filename - never invented via MAX+1. It is then updated in place once
      * the file has been moved to its final path.
+     *
+     * $replacing is the caller's currently-active Attachment when this store
+     * is a REPLACEMENT (the five Edit pages pass it; the five Create pages do
+     * not). Its metadata is snapshotted here, before the new row exists and
+     * while the outgoing row is still the parent's active one, so the single
+     * `attachment.replaced` event can carry both sides. Passing it does NOT
+     * delete anything - the caller still owns that decision and its ordering,
+     * exactly as before.
      */
     public function store(
         Model $parent,
@@ -66,6 +87,7 @@ class AttachmentUploadService
         string $prefix,
         DateTimeInterface|string $date,
         float $amount,
+        ?Attachment $replacing = null,
     ): Attachment {
         if (! in_array($directory, self::ALLOWED_DIRECTORIES, true)) {
             throw new InvalidArgumentException("Unapproved attachment directory: {$directory}");
@@ -89,6 +111,14 @@ class AttachmentUploadService
         $mimeType  = $this->safeMimeType($disk, $tempPath);
         $fileSize  = $disk->size($tempPath);
         $fileSize  = is_int($fileSize) ? $fileSize : 0;
+
+        // Snapshotted here, before anything is created or moved: this is the
+        // last moment the outgoing attachment is unambiguously the parent's
+        // active one, and it is the only remaining description of a file the
+        // application will stop serving.
+        $previous = $replacing !== null
+            ? $this->audit->metadata()->of($replacing, 'replaced')
+            : null;
 
         $attachment = Attachment::create([
             'attachable_type' => $parent::class,
@@ -142,7 +172,17 @@ class AttachmentUploadService
             throw $e;
         }
 
-        return $attachment->refresh();
+        $attachment->refresh();
+
+        // Only now are file_name/file_path/file_type/file_size authoritative,
+        // so this is the earliest point an accurate event can be written -
+        // and, being REQUIRED and inside the caller's own transaction, the
+        // Attachment row cannot commit without it.
+        $previous === null
+            ? $this->audit->uploaded($attachment)
+            : $this->audit->replaced($previous, $attachment);
+
+        return $attachment;
     }
 
     /**

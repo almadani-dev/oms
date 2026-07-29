@@ -8,6 +8,9 @@ use App\Models\Partner;
 use App\Models\Project;
 use App\Models\ProjectStatus;
 use App\Models\ProjectSuper;
+use App\Services\Audit\Reports\ReportExportAuditRecorder;
+use App\Services\Audit\Reports\ReportExportFormat;
+use App\Services\Audit\Reports\ReportExportSubject;
 use App\Services\Reports\DonorFinancialReportExcelExportService;
 use App\Services\Reports\DonorFinancialReportService;
 use App\Services\Reports\DonorFinancialReportWordExportService;
@@ -81,6 +84,17 @@ class DonorFinancialReportPage extends Page implements HasSchemas
      * @var array<string, mixed>
      */
     public array $report = [];
+
+    /**
+     * The raw filter ids actually applied at "عرض" time — the same $filters
+     * array handed to the report service, plus the donor id. Kept alongside
+     * $report because $report['applied_filters'] holds humanized [label,
+     * value] PAIRS for display, which are the wrong shape for an audit
+     * payload (see ReportExportAuditRecorder's flat-value rule).
+     *
+     * @var array<string, mixed>
+     */
+    public array $appliedFilters = [];
 
     public function mount(): void
     {
@@ -206,6 +220,8 @@ class DonorFinancialReportPage extends Page implements HasSchemas
             'applied_filters' => $this->appliedFilterLabels($filters),
         ]);
 
+        $this->appliedFilters = $filters + ['donor_id' => (int) $state['donor_id']];
+
         $this->hasSubmitted = true;
     }
 
@@ -217,6 +233,33 @@ class DonorFinancialReportPage extends Page implements HasSchemas
     {
         $this->hasSubmitted = false;
         $this->report = [];
+        $this->appliedFilters = [];
+    }
+
+    /**
+     * OMS Task 9B.5 — see AccountStatementPage::auditExport() for the shared
+     * placement rule. Only ids, the donor's name and bounded counts are
+     * recorded; $this->report itself (projects, cost details, movements) is
+     * never passed to the recorder.
+     */
+    protected function auditExport(ReportExportFormat $format): void
+    {
+        app(ReportExportAuditRecorder::class)->exportRequested(
+            ReportExportSubject::DonorFinancialReport,
+            $format,
+            [
+                'report_submitted' => $this->hasSubmitted,
+                'donor_id' => $this->appliedFilters['donor_id'] ?? null,
+                'donor_name' => $this->report['donor_name'] ?? null,
+                'date_from' => $this->appliedFilters['date_from'] ?? null,
+                'date_to' => $this->appliedFilters['date_to'] ?? null,
+                'project_status_id' => $this->appliedFilters['project_status_id'] ?? null,
+                'project_super_id' => $this->appliedFilters['project_super_id'] ?? null,
+                'currency_id' => $this->appliedFilters['currency_id'] ?? null,
+                'project_id' => $this->appliedFilters['project_id'] ?? null,
+                'projects_count' => $this->report['projects_count'] ?? null,
+            ],
+        );
     }
 
     /**
@@ -232,6 +275,8 @@ class DonorFinancialReportPage extends Page implements HasSchemas
             return null;
         }
 
+        $this->auditExport(ReportExportFormat::Xlsx);
+
         return app(DonorFinancialReportExcelExportService::class)->stream($this->report);
     }
 
@@ -242,6 +287,8 @@ class DonorFinancialReportPage extends Page implements HasSchemas
         if (! $this->canExport()) {
             return null;
         }
+
+        $this->auditExport(ReportExportFormat::Docx);
 
         return app(DonorFinancialReportWordExportService::class)->stream($this->report);
     }
