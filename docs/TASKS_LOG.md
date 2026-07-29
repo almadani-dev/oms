@@ -17,6 +17,49 @@
 ---
 
 ### Date
+2026-07-29 (OMS Task 9B.3 — financial audit integration)
+
+### Task
+Integrate REQUIRED-mode auditing for the five financial workflows (Project Cost Receipt / Project disbursement / Execution Payment / General Expense / General Exchange) and the four financial master-data models (Account, AccountType, Currency, ExchangeRateHistory), under one governing rule: **one logical financial action = exactly one `AuditEvent`**, with no separate `Transaction`/`TransactionLine` auditing, the source event carrying the resulting transaction identifiers, and the audit insert running inside each workflow's own existing `DB::transaction()` so a failed audit rolls the entire financial operation back. Required auditing the **actual write paths**, not model names taken from documentation.
+
+### Result
+**The real mapping was materially different from the documentation, in exactly the way the brief anticipated.** `OMS_Master_Reference.md` stated that "صرف مبلغ المشروع" is model `ProjectCostBudgetsPayment` and that "صرف مبالغ التنفيذ" is model `ExecutionPayment`. Read off the resource classes, the truth is the inverse: `ProjectCostBudgetsPaymentResource` (slug `project-cost-budgets-disbursements`) writes **`ProjectCostBudget`**, `ExecutionPaymentResource` (slug `execution-payments`) writes **`ProjectCostBudgetsPayment`**, and **no `ExecutionPayment` model class exists at all**. The Master Reference was corrected, with a warning table added. This is the direct justification for keying `subject_type` on a workflow alias rather than an FQCN.
+
+New layer `app/Services/Audit/Financial/` (7 classes): `FinancialAuditSubject` (the five stable aliases), `FinancialAccountRole` (closed role vocabulary — debit/credit/source/destination/admin/transfer/beneficiary), `FinancialAuditValue` (decimal-string/date/id/bounded-text normalizers), `FinancialAuditLabeller` (memoized, `withTrashed()`, column-limited label lookups), `FinancialAuditFieldNames` (the `_id` ↔ `_label`/`_code` satellite contract plus the context-field list), `FinancialAuditSnapshotter` (one bounded-payload builder per workflow), `FinancialAuditDiff` (context / satellite / business-field rules), and `FinancialAuditRecorder` (the single `event_category = financial` write gateway).
+
+`FinancialAuditRecorder` **never opens a transaction** and asserts `DB::transactionLevel() >= 1`, throwing `LogicException` otherwise — the structural guarantee that an audit row can never survive a rolled-back financial mutation. All 15 financial call sites (5 create pages, 5 edit pages, 5 static table delete methods) record from inside the existing `DB::transaction()`, before the success `Notification` so a rollback is never reported as success. Each workflow's delete is a single static method shared by the Edit header action, the table row action and the table bulk action, so one deletion produces one event from any entry point.
+
+Financial master data went through the existing 9B.2 CRUD architecture (`event_category = crud`) with financial value policies (`accounts.current_balance` and `exchange_rate_histories.rate` stored as decimal strings). `HasUserTracking` was activated on `Account` and `AccountType` — forward-only, **no backfill**. `Account` also gained `protected $attributes = ['current_balance' => 0]` mirroring the column default, because `AccountForm` never submits that field (`disabled()->dehydrated(false)`), which would otherwise have recorded a NULL balance on create while the stored row held 0.00. Account creation *with* an opening balance produces exactly one `account` event carrying `opening_transaction_id`/`opening_transaction_number`/`opening_balance`/`opening_balance_date`/`opening_balance_fx_rate` — the opening `Transaction`, its two lines, the auto-created clearing `Account` and the auto-created lookup rows are deliberately **not** separately audited; `AuditedCrudService::recordCreatedWithin()` was added for that one case and fails closed outside an open transaction.
+
+Three pre-existing test suites needed migration-list updates (not behavior changes) because activating `HasUserTracking` means `Account`/`AccountType` inserts now write `created_by`/`updated_by`: `BackfillTransactionDescriptionsCommandTest`, `TransactionDescriptionBuilderTest`, `TransactionLineDescriptionBuilderTest` each hand-pick migrations and were missing `users` plus the two Task 8.2/8.3 reconciliation migrations. `AuditCrudInfrastructureTest` was updated to expect the four new aliases and now pins `Transaction`/`TransactionLine` (rather than `Account`) as the models that must stay permanently unregistered.
+
+### Changed Files
+- **New (7 source):** `app/Services/Audit/Financial/{FinancialAuditSubject,FinancialAccountRole,FinancialAuditValue,FinancialAuditLabeller,FinancialAuditFieldNames,FinancialAuditSnapshotter,FinancialAuditDiff,FinancialAuditRecorder}.php`
+- **New (8 test):** `tests/Feature/Audit/Financial/{FinancialAuditTestCase,ProjectCostReceiptAuditTest,ProjectDisbursementAuditTest,ExecutionPaymentAuditTest,GeneralExpenseAuditTest,GeneralExchangeAuditTest,FinancialAuditAtomicityTest,FinancialMasterDataAuditTest,FinancialAuditRegressionTest}.php`
+- **Modified — financial workflows (15 call sites across 15 files):** the 5 `Create*`/5 `Edit*` pages and the 5 `*Table` static delete methods for ProjectCostReceipts, ProjectCostBudgetsPayments, ExecutionPayments, GeneralExpenses, GeneralExchanges.
+- **Modified — audit layer:** `app/Services/Audit/Crud/AuditSubjectRegistry.php` (4 new definitions + docblock), `app/Services/Audit/Crud/AuditedCrudService.php` (`recordCreatedWithin()`).
+- **Modified — models:** `app/Models/Account.php`, `app/Models/AccountType.php`.
+- **Modified — financial master-data Filament wiring:** Accounts (Create/Edit/Table), AccountTypes (Create/Edit/Table), Currencies (Create/Edit/Table + `ExchangeRateHistoryRelationManager`), ExchangeRateHistories (Create/Edit/Table).
+- **Modified — tests:** `tests/Feature/Audit/Crud/AuditCrudInfrastructureTest.php`, `tests/Feature/Commands/BackfillTransactionDescriptionsCommandTest.php`, `tests/Unit/Services/TransactionDescriptionBuilderTest.php`, `tests/Unit/Services/TransactionLineDescriptionBuilderTest.php`.
+- **No migration, no schema change.**
+
+### Verification
+Focused suites only, run strictly sequentially (never concurrently):
+- `tests/Feature/Audit` — **150 passed, 1089 assertions**.
+- `tests/Feature/{ProjectCostReceipts,ProjectCostBudgetsPayments,ExecutionPayments,GeneralExpenses,GeneralExchanges}` — **70 passed, 285 assertions**.
+- `tests/Unit/Services/Transaction{,Line}DescriptionBuilderTest` + `tests/Feature/{Crud,Integrity,Commands}` — **183 passed, 524 assertions**.
+- `tests/Feature/{Permissions,Reports}` — **410 passed, 3 skipped, 1949 assertions**.
+
+Forced-audit-failure rollback (audit table dropped mid-flight) proved, for the receipt workflow: create rolls back the receipt + transaction + all lines + both balances; edit restores the previous lines and balances exactly and leaves the replacement account untouched; delete leaves the record, the transaction, the lines and the balances completely unchanged; a surrounding business failure discards the event; and no transaction is ever left open. The same proof was run for the Account opening-balance path (both accounts and the opening entry roll back).
+
+**Real local database: NOT VERIFIED — the MySQL80 Windows service is Stopped and starting it requires elevation this session does not have.** `oms:check-financial-integrity`, the `audit_events`/financial row-count and balance comparison, and the `/admin/login` + financial-page smoke checks are therefore all outstanding and must be run before commit. No write of any kind was attempted against the real database.
+
+### Commit Hash
+(not committed — pending review)
+
+---
+
+### Date
 2026-07-27 (OMS Task 7C.8 acceptance pass — attachment-test retry-margin fix, real Laravel maintenance-mode test, stale-acknowledgment dual-gate proof, request-serialization proof, eligibility fresh-read fix, live browser walkthrough)
 
 ### Task

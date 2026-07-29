@@ -10,6 +10,9 @@ use App\Models\GeneralExpense;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Services\Attachments\AttachmentUploadService;
+use App\Services\Audit\Financial\FinancialAccountRole;
+use App\Services\Audit\Financial\FinancialAuditRecorder;
+use App\Services\Audit\Financial\FinancialAuditSubject;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
@@ -120,7 +123,24 @@ class CreateGeneralExpense extends CreateRecord
                 $this->storeAttachment($expense, $data['expense_image'], $amount);
             }
 
-            // STEP 6 - Success notification
+            // STEP 6 - One financial AuditEvent for this whole logical action
+            // (expense row + transaction + two lines + two balance changes),
+            // inside this same transaction and REQUIRED. Recorded before the
+            // notification so a rollback can never be reported as a success.
+            $expense->setRelation('transaction', $transaction);
+
+            $audit = app(FinancialAuditRecorder::class);
+
+            $audit->created(
+                FinancialAuditSubject::GeneralExpense,
+                $expense,
+                $audit->snapshots()->generalExpense($expense, [
+                    FinancialAccountRole::DEBIT => $data['debit_account_id'],
+                    FinancialAccountRole::CREDIT => $data['credit_account_id'],
+                ]),
+            );
+
+            // STEP 7 - Success notification
             Notification::make()
                 ->title('تم تسجيل المصروف بنجاح')
                 ->body('رقم المعاملة: ' . $transactionNumber)

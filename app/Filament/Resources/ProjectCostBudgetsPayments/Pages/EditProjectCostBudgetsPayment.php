@@ -10,6 +10,9 @@ use App\Models\ProjectCost;
 use App\Models\ProjectCostBudget;
 use App\Models\TransactionLine;
 use App\Services\Attachments\AttachmentUploadService;
+use App\Services\Audit\Financial\FinancialAccountRole;
+use App\Services\Audit\Financial\FinancialAuditRecorder;
+use App\Services\Audit\Financial\FinancialAuditSubject;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
@@ -205,10 +208,23 @@ class EditProjectCostBudgetsPayment extends EditRecord
             (int) $costCurrencyId, (int) $data['disbursement_currency_id']
         );
 
+        // Pre-change snapshot: taken after every guard has passed but before
+        // the transaction opens, while the budget row, its transaction and
+        // its four old lines are all still pristine. The four old accounts
+        // are read from the OLD lines, never from the submitted data.
+        $audit = app(FinancialAuditRecorder::class);
+
+        $before = $audit->snapshots()->projectDisbursement($record, [
+            FinancialAccountRole::SOURCE => $oldSource?->account_id,
+            FinancialAccountRole::ADMIN => $oldAdmin?->account_id,
+            FinancialAccountRole::TRANSFER => $oldTransfer?->account_id,
+            FinancialAccountRole::DESTINATION => $oldDest?->account_id,
+        ]);
+
         return DB::transaction(function () use (
             $record, $data, $projectCost, $projectCostId, $costCurrencyId,
             $original, $adminPct, $transferPct, $adminAmount, $transferAmount, $afterDeduct, $finalAmount, $fxRate,
-            $oldSource, $oldAdmin, $oldTransfer, $oldDest, $accounts, $lines
+            $oldSource, $oldAdmin, $oldTransfer, $oldDest, $accounts, $lines, $audit, $before
         ) {
             $transaction = $record->transaction;
 
@@ -289,7 +305,23 @@ class EditProjectCostBudgetsPayment extends EditRecord
                 $existing->delete();
             }
 
-            // STEP 7 - Success
+            // STEP 7 - One financial AuditEvent for this whole logical edit,
+            // recording only the financial/business fields that actually
+            // changed, with the old and new labels of any reassigned
+            // account/project/currency preserved.
+            $audit->updated(
+                FinancialAuditSubject::ProjectDisbursement,
+                $record,
+                $before,
+                $audit->snapshots()->projectDisbursement($record, [
+                    FinancialAccountRole::SOURCE => $data['source_account_id'],
+                    FinancialAccountRole::ADMIN => $data['admin_account_id'],
+                    FinancialAccountRole::TRANSFER => $data['transfer_account_id'],
+                    FinancialAccountRole::DESTINATION => $data['destination_account_id'],
+                ]),
+            );
+
+            // STEP 8 - Success
             Notification::make()
                 ->title('تم تعديل الصرف بنجاح')
                 ->success()

@@ -5,6 +5,9 @@ namespace App\Filament\Resources\GeneralExchanges\Tables;
 use App\Models\FiscalYear;
 use App\Models\GeneralExchange;
 use App\Models\Partner;
+use App\Services\Audit\Financial\FinancialAccountRole;
+use App\Services\Audit\Financial\FinancialAuditRecorder;
+use App\Services\Audit\Financial\FinancialAuditSubject;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
@@ -224,6 +227,10 @@ class GeneralExchangesTable
     {
         DB::transaction(function () use ($record) {
             $transaction = $record->transaction;
+            $source      = null;
+            $admin       = null;
+            $transfer    = null;
+            $dest        = null;
 
             if ($transaction) {
                 $lines = $transaction->lines()->with('account')->get();
@@ -232,7 +239,20 @@ class GeneralExchangesTable
                 $admin    = $lines->firstWhere('notes', GeneralExchange::LINE_ADMIN);
                 $transfer = $lines->firstWhere('notes', GeneralExchange::LINE_TRANSFER);
                 $dest     = $lines->firstWhere('notes', GeneralExchange::LINE_DESTINATION);
+            }
 
+            // Full pre-delete snapshot, captured while the exchange row, its
+            // transaction (number included) and its four lines are all still
+            // intact - it is the only remaining description of what was removed.
+            $audit    = app(FinancialAuditRecorder::class);
+            $snapshot = $audit->snapshots()->generalExchange($record, [
+                FinancialAccountRole::SOURCE      => $source?->account_id,
+                FinancialAccountRole::ADMIN       => $admin?->account_id,
+                FinancialAccountRole::TRANSFER    => $transfer?->account_id,
+                FinancialAccountRole::DESTINATION => $dest?->account_id,
+            ]);
+
+            if ($transaction) {
                 // STEP 1 - Reverse all account balances
                 $source?->account?->increment('current_balance', (float) $source->credit_base);
                 $admin?->account?->decrement('current_balance', (float) $admin->debit_base);
@@ -254,6 +274,10 @@ class GeneralExchangesTable
 
             // STEP 4 - Soft delete the general exchange row
             $record->delete();
+
+            // STEP 6 - One financial AuditEvent carrying the pre-delete
+            // snapshot, inside this same transaction and REQUIRED.
+            $audit->deleted(FinancialAuditSubject::GeneralExchange, $record, $snapshot);
         });
     }
 }

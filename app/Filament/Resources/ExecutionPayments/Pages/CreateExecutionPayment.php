@@ -13,6 +13,9 @@ use App\Models\ProjectCostBudgetsPayment;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Services\Attachments\AttachmentUploadService;
+use App\Services\Audit\Financial\FinancialAccountRole;
+use App\Services\Audit\Financial\FinancialAuditRecorder;
+use App\Services\Audit\Financial\FinancialAuditSubject;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAmountGuard;
@@ -122,7 +125,24 @@ class CreateExecutionPayment extends CreateRecord
                 $this->storeAttachment($payment, $data['payment_image'], $amount);
             }
 
-            // STEP 7 - Success notification
+            // STEP 7 - One financial AuditEvent for this whole logical action
+            // (payment row + transaction + two lines + two balance changes),
+            // inside this same transaction and REQUIRED. Recorded before the
+            // notification so a rollback can never be reported as a success.
+            $payment->setRelation('transaction', $transaction);
+
+            $audit = app(FinancialAuditRecorder::class);
+
+            $audit->created(
+                FinancialAuditSubject::ExecutionPayment,
+                $payment,
+                $audit->snapshots()->executionPayment($payment, [
+                    FinancialAccountRole::BENEFICIARY => $data['beneficiary_account_id'],
+                    FinancialAccountRole::CREDIT => $creditAccountId,
+                ]),
+            );
+
+            // STEP 8 - Success notification
             Notification::make()
                 ->title('تم صرف مبلغ التنفيذ بنجاح')
                 ->body('رقم المعاملة: ' . $transactionNumber)

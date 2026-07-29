@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
+use LogicException;
 
 /**
  * The single audited write path for the general/master-data models approved
@@ -109,6 +110,47 @@ final class AuditedCrudService
 
             return $model;
         });
+    }
+
+    /**
+     * Records the `created` event for a model the CALLER has already saved
+     * inside its OWN open transaction, plus an optional bounded block of
+     * extra context that is not a column on the model.
+     *
+     * Exists for exactly one situation (OMS Task 9B.3): creating an Account
+     * with an opening balance also creates a Transaction, two TransactionLines
+     * and a counterpart clearing account, and the resulting opening-entry
+     * transaction number is only known at the END of that work — after the
+     * account row itself was inserted. create() above would have written its
+     * event too early to carry it, and a second event for the opening entry is
+     * exactly the duplication this phase forbids. So CreateAccount owns the
+     * transaction and calls this once, at the end, producing exactly ONE
+     * `account` event that includes the opening-entry identifiers.
+     *
+     * Fails closed when no transaction is open: an event recorded outside the
+     * caller's transaction could survive a rolled-back mutation, which is the
+     * precise failure this whole design exists to prevent.
+     *
+     * @param  array<string, mixed>  $context  bounded extra payload keys
+     */
+    public function recordCreatedWithin(Model $model, array $context = []): void
+    {
+        if (DB::transactionLevel() < 1) {
+            throw new LogicException(
+                'recordCreatedWithin() must be called from inside the caller\'s own open DB::transaction().'
+            );
+        }
+
+        $definition = $this->registry->definitionFor($model);
+
+        $this->record(
+            definition: $definition,
+            model: $model,
+            action: 'created',
+            oldValues: null,
+            newValues: array_merge($this->snapshotter->snapshot($model), $context),
+            changedFields: null,
+        );
     }
 
     /**

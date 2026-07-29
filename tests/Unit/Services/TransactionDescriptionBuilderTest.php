@@ -44,6 +44,11 @@ class TransactionDescriptionBuilderTest extends TestCase
 
         Artisan::call('migrate', [
             '--path' => [
+                // `users` and the two Task 8.2/8.3 reconciliation migrations
+                // are needed because Account/AccountType now carry
+                // HasUserTracking (OMS Task 9B.3), so every insert writes
+                // created_by/updated_by.
+                'database/migrations/0001_01_01_000000_create_users_table.php',
                 'database/migrations/2026_06_09_130001_create_fiscal_years_table.php',
                 'database/migrations/2026_06_09_130002_create_currencies_table.php',
                 'database/migrations/2026_06_09_130006_create_accounts_type_table.php',
@@ -52,6 +57,8 @@ class TransactionDescriptionBuilderTest extends TestCase
                 'database/migrations/2026_06_09_130007_create_transactions_types_table.php',
                 'database/migrations/2026_06_09_130017_create_transactions_table.php',
                 'database/migrations/2026_06_09_130018_create_transaction_lines_table.php',
+                'database/migrations/2026_07_28_110001_reconcile_accounts_type_schema_drift.php',
+                'database/migrations/2026_07_28_120000_reconcile_accounts_user_tracking_schema_drift.php',
             ],
             '--realpath' => false,
             '--force'    => true,

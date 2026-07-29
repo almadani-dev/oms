@@ -2,7 +2,11 @@
 
 namespace App\Services\Audit\Crud;
 
+use App\Models\Account;
+use App\Models\AccountType;
 use App\Models\BankType;
+use App\Models\Currency;
+use App\Models\ExchangeRateHistory;
 use App\Models\FiscalYear;
 use App\Models\Partner;
 use App\Models\PartnerType;
@@ -13,6 +17,7 @@ use App\Models\ProjectSuper;
 use App\Models\Setting;
 use App\Models\TransactionSuperType;
 use App\Models\TransactionType;
+use App\Services\Audit\Financial\FinancialAuditValue;
 use App\Services\Audit\Exceptions\AuditSubjectNotRegisteredException;
 use Illuminate\Database\Eloquent\Model;
 
@@ -27,13 +32,30 @@ use Illuminate\Database\Eloquent\Model;
  * PHP FQCN (a class rename must never orphan historical rows — see the
  * audit_events migration's docblock).
  *
- * Only the eleven general/master-data models approved for this phase are
- * here. Financial workflow models (Transaction, TransactionLine,
- * ProjectCostBudget/-sPayment, ProjectCostReceipt, GeneralExpense,
- * GeneralExchange, Account, AccountType, Currency, ExchangeRateHistory),
- * security models (User/Role/Permission), Attachment and BackupOperation are
- * deliberately absent — they belong to phases 9B.3+ and must not be audited
- * through this generic CRUD path by accident.
+ * The eleven general/master-data models approved in Task 9B.2 are here,
+ * plus the four FINANCIAL MASTER-DATA models added in Task 9B.3 — Account,
+ * AccountType, Currency, ExchangeRateHistory. Those four are ordinary master
+ * data whose lifecycle is a single save, so they use this architecture
+ * (event_category `crud`) rather than the workflow-shaped
+ * App\Services\Audit\Financial path; they still get identical REQUIRED
+ * atomicity, because AuditedCrudService wraps every mutation and its
+ * AuditEvent in one transaction. Their financial semantics are preserved by
+ * their value policies below: money and rates are stored as fixed-scale
+ * DECIMAL STRINGS, never as floats.
+ *
+ * The five financial WORKFLOWS (project_cost_receipt, project_disbursement,
+ * execution_payment, general_expense, general_exchange) are deliberately NOT
+ * here — they are audited as `financial` events keyed by workflow alias, not
+ * by model class, because two of them share model classes whose names are the
+ * inverse of the workflow they serve (see
+ * App\Services\Audit\Financial\FinancialAuditSubject).
+ *
+ * Transaction and TransactionLine are deliberately NOT here and must never
+ * be: one logical financial action produces exactly one AuditEvent, written
+ * by the source workflow and carrying the resulting transaction identifiers.
+ * Registering either model would duplicate every financial event. Security
+ * models (User/Role/Permission), Attachment and BackupOperation are likewise
+ * absent — they belong to phases 9B.4+.
  */
 final class AuditSubjectRegistry
 {
@@ -246,6 +268,74 @@ final class AuditSubjectRegistry
                 // subject. `settings.value` is unaffected: it still passes
                 // SettingValuePolicy above and the central redactor after.
                 fieldAliases: ['key' => 'setting_name'],
+            ),
+
+            // ---- OMS Task 9B.3 — financial master data ----------------------
+
+            new AuditSubjectDefinition(
+                modelClass: Account::class,
+                alias: 'account',
+                auditedFields: [
+                    'account_code',
+                    'name',
+                    'account_type_id',
+                    'bank_type_id',
+                    'currency_id',
+                    'current_balance',
+                    'is_active',
+                    'iban',
+                    'notes',
+                ],
+                labelResolver: static fn (Account $account): ?string => self::joinParts([$account->account_code, $account->name]),
+                relationLabels: [
+                    'account_type_id' => static fn (mixed $id): ?string => AccountType::withTrashed()
+                        ->select(['id', 'name'])->find($id)?->name,
+                    'currency_id' => static fn (mixed $id): ?string => Currency::withTrashed()
+                        ->select(['id', 'code'])->find($id)?->code,
+                ],
+                // `current_balance` is never editable through AccountForm (it
+                // is disabled + dehydrated(false)) and only ever moves via
+                // balanced entries, so it adds no noise to an update. It is
+                // carried anyway because the balance at the moment of a
+                // DELETION is the single most important fact about a removed
+                // account — as a decimal string, never a float.
+                valuePolicy: static fn (string $field, mixed $value, array $row): mixed => $field === 'current_balance'
+                    ? FinancialAuditValue::money($value)
+                    : $value,
+            ),
+
+            new AuditSubjectDefinition(
+                modelClass: AccountType::class,
+                alias: 'account_type',
+                auditedFields: ['name', 'notes'],
+                labelResolver: static fn (AccountType $type): ?string => $type->name,
+            ),
+
+            new AuditSubjectDefinition(
+                modelClass: Currency::class,
+                alias: 'currency',
+                auditedFields: ['name', 'code', 'symbol', 'is_base', 'notes'],
+                labelResolver: static fn (Currency $currency): ?string => self::joinParts([$currency->code, $currency->name]),
+            ),
+
+            new AuditSubjectDefinition(
+                modelClass: ExchangeRateHistory::class,
+                alias: 'exchange_rate_history',
+                auditedFields: ['currency_id', 'rate', 'date'],
+                labelResolver: static fn (ExchangeRateHistory $history): ?string => self::joinParts([
+                    Currency::withTrashed()->select(['id', 'code'])->find($history->currency_id)?->code,
+                    $history->date?->format('Y-m-d'),
+                ]),
+                relationLabels: [
+                    'currency_id' => static fn (mixed $id): ?string => Currency::withTrashed()
+                        ->select(['id', 'code'])->find($id)?->code,
+                ],
+                // The rate is the whole point of this record: stored at its
+                // full six-decimal scale as a string, so no float rounding can
+                // ever alter a historical rate in the audit trail.
+                valuePolicy: static fn (string $field, mixed $value, array $row): mixed => $field === 'rate'
+                    ? FinancialAuditValue::rate($value)
+                    : $value,
             ),
         ];
 

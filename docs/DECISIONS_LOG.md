@@ -13,6 +13,90 @@
 ---
 
 ### Date
+2026-07-29 (OMS Task 9B.3 — financial audit subject aliases are keyed on the WORKFLOW, never the model class)
+
+### Decision
+The five financial workflows are audited under `subject_type` values that name the workflow — `project_cost_receipt`, `project_disbursement`, `execution_payment`, `general_expense`, `general_exchange` (`App\Services\Audit\Financial\FinancialAuditSubject`) — resolved at each real write path, never derived from the model class or from documentation. `OMS_Master_Reference.md` was corrected in the same pass.
+
+### Reason
+Two of the five workflows are named the *inverse* of the model they write, and the project's own single-source-of-truth document had it backwards. Verified against the resource classes: `ProjectCostBudgetsPaymentResource` (slug `project-cost-budgets-disbursements`, "صرف مبلغ المشروع") has `$model = ProjectCostBudget::class`; `ExecutionPaymentResource` (slug `execution-payments`, "صرف مبالغ التنفيذ") has `$model = ProjectCostBudgetsPayment::class`; and there is **no `ExecutionPayment` model class anywhere**. A class-derived alias would therefore have labelled disbursements as payments and payments as budgets — a permanently wrong, permanently un-fixable label on immutable rows. It would also be ambiguous by construction: two resources over one model cannot be told apart by FQCN.
+
+### Impact
+`subject_type` describes what a user did, not which PHP class happened to be saved, and survives both a class rename and the existing naming inversion. `FinancialAuditSubject` is the closed enumeration of the five; adding a sixth workflow requires an explicit case. The Master Reference now carries a warning table with the verified mapping so the error cannot be reintroduced.
+
+---
+
+### Date
+2026-07-29 (OMS Task 9B.3 — one logical financial action = exactly one AuditEvent; Transaction/TransactionLine are never audited)
+
+### Decision
+A single financial user action produces exactly one `AuditEvent`, written by the source workflow, carrying the resulting `transaction_id` and `transaction_number`. `Transaction` and `TransactionLine` get no observer, no generic CRUD wiring, and no `AuditSubjectRegistry` entry — permanently, not merely for this phase. `AuditCrudInfrastructureTest::test_unregistered_models_are_rejected` now pins both.
+
+### Reason
+One receipt writes 1 transaction + 2 lines + 1 source row + 2 balance movements; one disbursement writes 1 transaction + 4 lines + 1 source row + 4 balance movements. Auditing the ledger rows as well would produce 3–5 events per user action, none of which describes the action, all of which duplicate data that already lives in `transactions`/`transaction_lines` — and edit-time line replacement (`forceDelete()` + recreate) would additionally emit a delete+create pair per line on every edit. Storing the transaction identifiers instead makes the ledger followable from a single event at a fraction of the size. Registering the models is also the only realistic way a future change could reintroduce duplication, so it is guarded by a test rather than a comment.
+
+### Impact
+Event volume is proportional to user actions, not to double-entry line count. Reading an event tells you what happened and exactly where to find the ledger detail. Any future attempt to register `Transaction`/`TransactionLine` fails a test with an explanation.
+
+---
+
+### Date
+2026-07-29 (OMS Task 9B.3 — the financial audit recorder never opens a transaction and fails closed outside one)
+
+### Decision
+`App\Services\Audit\Financial\FinancialAuditRecorder` does not wrap anything in `DB::transaction()`. Every entry point asserts `DB::transactionLevel() >= 1` and throws `LogicException` otherwise. All 15 financial call sites call it from inside the workflow's own already-open transaction, always with `AuditFailureMode::Required`, and always **before** the success `Notification`. `AuditedCrudService::recordCreatedWithin()` (added for the Account opening-balance path) applies the identical rule.
+
+### Reason
+This inverts `AuditedCrudService`'s design deliberately. That service owns its transaction because the mutation it wraps is a single `save()` on a path Filament does not wrap (the panel never enables `->databaseTransactions()`). A financial workflow is the opposite: it already opens one transaction spanning the source record, the `Transaction`, every `TransactionLine`, every balance increment/decrement and any attachment metadata. Opening a second, independent transaction inside that would give a failing REQUIRED audit nothing to roll back but itself — leaving a committed, unaudited financial mutation, exactly what this phase forbids. The `transactionLevel()` assertion turns a future mis-wiring into a loud programming error at the call site rather than a silently unaudited financial operation. Recording before the notification matters because `Notification::send()` flashes to the session and is not transactional: recording after it would flash "تم بنجاح" for an operation that then rolls back.
+
+### Impact
+If the audit insert fails, the source record, the transaction, every line and every account balance roll back together — proved by `FinancialAuditAtomicityTest` for create, edit and delete, including exact balance restoration and exact restoration of the previous transaction lines. Global Filament transactions remain disabled; no behavior outside the audit call changed.
+
+---
+
+### Date
+2026-07-29 (OMS Task 9B.3 — financial payloads are bounded scalars; money and rates are decimal strings; notes are carried bounded rather than dropped)
+
+### Decision
+A financial audit payload is a flat map of small scalars: identifiers, fixed-scale decimal strings and bounded labels. Money and percentages are formatted to 2 decimals and FX rates to 6 (`FinancialAuditValue`), always as strings. Accounts appear as `<role>_account_id` + `<role>_account_label` pairs drawn from a closed role vocabulary (`FinancialAccountRole`: debit, credit, source, destination, admin, transfer, beneficiary); an unknown role throws. Free-text `notes` — and a general expense's `description` — **are** carried, truncated to 255 characters.
+
+### Reason
+A float in an audit payload is JSON-encoded with binary artefacts (`1234.5600000000001`) and silently loses trailing scale (`"1000.00"` → `1000`), both of which destroy a financial record's meaning; strict `!==` diffing over normalized strings also means `"1000.00"` vs `"1000.0"` cannot masquerade as a change. Encoding the role into the payload key rather than storing it as a separate field means a role can never drift away from the account it describes. On notes: the brief forbids "unbounded notes", not notes — and dropping them entirely would make a genuine notes-only or purpose-only edit produce **no event at all**, since the diff is computed over the payload. 255 characters is well inside `AuditPayloadBounder`'s own 1000-character per-string and 8192-byte per-column caps, so the trail stays bounded while remaining complete.
+
+### Impact
+Payloads are a few hundred bytes of readable scalars; no `TransactionLine` array, Eloquent model, relation, collection or file ever reaches `audit_events`. Historical rates and amounts are byte-exact. A text-only edit is auditable. Every workflow test asserts no payload value is an array and that no line-level key (`debit_base`, `credit_base`, `amount_currency`, `line_role`) is present.
+
+---
+
+### Date
+2026-07-29 (OMS Task 9B.3 — HasUserTracking activated on Account/AccountType with no backfill; Account gains an explicit current_balance default)
+
+### Decision
+`Account` and `AccountType` now use `App\Traits\HasUserTracking`, populating `created_by`/`updated_by` on every save from 2026-07-29 forward. **No historical row is backfilled.** `Account` additionally declares `protected $attributes = ['current_balance' => 0]`.
+
+### Reason
+Tasks 8.2 and 8.3 reconciled these columns as schema only and explicitly deferred the behavior to the Audit Log work; this is that work. Backfilling was rejected outright: inventing a creator for a row whose actor is genuinely unknown is a fabricated audit trail, which is strictly worse than an honest NULL. The `$attributes` default exists because `AccountForm` renders `current_balance` as `disabled()->dehydrated(false)` (a balance may only move through balanced entries), so the field is never submitted — without the default, a freshly created `Account` holds NULL in memory while the stored row holds the column default 0.00, and the audit snapshot taken immediately after that insert would record the in-memory NULL rather than the real value. It changes no stored data: the INSERT now sends `0` explicitly instead of relying on the same DB default.
+
+### Impact
+New and edited accounts/account types record who acted; historical rows stay NULL and are visibly, honestly unattributed. A balance `increment()`/`decrement()` writes only `current_balance` in SQL, so it never rewrites `updated_by` — correct, because the actor behind a balance movement belongs on the financial workflow's event, not on the account row. Three pre-existing test suites that hand-pick migrations (`BackfillTransactionDescriptionsCommandTest`, `TransactionDescriptionBuilderTest`, `TransactionLineDescriptionBuilderTest`) needed `users` plus the two Task 8.2/8.3 reconciliation migrations added to their lists.
+
+---
+
+### Date
+2026-07-29 (OMS Task 9B.3 — an opening balance produces one Account event, not two; AuditedCrudService::recordCreatedWithin())
+
+### Decision
+Creating an `Account` with an opening balance > 0 produces exactly one `account` `AuditEvent`, carrying `opening_transaction_id`, `opening_transaction_number`, `opening_balance`, `opening_balance_date` and `opening_balance_fx_rate`. The opening `Transaction`, its two `TransactionLine`s, the auto-created per-currency clearing `Account`, and the auto-created `AccountType`/`TransactionType`/`TransactionSuperType` lookup rows are **not** separately audited. A new method `AuditedCrudService::recordCreatedWithin()` supports this and, like the financial recorder, throws outside an open transaction.
+
+### Reason
+`AuditedCrudService::create()` records immediately after the insert — which on this path is *before* the opening entry exists, so its transaction number could not be carried, and adding a second event for the opening entry is the duplication this phase forbids. Restructuring `CreateAccount` so it owns the transaction and records once at the end is the only shape that yields one complete event. The side-effect rows go unaudited automatically rather than by suppression: auditing is wired at explicit call sites, never through model observers, so anything created by plain `::create()` simply produces nothing — the same property that already lets seeders, migrations and factories write freely (see the 9B.2 decision on why no suppression switch exists).
+
+### Impact
+One user action, one event, with the opening entry still traceable by number. The clearing account and lookup rows are reachable through that transaction rather than through events of their own. `recordCreatedWithin()` is deliberately narrow — one caller, documented as such — and cannot be used to record outside a caller-owned transaction.
+
+---
+
+### Date
 2026-07-26 (OMS Task 7C.5 correction pass — database-connection policy)
 
 ### Decision

@@ -4,6 +4,9 @@ namespace App\Filament\Resources\GeneralExpenses\Tables;
 
 use App\Models\FiscalYear;
 use App\Models\Partner;
+use App\Services\Audit\Financial\FinancialAccountRole;
+use App\Services\Audit\Financial\FinancialAuditRecorder;
+use App\Services\Audit\Financial\FinancialAuditSubject;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
@@ -157,13 +160,26 @@ class GeneralExpensesTable
     {
         DB::transaction(function () use ($record) {
             $transaction = $record->transaction;
+            $debit       = null;
+            $credit      = null;
 
             if ($transaction) {
                 $lines = $transaction->lines()->with('account')->get();
 
                 $debit  = $lines->first(fn ($l) => (float) $l->debit_base > 0);
                 $credit = $lines->first(fn ($l) => (float) $l->credit_base > 0);
+            }
 
+            // Full pre-delete snapshot, captured while the expense row, its
+            // transaction (number included) and its two lines are all still
+            // intact - it is the only remaining description of what was removed.
+            $audit    = app(FinancialAuditRecorder::class);
+            $snapshot = $audit->snapshots()->generalExpense($record, [
+                FinancialAccountRole::DEBIT  => $debit?->account_id,
+                FinancialAccountRole::CREDIT => $credit?->account_id,
+            ]);
+
+            if ($transaction) {
                 // STEP 1 - Reverse the account balances
                 $debit?->account?->decrement('current_balance', (float) $debit->debit_base);
                 $credit?->account?->increment('current_balance', (float) $credit->credit_base);
@@ -183,6 +199,10 @@ class GeneralExpensesTable
 
             // STEP 4 - Soft delete the general expense row
             $record->delete();
+
+            // STEP 6 - One financial AuditEvent carrying the pre-delete
+            // snapshot, inside this same transaction and REQUIRED.
+            $audit->deleted(FinancialAuditSubject::GeneralExpense, $record, $snapshot);
         });
     }
 }

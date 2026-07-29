@@ -2,12 +2,12 @@
 
 namespace Tests\Feature\Audit\Crud;
 
-use App\Models\Account;
 use App\Models\AuditEvent;
 use App\Models\PartnerType;
 use App\Models\ProjectStatus;
 use App\Models\Setting;
 use App\Models\Transaction;
+use App\Models\TransactionLine;
 use App\Models\User;
 use App\Services\Audit\Crud\AuditSubjectRegistry;
 use App\Services\Audit\Exceptions\AuditImmutableRecordException;
@@ -25,9 +25,10 @@ class AuditCrudInfrastructureTest extends AuditedCrudTestCase
         return app(AuditSubjectRegistry::class);
     }
 
-    public function test_the_eleven_approved_models_map_to_their_stable_aliases(): void
+    public function test_the_approved_models_map_to_their_stable_aliases(): void
     {
         $this->assertSame([
+            // Task 9B.2 — general/master data.
             \App\Models\Project::class => 'project',
             \App\Models\ProjectCost::class => 'project_cost',
             \App\Models\Partner::class => 'partner',
@@ -39,6 +40,11 @@ class AuditCrudInfrastructureTest extends AuditedCrudTestCase
             \App\Models\TransactionType::class => 'transaction_type',
             \App\Models\TransactionSuperType::class => 'transaction_super_type',
             \App\Models\Setting::class => 'setting',
+            // Task 9B.3 — financial master data.
+            \App\Models\Account::class => 'account',
+            \App\Models\AccountType::class => 'account_type',
+            \App\Models\Currency::class => 'currency',
+            \App\Models\ExchangeRateHistory::class => 'exchange_rate_history',
         ], $this->registry()->aliases());
     }
 
@@ -52,13 +58,19 @@ class AuditCrudInfrastructureTest extends AuditedCrudTestCase
     }
 
     /**
-     * Financial, security and out-of-phase models must not be auditable
-     * through the generic CRUD path by accident.
+     * Security and out-of-phase models must not be auditable through the
+     * generic CRUD path by accident.
+     *
+     * Transaction and TransactionLine are the load-bearing entries here and
+     * must stay unregistered permanently, not just for one phase: one logical
+     * financial action produces exactly one AuditEvent, written by the source
+     * workflow and carrying the resulting transaction identifiers (OMS Task
+     * 9B.3). Registering either would duplicate every financial event.
      */
     public function test_unregistered_models_are_rejected(): void
     {
-        foreach ([Transaction::class, Account::class, User::class, AuditEvent::class] as $class) {
-            $this->assertFalse($this->registry()->isRegistered($class), $class.' must not be registered in 9B.2.');
+        foreach ([Transaction::class, TransactionLine::class, User::class, AuditEvent::class] as $class) {
+            $this->assertFalse($this->registry()->isRegistered($class), $class.' must not be registered.');
 
             try {
                 $this->registry()->definitionFor($class);
@@ -75,8 +87,9 @@ class AuditCrudInfrastructureTest extends AuditedCrudTestCase
 
         $this->expectException(AuditSubjectNotRegisteredException::class);
 
-        $this->service()->create(new Account, [
-            'account_code' => 'X', 'name' => 'X', 'current_balance' => 0, 'is_active' => true,
+        $this->service()->create(new Transaction, [
+            'transaction_number' => 'X-0001',
+            'transaction_time' => now(),
         ]);
     }
 

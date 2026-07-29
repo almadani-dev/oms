@@ -7,6 +7,9 @@ use App\Models\Partner;
 use App\Models\Project;
 use App\Models\ProjectSuper;
 use App\Models\TransactionSuperType;
+use App\Services\Audit\Financial\FinancialAccountRole;
+use App\Services\Audit\Financial\FinancialAuditRecorder;
+use App\Services\Audit\Financial\FinancialAuditSubject;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
@@ -171,6 +174,11 @@ class ProjectCostReceiptsTable
     /**
      * Delete a receipt while reversing account balances and removing the
      * related transaction, transaction lines and attachment.
+     *
+     * The single audited delete path for this workflow: the Edit page's
+     * header DeleteAction, the table row action and the table bulk action
+     * all call this method, so one user deletion produces exactly one
+     * financial AuditEvent no matter which entry point was used.
      */
     public static function deleteReceipt($record): void
     {
@@ -178,12 +186,25 @@ class ProjectCostReceiptsTable
 
             // STEP 1 - Get the transaction
             $transaction = $record->transaction;
+            $debitLine   = null;
+            $creditLine  = null;
 
             if ($transaction) {
                 // STEP 2 - Get the transaction lines (relationship is lines())
                 $debitLine  = $transaction->lines()->where('debit_base', '>', 0)->first();
                 $creditLine = $transaction->lines()->where('credit_base', '>', 0)->first();
+            }
 
+            // STEP 2b - Full pre-delete snapshot, captured while the receipt,
+            // its transaction (number included) and its lines are all still
+            // intact - it is the only remaining description of what was removed.
+            $audit    = app(FinancialAuditRecorder::class);
+            $snapshot = $audit->snapshots()->projectCostReceipt($record, [
+                FinancialAccountRole::DEBIT  => $debitLine?->account_id,
+                FinancialAccountRole::CREDIT => $creditLine?->account_id,
+            ]);
+
+            if ($transaction) {
                 // STEP 3 - Reverse account balances
                 if ($debitLine && $debitLine->account) {
                     $debitLine->account->decrement('current_balance', $record->amount);
@@ -207,6 +228,12 @@ class ProjectCostReceiptsTable
 
             // STEP 7 - Soft delete the receipt record
             $record->delete();
+
+            // STEP 8 - One financial AuditEvent carrying the pre-delete
+            // snapshot, inside this same transaction and REQUIRED: if it
+            // cannot be persisted, the receipt, the transaction, its lines
+            // and every reversed balance roll back together.
+            $audit->deleted(FinancialAuditSubject::ProjectCostReceipt, $record, $snapshot);
         });
     }
 }

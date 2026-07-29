@@ -40,6 +40,11 @@ class BackfillTransactionDescriptionsCommandTest extends TestCase
 
         Artisan::call('migrate', [
             '--path' => [
+                // `users` and the two Task 8.2/8.3 reconciliation migrations
+                // are needed because Account/AccountType now carry
+                // HasUserTracking (OMS Task 9B.3), so every insert writes
+                // created_by/updated_by.
+                'database/migrations/0001_01_01_000000_create_users_table.php',
                 'database/migrations/2026_06_09_130001_create_fiscal_years_table.php',
                 'database/migrations/2026_06_09_130002_create_currencies_table.php',
                 'database/migrations/2026_06_09_130003_create_projects_super_table.php',
@@ -76,6 +81,8 @@ class BackfillTransactionDescriptionsCommandTest extends TestCase
                 'database/migrations/2026_06_24_000004_add_currency_id_to_general_expenses_table.php',
                 'database/migrations/2026_06_24_000006_create_project_financial_snapshots_table.php',
                 'database/migrations/2026_07_14_120000_add_description_and_line_role_to_transaction_lines_table.php',
+                'database/migrations/2026_07_28_110001_reconcile_accounts_type_schema_drift.php',
+                'database/migrations/2026_07_28_120000_reconcile_accounts_user_tracking_schema_drift.php',
             ],
             '--realpath' => false,
             '--force'    => true,

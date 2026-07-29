@@ -1,5 +1,27 @@
 # Next Steps
 
+## Recommended Next Step (2026-07-29, OMS Task 9B.3 financial audit integration — implemented, focused tests green, real-DB verification OUTSTANDING, NOT committed)
+
+**Do two things before commit, in this order.**
+
+**1. Complete the real-database verification that this session could not run.** The `MySQL80` Windows service is **Stopped**, and `Start-Service MySQL80` failed with an access-denied error (elevation required). Nothing was written to the real database and no attempt was made to work around it. From an **elevated** terminal, start the service, then run these read-only checks:
+
+```
+php artisan oms:check-financial-integrity          # must print "Result: OK", exit code 0
+php artisan tinker --execute="foreach (['audit_events','accounts','accounts_type','currencies','exchange_rate_histories','transactions','transaction_lines','project_cost_receipts','project_cost_budgets','project_cost_budgets_payments','general_expenses','general_exchanges'] as \$t) { echo str_pad(\$t,34).DB::table(\$t)->count().PHP_EOL; } echo 'balance sum: '.DB::table('accounts')->sum('current_balance').PHP_EOL;"
+```
+
+`audit_events` must still hold its pre-task row count (this task wrote **only** to in-memory SQLite test databases), every financial row count and the account-balance sum must be unchanged, and `/admin/login` must return 200 with the financial pages redirecting correctly when unauthenticated. **If any of these does not hold, stop and report rather than committing.**
+
+**2. Then review the implementation and the diff together and approve the commit.** The post-commit hook will produce a separate Graphify refresh commit; Graphify was deliberately **not** run before review, as instructed.
+
+Scope check for the reviewer — the brief's stated exclusions were all honoured: no users/roles/security work, no attachments, no backup/restore, no exports, no Audit UI, no push, no full-suite run, no concurrent PHPUnit, and no test financial data in the real local database.
+
+**After that: OMS Task 9B.4 — users / roles / security auditing** (authentication events, user and role/permission changes, `AuditActorContext::guest()`'s login-failure contract). It should not be started without a fresh explicit request.
+
+### One item worth a decision in 9B.4 or later
+`FinancialAuditRecorder` and `AuditedCrudService::recordCreatedWithin()` both fail closed with `LogicException` when called outside an open transaction. That is deliberate, but it means a future non-HTTP caller (a queued job, an Artisan command) must remember to open one. If 9B.4 introduces such callers, consider whether the assertion should stay a hard failure or become a documented precondition on a narrower interface.
+
 ## Recommended Next Step (2026-07-28, Graphify tracking hygiene — cache + dated snapshots + `.claude` — implemented, verified, NOT yet committed)
 **Implemented and fully verified; awaiting review before commit.** Three tracked sensitive-path sources removed in two passes. The durable repository policy is now: **tracked = the canonical root-level Graphify outputs only** (`graph.json`, `manifest.json`, `GRAPH_REPORT.md`, plus `cost.json` and the non-regenerable curated `.graphify_labels.json` and the two `.graphify_*` markers); **ignored = `graphify-out/cache/**`, `graphify-out/20*/`, runtime/upload/backup paths, and `.claude/**` local state**. 2157 cache files and 75 dated-snapshot files were removed from Git tracking with `git rm --cached` and every one remains on disk. A clean deterministic rebuild (`PYTHONHASHSEED=0`, two independent from-scratch runs) produced byte-identical SHA-256 for all three canonical outputs. `oms:check-financial-integrity` — **Result: OK, exit code 0**. No application code, test, migration, real backup, uploaded attachment or Claude local-config file was touched; PHPUnit deliberately not run.
 

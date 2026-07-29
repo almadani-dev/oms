@@ -12,6 +12,9 @@ use App\Models\GeneralExchange;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Services\Attachments\AttachmentUploadService;
+use App\Services\Audit\Financial\FinancialAccountRole;
+use App\Services\Audit\Financial\FinancialAuditRecorder;
+use App\Services\Audit\Financial\FinancialAuditSubject;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
@@ -164,7 +167,27 @@ class CreateGeneralExchange extends CreateRecord
                 $this->storeAttachment($exchange, $data['exchange_image'], $finalAmount);
             }
 
-            // STEP 6 - Success notification
+            // STEP 6 - One financial AuditEvent for this whole logical
+            // exchange (exchange row + transaction + four lines + four
+            // balance changes), inside this same transaction and REQUIRED.
+            // Recorded before the notification so a rollback can never be
+            // reported to the user as a success.
+            $exchange->setRelation('transaction', $transaction);
+
+            $audit = app(FinancialAuditRecorder::class);
+
+            $audit->created(
+                FinancialAuditSubject::GeneralExchange,
+                $exchange,
+                $audit->snapshots()->generalExchange($exchange, [
+                    FinancialAccountRole::SOURCE => $data['source_account_id'],
+                    FinancialAccountRole::ADMIN => $data['admin_account_id'],
+                    FinancialAccountRole::TRANSFER => $data['transfer_account_id'],
+                    FinancialAccountRole::DESTINATION => $data['destination_account_id'],
+                ]),
+            );
+
+            // STEP 7 - Success notification
             Notification::make()
                 ->title('تم التحويل بنجاح')
                 ->body('رقم المعاملة: ' . $transactionNumber)

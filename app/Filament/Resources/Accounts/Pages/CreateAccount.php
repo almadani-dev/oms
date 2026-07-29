@@ -13,6 +13,8 @@ use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Models\TransactionSuperType;
 use App\Models\TransactionType;
+use App\Services\Audit\Crud\AuditedCrudService;
+use App\Services\Audit\Financial\FinancialAuditValue;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use Carbon\Carbon;
@@ -35,6 +37,20 @@ class CreateAccount extends CreateRecord
 
     public const OPENING_TRANSACTION_SUPER_TYPE_NAME = 'قيود افتتاحية';
 
+    /**
+     * Produces exactly ONE `account` AuditEvent per creation, on both
+     * branches (OMS Task 9B.3).
+     *
+     * The opening-balance branch also creates a Transaction, two
+     * TransactionLines, and — first time only, per currency — a counterpart
+     * clearing Account plus its AccountType and the opening TransactionType/
+     * TransactionSuperType lookups. None of those side-effect rows gets its
+     * own event: they are consequences of this one user action, not separate
+     * user actions, and auditing is wired at explicit call sites rather than
+     * through model observers, so they produce nothing by construction. The
+     * single account event carries the opening entry's transaction id and
+     * number instead, so the opening entry can still be followed.
+     */
     protected function handleRecordCreation(array $data): Model
     {
         $openingBalance = (float) ($data['opening_balance'] ?? 0);
@@ -45,7 +61,9 @@ class CreateAccount extends CreateRecord
         unset($data['opening_balance'], $data['opening_balance_date'], $data['opening_balance_fx_rate']);
 
         if ($openingBalance <= 0) {
-            return static::getModel()::create($data);
+            // No opening entry: an ordinary audited master-data create, whose
+            // insert and AuditEvent share AuditedCrudService's transaction.
+            return app(AuditedCrudService::class)->create(new Account, $data);
         }
 
         return $this->retryOnTransactionNumberCollision(fn () => DB::transaction(function () use ($data, $openingBalance, $openingDate, $openingFxRate) {
@@ -99,6 +117,18 @@ class CreateAccount extends CreateRecord
                 $transaction,
                 "تسجيل الرصيد الافتتاحي لحساب {$account->name}"
             );
+
+            // STEP 7 - The single account AuditEvent for this creation,
+            // inside this same transaction and REQUIRED, carrying the
+            // opening entry's identifiers. Recorded before the notification
+            // so a rollback can never be reported to the user as a success.
+            app(AuditedCrudService::class)->recordCreatedWithin($account, [
+                'opening_transaction_id'     => $transaction->id,
+                'opening_transaction_number' => $transactionNumber,
+                'opening_balance'            => FinancialAuditValue::money($openingBalance),
+                'opening_balance_date'       => FinancialAuditValue::date($openingDate),
+                'opening_balance_fx_rate'    => FinancialAuditValue::rate($openingFxRate),
+            ]);
 
             Notification::make()
                 ->title('تم إنشاء القيد الافتتاحي')

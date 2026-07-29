@@ -11,6 +11,9 @@ use App\Models\ProjectCostReceipt;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Services\Attachments\AttachmentUploadService;
+use App\Services\Audit\Financial\FinancialAccountRole;
+use App\Services\Audit\Financial\FinancialAuditRecorder;
+use App\Services\Audit\Financial\FinancialAuditSubject;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
@@ -127,7 +130,25 @@ class CreateProjectCostReceipt extends CreateRecord
                 );
             }
 
-            // STEP 7 - Success notification
+            // STEP 7 - One financial AuditEvent for this whole logical action
+            // (receipt + transaction + lines + balances), inside this same
+            // transaction and REQUIRED, so a failed audit rolls all of it
+            // back. Recorded before the notification so a rollback can never
+            // be reported to the user as a success.
+            $receipt->setRelation('transaction', $transaction);
+
+            $audit = app(FinancialAuditRecorder::class);
+
+            $audit->created(
+                FinancialAuditSubject::ProjectCostReceipt,
+                $receipt,
+                $audit->snapshots()->projectCostReceipt($receipt, [
+                    FinancialAccountRole::DEBIT => $data['debit_account_id'],
+                    FinancialAccountRole::CREDIT => $data['credit_account_id'],
+                ]),
+            );
+
+            // STEP 8 - Success notification
             Notification::make()
                 ->title('تم تسجيل الاستلام بنجاح')
                 ->body('رقم المعاملة: ' . $transactionNumber)

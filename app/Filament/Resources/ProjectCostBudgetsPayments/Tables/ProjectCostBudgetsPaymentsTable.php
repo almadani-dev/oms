@@ -7,6 +7,9 @@ use App\Models\Partner;
 use App\Models\Project;
 use App\Models\ProjectCostBudget;
 use App\Models\ProjectSuper;
+use App\Services\Audit\Financial\FinancialAccountRole;
+use App\Services\Audit\Financial\FinancialAuditRecorder;
+use App\Services\Audit\Financial\FinancialAuditSubject;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
@@ -200,6 +203,10 @@ class ProjectCostBudgetsPaymentsTable
     {
         DB::transaction(function () use ($record) {
             $transaction = $record->transaction;
+            $source      = null;
+            $admin       = null;
+            $transfer    = null;
+            $dest        = null;
 
             if ($transaction) {
                 $lines = $transaction->lines()->with('account')->get();
@@ -208,7 +215,20 @@ class ProjectCostBudgetsPaymentsTable
                 $admin    = $lines->firstWhere('notes', ProjectCostBudget::LINE_ADMIN);
                 $transfer = $lines->firstWhere('notes', ProjectCostBudget::LINE_TRANSFER);
                 $dest     = $lines->firstWhere('notes', ProjectCostBudget::LINE_DESTINATION);
+            }
 
+            // Full pre-delete snapshot, captured while the budget row, its
+            // transaction (number included) and its four lines are all still
+            // intact - it is the only remaining description of what was removed.
+            $audit    = app(FinancialAuditRecorder::class);
+            $snapshot = $audit->snapshots()->projectDisbursement($record, [
+                FinancialAccountRole::SOURCE      => $source?->account_id,
+                FinancialAccountRole::ADMIN       => $admin?->account_id,
+                FinancialAccountRole::TRANSFER    => $transfer?->account_id,
+                FinancialAccountRole::DESTINATION => $dest?->account_id,
+            ]);
+
+            if ($transaction) {
                 // STEP 1 - Reverse all account balances
                 $source?->account?->increment('current_balance', (float) $source->credit_base);
                 $admin?->account?->decrement('current_balance', (float) $admin->debit_base);
@@ -230,6 +250,10 @@ class ProjectCostBudgetsPaymentsTable
 
             // STEP 4 - Soft delete the project_cost_budgets row
             $record->delete();
+
+            // STEP 6 - One financial AuditEvent carrying the pre-delete
+            // snapshot, inside this same transaction and REQUIRED.
+            $audit->deleted(FinancialAuditSubject::ProjectDisbursement, $record, $snapshot);
         });
     }
 }

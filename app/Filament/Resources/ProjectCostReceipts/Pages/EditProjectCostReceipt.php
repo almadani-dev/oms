@@ -11,6 +11,9 @@ use App\Models\ProjectCostReceipt;
 use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Services\Attachments\AttachmentUploadService;
+use App\Services\Audit\Financial\FinancialAccountRole;
+use App\Services\Audit\Financial\FinancialAuditRecorder;
+use App\Services\Audit\Financial\FinancialAuditSubject;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
@@ -113,7 +116,18 @@ class EditProjectCostReceipt extends EditRecord
         FinancialTransactionBalanceGuard::assertValidLinePayload(array_values($lineUpdates));
         FinancialTransactionBalanceGuard::assertBalancedSingleCurrencyLines(array_values($lineUpdates), (int) $costCurrencyId);
 
-        return DB::transaction(function () use ($record, $data, $oldDebitLine, $oldCreditLine, $projectCost, $accounts, $lineUpdates) {
+        // Pre-change snapshot: taken after every guard has passed but before
+        // the transaction opens, while the record, its transaction and its
+        // old lines are all still pristine. The old accounts are read from
+        // the OLD lines, never from the submitted data.
+        $audit = app(FinancialAuditRecorder::class);
+
+        $before = $audit->snapshots()->projectCostReceipt($record, [
+            FinancialAccountRole::DEBIT => $oldDebitLine?->account_id,
+            FinancialAccountRole::CREDIT => $oldCreditLine?->account_id,
+        ]);
+
+        return DB::transaction(function () use ($record, $data, $oldDebitLine, $oldCreditLine, $projectCost, $accounts, $lineUpdates, $audit, $before) {
             $oldAmount = $record->amount;
 
             // STEP 1 - Reverse old balances
@@ -188,7 +202,22 @@ class EditProjectCostReceipt extends EditRecord
                 $existingAttachment->delete();
             }
 
-            // STEP 8 - Success notification
+            // STEP 8 - One financial AuditEvent for this whole logical edit,
+            // recording only the financial/business fields that actually
+            // changed (old and new account/project/currency labels included
+            // for any reassigned foreign key). A save that changed nothing
+            // writes no event.
+            $audit->updated(
+                FinancialAuditSubject::ProjectCostReceipt,
+                $record,
+                $before,
+                $audit->snapshots()->projectCostReceipt($record, [
+                    FinancialAccountRole::DEBIT => $data['debit_account_id'],
+                    FinancialAccountRole::CREDIT => $data['credit_account_id'],
+                ]),
+            );
+
+            // STEP 9 - Success notification
             Notification::make()
                 ->title('تم تعديل الاستلام بنجاح')
                 ->success()

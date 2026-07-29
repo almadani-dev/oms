@@ -10,6 +10,9 @@ use App\Filament\Resources\GeneralExpenses\Tables\GeneralExpensesTable;
 use App\Models\GeneralExpense;
 use App\Models\TransactionLine;
 use App\Services\Attachments\AttachmentUploadService;
+use App\Services\Audit\Financial\FinancialAccountRole;
+use App\Services\Audit\Financial\FinancialAuditRecorder;
+use App\Services\Audit\Financial\FinancialAuditSubject;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
@@ -128,7 +131,18 @@ class EditGeneralExpense extends EditRecord
         FinancialTransactionBalanceGuard::assertValidLinePayload($lines);
         FinancialTransactionBalanceGuard::assertBalancedSingleCurrencyLines($lines, $currencyId);
 
-        return DB::transaction(function () use ($record, $data, $amount, $currencyId, $oldDebit, $oldCredit, $accounts, $lines) {
+        // Pre-change snapshot: taken after every guard has passed but before
+        // the transaction opens, while the expense row, its transaction and
+        // its two old lines are all still pristine. The old accounts are read
+        // from the OLD lines, never from the submitted data.
+        $audit = app(FinancialAuditRecorder::class);
+
+        $before = $audit->snapshots()->generalExpense($record, [
+            FinancialAccountRole::DEBIT => $oldDebit?->account_id,
+            FinancialAccountRole::CREDIT => $oldCredit?->account_id,
+        ]);
+
+        return DB::transaction(function () use ($record, $data, $amount, $currencyId, $oldDebit, $oldCredit, $accounts, $lines, $audit, $before) {
             $transaction = $record->transaction;
 
             // STEP 1 - Reverse old balances (old debit decrement, old credit increment)
@@ -198,7 +212,21 @@ class EditGeneralExpense extends EditRecord
                 $existing->delete();
             }
 
-            // STEP 7 - Success
+            // STEP 7 - One financial AuditEvent for this whole logical edit,
+            // recording only the financial/business fields that actually
+            // changed, with the old and new labels of any reassigned
+            // account/currency/partner preserved.
+            $audit->updated(
+                FinancialAuditSubject::GeneralExpense,
+                $record,
+                $before,
+                $audit->snapshots()->generalExpense($record, [
+                    FinancialAccountRole::DEBIT => $data['debit_account_id'],
+                    FinancialAccountRole::CREDIT => $data['credit_account_id'],
+                ]),
+            );
+
+            // STEP 8 - Success
             Notification::make()
                 ->title('تم تعديل المصروف بنجاح')
                 ->success()

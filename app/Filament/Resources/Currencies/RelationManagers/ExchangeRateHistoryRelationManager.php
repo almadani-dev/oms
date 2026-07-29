@@ -2,11 +2,8 @@
 
 namespace App\Filament\Resources\Currencies\RelationManagers;
 
+use App\Filament\Concerns\AuditedActions;
 use Filament\Actions\BulkActionGroup;
-use Filament\Actions\CreateAction;
-use Filament\Actions\DeleteAction;
-use Filament\Actions\DeleteBulkAction;
-use Filament\Actions\EditAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\RelationManagers\RelationManager;
@@ -41,16 +38,21 @@ class ExchangeRateHistoryRelationManager extends RelationManager
                 TextColumn::make('rate')->label('سعر الصرف')->formatStateUsing(fn($state) => \App\Helpers\NumberHelper::bigComma($state, 6))->html()->sortable(),
                 TextColumn::make('created_at')->label('تاريخ الإنشاء')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),
             ])
+            // This relation manager really does write in place (there is no
+            // related resource page to link to), so every write action here
+            // must go through AuditedActions — OMS Task 9B.3. A rate created
+            // or edited here produces exactly the same single
+            // `exchange_rate_history` event as the standalone resource does.
             ->recordActions([
-                EditAction::make(),
-                DeleteAction::make(),
+                AuditedActions::edit(),
+                AuditedActions::delete(),
             ])
             ->headerActions([
-                CreateAction::make(),
+                AuditedActions::relationCreate(),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
-                    DeleteBulkAction::make(),
+                    AuditedActions::deleteBulk(),
                 ]),
             ]);
     }
