@@ -6,6 +6,7 @@ use App\Enums\BackupStatus;
 use App\Models\BackupOperation;
 use App\Models\User;
 use App\Notifications\BackupNotificationEvent;
+use App\Services\Audit\BackupRestore\RestoreAuditRecorder;
 use App\Services\Backup\BackupNotifier;
 use App\Services\Backup\BackupSubsystemLock;
 use App\Services\Restore\Exceptions\RestoreProgressIntegrityException;
@@ -41,13 +42,17 @@ final class RestoreStaleAcknowledgmentService
 {
     public const MAX_REASON_LENGTH = 1000;
 
+    private readonly RestoreAuditRecorder $auditRecorder;
+
     public function __construct(
         private readonly RestoreStaleDetector $detector = new RestoreStaleDetector(),
         private readonly RestoreProgressReader $reader = new RestoreProgressReader(),
         private readonly RestoreProgressWriter $writer = new RestoreProgressWriter(),
         private readonly BackupSubsystemLock $subsystemLock = new BackupSubsystemLock(),
         private readonly BackupNotifier $notifier = new BackupNotifier(),
+        ?RestoreAuditRecorder $auditRecorder = null,
     ) {
+        $this->auditRecorder = $auditRecorder ?? app(RestoreAuditRecorder::class);
     }
 
     public function findStaleObservation(string $restoreUuid): ?StaleRestoreObservation
@@ -171,6 +176,16 @@ final class RestoreStaleAcknowledgmentService
         $this->writer->write($terminal);
 
         $this->updateDatabaseRowBestEffort($progress->restoreUuid, $actor, $sanitizedReason, $now, $nowAtom);
+
+        // OMS Task 9B.6 — the honest audit of an INTERRUPTED restore: the engine
+        // process died without ever writing a terminal state, and a Super Admin
+        // explicitly reviewed and terminalized it. Recorded after both writes
+        // above, BEST-EFFORT and never throwing (the signed progress file is
+        // already the authoritative terminal record), with the acknowledging
+        // actor and the sanitized reason. Never `restore_failed`: nothing here
+        // rolled anything back, resumed, or repaired anything, and claiming the
+        // engine failed would misreport what actually happened.
+        $this->auditRecorder->restoreInterrupted($progress, $actor, $sanitizedReason);
     }
 
     private function updateDatabaseRowBestEffort(string $restoreUuid, User $actor, string $sanitizedReason, \Illuminate\Support\Carbon $now, string $nowAtom): void

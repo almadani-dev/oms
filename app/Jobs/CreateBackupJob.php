@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Enums\BackupStatus;
 use App\Models\BackupOperation;
 use App\Notifications\BackupNotificationEvent;
+use App\Services\Audit\BackupRestore\BackupAuditRecorder;
 use App\Services\Backup\BackupCreationOrchestrator;
 use App\Services\Backup\BackupNotifier;
 use App\Support\Backup\BackupErrorSanitizer;
@@ -68,6 +69,15 @@ class CreateBackupJob implements ShouldQueue
                 ? BackupErrorSanitizer::sanitize($exception->getMessage())
                 : 'Backup job failed with no exception detail.',
         ])->save();
+
+        // OMS Task 9B.6 — the queue-level safety net for the case the
+        // orchestrator itself never ran (it always records its own
+        // `backup_failed` when it did). Guarded against duplication by
+        // BackupAuditRecorder's ledger: at most one `backup_failed` per backup,
+        // no matter how many of the three attempts fail or which layer noticed.
+        // Only a generic failure code/category is stored — never the sanitized
+        // error_summary above, which may still contain SQL or process text.
+        app(BackupAuditRecorder::class)->backupFailed($operation, $exception);
 
         app(BackupNotifier::class)->notify($operation, BackupNotificationEvent::BackupFailed, $operation->error_summary);
     }

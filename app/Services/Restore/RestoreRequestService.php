@@ -7,6 +7,7 @@ use App\Enums\BackupStatus;
 use App\Enums\BackupType;
 use App\Models\BackupOperation;
 use App\Models\User;
+use App\Services\Audit\BackupRestore\RestoreAuditRecorder;
 use App\Services\Backup\BackupSubsystemLock;
 use App\Services\Restore\Exceptions\RestoreRequestRejectedException;
 use App\Support\Restore\RestoreScopeCompatibility;
@@ -39,10 +40,14 @@ use Illuminate\Support\Facades\Storage;
  */
 final class RestoreRequestService
 {
+    private readonly RestoreAuditRecorder $auditRecorder;
+
     public function __construct(
         private readonly RestoreActivityGuard $activityGuard = new RestoreActivityGuard(),
         private readonly BackupSubsystemLock $subsystemLock = new BackupSubsystemLock(),
+        ?RestoreAuditRecorder $auditRecorder = null,
     ) {
+        $this->auditRecorder = $auditRecorder ?? app(RestoreAuditRecorder::class);
     }
 
     /**
@@ -100,7 +105,7 @@ final class RestoreRequestService
 
                 $now = now();
 
-                return BackupOperation::create([
+                $restore = BackupOperation::create([
                     'type' => BackupType::Restore->value,
                     'scope' => $scope->value,
                     'status' => BackupStatus::Queued->value,
@@ -123,6 +128,21 @@ final class RestoreRequestService
                         'confirmed_at' => $now->format(RestoreProgressSnapshot::TIMESTAMP_FORMAT),
                     ],
                 ]);
+
+                // OMS Task 9B.6 — REQUIRED, inside this same transaction: a
+                // queued restore that could not be audited never exists. The
+                // event carries the confirming actor and `confirmed_at`, because
+                // in this application the confirmation IS the request — both
+                // wizard steps and the typed "RESTORE {uuid8}" phrase are
+                // validated before this service is ever reached, and that phrase
+                // is `dehydrated(false)` so it never reaches $data, this row, or
+                // any payload. This pre-restore event lives in the database a
+                // database-scope restore will later REPLACE; it is replayed from
+                // the signed progress journal afterwards (see
+                // RestoreAuditRecorder), keyed by this same restore UUID.
+                $this->auditRecorder->restoreRequested($restore, $freshSource);
+
+                return $restore;
             });
         } finally {
             $lockHandle->release();

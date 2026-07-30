@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Backups;
 
 use App\Http\Controllers\Controller;
 use App\Models\BackupOperation;
+use App\Services\Audit\BackupRestore\BackupAuditRecorder;
 use App\Services\Backup\BackupFileLock;
 use App\Services\Backup\BackupSubsystemLock;
 use App\Services\Backup\Support\SafeBackupPath;
@@ -57,16 +58,43 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * released but the detached restore child has not yet acquired its own
  * lifetime exclusive lock. Also returns 423, same as every other lock
  * conflict this controller already reports.
+ *
+ * OMS Task 9B.6 — auditing. AUTHORIZATION IS STILL CHECKED FIRST, exactly as
+ * before; the only change on the denial path is that a refused, already-
+ * authenticated caller whose requested UUID resolves to a real backup row now
+ * also writes one BEST-EFFORT `backup_download_denied` event before the 403
+ * stands (an audit outage can never soften the denial into a 500 — see
+ * BackupAuditRecorder::backupDownloadDenied()). Every ordinary 404 case
+ * (unknown uuid, non-completed operation, unapproved disk, unsafe stored path,
+ * missing file) and every 423 lock conflict deliberately records NOTHING, so a
+ * logged-in prober cannot write one audit row per guessed identifier and a
+ * "cannot read this right now" answer is not recorded as an access.
+ *
+ * The success event is REQUIRED and written after every authorization/
+ * existence/lock check has passed but BEFORE the StreamedResponse exists: a
+ * private encrypted backup that cannot be accounted for is never served. The
+ * two locks acquired above are explicitly released if that audit write fails,
+ * because the release is otherwise wired into the response callback that
+ * would then never be constructed.
  */
 class BackupDownloadController extends Controller
 {
-    public function show(Request $request, string $backup, BackupSubsystemLock $subsystemLock, RestoreActivityGuard $restoreActivityGuard): StreamedResponse
-    {
+    public function show(
+        Request $request,
+        string $backup,
+        BackupSubsystemLock $subsystemLock,
+        RestoreActivityGuard $restoreActivityGuard,
+        BackupAuditRecorder $auditRecorder,
+    ): StreamedResponse {
         $user = $request->user();
 
         abort_if($user === null, 403);
-        abort_unless($user->hasRole(PermissionRegistry::SUPER_ADMIN), 403);
-        abort_unless($user->can('backups.download'), 403);
+
+        if (! $user->hasRole(PermissionRegistry::SUPER_ADMIN) || ! $user->can('backups.download')) {
+            $this->auditDenial($auditRecorder, $backup);
+
+            abort(403);
+        }
 
         /** @var BackupOperation|null $operation */
         $operation = BackupOperation::query()->where('uuid', $backup)->first();
@@ -113,6 +141,19 @@ class BackupDownloadController extends Controller
             abort(423);
         }
 
+        // REQUIRED, before a single byte is served. Both locks are held at this
+        // point and their release lives inside the StreamedResponse callback
+        // below, which is never invoked if this throws — so they are released
+        // here explicitly before the AuditPersistenceException propagates.
+        try {
+            $auditRecorder->backupDownloaded($operation);
+        } catch (\Throwable $e) {
+            $lock->release();
+            $subsystemHandle->release();
+
+            throw $e;
+        }
+
         $filename = $this->safeDownloadFilename($operation);
 
         $headers = [
@@ -142,6 +183,23 @@ class BackupDownloadController extends Controller
                 $subsystemHandle->release();
             }
         }, 200, $headers);
+    }
+
+    /**
+     * Records a denial ONLY for a UUID that resolves to a real backup row —
+     * the same rule AttachmentAccessAuditRecorder::accessDenied() follows, and
+     * the reason a guessed identifier can never create an audit row. The lookup
+     * itself is safe: the route already constrains {backup} to the UUID shape
+     * before this controller runs, so nothing attacker-shaped reaches the query
+     * or the payload.
+     */
+    private function auditDenial(BackupAuditRecorder $auditRecorder, string $backup): void
+    {
+        $operation = BackupOperation::query()->where('uuid', $backup)->first();
+
+        if ($operation !== null) {
+            $auditRecorder->backupDownloadDenied($operation);
+        }
     }
 
     private function safeDownloadFilename(BackupOperation $operation): string

@@ -13,6 +13,76 @@
 ---
 
 ### Date
+2026-07-30 (OMS Task 9B.6 — restore audit history survives a database replacement by reusing the existing signed progress journal, not a new log)
+
+### Decision
+No new external audit/recovery state was created. The authoritative restore lifecycle is replayed into the **restored** `audit_events` table from the already-existing signed restore progress journal (`RestoreProgressWriter` → `restores/{uuid}/progress.json`), by a new eighth non-fatal step at the end of `RestoreReconciler::reconcile()` and again — idempotently — by `RestoreTerminalResultWriter`. `correlation_id` is the restore's own UUID, so the pre- and post-replacement halves link without adding anything to the journal.
+
+### Reason
+A database-scope restore imports a full dump over the live schema, so every pre-import restore audit row is physically replaced. The journal already solved exactly this problem for Task 7C.5's metadata reconstruction and already satisfies every constraint this phase imposes on external state: it is private (0700 directory, 0600 files), HMAC-signed and refused if tampered with, and field-by-field bounded by `RestoreProgressSnapshot`, which by construction has nowhere to put a confirmation phrase, password, encryption key, raw command line, stack trace or unbounded exception text. Since 7C.5 it also carries the bounded `reconciliation_snapshot` — source backup, safety backup, requester identity and `confirmed_at` — written *before* the import. Building a second log would have duplicated a solved problem while creating a new sensitive-data surface and a new thing to keep signed and bounded.
+
+### Impact
+No migration, no schema change, no second log file, no custom encryption. `RestoreReconciler` gains one step whose position is load-bearing: after `migrate --force` (the table's schema exists again), after `oms:sync-permissions`/`permission:cache-reset` (which record nothing themselves, so post-restore permission synchronization cannot duplicate a restore event), and after `RestoreMetadataUpserter` has rebuilt the three `backup_operations` rows these events reference. `RestoreEphemeralTablePolicy` never touches `audit_events`, so nothing truncates them afterwards. Replayed rows carry `replayed_after_database_replacement: true` so a reconstructed row is honestly distinguishable from an original one.
+
+---
+
+### Date
+2026-07-30 (OMS Task 9B.6 — the audit-replay step must never be able to fail a restore)
+
+### Decision
+Everything from `restore_reconciled` onwards is `BestEffort` and structurally cannot throw: the reconciler's replay step is deliberately **not** wrapped in its `step()` helper, and every post-boundary recorder method contains its own `try/catch` around the whole unit (ledger probe, requester lookup and payload build included, not just the insert).
+
+### Reason
+Each of those states is written after the database and/or the attachment directories have already changed irreversibly. Escalating an audit-storage failure there could only produce a *less* truthful outcome: aborting reconciliation would downgrade a genuinely successful restore to `RestorePartial`, and throwing out of the terminal writer would suppress the terminal record itself. The signed journal remains the authoritative terminal record regardless, and a `BestEffort` failure is still logged with a sanitized fingerprint by `AuditLogger`.
+
+### Impact
+A restore's correctness never depends on the audit table being writable after the import. Because the same idempotent replay runs from two independent points, a transient failure at the reconciler is not the only chance to record the history.
+
+---
+
+### Date
+2026-07-30 (OMS Task 9B.6 — `backup_completed` is BestEffort, and the ledger probe belongs inside the guard)
+
+### Decision
+`backup_completed`, `backup_failed` and `backup_deleted` are `BestEffort`, the completion call sits structurally **outside** `BackupCreationOrchestrator::execute()`'s try/catch, and `BackupRestoreAuditLedger`'s existence probe runs **inside** each best-effort `try`.
+
+### Reason
+By the time completion is recorded, the verified archive has already been published under its final name and nothing in the code deletes it. A thrown `AuditPersistenceException` would be caught by the creation pipeline's own handler, which marks the operation `failed` — producing a row that lies about a perfectly good archive while leaving that archive on disk. This is not theoretical: the first implementation left the ledger probe outside the guard, and `test_a_completion_audit_outage_never_falsifies_a_published_backup` caught it — a dropped `audit_events` table threw a `QueryException` straight into that catch block. Task 9B.6 §6 forbids exactly this ("do not delete a valid completed backup merely because a completion audit insert fails", and never claim a rollback that did not happen).
+
+### Impact
+An audit outage can never falsify a completed backup or claim an already-unlinked archive still exists. The accountable half of each irreversible operation is instead the Required event written *before* it — `backup_requested` before the row exists, `backup_delete_requested` before the unlink — which is the only claim a non-atomic filesystem operation can honestly make.
+
+---
+
+### Date
+2026-07-30 (OMS Task 9B.6 — failure metadata is derived from an exception's class and `reasonCode`, never from its message)
+
+### Decision
+`BackupRestoreFailure` produces only `failure_code` + `failure_category`, reading an exception's own fixed `reasonCode` property (re-validated against a strict snake_case pattern and a length bound) and matching its class against an ordered map. It never calls `getMessage()`, never reads a trace, and `BackupErrorSanitizer` is deliberately not reused for audit payloads.
+
+### Reason
+`BackupErrorSanitizer` is the right guard for `backup_operations.error_summary` and the progress journal — it strips this app's absolute paths and `MYSQL_PWD=` and bounds the length — but it is not sufficient for the audit trail: a `mysql`/`mysqldump` driver error, a PDO `QueryException` or a `ZipArchive` error can still carry SQL text, bound values, a third-party absolute path or schema detail. Nearly every exception in `App\Services\Restore\Exceptions` (and `BackupDeletionRejectedException`) already carries a hand-written closed `reasonCode` vocabulary set by named constructors, so accurate classification was available without touching prose at all.
+
+### Impact
+`RestoreTerminalResultWriter::finish()` gained an optional `?Throwable $cause` used solely for this classification (its message still never reaches the progress file or the row beyond the pre-existing `$errorSummary`), and `RestoreOrchestrator` threads the real deciding exception — including a maintenance-exit failure — into it. Payload assertions in both new test files prove no SQL, driver text or credential fragment ever appears.
+
+---
+
+### Date
+2026-07-30 (OMS Task 9B.6 — three lifecycle states were deliberately not created because the paths do not exist)
+
+### Decision
+There is no restore-file upload/selection event, no cancellation event, and no separate "restore_confirmed" event. `oms:restore-watchdog` emits nothing. `restore_interrupted` exists and is written only by `RestoreStaleAcknowledgmentService::acknowledge()`, never by the engine.
+
+### Reason
+A restore in this application always reads an existing, completed+verified `BackupOperation` archive on the approved disk — nothing is ever uploaded or picked from the filesystem. There is no cancel path at all: `RestoreStaleAcknowledgmentService` is explicitly not resume/retry/rollback/repair, it only terminalizes a crashed restore after explicit human review, which is an *interruption*, not an engine failure. And the confirmation is part of the request: the two-step wizard validates both steps and the typed `RESTORE {uuid8}` phrase before `RestoreRequestService` is reached, so `restore_requested` carries the confirming actor and `confirmed_at` and a second event would describe a UI state that does not exist. The phrase itself is `dehydrated(false)` and never reaches `$data`, the row, or any payload.
+
+### Impact
+The event vocabulary matches the real implementation exactly. `restore_partial` was kept as its own action rather than folded into success or failure, because `BackupStatus::RestorePartial` is a genuinely distinct "destructive boundary crossed, manual review required" outcome the engine already produces.
+
+---
+
+### Date
 2026-07-29 (OMS Task 9B.5 — report exports record `export_requested`, never `export_completed`)
 
 ### Decision

@@ -17,6 +17,63 @@
 ---
 
 ### Date
+2026-07-30 (OMS Task 9B.6 — backup & restore audit integration)
+
+### Task
+Audit the real backup/restore implementation under one new category `backup_restore` (aliases `backup`, `restore`), with accurate lifecycle semantics for operations that are **not** database-atomic, Required audit inside the same transaction wherever a database-only action allows it, Required-before-serving for a private archive download, bounded metadata payloads that can never carry a key/`APP_KEY`/`.env`/credentials/SQL/archive contents/path/process output/stack trace/exception message, one lifecycle state = at most one event per operation, restore audit history that survives the database being replaced with authoritative replay by `RestoreReconciler`, and no change to any existing authorization, retention rule, scheduled time or restore safety check. Explicitly out of scope: inventing UI actions or lifecycle states that do not exist, a second unencrypted log, a custom encryption/restore mechanism, the Audit Log UI (9B.7) and any `audit.view` permission.
+
+### Result
+Implemented. The read-only architecture audit's STOP condition (§2) did **not** trigger: the existing signed restore progress journal (`restores/{uuid}/progress.json` — private 0700/0600, HMAC-signed, bounded and validated by `RestoreProgressSnapshot`, already carrying Task 7C.5's `reconciliation_snapshot` written *before* the import) is genuinely sufficient to preserve restore audit facts across a database replacement, so no new external state, no schema change, no migration and no custom encryption were needed.
+
+Backup lifecycle: `backup_requested` (Required, inside a new `DB::transaction()` in `BackupCreationOrchestrator::enqueue()` — the single funnel the Filament action, `oms:backup`, both scheduler entries and the pre-restore safety backup all already go through, so cross-layer duplication is structurally impossible), `backup_completed` (BestEffort, structurally outside the pipeline's try/catch), `backup_failed` (BestEffort, orchestrator + `CreateBackupJob::failed()` safety net), `backup_downloaded` (Required, after authorization and every 404/423 check, before the `StreamedResponse`), `backup_download_denied` (BestEffort, only for a resolvable row), `backup_delete_requested` (Required, immediately before the irreversible unlink, in both the manual and retention paths) and `backup_deleted` (BestEffort, reporting whether a file was actually removed).
+
+Restore lifecycle: `restore_requested` (Required, inside `RestoreRequestService`'s existing transaction, carrying the confirming actor and `confirmed_at` — the wizard's confirmation *is* the request), `restore_started` (Required, inside `RestoreLaunchService::claim()`'s transaction), `restore_reconciled` (a new eighth, deliberately non-fatal step at the end of `RestoreReconciler::reconcile()`), `restore_completed`/`restore_failed`/`restore_partial` (from `RestoreTerminalResultWriter::finish()`, the single funnel every orchestrator branch already uses) and `restore_interrupted` (only from `RestoreStaleAcknowledgmentService::acknowledge()`). Post-database-replacement replay is idempotent through `BackupRestoreAuditLedger`'s `(correlation_id, event_action)` check, runs from both the reconciler and the terminal writer, and marks reconstructed rows `replayed_after_database_replacement: true`.
+
+One real defect was found by the new tests, not by review: the ledger's existence probe was initially outside the best-effort guard, so a dropped/unreachable `audit_events` table threw a `QueryException` into the creation pipeline's own catch block and marked a fully published, encrypted, verified archive as `failed` — exactly the falsification §6 forbids. Fixed by moving the probe inside the guard.
+
+Nothing was invented where no path exists: no restore-file upload/selection event, no cancellation event, no separate "restore_confirmed" event, and nothing at all from the detection-only `oms:restore-watchdog`.
+
+### Changed Files
+New:
+- `app/Services/Audit/BackupRestore/BackupRestoreAuditSubject.php`
+- `app/Services/Audit/BackupRestore/BackupRestoreAuditLedger.php`
+- `app/Services/Audit/BackupRestore/BackupRestoreFailure.php`
+- `app/Services/Audit/BackupRestore/BackupAuditRecorder.php`
+- `app/Services/Audit/BackupRestore/RestoreAuditRecorder.php`
+- `app/Services/Audit/BackupRestore/RestoreAuditFacts.php`
+- `tests/Feature/Audit/BackupRestore/BackupAuditTest.php`
+- `tests/Feature/Audit/BackupRestore/RestoreAuditTest.php`
+
+Modified:
+- `app/Services/Backup/BackupCreationOrchestrator.php` (transactional `enqueue()`; completion audit moved structurally outside the failure path)
+- `app/Services/Backup/BackupDeletionService.php`
+- `app/Services/Backup/BackupRetentionService.php`
+- `app/Jobs/CreateBackupJob.php`
+- `app/Http/Controllers/Backups/BackupDownloadController.php`
+- `app/Services/Restore/RestoreRequestService.php`
+- `app/Services/Restore/RestoreLaunchService.php`
+- `app/Services/Restore/RestoreReconciler.php`
+- `app/Services/Restore/RestoreTerminalResultWriter.php` (new optional `?Throwable $cause`, used only for generic failure classification)
+- `app/Services/Restore/RestoreOrchestrator.php` (threads that cause through its terminal paths)
+- `app/Services/Restore/RestoreStaleAcknowledgmentService.php`
+- `OMS_Master_Reference.md`, `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md`, `docs/NEXT_STEPS.md`, `docs/PROMPTS_LOG.md`
+
+### Verification
+Focused suites only, strictly sequential, never the full suite:
+- New: `BackupAuditTest` **20 passed / 150 assertions**, `RestoreAuditTest` **10 passed / 170 assertions**.
+- Regression: `tests/Feature/Backup` **215 tests, 214 passed, 1 pre-existing skip / 586 assertions**; `tests/Feature/Restore` **287 passed / 841 assertions**; `tests/Feature/Audit` (whole suite incl. the two new files) **305 passed / 2081 assertions**; `tests/Feature/Commands` + `tests/Feature/Console` **60 passed / 186 assertions**; `tests/Unit` **452 tests, 450 passed, 2 pre-existing skips / 836 assertions**. 0 failures, 0 errors anywhere.
+- Forced audit-failure drills (the `audit_events` table dropped): a queued backup is never created; a published/verified archive is **never** falsified to `failed`; a private archive is not served and the file stays in place; a manual delete refuses and the archive stays in place; a restore request creates no queued row; a restore claim rolls back with `status = queued`, `started_at = null` and its nonce intact so it can be relaunched; a 403 download denial still returns 403.
+- Database-replacement drill: pre-restore events written, every `audit_events` row then removed by a raw delete (reproducing what an import does to that table), the signed journal left untouched — a full real-engine restore then reconstructed `restore_requested`/`restore_started`/`restore_reconciled`/`restore_completed` exactly once each, with the original requester snapshot and correlation id preserved and `oms:sync-permissions` confirmed to have run without adding an event. Repeating the replay and the terminal write twice more added nothing.
+- Real local verification, read-only and unchanged: `audit_events` **0** before and after; `backup_operations` **13** (12 live); backup disk **11 files**, byte sizes unchanged; restore journal files **9**; users **5**, roles **7**, permissions **186**; transactions **8**, transaction lines **22** (12 live, `debit_base` 235,000.00 = `credit_base` 235,000.00), accounts **5** with per-currency balance sums 0.00. No real backup was created, downloaded, deleted, decrypted or restored, and no real restore was performed (PHPUnit runs against `sqlite :memory:`; the suites use `Storage::fake` and faked mysqldump/mysql processes).
+- `php artisan oms:check-financial-integrity` → **Result: OK**, exit code **0** (10 relationships, 8 transactions, 5 balanced journals, 0 mismatches).
+- HTTP smoke (temporary `artisan serve` on port 8394, then stopped and the port confirmed closed): `/admin/login` → **200**; `/admin/backup-management` and `/backups/{uuid}/download` → **302 → `/admin/login`** while unauthenticated; `/restores/{uuid}/progress` → **403** (unsigned). `audit_events` still **0** afterwards, confirming unauthenticated probing writes nothing.
+
+### Commit Hash
+(pending review — not committed)
+
+---
+
+### Date
 2026-07-29 (OMS Task 9B.5 — attachment & report-export audit integration)
 
 ### Task

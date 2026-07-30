@@ -6,6 +6,7 @@ use App\Enums\BackupScope;
 use App\Enums\BackupStatus;
 use App\Enums\BackupType;
 use App\Models\BackupOperation;
+use App\Services\Audit\BackupRestore\RestoreAuditRecorder;
 use App\Services\Backup\BackupSubsystemLock;
 use App\Services\Restore\Contracts\RestoreProcessLauncher;
 use App\Services\Restore\Exceptions\RestoreProcessLaunchException;
@@ -48,12 +49,16 @@ final class RestoreLaunchService
         'db_password', 'database_password', 'secret',
     ];
 
+    private readonly RestoreAuditRecorder $auditRecorder;
+
     public function __construct(
         private readonly RestoreProcessLauncher $processLauncher,
         private readonly BackupSubsystemLock $subsystemLock = new BackupSubsystemLock(),
         private readonly RestoreActivityGuard $activityGuard = new RestoreActivityGuard(),
         private readonly RestoreProgressWriter $progressWriter = new RestoreProgressWriter(),
+        ?RestoreAuditRecorder $auditRecorder = null,
     ) {
+        $this->auditRecorder = $auditRecorder ?? app(RestoreAuditRecorder::class);
     }
 
     public function launch(string $restoreUuid, string $nonce): RestoreLaunchOutcome
@@ -242,7 +247,17 @@ final class RestoreLaunchService
                 return null;
             }
 
-            return BackupOperation::query()->findOrFail($row->id);
+            $claimed = BackupOperation::query()->findOrFail($row->id);
+
+            // OMS Task 9B.6 — REQUIRED, inside the same transaction as the
+            // atomic claim, so a detached restore process is never spawned for a
+            // claim that could not be audited: the UPDATE rolls back, the row
+            // stays Queued with its nonce intact, and the launch can be retried.
+            // Written exactly once per claim by construction — a replayed signed
+            // launch URL affects zero rows above and never reaches this line.
+            $this->auditRecorder->restoreStarted($claimed);
+
+            return $claimed;
         });
     }
 
@@ -307,6 +322,13 @@ final class RestoreLaunchService
             'error_summary' => $sanitizedSummary,
             'restore_metadata' => $metadata,
         ])->save();
+
+        // OMS Task 9B.6 — BEST-EFFORT and never throwing: the row above is
+        // already the authoritative terminal record, exactly like the progress
+        // write below. Only the fixed reason code (never $sanitizedSummary) is
+        // recorded, and the ledger keeps this the only `restore_failed` event
+        // for this restore.
+        $this->auditRecorder->restoreLaunchFailed($claimed, $reasonCode);
 
         try {
             $nowAtom = $now->format(RestoreProgressSnapshot::TIMESTAMP_FORMAT);

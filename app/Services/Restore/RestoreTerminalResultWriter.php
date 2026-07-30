@@ -5,6 +5,7 @@ namespace App\Services\Restore;
 use App\Enums\BackupStatus;
 use App\Models\BackupOperation;
 use App\Notifications\BackupNotificationEvent;
+use App\Services\Audit\BackupRestore\RestoreAuditRecorder;
 use App\Services\Backup\BackupNotifier;
 use App\Support\Backup\BackupErrorSanitizer;
 use Illuminate\Support\Facades\Log;
@@ -41,13 +42,30 @@ use Throwable;
  *      every other backup/restore outcome (BackupNotifier) — a failure here
  *      (e.g. the Super Admin role missing) must never affect either write
  *      above.
+ *
+ * OMS Task 9B.6 — because this is the ONE funnel every RestoreOrchestrator
+ * success/failure/partial branch already goes through, it is also the one place
+ * a restore's terminal audit event is written, which is what makes "one
+ * lifecycle state, at most one event" structural rather than a rule each of
+ * those branches has to remember. The audit write is step 5: after the
+ * progress file and after the database row, BEST-EFFORT and never able to throw
+ * (see RestoreAuditRecorder) — by this point a destructive boundary may already
+ * have been crossed, so an audit-storage failure must never suppress or
+ * contradict the terminal record already written above. It also re-attempts the
+ * idempotent pre-restore lifecycle replay, which matters for the one case
+ * RestoreReconciler cannot cover: an import that succeeded but reconciliation
+ * that failed before reaching its own replay step.
  */
 final class RestoreTerminalResultWriter
 {
+    private readonly RestoreAuditRecorder $auditRecorder;
+
     public function __construct(
         private readonly RestoreProgressWriter $progressWriter = new RestoreProgressWriter(),
         private readonly BackupNotifier $notifier = new BackupNotifier(),
+        ?RestoreAuditRecorder $auditRecorder = null,
     ) {
+        $this->auditRecorder = $auditRecorder ?? app(RestoreAuditRecorder::class);
     }
 
     /**
@@ -59,10 +77,22 @@ final class RestoreTerminalResultWriter
      * to $lastProgress->phase — every existing caller's behavior is
      * unchanged.
      *
+     * $cause (OMS Task 9B.6) is the ORIGINAL exception, passed for one purpose
+     * only: deriving a generic `failure_code`/`failure_category` for the audit
+     * event from its class and its own fixed `reasonCode` property. Its message
+     * is never read, stored, or logged here or in BackupRestoreFailure —
+     * $errorSummary remains the only text that reaches the progress file and
+     * the database row, exactly as before.
+     *
      * @throws \InvalidArgumentException if $result is not one of Restored/RestoreFailed/RestorePartial
      */
-    public function finish(RestoreProgressSnapshot $lastProgress, BackupStatus $result, ?string $errorSummary = null, ?string $failedPhaseOverride = null): RestoreProgressSnapshot
-    {
+    public function finish(
+        RestoreProgressSnapshot $lastProgress,
+        BackupStatus $result,
+        ?string $errorSummary = null,
+        ?string $failedPhaseOverride = null,
+        ?Throwable $cause = null,
+    ): RestoreProgressSnapshot {
         $resultValue = match ($result) {
             BackupStatus::Restored => 'restored',
             BackupStatus::RestoreFailed => 'restore_failed',
@@ -108,6 +138,11 @@ final class RestoreTerminalResultWriter
         }
 
         $this->updateDatabaseRow($terminal, $result, $sanitizedSummary);
+
+        // OMS Task 9B.6 — last, best-effort, never throwing: see the class
+        // docblock. Writes at most one terminal event per restore, after first
+        // replaying the request/claim history the import may have erased.
+        $this->auditRecorder->restoreTerminal($terminal, $result, $cause);
 
         return $terminal;
     }

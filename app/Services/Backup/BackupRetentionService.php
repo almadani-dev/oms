@@ -5,6 +5,7 @@ namespace App\Services\Backup;
 use App\Enums\BackupStatus;
 use App\Enums\BackupType;
 use App\Models\BackupOperation;
+use App\Services\Audit\BackupRestore\BackupAuditRecorder;
 use App\Services\Backup\Exceptions\BackupLockedException;
 use App\Services\Backup\Support\SafeBackupPath;
 use App\Services\Restore\RestoreActivityGuard;
@@ -39,10 +40,20 @@ use Illuminate\Support\Facades\Storage;
  */
 final class BackupRetentionService
 {
+    private readonly BackupAuditRecorder $auditRecorder;
+
+    /**
+     * $auditRecorder is container-resolved when omitted, matching the existing
+     * lock/guard defaults — every call site (RetentionCleanupJob,
+     * BackupRetentionCommand, this suite's tests) constructs this service with
+     * no arguments.
+     */
     public function __construct(
         private readonly BackupSubsystemLock $subsystemLock = new BackupSubsystemLock(),
         private readonly RestoreActivityGuard $restoreActivityGuard = new RestoreActivityGuard(),
+        ?BackupAuditRecorder $auditRecorder = null,
     ) {
+        $this->auditRecorder = $auditRecorder ?? app(BackupAuditRecorder::class);
     }
 
     /**
@@ -128,7 +139,7 @@ final class BackupRetentionService
 
         if (! $dryRun) {
             foreach ($toDelete as $operation) {
-                $result = $this->deleteOperation($operation);
+                $result = $this->deleteOperation($operation, $retentionWindows[$operation->type->value] ?? null);
 
                 if ($result['outcome'] === 'in_use') {
                     $inUseIds[] = $operation->id;
@@ -180,9 +191,18 @@ final class BackupRetentionService
     }
 
     /**
+     * OMS Task 9B.6 — retention deletes real archives, so it uses the exact
+     * same accurate two-event semantics as a manual deletion: a REQUIRED
+     * `backup_delete_requested` recorded while refusing to proceed is still
+     * possible (after the per-backup lock is held, immediately before the
+     * unlink), and a BEST-EFFORT `backup_deleted` afterwards reporting whether a
+     * file was actually removed. Both are ledger-guarded per backup, so
+     * repeated retention runs over the same window can never duplicate a
+     * lifecycle state. A row skipped as `in_use` records nothing at all.
+     *
      * @return array{outcome: 'deleted'|'in_use', file_deleted: bool}
      */
-    private function deleteOperation(BackupOperation $operation): array
+    private function deleteOperation(BackupOperation $operation, ?int $retentionKeepCount): array
     {
         $approvedDisk = (string) config('oms.backup.disk', 'backups');
         $deletedFile = false;
@@ -205,6 +225,8 @@ final class BackupRetentionService
             }
 
             try {
+                $this->auditDeleteRequested($operation, $retentionKeepCount);
+
                 $disk = Storage::disk($operation->disk);
 
                 if ($disk->exists($operation->stored_path)) {
@@ -214,11 +236,36 @@ final class BackupRetentionService
             } finally {
                 $lock->release();
             }
+        } else {
+            $this->auditDeleteRequested($operation, $retentionKeepCount);
         }
 
         $operation->forceFill(['status' => BackupStatus::Deleted->value])->save();
         $operation->delete();
 
+        $this->auditRecorder->backupDeleted(
+            $operation,
+            BackupAuditRecorder::TRIGGER_RETENTION,
+            archiveFileRemoved: $deletedFile,
+            retentionKeepCount: $retentionKeepCount,
+        );
+
         return ['outcome' => 'deleted', 'file_deleted' => $deletedFile];
+    }
+
+    /**
+     * @throws \App\Services\Audit\Exceptions\AuditPersistenceException when the
+     *         event cannot be persisted — the archive is then left completely
+     *         untouched and the retention run stops rather than performing an
+     *         unaccounted-for deletion. Both locks release through the finally
+     *         blocks in run().
+     */
+    private function auditDeleteRequested(BackupOperation $operation, ?int $retentionKeepCount): void
+    {
+        $this->auditRecorder->backupDeleteRequested(
+            $operation,
+            BackupAuditRecorder::TRIGGER_RETENTION,
+            $retentionKeepCount,
+        );
     }
 }

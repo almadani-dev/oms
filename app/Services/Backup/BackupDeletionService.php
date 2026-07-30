@@ -6,6 +6,7 @@ use App\Enums\BackupStatus;
 use App\Enums\BackupType;
 use App\Models\BackupOperation;
 use App\Models\User;
+use App\Services\Audit\BackupRestore\BackupAuditRecorder;
 use App\Services\Backup\Exceptions\BackupDeletionRejectedException;
 use App\Services\Backup\Support\SafeBackupPath;
 use App\Services\Restore\RestoreActivityGuard;
@@ -53,10 +54,20 @@ use Throwable;
  */
 final class BackupDeletionService
 {
+    private readonly BackupAuditRecorder $auditRecorder;
+
+    /**
+     * $auditRecorder is resolved from the container when omitted rather than
+     * being a required parameter: every existing call site — including the
+     * Filament page and this suite's own tests — constructs this service with
+     * `new BackupDeletionService()`, matching the two lock/guard defaults above.
+     */
     public function __construct(
         private readonly BackupSubsystemLock $subsystemLock = new BackupSubsystemLock(),
         private readonly RestoreActivityGuard $restoreActivityGuard = new RestoreActivityGuard(),
+        ?BackupAuditRecorder $auditRecorder = null,
     ) {
+        $this->auditRecorder = $auditRecorder ?? app(BackupAuditRecorder::class);
     }
 
     /**
@@ -87,11 +98,34 @@ final class BackupDeletionService
 
             $priorStatus = $operation->status;
 
+            // OMS Task 9B.6 — REQUIRED, and deliberately the last thing that
+            // happens before an irreversible unlink becomes possible: every
+            // eligibility rule has passed and both locks are held, so this is
+            // the last moment at which refusing to proceed is still free. An
+            // audit-storage failure here throws AuditPersistenceException out of
+            // delete() and the archive is never touched. Unlinking a file cannot
+            // join a database transaction, so "requested" is the only honest
+            // atomic claim available; the matching `backup_deleted` below then
+            // records what was actually observed, and never claims a rollback.
+            $this->auditRecorder->backupDeleteRequested($operation, BackupAuditRecorder::TRIGGER_MANUAL);
+
             try {
-                return $this->performDelete($operation, $priorStatus);
+                $result = $this->performDelete($operation, $priorStatus);
             } finally {
                 $lock->release();
             }
+
+            // BEST-EFFORT, after the fact: the archive is already gone and the
+            // metadata row already soft-deleted, so an audit failure here must
+            // never throw back into a completed irreversible deletion (it would
+            // suggest to the caller that nothing was deleted).
+            $this->auditRecorder->backupDeleted(
+                $operation,
+                BackupAuditRecorder::TRIGGER_MANUAL,
+                archiveFileRemoved: ! $result->fileWasAlreadyMissing,
+            );
+
+            return $result;
         } finally {
             $subsystemHandle->release();
         }

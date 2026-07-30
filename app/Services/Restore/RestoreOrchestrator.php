@@ -340,12 +340,12 @@ final class RestoreOrchestrator
 
     private function fail(RestoreProgressSnapshot $progress, Throwable $e, bool $restoreEnteredMaintenanceMode, bool $destructiveBoundaryCrossed): BackupStatus
     {
-        return $this->leaveMaintenanceAndFinish($progress, $restoreEnteredMaintenanceMode, $destructiveBoundaryCrossed, BackupStatus::RestoreFailed, $this->sanitize($e));
+        return $this->leaveMaintenanceAndFinish($progress, $restoreEnteredMaintenanceMode, $destructiveBoundaryCrossed, BackupStatus::RestoreFailed, $this->sanitize($e), $e);
     }
 
     private function partial(RestoreProgressSnapshot $progress, Throwable $e, bool $restoreEnteredMaintenanceMode): BackupStatus
     {
-        return $this->leaveMaintenanceAndFinish($progress, $restoreEnteredMaintenanceMode, true, BackupStatus::RestorePartial, $this->sanitize($e));
+        return $this->leaveMaintenanceAndFinish($progress, $restoreEnteredMaintenanceMode, true, BackupStatus::RestorePartial, $this->sanitize($e), $e);
     }
 
     /**
@@ -409,12 +409,12 @@ final class RestoreOrchestrator
         if (! $rolledBack) {
             $summary = 'Database import failed after attachments were already activated, and the automatic attachment rollback also failed. Manual review is required for both attachments and the database — recover using the pre-restore safety backup.';
 
-            return $this->leaveMaintenanceAndFinish($progress, $restoreEnteredMaintenanceMode, true, BackupStatus::RestorePartial, $summary);
+            return $this->leaveMaintenanceAndFinish($progress, $restoreEnteredMaintenanceMode, true, BackupStatus::RestorePartial, $summary, $e);
         }
 
         $summary = 'Database import failed after attachments were already activated; attachments were rolled back to their original state. The database may be partially imported and must not be assumed consistent — recover using the pre-restore safety backup if needed. Original error: '.$this->sanitize($e);
 
-        return $this->leaveMaintenanceAndFinish($progress, $restoreEnteredMaintenanceMode, true, BackupStatus::RestoreFailed, $summary);
+        return $this->leaveMaintenanceAndFinish($progress, $restoreEnteredMaintenanceMode, true, BackupStatus::RestoreFailed, $summary, $e);
     }
 
     private function attemptAttachmentRollback(BackupSubsystemLockHandle $lockHandle, AttachmentSwapHandle $handle): bool
@@ -443,6 +443,7 @@ final class RestoreOrchestrator
         bool $destructiveBoundaryCrossed,
         BackupStatus $baseResult,
         ?string $baseSummary,
+        ?Throwable $cause = null,
     ): BackupStatus {
         // Captured BEFORE any 'maintenance_disabled' bookkeeping advance
         // below — restore_failed_phase must always reflect the phase where
@@ -452,21 +453,24 @@ final class RestoreOrchestrator
         $originalPhase = $progress->phase;
 
         if (! $restoreEnteredMaintenanceMode) {
-            $this->terminalWriter->finish($progress, $baseResult, $baseSummary, $originalPhase);
+            $this->terminalWriter->finish($progress, $baseResult, $baseSummary, $originalPhase, $cause);
 
             return $baseResult;
         }
 
         try {
             $this->maintenanceMode->leave();
-        } catch (Throwable) {
+        } catch (Throwable $maintenanceFailure) {
             $result = $destructiveBoundaryCrossed ? BackupStatus::RestorePartial : BackupStatus::RestoreFailed;
             $summary = trim('The application could not automatically be brought out of maintenance mode after the restore; manual review is required. '.($baseSummary ?? ''));
 
             // Maintenance exit itself is what failed here — record that
             // exact step as the terminal failure phase (Task 7C.7 section
-            // H.9), not whatever phase preceded it.
-            $this->terminalWriter->finish($progress, $result, $summary, 'maintenance_disabled');
+            // H.9), not whatever phase preceded it. The maintenance-exit
+            // failure is also what the audit event's generic failure code is
+            // derived from (OMS Task 9B.6), for the same reason: it is the
+            // failure that actually decided this terminal result.
+            $this->terminalWriter->finish($progress, $result, $summary, 'maintenance_disabled', $maintenanceFailure);
 
             return $result;
         }
@@ -478,7 +482,7 @@ final class RestoreOrchestrator
             // the terminal write below is what actually matters.
         }
 
-        $this->terminalWriter->finish($progress, $baseResult, $baseSummary, $originalPhase);
+        $this->terminalWriter->finish($progress, $baseResult, $baseSummary, $originalPhase, $cause);
 
         return $baseResult;
     }

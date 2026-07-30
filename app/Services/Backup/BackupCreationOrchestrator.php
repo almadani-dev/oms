@@ -6,6 +6,7 @@ use App\Enums\BackupScope;
 use App\Enums\BackupStatus;
 use App\Enums\BackupType;
 use App\Models\BackupOperation;
+use App\Services\Audit\BackupRestore\BackupAuditRecorder;
 use App\Services\Backup\Contracts\BackupArchiveContentVerifier;
 use App\Services\Backup\Exceptions\BackupLockedException;
 use App\Services\Backup\Exceptions\BackupOperationException;
@@ -14,6 +15,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Throwable;
@@ -61,6 +63,7 @@ final class BackupCreationOrchestrator
         private readonly SecretstreamEnvelope $envelope,
         private readonly BackupArchiveContentVerifier $contentVerifier,
         private readonly BackupSubsystemLock $subsystemLock,
+        private readonly BackupAuditRecorder $auditRecorder,
         private readonly RestoreActivityGuard $restoreActivityGuard = new RestoreActivityGuard(),
     ) {
     }
@@ -75,6 +78,18 @@ final class BackupCreationOrchestrator
      * never a duplicate job. Manual/pre_restore always get a fresh row
      * (deduplication_key stays null, and multiple NULLs never collide
      * under a standard SQL unique index).
+     *
+     * OMS Task 9B.6: this is the ONLY place a `backup_requested` audit event
+     * is ever written, because it is the only place a BackupOperation row is
+     * ever created — the Filament manual action, `oms:backup` (by hand or from
+     * the scheduler), and RestoreOrchestrator's mandatory pre-restore safety
+     * backup all funnel through here. The insert and its REQUIRED audit event
+     * share one transaction, so a queued backup that could not be audited
+     * never exists at all. The deduplication path below is deliberately
+     * OUTSIDE that transaction: when a scheduled duplicate loses the unique
+     * race, the whole attempt (row and event) is rolled back and the winner's
+     * existing row is returned, so the winner's single `backup_requested`
+     * event is never joined by a second one for the same backup.
      */
     public function enqueue(BackupType $type, BackupScope $scope, ?string $reason, ?int $createdBy): BackupOperation
     {
@@ -103,7 +118,13 @@ final class BackupCreationOrchestrator
         ];
 
         try {
-            return BackupOperation::create($attributes);
+            return DB::transaction(function () use ($attributes): BackupOperation {
+                $operation = BackupOperation::create($attributes);
+
+                $this->auditRecorder->backupRequested($operation);
+
+                return $operation;
+            });
         } catch (QueryException $e) {
             if ($deduplicationKey === null || ! $this->isUniqueConstraintViolation($e)) {
                 throw $e;
@@ -307,7 +328,7 @@ final class BackupCreationOrchestrator
 
             $this->cleanupWorkingDirectory($disk, $workingDir);
 
-            return $operation->refresh();
+            $completed = $operation->refresh();
         } catch (Throwable $e) {
             if ($workingDir !== null) {
                 $this->cleanupWorkingDirectory($disk, $workingDir);
@@ -321,8 +342,27 @@ final class BackupCreationOrchestrator
                 'error_summary' => $summary,
             ])->save();
 
+            // OMS Task 9B.6 — BEST-EFFORT and never able to throw (see
+            // BackupAuditRecorder): reporting a failure must never replace the
+            // original failure with an audit failure. Only a generic code and
+            // category derived from the exception's CLASS/reasonCode is
+            // recorded — never $summary, which (although path-scrubbed for
+            // error_summary) can still contain SQL, bindings or process text.
+            $this->auditRecorder->backupFailed($operation, $e);
+
             throw new BackupOperationException("Backup creation failed: {$summary}", previous: $e);
         }
+
+        // OMS Task 9B.6 — deliberately OUTSIDE the try/catch above, so this is
+        // structurally incapable of turning a fully generated, encrypted,
+        // verified and PUBLISHED archive into a `failed` row. At this point the
+        // filesystem already shows a valid backup that nothing here deletes or
+        // rolls back, so `backup_completed` is BEST-EFFORT: an audit-storage
+        // outage is logged (sanitized) by AuditLogger and the true state of the
+        // operation row is left intact, rather than recorded as a lie.
+        $this->auditRecorder->backupCompleted($completed);
+
+        return $completed;
     }
 
     /**
