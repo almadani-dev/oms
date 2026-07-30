@@ -17,6 +17,33 @@
 ---
 
 ### Date
+2026-07-30 (Roadmap correction — remove the resolved double-entry receipt issue)
+
+### Task
+Documentation-only correction. The roadmap still carried a "double-entry bookkeeping issue" claiming a receipt generated only one transaction line (debit only), listed as `(Open.)` and flagged in two places as a correctness item that may outrank the approved export phase. The receipt workflow already posts both sides, so the item was removed from open risks, ranking notes and upcoming work, and the two historical sentences that still called it open were corrected without erasing the history.
+
+### Result
+`CreateProjectCostReceipt` builds exactly two lines per receipt — a debit line (`TransactionLineRole::ReceiptDestination`, `debit_base = amount`, `credit_base = 0`) and a credit line (`TransactionLineRole::FundingSource`, `debit_base = 0`, `credit_base = amount`) — inside the flow's existing `DB::transaction()`. `oms:check-financial-integrity` reports 6 transactions checked, **0 unbalanced**, Result: OK. The item is therefore stale documentation, not open work. **Excel + Arabic PDF export for the general and per-project reports remains the next roadmap phase, now with no competing candidate.** No application code, test, migration or database data was touched.
+
+### Changed Files
+- `OMS_Master_Reference.md` — §6: deleted the `(Open.)` double-entry receipt bullet; removed clause (a) from the "next system phase" note, leaving the Pint decision as the one item to settle before the export begins.
+- `docs/NEXT_STEPS.md` — removed the "One competing candidate the reviewer should rank first" paragraph, so the approved export stands unambiguously as the next phase.
+- `docs/DECISIONS_LOG.md` — 9B.8 Impact: kept the original ranking question as history, appended a **Superseded 2026-07-30** note recording the defect as already resolved.
+- `docs/PROMPTS_LOG.md` — 9B.8 Result: reworded "still-open" to "flagged *at the time*" and appended a **Corrected 2026-07-30** note.
+
+### Verification
+- Documentation search for the defect's distinctive wording (`only one transaction line`, `debit only`, `credit account field`, `receipt was generating`, `still-open`, `double-entry receipt`) across all `*.md` — after the edits, no reference describes the issue as open. Other `double-entry` hits in the logs are unrelated topics (opening balances, description builders, the audit contract) and were left untouched.
+- Read-only code confirmation of the two-line receipt flow (no code modified).
+- `git diff --check` → clean, exit 0.
+- `php artisan oms:check-financial-integrity` → **Result: OK, exit 0** (0 orphans, 0 duplicate transaction numbers, 0 unbalanced transactions, 0 invalid FX/base values, 0 currency mismatches, 0 persisted balance mismatches).
+- PHPUnit deliberately not run — documentation-only change, per the task scope.
+
+### Commit Hash
+(recorded below after commit)
+
+---
+
+### Date
 2026-07-30 (OMS Task 9B.8 — FINAL Audit system acceptance, full regression & release readiness)
 
 ### Task

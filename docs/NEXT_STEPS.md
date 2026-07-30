@@ -25,8 +25,6 @@ Per `OMS_Master_Reference.md` §6, the first pending item carrying an explicit p
 
 **This is set as the next system phase and has deliberately not been started.** It requires a fresh explicit request.
 
-**One competing candidate the reviewer should rank first, because it is a correctness issue rather than a feature:** §6 also carries an **open double-entry defect** — "a receipt was generating only one transaction line (debit only) instead of two (debit + credit)", with a possible resolution of adding a revenue/credit account field or a default credit account setting. That is financial-correctness work and arguably outranks an export feature. The current integrity checker reports OK on the present 9 transactions, so it is not actively failing, but the item is still marked open. **Confirm which of the two is the real next phase — this was not inferred beyond what §6 states, and no guess was recorded as fact.**
-
 ---
 
 ## Previously Recommended Next Step (2026-07-30, OMS Task 9B.7 read-only Audit Log UI — implemented, focused tests green, real-local verification DONE, NOT committed)
