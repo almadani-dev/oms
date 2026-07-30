@@ -1,6 +1,38 @@
 # Next Steps
 
-## Recommended Next Step (2026-07-30, OMS Task 9B.6 backup & restore audit — implemented, focused tests green, real-local verification DONE, NOT committed)
+## Recommended Next Step (2026-07-30, OMS Task 9B.7 read-only Audit Log UI — implemented, focused tests green, real-local verification DONE, NOT committed)
+
+**Implemented and verified; awaiting review before commit.** `النظام` → `سجل التدقيق` (`/admin/audit-events`) is now a read-only viewer over `audit_events`, restricted to the real `Super Admin` role. Two pages only — `ListAuditEvents` and `ViewAuditEvent`. No create/edit route exists (a direct URL is **404**), every mutation ability is hard-`false`, there are no relation managers, no bulk actions, no export and no import.
+
+**No schema change was required and none was made.** The mandatory read-only inspection confirmed all five indexes the approved filters need already exist from the 9B.1 migration, so the §1 STOP condition did not trigger. Two low-cardinality filters (`actor_type`, and `event_action` used without a category) deliberately run without a dedicated index — see the DECISIONS_LOG entry for why adding one would be cost with no benefit on an append-only table.
+
+**Next: review the implementation and the diff together, then approve the commit.** After that, **OMS Task 9B.8 — final Audit acceptance and the full test suite** is the remaining phase. It must not be started without a fresh explicit request. Graphify was deliberately **not** run before review, as instructed; the post-commit hook produces its own refresh commit.
+
+Scope check for the reviewer — the brief's exclusions were all honoured: no Create/Edit page, no delete/bulk-delete/restore/force-delete/replicate/import/export/inline editing, no mutating relation manager, no `audit.view`/`audit.manage` permission, no `PermissionRegistry` change, no change to `UserPolicy`/`Gate::before`/`canAccessPanel`/any role rule, no Graphify run, no push, no full-suite run, no concurrent PHPUnit, no 9B.8, and **no audit event inserted into the real local database to test the UI**.
+
+### Applied correction (2026-07-30) — unknown categorical values can no longer break the page
+The reviewer's one required correction is done. The two enum-cast displayed fields were `actor_type` and `status`; both are plain varchars in the schema, so a row written by a later build could hold a value this build's enums do not declare, and touching the attribute would throw. The fix is UI-only: new `App\Support\Audit\AuditRawValue` reads a categorical column through `getRawOriginal()` (falling back to the raw attribute array), and `AuditLabels::actorType()`/`status()` now take that string and fall back to it verbatim, exactly like the three open string columns already did. **`AuditEvent`'s casts, `AuditRedactor` and the immutability hooks are untouched**, and no stored row was modified. Focused suites after the fix: **93 passed / 614 assertions** (`tests/Feature/Audit/Ui` + `tests/Unit/Support/Audit`), including 19 new regression tests that insert unknown values straight through the query builder.
+
+### Correction to what 9B.6 predicted
+The previous entry (below) said 9B.7 would come "plus the `audit.view` permission it will need". **That is superseded**: the 9B.7 brief explicitly forbade creating any `audit.*` permission, and access is instead the real `Super Admin` **role alone**, checked in plain PHP that never resolves through `Gate`. That is strictly safer — with no permission in existence, there is nothing a future role edit or permission sync could grant by accident. Proven with a fixture holding all 186 registered permissions and no Super Admin role: navigation hidden, list and view both 403.
+
+### The item 9B.6 left open for this phase — answered
+9B.6 asked that the UI **surface** rather than flatten (a) the shape difference between an original restore row and one replayed after a database replacement, and (b) failure information that is deliberately only ever a code/category pair. Both `replayed_after_database_replacement` and `failure_code`/`failure_category` now carry explicit Arabic labels in `AuditLabels`, rendered as their own rows in the detail view's القيم الجديدة / القيم القديمة tables, with `AuditLabelCoverageTest` failing if any of the three ever loses its label.
+
+### Five things a reviewer should consciously accept
+- **Access is a role check with no permission second factor, unlike `BackupAuthorization`.** That asymmetry is deliberate and is the safer direction here — see the DECISIONS_LOG entry. The moment anyone wants to delegate audit reading to a non-Super-Admin, one method (`AuditViewAuthorization::check()`) is the single seam to change.
+- **Mutation abilities are hard-`false` in plain PHP and there is no `AuditEventPolicy`.** A Policy would be bypassed by `Gate::before` for 100% of the actors who can reach this page, making its denials decorative. Adding one later would be actively misleading.
+- **The payload presenter returns unescaped plain text on purpose.** Escaping happens exactly once, in Filament's `KeyValueEntry` (`e()` on key and value). Escaping in both places would display an audited `<script>` as `&lt;script&gt;` — wrong in a forensic tool. The rule that keeps this safe is that nothing in the resource namespace may ever call `->html()`/`->markdown()`; the rendered-HTML test asserts the outcome directly.
+- **Full-text search over `subject_label`/`subject_key`/`actor_name`/`actor_email` compiles to `LIKE %term%` and cannot use an index.** §4 asked for it explicitly; it only runs when an administrator types. If search ever becomes the bottleneck, a full-text/trigram index is the separate later decision — not a guess made now.
+- **The UI reads every categorical column as a raw string, never through a cast.** `status` and `actor_type` are cast to `AuditStatus`/`AuditActorType` on the model but stored as plain varchars, so an out-of-vocabulary historical value would have thrown a `ValueError` on attribute access and broken the page. The list and detail view now read all five categorical columns — `event_category`, `event_action`, `actor_type`, `subject_type`, `status` — through `App\Support\Audit\AuditRawValue` and label them via `AuditLabels`, which falls back to the stored value verbatim. **The domain enum casts were not removed or weakened**; the write side keeps its strict typing, and a regression suite proves both facts at once (the model still throws on direct access; the UI still renders). An unknown `status` gets a neutral grey badge rather than a green "نجاح", because claiming success for a value this build cannot interpret would be a false statement about the record.
+
+### Two deliberate non-features
+- **No export of any kind.** §2 forbids it, and an audit trail whose contents can be exported from the same screen that reads it is a different, larger decision (retention, redaction on export, and who may hold the file) that belongs to a phase of its own.
+- **No dashboard counters, no polling, no caching.** §9 forbids caching that could leak rows between users; counters and polling would each add per-request queries over a table designed only to grow.
+
+---
+
+## Previously Recommended Next Step (2026-07-30, OMS Task 9B.6 backup & restore audit — implemented, focused tests green, real-local verification DONE, NOT committed)
 
 **Implemented and verified; awaiting review before commit.** `event_category = backup_restore` now covers the real backup lifecycle (`backup_requested`, `backup_completed`, `backup_failed`, `backup_downloaded`, `backup_download_denied`, `backup_delete_requested`, `backup_deleted`) and the real restore lifecycle (`restore_requested`, `restore_started`, `restore_reconciled`, `restore_completed`, `restore_failed`, `restore_partial`, `restore_interrupted`), under two subject aliases — `backup` and `restore` — with `correlation_id` always the operation's own UUID.
 

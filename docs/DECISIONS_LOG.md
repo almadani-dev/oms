@@ -13,6 +13,90 @@
 ---
 
 ### Date
+2026-07-30 (OMS Task 9B.7 correction — the Audit Log UI reads categorical columns RAW; the domain enum casts stay)
+
+### Decision
+The read-only Audit Log UI reads all five categorical columns — `event_category`, `event_action`, `actor_type`, `subject_type`, `status` — as the **raw stored string**, through the new `App\Support\Audit\AuditRawValue::string()` (`getRawOriginal()`, with the raw attribute array as fallback), and labels them through `AuditLabels`, which maps a known value to Arabic and falls back to the stored string verbatim. `AuditEvent`'s `actor_type => AuditActorType` and `status => AuditStatus` casts were **left exactly as they are**.
+
+### Reason
+Both columns are declared `string(20)`/`string(10)` in the 9B.1 migration — the enum is a domain constraint on the WRITE path, not a storage constraint. A row written by a later build of this application, or restored from a backup taken by one, can therefore hold a value this build's enum does not declare. Eloquent resolves an enum cast on **attribute access**, so such a row hydrates fine and then throws a `ValueError` the moment the UI touches `$record->actor_type` — taking down the list page, the detail page, search, sorting and pagination for everyone, not just that row. An audit trail that becomes unreadable because the reader is older than the writer has failed at its only job. Removing the casts was rejected outright: they are what keeps every recorder under `App\Services\Audit` strictly typed, and weakening a domain invariant to fix a presentation bug is the wrong trade. A UI-only raw read fixes the actual failure at the actual boundary and leaves the write side untouched — a distinction the regression suite asserts directly, by proving in the same test that the model **still** throws on direct attribute access while the page **still** renders. An unknown `status` is rendered grey rather than green for the same honesty reason: this build cannot know that an undeclared status means success.
+
+### Impact
+Adding a case to `AuditActorType`/`AuditStatus` remains the correct way to introduce a new value, and doing so now only *improves* the label — it is no longer load-bearing for the page not to crash. The single seam for all of this is `AuditRawValue` plus the two backing-value maps in `AuditLabels`; the filter dropdowns still offer only known values (an unknown value is rendered verbatim in its column, it just cannot be pre-listed without a `SELECT DISTINCT` over a growing table). `AuditRedactor`, `AuditEvent`'s immutability hooks, the migration and the stored rows are all unaffected.
+
+---
+
+### Date
+2026-07-30 (OMS Task 9B.7 — Audit Log access is the real `Super Admin` ROLE alone, with no `audit.*` permission created)
+
+### Decision
+`App\Support\Audit\AuditViewAuthorization::check()` is a plain `$user->hasRole(PermissionRegistry::SUPER_ADMIN)` comparison. It does **not** additionally require a permission, unlike `App\Support\Backup\BackupAuthorization` (`role AND backups.*`), and **no `audit.view`/`audit.manage` permission was added to `PermissionRegistry`**.
+
+### Reason
+`BackupAuthorization` needs both factors because `backups.*` permissions genuinely exist and could be granted to a lesser role, so the role check is what stops the permission alone from being sufficient. Here the situation is inverted: the whole point of Task 9B.7 §3 is that **no audit permission exists yet**. Adding one purely to satisfy a symmetric-looking two-factor check would create the exact widening risk the requirement forbids — a permission that a future role edit, permission sync, or "grant everything to Admin" convenience could hand to a non-Super-Admin. With no permission in existence, the role is not merely the primary factor; it is the only thing that can be checked, and that is strictly safer. The check is deliberately plain PHP so `Gate::before`'s Super-Admin bypass can never short-circuit it and no permission resolution can ever widen it. Proven with a fixture holding all 186 registered permissions and no Super Admin role: navigation hidden, list and view both 403.
+
+### Impact
+Task 9B.8 (or any later phase) that wants to delegate audit reading to a non-Super-Admin must add the permission deliberately and update this one method — a single, obvious, reviewable seam. Until then there is no audit permission for any tooling, sync, or role edit to grant by accident. `UserPolicy`, `Gate::before`, `canAccessPanel` and every existing role rule are untouched.
+
+---
+
+### Date
+2026-07-30 (OMS Task 9B.7 — mutation abilities are hard-false in plain PHP, not denied through a Policy)
+
+### Decision
+`AuditEventResource` overrides `canCreate`/`canEdit`/`canDelete`/`canDeleteAny`/`canForceDelete`/`canForceDeleteAny`/`canRestore`/`canRestoreAny`/`canReplicate` to return `false` unconditionally, and no `AuditEventPolicy` was created.
+
+### Reason
+`Gate::before` (AppServiceProvider) grants a real Super Admin **every** ability. This resource is *only* reachable by a real Super Admin. A Policy whose mutation methods returned `false` would therefore be bypassed for 100% of the actors who can open the page — the denial would be decorative. The codebase already established exactly this reasoning for `PermissionResource` and `AttachmentResource`, and this follows it rather than inventing a parallel pattern. Structural absence reinforces it: only `index`/`view` pages are registered (so a create/edit URL is 404, not 403), `getRelations()` is empty, and `toolbarActions()`/`bulkActions()` are never called — which is what stops Filament rendering row-selection checkboxes at all, so there is no bulk-destructive surface to authorize. `AuditEvent`'s own `AuditImmutableRecordException` hooks remain the final backstop at the model layer.
+
+### Impact
+Three independent layers must all be removed before an audit row could ever be mutated through the UI: a page would have to be registered, a `canX()` override deleted, and the model's immutability hook removed. Adding an `AuditEventPolicy` later would be actively misleading and should not be done.
+
+---
+
+### Date
+2026-07-30 (OMS Task 9B.7 — no index was added; two low-cardinality filters run without one, deliberately)
+
+### Decision
+No migration was written. The date-range, category, actor-user, subject-type and correlation-id filters use the five indexes the 9B.1 migration already created. The `actor_type` filter, and `event_action` used *without* a category, run without a dedicated index.
+
+### Reason
+Task 9B.7 §1 requires stopping and reporting only if the schema lacks an index **objectively required** for an approved filter, and prefers no schema change. `actor_type` has five possible values and `event_action` around thirty; a single-column index on either is far below the selectivity threshold at which a query planner would choose it over a scan, so adding one would be cost with no benefit — and every additional index is write amplification on an append-only table that only ever grows. `event_action` combined with `event_category` (the normal way an administrator narrows the list) already uses the composite `audit_events_category_action_idx` on its leading column. Text search (`subject_label`/`subject_key`/`actor_name`/`actor_email`) compiles to `LIKE %term%`, which no B-tree index can serve regardless; it is retained because §4 explicitly asks for it, and it only runs when an administrator actually types.
+
+### Impact
+The audit table can grow without a schema change. If real-world volume ever makes `actor_type`-only or `event_action`-only filtering slow, the fix is a composite index chosen from real query patterns then — not one guessed now. A full-text or trigram index for the search box is the separate, later decision if search becomes the bottleneck.
+
+---
+
+### Date
+2026-07-30 (OMS Task 9B.7 — the payload presenter returns PLAIN TEXT and lets the renderer escape, rather than escaping itself)
+
+### Decision
+`AuditPayloadPresenter` returns raw, unescaped plain strings. The single consumer is Filament's `KeyValueEntry`, which writes both key and value through `e()`. Nothing in the resource namespace calls `->html()`, `->markdown()`, or returns an `HtmlString`.
+
+### Reason
+Task 9B.7 §7 asks the helper to "recursively escape all text". Escaping *inside* the helper and then rendering through a component that escapes again would double-encode: an audited value of `<script>` would display to the administrator as `&lt;script&gt;` — visibly wrong, and actively misleading in a forensic tool whose entire job is to report what was recorded. The security requirement is that markup never *executes*, and that is satisfied by escaping exactly once at the boundary that actually emits HTML. Splitting the responsibility this way also means the helper stays pure and unit-testable without an HTML context, and a future consumer cannot accidentally receive pre-escaped text it would escape again. `AuditEventRenderingTest` asserts the end result directly against the rendered HTML: `<script>alert(1)</script>` and `<img src=x onerror=alert(1)>` never appear unescaped, and `&lt;script&gt;` does.
+
+### Impact
+Any future component rendering audit payloads must escape its own output — which every stock Filament text component already does. The rule that makes this safe is the one stated in both class docblocks: nothing in this namespace may ever call `->html()`. A test would need to be added if a non-Filament consumer is introduced.
+
+---
+
+### Date
+2026-07-30 (OMS Task 9B.7 — unknown categories/actions/aliases fall back to the STORED VALUE, never to "unknown")
+
+### Decision
+`AuditLabels::category()`/`action()`/`subject()`/`field()` return the stored string verbatim when it is not in their bounded Arabic map. Only a genuinely absent value (`null`/`''`) renders as `—`.
+
+### Reason
+`event_category`, `event_action` and `subject_type` are open snake_case strings in the schema — `AuditLogger` validates their shape, not a closed vocabulary — so a future phase will legitimately write values this file has not caught up with. Rendering those as "غير معروف" would destroy exactly the information an audit reader came for. Showing the raw value is always truthful and always identifiable. The detail view goes further and shows the Arabic label *next to* the raw value (`إنشاء (created)`), so a reader can cross-check the translation against what was actually recorded. `AuditLabelCoverageTest` then keeps the maps from silently rotting: it fails the moment a new `AuditSubjectRegistry` alias, subject enum case, or backup/restore action constant appears without a label.
+
+### Impact
+A new audited phase works in the UI on day one, unlabelled but fully readable, and the coverage test tells whoever adds it that a label is expected. The bounded maps also remain the reason no filter needs a `SELECT DISTINCT` over a growing audit table.
+
+---
+
+### Date
 2026-07-30 (OMS Task 9B.6 — restore audit history survives a database replacement by reusing the existing signed progress journal, not a new log)
 
 ### Decision
