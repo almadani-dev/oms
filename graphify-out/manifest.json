@@ -4060,8 +4060,8 @@
     "semantic_hash": ""
   },
   "OMS_Master_Reference.md": {
-    "mtime": 1785401203.496288,
-    "ast_hash": "c68de4fbd99e1c51abca54a4fb0653f2",
+    "mtime": 1785407185.25773,
+    "ast_hash": "12db7980b3be0035b2f006b49cfe0351",
     "semantic_hash": ""
   },
   "README.md": {
@@ -4070,23 +4070,23 @@
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1785401250.8408237,
-    "ast_hash": "05ddbcda69bc4a13bbeecde3baa57ca5",
+    "mtime": 1785407243.8346975,
+    "ast_hash": "0cca6b0b7e976389e86415389c65035e",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
-    "mtime": 1785401359.758759,
-    "ast_hash": "9492c38a257cd9fedf7c1fd4cebeaeeb",
+    "mtime": 1785407259.9945068,
+    "ast_hash": "9d8de314c6c79bb715907991ee841040",
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1785402295.9173694,
-    "ast_hash": "f35d090d862e90bf452a4fa961a3ca5c",
+    "mtime": 1785407172.2389348,
+    "ast_hash": "91dd6b18a838b8af96cc4b3afb92600c",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
-    "mtime": 1785402295.8772519,
-    "ast_hash": "0a332701cb5949cd03700593a250190e",
+    "mtime": 1785407283.3155918,
+    "ast_hash": "7e9d291b5cfa248586ca2082db617220",
     "semantic_hash": ""
   },
   "docs/RESTORE_RECOVERY.md": {
@@ -4095,8 +4095,8 @@
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1785402295.8313172,
-    "ast_hash": "1ff8088abf9432f5e2cedd1dc5a06e4d",
+    "mtime": 1785407230.5162249,
+    "ast_hash": "e845e4f9365e857fef595f7772c4a21d",
     "semantic_hash": ""
   },
   "public/robots.txt": {
@@ -4337,6 +4337,96 @@
   "tests/Feature/Audit/BackupRestore/RestoreAuditTest.php": {
     "mtime": 1785400642.7328331,
     "ast_hash": "e1ef9847ac11b0d29ce8e3aaaacb0aca",
+    "semantic_hash": ""
+  },
+  "app/Filament/Resources/AuditEvents/AuditEventResource.php": {
+    "mtime": 1785404161.6385329,
+    "ast_hash": "0ef1794c17bbaedebc967fc98aed2a7b",
+    "semantic_hash": ""
+  },
+  "app/Filament/Resources/AuditEvents/Pages/ListAuditEvents.php": {
+    "mtime": 1785404312.8864052,
+    "ast_hash": "66137ed127a0185aae2e59a3f0839eff",
+    "semantic_hash": ""
+  },
+  "app/Filament/Resources/AuditEvents/Pages/ViewAuditEvent.php": {
+    "mtime": 1785404318.3635457,
+    "ast_hash": "376f425e4c100e78c4b950b5e924cd38",
+    "semantic_hash": ""
+  },
+  "app/Filament/Resources/AuditEvents/Schemas/AuditEventInfolist.php": {
+    "mtime": 1785406715.2402468,
+    "ast_hash": "c3460161c1b3730facea74281d140de9",
+    "semantic_hash": ""
+  },
+  "app/Filament/Resources/AuditEvents/Tables/AuditEventsTable.php": {
+    "mtime": 1785406673.453802,
+    "ast_hash": "3fdddff290e637cccd1b0cd46517596b",
+    "semantic_hash": ""
+  },
+  "app/Support/Audit/AuditLabels.php": {
+    "mtime": 1785406649.859075,
+    "ast_hash": "d6de1c246412b06a6991cb8b0a84afbe",
+    "semantic_hash": ""
+  },
+  "app/Support/Audit/AuditPayloadPresenter.php": {
+    "mtime": 1785404138.9308398,
+    "ast_hash": "34a646d8fdd615e0997f37cb781fab46",
+    "semantic_hash": ""
+  },
+  "app/Support/Audit/AuditRawValue.php": {
+    "mtime": 1785406608.5694585,
+    "ast_hash": "30424f8578f47f6902af27fabbf2a584",
+    "semantic_hash": ""
+  },
+  "app/Support/Audit/AuditViewAuthorization.php": {
+    "mtime": 1785406966.2527988,
+    "ast_hash": "1d8a38a851f6369ada5b82b035192713",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Ui/AuditEventFiltersTest.php": {
+    "mtime": 1785404605.7315876,
+    "ast_hash": "2410485fac5f87748649c008537ac3c7",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Ui/AuditEventRenderingTest.php": {
+    "mtime": 1785406966.400185,
+    "ast_hash": "1a66600b0ef2675003cc2d8ec6e95855",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Ui/AuditEventResourceAuthorizationTest.php": {
+    "mtime": 1785404862.172757,
+    "ast_hash": "4615efc8ef12d633273480bf2c29197f",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Ui/AuditEventResourceReadOnlyTest.php": {
+    "mtime": 1785404449.4102683,
+    "ast_hash": "6a01418a92285f55ae955cb1f6381d22",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Ui/AuditLabelCoverageTest.php": {
+    "mtime": 1785405719.8605456,
+    "ast_hash": "2197b5f3fac24357d89c992cf3a8a5ff",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Ui/AuditUiTestCase.php": {
+    "mtime": 1785404343.7243662,
+    "ast_hash": "aa07089cde8f6399c1f9fc1ed19508a5",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Audit/Ui/AuditUnknownValueCompatibilityTest.php": {
+    "mtime": 1785406837.542259,
+    "ast_hash": "5abd993eacb947e73879a0857154113f",
+    "semantic_hash": ""
+  },
+  "tests/Unit/Support/Audit/AuditPayloadPresenterTest.php": {
+    "mtime": 1785404664.0735943,
+    "ast_hash": "2d2dffd31e9255856254c91e00952d66",
+    "semantic_hash": ""
+  },
+  "tests/Unit/Support/Audit/AuditUnknownValueLabellingTest.php": {
+    "mtime": 1785406764.7312162,
+    "ast_hash": "596319b6190c26e2659b5cfe2df60e7c",
     "semantic_hash": ""
   }
 }
