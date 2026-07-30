@@ -32,7 +32,7 @@
 | DB | MySQL |
 | Local env | Laragon (`http://oms.test` or `localhost/oms/public`) |
 | Project path | `C:\laragon\www\oms` |
-| PDF (planned) | mPDF (for Arabic PDF export) |
+| Report exports | Excel (`xlsx`) and Word (`docx`) where implemented — **no PDF export exists and none is planned** |
 
 ### Critical environment facts
 - **OPcache in Laragon is THE critical performance fix.** Without it, PHP recompiles ~13,325 vendor files per request (~2s). DB queries themselves are only ~3ms. After enabling OPcache and removing `deferLoading()`, navigation became fast.
@@ -550,9 +550,9 @@ All other rules deleted. (Advisor flagged that deleting accounting-integrity ale
 
 > **AUDIT INITIATIVE (Tasks 9B.1 – 9B.8): `COMPLETE` as of 2026-07-30.** Final acceptance passed every gate with zero code changes; full suite 2337 tests / 8528 assertions / 0 failures / 0 errors. See "Audit Log — FINAL ACCEPTANCE (OMS Task 9B.8)" in §2. Awaiting review and commit; **not pushed**.
 >
-> **Next system phase = the first item below (Excel + PDF Arabic export), NOT started.** One thing must be settled before it begins: the repo-wide `vendor/bin/pint --test` failure (351 of 712 PHP files, no `pint.json`) needs its own decision — adopt a `pint.json` matching the real style, or make one repo-wide formatting commit that changes nothing else. A **real production restore drill** also remains an operations acceptance item, not a code defect.
+> **Reports and their exports are working and approved — no report or export task is pending.** Two non-code items remain outstanding: the repo-wide `vendor/bin/pint --test` failure (351 of 712 PHP files, no `pint.json`) needs its own decision — adopt a `pint.json` matching the real style, or make one repo-wide formatting commit that changes nothing else — and a **real production restore drill** remains an operations acceptance item, not a code defect. No next system phase is currently set; the items below are open candidates, none of them started or scheduled.
 
-- **Excel + PDF (Arabic) export** for the general report — both **general export and per-project export**. mPDF approved for Arabic PDF. (Only CSV is built so far.)
+- ~~**Excel + PDF (Arabic) export** for the general report — both general export and per-project export; mPDF approved for Arabic PDF.~~ **CANCELLED 2026-07-30.** The reports are working and approved, and their exports are delivered in **Excel (`xlsx`) and Word (`docx`) where implemented**. **No PDF/mPDF work is planned**, no mPDF package is installed, and no export service in this codebase produces PDF. This is no longer a roadmap item.
 - **Observers / instant dirty-flag refresh** — schema (`is_dirty`) exists but observers are not wired; the manual button currently uses `--force` (full recalc). To make the "instant + smart" refresh real, add observers on Project/Cost/Receipt/Budget/Payment to set `is_dirty=true` on save/delete, and an hourly incremental schedule.
 - **Verify the latest cleanup end-to-end** (removal of financial_indicator + financial_safety_indicator + reduction to 2 alerts) renders cleanly on both the general page and details page with no empty gaps, and that project 16 produces exactly the expected alerts.
 - **Decide whether to physically rename the `remaining_to_receive` DB column** (it now holds الفائض/العجز values). Currently only the display labels were renamed; the physical column kept its name to avoid a wide ripple through the JSON map, currency-totals table, and code references. Functional-only — rename optional.

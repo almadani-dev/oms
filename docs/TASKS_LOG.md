@@ -17,13 +17,41 @@
 ---
 
 ### Date
+2026-07-30 (Roadmap cleanup — remove the obsolete PDF/mPDF export phase)
+
+### Task
+Documentation-only correction. The documentation still carried an **"Excel + PDF (Arabic) export"** item as the approved next system phase, listed **mPDF** in the tech-stack table as "PDF (planned)", and implied the current reports needed additional export development. All three statements are stale. They were removed, with the roadmap bullet marked **CANCELLED** and the historical sentences in the four logs marked **superseded** rather than erased.
+
+### Result
+The accepted state now reads consistently across all six files: **reports are working and approved**, **exports use Excel (`xlsx`) and Word (`docx`) where implemented**, **no PDF/mPDF work is planned**, and **no report or export task is pending**. `composer.json` contains no PDF package (verified by search), and the existing audit contract already documented that `ReportExportFormat` has only `xlsx` and `docx` cases and that no export service produces CSV or PDF — so the removed roadmap item contradicted the rest of the reference. **No next system phase is set**; `OMS_Master_Reference.md` §6's remaining bullets are open candidates, none started or scheduled, and the Pint/formatting decision and the production restore drill are untouched non-code items. No application code, test, migration, Composer file or database data was modified.
+
+### Changed Files
+- `OMS_Master_Reference.md` — tech stack: replaced the `PDF (planned) | mPDF` row with a report-exports row stating Excel/Word and no planned PDF. §6: rewrote the "next system phase" note so it no longer names the export phase and states that no report/export task is pending; struck through the Excel + PDF roadmap bullet and marked it **CANCELLED 2026-07-30**.
+- `docs/NEXT_STEPS.md` — replaced the "Next approved roadmap item after Audit — NOT started" section (which quoted the Excel + PDF / mPDF item) with a "Reports and exports — no pending task" section recording the cancellation.
+- `docs/AI_PROJECT_MEMORY.md` — new Recent Changes entry for this cleanup; the previous entry's "Consequence for planning" sentence naming the export as the next phase struck through and marked superseded.
+- `docs/TASKS_LOG.md` — this entry; the prior roadmap-correction entry's "remains the next roadmap phase" sentence struck through and marked superseded.
+- `docs/DECISIONS_LOG.md` — new decision entry; 9B.8 Impact annotated with a second **Superseded** note closing the "which item is the true next phase" question.
+- `docs/PROMPTS_LOG.md` — new entry for this prompt; 9B.8 Result annotated with a **Further corrected** note.
+
+### Verification
+- Documentation search across the six files for `pdf`, `mpdf`, `Excel +`, `next (system) phase`, `roadmap phase`, `export development` — after the edits, no file presents PDF/mPDF as planned, names Excel + PDF as the next phase, or says the reports need further export development. The surviving `pdf`/`export` hits are factual statements that no export service produces PDF, the `report_export` audit contract, and attachment file types (receipt images/PDFs) — all accurate and left untouched.
+- `composer.json` searched for `pdf` → no match, confirming no PDF package is installed.
+- `git diff --check` → clean, exit 0.
+- `php artisan oms:check-financial-integrity` → **Result: OK, exit 0**.
+- PHPUnit deliberately not run — documentation-only change, per the task scope.
+
+### Commit Hash
+
+---
+
+### Date
 2026-07-30 (Roadmap correction — remove the resolved double-entry receipt issue)
 
 ### Task
 Documentation-only correction. The roadmap still carried a "double-entry bookkeeping issue" claiming a receipt generated only one transaction line (debit only), listed as `(Open.)` and flagged in two places as a correctness item that may outrank the approved export phase. The receipt workflow already posts both sides, so the item was removed from open risks, ranking notes and upcoming work, and the two historical sentences that still called it open were corrected without erasing the history.
 
 ### Result
-`CreateProjectCostReceipt` builds exactly two lines per receipt — a debit line (`TransactionLineRole::ReceiptDestination`, `debit_base = amount`, `credit_base = 0`) and a credit line (`TransactionLineRole::FundingSource`, `debit_base = 0`, `credit_base = amount`) — inside the flow's existing `DB::transaction()`. `oms:check-financial-integrity` reports 6 transactions checked, **0 unbalanced**, Result: OK. The item is therefore stale documentation, not open work. **Excel + Arabic PDF export for the general and per-project reports remains the next roadmap phase, now with no competing candidate.** No application code, test, migration or database data was touched.
+`CreateProjectCostReceipt` builds exactly two lines per receipt — a debit line (`TransactionLineRole::ReceiptDestination`, `debit_base = amount`, `credit_base = 0`) and a credit line (`TransactionLineRole::FundingSource`, `debit_base = 0`, `credit_base = amount`) — inside the flow's existing `DB::transaction()`. `oms:check-financial-integrity` reports 6 transactions checked, **0 unbalanced**, Result: OK. The item is therefore stale documentation, not open work. ~~**Excel + Arabic PDF export for the general and per-project reports remains the next roadmap phase, now with no competing candidate.**~~ **Superseded 2026-07-30 (see the entry above):** that export item is now **cancelled** — reports are working and approved, exports ship as Excel and Word where implemented, no PDF/mPDF work is planned, and no report or export task is pending. No application code, test, migration or database data was touched.
 
 ### Changed Files
 - `OMS_Master_Reference.md` — §6: deleted the `(Open.)` double-entry receipt bullet; removed clause (a) from the "next system phase" note, leaving the Pint decision as the one item to settle before the export begins.

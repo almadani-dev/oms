@@ -18,12 +18,10 @@ Final acceptance passed every gate with **zero production or test code changes**
 ### The one deployment-only acceptance item
 **A real production restore drill is still outstanding — as an operations item, not a code defect.** No disposable MySQL restore harness exists in this project (the whole suite runs on SQLite) and none was built, per scope. Restore audit behaviour is proven by the **simulated** database replacement in `RestoreAuditTest`, which documents its own simulation honestly at the top of the file: every `audit_events` row is removed by raw delete while the signed journal on the private `restores` disk is left untouched, so what the replay reconstructs can only have come from that journal. 30 passed / 320 assertions. The remaining gap is exercising a real `mysql` import on real infrastructure, which belongs to deployment.
 
-### Next approved roadmap item after Audit — NOT started
-Per `OMS_Master_Reference.md` §6, the first pending item carrying an explicit prior approval is:
+### Reports and exports — no pending task
+**The reports are working and approved, and no report or export task is currently pending.** Exports are delivered in **Excel (`xlsx`) and Word (`docx`) where implemented**; no export service in this codebase produces PDF and no PDF package is installed.
 
-> **Excel + PDF (Arabic) export for the general report — both general export and per-project export. mPDF approved for Arabic PDF. (Only CSV is built so far.)**
-
-**This is set as the next system phase and has deliberately not been started.** It requires a fresh explicit request.
+**The previously listed "Excel + PDF (Arabic) export / mPDF" roadmap item is CANCELLED as of 2026-07-30** and is no longer the next system phase. **No PDF or mPDF work is planned.** No next system phase is currently set — see `OMS_Master_Reference.md` §6 for the remaining open candidates, none of them started or scheduled.
 
 ---
 
