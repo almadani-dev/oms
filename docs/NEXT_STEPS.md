@@ -1,6 +1,35 @@
 # Next Steps
 
-## Recommended Next Step (2026-07-30, OMS Task 9B.7 read-only Audit Log UI — implemented, focused tests green, real-local verification DONE, NOT committed)
+## Recommended Next Step (2026-07-30, OMS Task 9B.8 — FINAL Audit acceptance COMPLETE, full suite green, NOT committed)
+
+**THE COMPLETE AUDIT INITIATIVE (Tasks 9B.1 – 9B.8) IS MARKED `COMPLETE`.**
+
+Final acceptance passed every gate with **zero production or test code changes** — no fix was required. Full application suite: **2337 tests, 8528 assertions, 0 failures, 0 errors, 6 pre-existing skips, 1002.9 s (16.7 min), run sequentially, once.** Final contract: **6 categories, 27 actions, 34 subject aliases**, no PHP FQCN reachable as a `subject_type`. Sensitive-data scan **PASS** (every secret-shaped hit in audit code is a docblock or a display label; all 8 real local audit rows scanned read-only and **CLEAN**). Immutability and real-Super-Admin-only access **PASS**, with **no `audit` permission in `PermissionRegistry`**. Index review: all six required lookups index-served, **no migration needed and none made**. Isolated migration acceptance on a disposable database: 68 DONE / 0 FAIL, seeders exit 0, permission sync 162 = 162 with zero drift. `migrate:status` all **Ran**, 0 pending. `oms:check-financial-integrity` → **Result: OK, exit 0**.
+
+**Next: review this acceptance report and the documentation diff together, then approve the commit.** Nothing else in the Audit initiative remains.
+
+### Two things the reviewer must consciously accept before approving
+
+- **The real local `audit_events` count moved from 4 to 8 during acceptance — reviewed and ACCEPTED as legitimate live application traffic.** Rows 5–8 are genuine interactive browser traffic (`default-livewire.update`, `attachments.show`; IPs `172.16.0.40` and `172.16.0.100`; Windows-Chrome and Android user agents; 13:55–14:18) — the OMS app was in use while acceptance ran. This phase issued only `SELECT`/`SHOW`/`EXPLAIN` against MySQL and ran every test on in-memory SQLite; neither can produce a Livewire route name or a browser user agent. The other six counts were unchanged at snapshot time (users 5, roles 7, permissions 186, transactions 9, transaction_lines 26, backup_operations 13). The same activity added attachment 18 and edited `general_exchange` 8, and integrity still reports OK — so double-entry held. **No AuditEvent was deleted, edited, reset or backfilled, and none ever should be** — the table is append-only by design. This is positive evidence: real usage produced correct, correctly-shaped, leak-free events across four categories.
+
+- **Every local database count in these documents is a timestamped acceptance snapshot, not a permanent invariant.** `audit_events` in particular is expected to keep growing whenever the application is used, so a later reading higher than **8** is normal traffic and not a regression. Historical entries below record the counts that were true when each task ran; none of them constitutes a figure the database must still match. A future acceptance run should capture a fresh snapshot immediately before it starts rather than reusing a figure from an earlier session.
+- **`vendor/bin/pint --test` fails repo-wide and was deliberately not fixed.** 351 of 712 PHP files are flagged on a clean working tree — i.e. all already-committed code — including 24 Audit files, under Pint's default `laravel` preset. There is **no `pint.json`** and the preset has clearly never been enforced. Fixing only the 24 Audit files would be a broad formatting change outside the files this phase touched (which the brief forbids) and would leave the repo half-formatted. **This needs its own decision: either adopt a `pint.json` matching the code's actual style, or schedule one repo-wide formatting commit that touches nothing else.**
+
+### The one deployment-only acceptance item
+**A real production restore drill is still outstanding — as an operations item, not a code defect.** No disposable MySQL restore harness exists in this project (the whole suite runs on SQLite) and none was built, per scope. Restore audit behaviour is proven by the **simulated** database replacement in `RestoreAuditTest`, which documents its own simulation honestly at the top of the file: every `audit_events` row is removed by raw delete while the signed journal on the private `restores` disk is left untouched, so what the replay reconstructs can only have come from that journal. 30 passed / 320 assertions. The remaining gap is exercising a real `mysql` import on real infrastructure, which belongs to deployment.
+
+### Next approved roadmap item after Audit — NOT started
+Per `OMS_Master_Reference.md` §6, the first pending item carrying an explicit prior approval is:
+
+> **Excel + PDF (Arabic) export for the general report — both general export and per-project export. mPDF approved for Arabic PDF. (Only CSV is built so far.)**
+
+**This is set as the next system phase and has deliberately not been started.** It requires a fresh explicit request.
+
+**One competing candidate the reviewer should rank first, because it is a correctness issue rather than a feature:** §6 also carries an **open double-entry defect** — "a receipt was generating only one transaction line (debit only) instead of two (debit + credit)", with a possible resolution of adding a revenue/credit account field or a default credit account setting. That is financial-correctness work and arguably outranks an export feature. The current integrity checker reports OK on the present 9 transactions, so it is not actively failing, but the item is still marked open. **Confirm which of the two is the real next phase — this was not inferred beyond what §6 states, and no guess was recorded as fact.**
+
+---
+
+## Previously Recommended Next Step (2026-07-30, OMS Task 9B.7 read-only Audit Log UI — implemented, focused tests green, real-local verification DONE, NOT committed)
 
 **Implemented and verified; awaiting review before commit.** `النظام` → `سجل التدقيق` (`/admin/audit-events`) is now a read-only viewer over `audit_events`, restricted to the real `Super Admin` role. Two pages only — `ListAuditEvents` and `ViewAuditEvent`. No create/edit route exists (a direct URL is **404**), every mutation ability is hard-`false`, there are no relation managers, no bulk actions, no export and no import.
 

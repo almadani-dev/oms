@@ -316,6 +316,46 @@ The first surface that **reads** the trail phases 9B.1–9B.6 built. Nothing abo
 
 ---
 
+### Audit Log — FINAL ACCEPTANCE (OMS Task 9B.8) — **the Audit initiative is `COMPLETE`**
+
+Closing acceptance for Tasks 9B.1–9B.7. **No production or test code was changed — zero fixes were required.** The Audit system is accepted as complete and release-ready at the code level.
+
+**The final event contract.** Six categories and nothing else: `crud`, `financial`, `security`, `attachment`, `report_export`, `backup_restore`. **27 actions:** `created`, `updated`, `deleted`, `restored`; `synced`, `login_success`, `login_failed`, `logout`, `attachment_access_denied`; `uploaded`, `replaced`, `viewed`, `downloaded`; `export_requested`; `backup_requested`, `backup_completed`, `backup_failed`, `backup_downloaded`, `backup_download_denied`, `backup_delete_requested`, `backup_deleted`; `restore_requested`, `restore_started`, `restore_reconciled`, `restore_completed`, `restore_failed`, `restore_partial`, `restore_interrupted`. **34 subject aliases:** 15 from `AuditSubjectRegistry` (`project`, `project_cost`, `partner`, `partner_type`, `project_super`, `project_status`, `bank_type`, `fiscal_year`, `transaction_type`, `transaction_super_type`, `setting`, `account`, `account_type`, `currency`, `exchange_rate_history`), 5 financial workflows, 5 security, 6 report exports, `attachment`, `backup`, `restore`.
+
+**A PHP FQCN can never reach `subject_type` — structurally, not by convention.** Every alias comes from a closed enum (`FinancialAuditSubject`, `SecurityAuditSubject`, `ReportExportSubject`, `BackupRestoreAuditSubject`) or from `AuditSubjectRegistry`'s hand-maintained allowlist, which **throws** `AuditSubjectNotRegisteredException` rather than deriving a fallback from a class name. A class rename therefore cannot orphan historical rows.
+
+**Coverage matrix (category → integration point / failure mode / transaction ownership / duplicate prevention / primary test).**
+
+| Category | Actions | Subject alias(es) | Integration point | Failure mode | Transaction ownership | Duplicate prevention | Primary test |
+|---|---|---|---|---|---|---|---|
+| `crud` | created, updated, deleted, restored | 15 registry aliases | `AuditedCrudService` via `AuditsRecordCreation`/`AuditsRecordUpdate`/`AuditedActions` | Required | service wraps mutation + event in one transaction | closed registry; `Transaction`/`TransactionLine` deliberately unregistered | `AuditedCrudServiceTest`, `AuditedCrudAtomicityTest` |
+| `financial` | created, updated, deleted, restored | 5 workflow aliases | `FinancialAuditRecorder` from the 5 Create/Edit pages + tables | Required | inside each workflow's existing `DB::transaction()` | one event per logical action, carrying transaction identifiers | `ProjectCostReceiptAuditTest` (+4), `FinancialAuditAtomicityTest` |
+| `security` | created, updated, deleted, restored | `user`, `role` | `SecurityAuditRecorder` via `UserManagementService`/`RoleManagementService` | Required | service transaction | one event per service call | `UserSecurityAuditTest`, `RoleSecurityAuditTest` |
+| `security` | synced | `permission_sync` | `PermissionSyncService` | Required | sync transaction | one event per **run**, counts only — never per permission | `PermissionSyncAuditTest` |
+| `security` | login_success, login_failed, logout | `authentication` | `AuthenticationAuditSubscriber` → `AuthenticationAuditRecorder` | **BestEffort** | none (post-hoc) | per-**attempt** `claim()` window reset by `Attempting` | `AuthenticationAuditTest` |
+| `security` | attachment_access_denied | `attachment` | `AttachmentAccessAuditRecorder::accessDenied` | **BestEffort** + catch | none | genuine 403 only, **never** a 404 | `AttachmentAccessAuditTest` |
+| `attachment` | uploaded, replaced, deleted | `attachment` | `AttachmentAuditRecorder` via `AttachmentUploadService` | Required | asserts an open transaction | one event per upload service call | `AttachmentWriteAuditTest` |
+| `attachment` | viewed, downloaded | `attachment` | `AttachmentAccessAuditRecorder::accessed` via `AttachmentController` | Required, **before any byte is served** | none | route `{mode}` constrained to `view\|download` | `AttachmentAccessAuditTest` |
+| `report_export` | export_requested | 6 report aliases | each page's own export method | Required | none | shared `AuthorizesReportAccess` trait records nothing | `ReportExportAuditTest` |
+| `backup_restore` | 7 backup actions | `backup` | `BackupCreationOrchestrator`, `CreateBackupJob`, `BackupDownloadController`, `BackupDeletionService`, `BackupRetentionService` | Required pre-irreversible; **BestEffort** post-irreversible | `enqueue()` transaction | `BackupRestoreAuditLedger` on `(correlation_id, category, action)` | `BackupAuditTest` |
+| `backup_restore` | 7 restore actions | `restore` | `RestoreRequestService`, `RestoreLaunchService`, `RestoreReconciler`, `RestoreTerminalResultWriter`, `RestoreStaleAcknowledgmentService` | Required for requested/started; non-throwing from `restore_reconciled` onwards | atomic launch-claim transaction | ledger + signed-journal replay idempotency | `RestoreAuditTest` |
+
+**Actions never overstate what is known.** `export_requested` (never `export_completed`) is justified against all nine services in `app/Services/Reports`: the writer targets `php://output` inside the `streamDownload` callback, which Symfony invokes only after the response is returned and headers are committed, so nothing in the synchronous path knows generation succeeded and no temp file exists to prove it. `backup_requested`/`backup_delete_requested`/`restore_requested` are likewise honest pre-irreversible records, and `restore_interrupted` stays distinct from `restore_failed`.
+
+**Sensitive-data acceptance: PASS.** Every secret-shaped occurrence in `app/Services/Audit/**` and `app/Support/Audit/**` is a **docblock** (the sole exception being the Arabic display label for `password_changed`). `AuditLogger` never logs an exception, its message or its `previous` chain — only a class name, a SQLSTATE-validated code and a hash fingerprint. `BackupRestoreFailure` reads a re-validated `reasonCode` **property** plus an `instanceof` match, never text. `UserSecuritySnapshot` is a closed six-field allowlist, so a password/token is never *read* rather than denylisted. `loginFailed()` records only the user Laravel's provider resolved, so the **submitted email is never stored**. `ReportExportAuditRecorder::boundFilters()` drops all nested values, structurally barring result rows. All 8 real local rows were scanned read-only and are **CLEAN**.
+
+**Index review: no schema change needed and none made.** `EXPLAIN` over eleven real production query shapes confirmed all six required lookups are index-served. Two full-scan shapes are recorded without action: an unfiltered first page (an artifact of an 8-row table) and an `event_action`-only filter (that column is the composite index's *second* member and cannot be seeked alone) — neither proven necessary by a plan, and a permanent write cost on an append-only table was judged unjustified.
+
+**Test results.** Focused groups 11/11 green. **Full suite: 2337 tests, 8528 assertions, 0 failures, 0 errors, 6 skipped, 1002.9 s, sequential.** All six skips are pre-existing/environment-gated (2 Windows symlink-permission, 1 Linux-only path, 3 create-page datasets for the routeless `transactions`/`transaction_lines`/`attachments` resources) — none Audit-related. Isolated migration acceptance on a disposable database: 68 DONE / 0 FAIL, seeders exit 0, permission sync 162 = 162 with zero drift and zero audit permissions.
+
+**Two known non-defects, both proven rather than asserted.** `tests/Feature/Reports` returns process exit code 1 while all 72 tests pass — reproduced identically at `6061a1d` (before report-export audit integration), so it is pre-existing. `vendor/bin/pint --test` fails repo-wide (351 of 712 PHP files on a clean tree, no `pint.json`) and was deliberately not fixed, as reformatting would be a broad change outside this phase's files.
+
+**Local database counts are timestamped acceptance snapshots, not permanent invariants.** At this phase's snapshot the real local database held `audit_events` **8**, users 5, roles 7, permissions 186, transactions 9, transaction_lines 26, backup_operations 13, attachments 10 (3 live), accounts 6. The `audit_events` count rose from 4 to 8 mid-acceptance through **legitimate live application traffic** (Livewire and `attachments.show` requests from real browsers), which was reviewed and accepted; the table is append-only and **no AuditEvent may ever be deleted, edited, reset or backfilled**. Because the trail grows whenever the system is used, a later reading above 8 is normal and is not a regression — any figure recorded here or in `docs/` describes what was true at that moment, never a value the database must still match.
+
+**Deployment-only acceptance item.** A **real production restore drill** remains outstanding as an operations item, not a code defect: no disposable MySQL restore harness exists in this project (the suite is SQLite) and none was built. Restore audit behaviour is proven by the honest simulation in `RestoreAuditTest` (every `audit_events` row raw-deleted, signed journal untouched, so the replay can only have used the journal) — 30 passed / 320 assertions.
+
+---
+
 ## 3. KEY DECISIONS & THE REASONING
 
 ### Performance rules (applied to every feature) — [DECISION]
@@ -507,6 +547,10 @@ All other rules deleted. (Advisor flagged that deleting accounting-integrity ale
 ---
 
 ## 6. WHAT'S PENDING / NEXT
+
+> **AUDIT INITIATIVE (Tasks 9B.1 – 9B.8): `COMPLETE` as of 2026-07-30.** Final acceptance passed every gate with zero code changes; full suite 2337 tests / 8528 assertions / 0 failures / 0 errors. See "Audit Log — FINAL ACCEPTANCE (OMS Task 9B.8)" in §2. Awaiting review and commit; **not pushed**.
+>
+> **Next system phase = the first item below (Excel + PDF Arabic export), NOT started.** Two things must be settled before it begins: (a) the still-open **double-entry receipt defect** further down this list is *correctness* work and arguably outranks an export feature — confirm the ranking; (b) the repo-wide `vendor/bin/pint --test` failure (351 of 712 PHP files, no `pint.json`) needs its own decision — adopt a `pint.json` matching the real style, or make one repo-wide formatting commit that changes nothing else. A **real production restore drill** also remains an operations acceptance item, not a code defect.
 
 - **Excel + PDF (Arabic) export** for the general report — both **general export and per-project export**. mPDF approved for Arabic PDF. (Only CSV is built so far.)
 - **Observers / instant dirty-flag refresh** — schema (`is_dirty`) exists but observers are not wired; the manual button currently uses `--force` (full recalc). To make the "instant + smart" refresh real, add observers on Project/Cost/Receipt/Budget/Payment to set `is_dirty=true` on save/delete, and an hourly incremental schedule.

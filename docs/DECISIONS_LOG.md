@@ -13,6 +13,31 @@
 ---
 
 ### Date
+2026-07-30 (OMS Task 9B.8 — the Audit initiative is accepted as COMPLETE with no code change; four acceptance judgements recorded)
+
+### Decision
+The complete Audit initiative (Tasks 9B.1–9B.8) is marked **COMPLETE**. Final acceptance changed **no production or test code** — zero fixes were required. Four judgement calls were made during acceptance and are recorded here because each one declined to take an action that a less careful reading would have taken:
+
+1. **No index and no migration were added**, despite two query shapes showing a full scan.
+2. **`vendor/bin/pint --test` was left failing**, including for 24 Audit files.
+3. **The simulated restore-replay test was accepted as sufficient code evidence**, with the real drill reclassified as a deployment item.
+4. **The real-local baseline drift (`audit_events` 4 → 8) was reported as external activity rather than absorbed, re-baselined, or presented as "unchanged".**
+
+### Reason
+**(1) No index.** `EXPLAIN` over eleven real production query shapes showed nine served by an existing index. The two that were not: an unfiltered first page (`type=ALL`) and an `event_action`-only filter (`type=ALL`). The first is an artifact of an 8-row table — MySQL ignores an index at that size, and the date-range variant of the same query proves `audit_events_created_at_idx` is usable with a backward, covering index scan. The second is structural: `event_action` is the *second* column of `audit_events_category_action_idx` and cannot be seeked alone. But the brief's rule was explicit — propose a migration only where "an actual query plan or clearly missing index proves it necessary" — and neither condition holds. At scale the planner would drive the paginated list from `audit_events_created_at_idx` for `ORDER BY created_at DESC … LIMIT 25` and filter `event_action` while walking, which terminates early for anything but a very rare action. Adding a single-column index on an **append-only, insert-on-every-business-write** table costs write amplification on every audited operation forever, to speed up one admin filter that has not been observed to be slow on any real dataset. That is a guess with a permanent price, so it was declined and recorded instead.
+
+**(2) Pint left failing.** 351 of 712 PHP files fail on a *clean* working tree, so every finding is already-committed code; there is no `pint.json`, meaning Pint's default `laravel` preset has never been enforced here. Fixing only the 24 Audit files would satisfy the letter of a green Audit subset while producing exactly what the brief forbids — "broad formatting changes outside files touched by this phase" — and would leave the repository half-formatted, making future diffs noisier rather than cleaner. It would also touch 24 files that this acceptance phase otherwise proved correct and did not modify, contaminating a zero-code-change acceptance with a large cosmetic diff. The honest outcome is a reported finding plus a concrete choice for a separate decision: adopt a `pint.json` that matches the code's real style, or make one repo-wide formatting commit that changes nothing else.
+
+**(3) Simulated restore accepted.** The brief permitted exactly this: "If only the established simulated-import test is available, accept it and clearly document that the real production restore drill remains a deployment/operations acceptance item, not a code defect." It was verified that no disposable MySQL restore harness exists (the entire suite is SQLite) and building one was explicitly out of scope for this phase. The simulation is also stronger than its name suggests, and says so in its own header: it removes every `audit_events` row by raw delete while leaving the HMAC-signed journal on the private `restores` disk untouched, so anything the replay reconstructs provably came from that journal and not from ambient state. What remains untested is a real `mysql` import against real infrastructure — a property of the deployment, not of this code.
+
+**(4) Baseline drift reported, not absorbed.** The accepted baseline said `audit_events: 4`; the real table holds 8. The four extra rows carry `route_name` values of `default-livewire.update` and `attachments.show`, real browser user agents (Windows-Chrome and Android), and two distinct LAN IPs, at timestamps between 13:55 and 14:18. This phase ran every test on in-memory SQLite and issued only `SELECT`/`SHOW`/`EXPLAIN` against MySQL — neither can manufacture a Livewire route name or a browser user agent. The correct report is therefore that **real concurrent human use of the application** produced them, not that the baseline holds and not that this phase violated its read-only constraint. Quietly re-baselining to 8 would have destroyed the one signal that tells the reviewer their local database moved mid-acceptance; asserting "unchanged" would have been false. Two further facts were verified rather than assumed: the other six counts are genuinely unchanged, and `oms:check-financial-integrity` still returns OK, so the concurrent financial edit preserved double-entry balance.
+
+### Impact
+The Audit initiative closes with no outstanding code defect. Three items leave this phase as explicitly non-code work: the pint/formatting decision, the production restore drill, and (from `OMS_Master_Reference.md` §6) confirmation of which pending roadmap item is the true next phase — the approved Excel/PDF Arabic export, or the still-open double-entry receipt defect, which is correctness work and arguably outranks it. The `event_action`-only index question is now a recorded, reasoned "not yet", so a future phase that observes a real slow filter on a large table can revisit it with evidence instead of re-deriving the argument. Anyone re-running this acceptance should expect the real-local audit count to keep growing whenever the application is used, and should capture a fresh baseline immediately before the run rather than relying on a figure from an earlier session.
+
+---
+
+### Date
 2026-07-30 (OMS Task 9B.7 correction — the Audit Log UI reads categorical columns RAW; the domain enum casts stay)
 
 ### Decision
