@@ -3210,8 +3210,8 @@
     "semantic_hash": ""
   },
   "routes/web.php": {
-    "mtime": 1785137437.810254,
-    "ast_hash": "70d399dc017f6882cf2a9827f8f72b0e",
+    "mtime": 1785586884.1756427,
+    "ast_hash": "16fc8bad2af1f410d7c1b780a27105df",
     "semantic_hash": ""
   },
   "tests/Feature/Attachments/AttachmentAccessTest.php": {
@@ -4070,8 +4070,8 @@
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1785413525.248012,
-    "ast_hash": "b90081fb33fc1e46ea045dd1ecf80d78",
+    "mtime": 1785587192.1310053,
+    "ast_hash": "9d376427a3b49381d45c9960ff2e1d7e",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
@@ -4080,8 +4080,8 @@
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1785413485.1271818,
-    "ast_hash": "1abe2267daa8822348c57d766d405665",
+    "mtime": 1785587220.1545663,
+    "ast_hash": "a826143e09e8c2eefb29d3061dd8acb4",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
@@ -4095,8 +4095,8 @@
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1785413546.845832,
-    "ast_hash": "3a5cd3faaf9674b219edf8087c2a8e52",
+    "mtime": 1785587210.701481,
+    "ast_hash": "f1accfe0b03abb2977b82ab39eb78518",
     "semantic_hash": ""
   },
   "public/robots.txt": {
@@ -4427,6 +4427,11 @@
   "tests/Unit/Support/Audit/AuditUnknownValueLabellingTest.php": {
     "mtime": 1785406764.7312162,
     "ast_hash": "596319b6190c26e2659b5cfe2df60e7c",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Routing/RootRedirectTest.php": {
+    "mtime": 1785587132.0941482,
+    "ast_hash": "1cb308620538bcfe86b7815c724c1153",
     "semantic_hash": ""
   }
 }
