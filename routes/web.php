@@ -11,8 +11,21 @@ use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
+// The application root is not a public landing page - this is an internal
+// admin-only system, so `/` sends visitors straight to the Filament Admin
+// panel's own login screen.
+//
+// Deliberately a *named*-route redirect against the verified route name
+// (filament.admin.auth.login, confirmed via `route:list --path=admin/login`)
+// rather than a literal '/admin/login' string or anything derived from
+// APP_URL. Laravel's UrlGenerator builds a named route's URL from the
+// incoming request's own root - scheme, host, port and base path - so the
+// same line resolves to https://<host>/admin/login when the document root
+// is the app itself, and to http://<host>/oms/public/admin/login when the
+// app is served from a subdirectory. Nothing about either deployment is
+// hard-coded here, and the panel's own /admin/login route is untouched.
 Route::get('/', function () {
-    return view('welcome');
+    return redirect()->route('filament.admin.auth.login');
 });
 
 // Single authenticated route for serving attachment files (OMS Task 6A).

@@ -2508,3 +2508,35 @@ Clean deterministic rebuild: root outputs backed up outside the repository, the 
 
 ### Commit Hash
 Not committed — awaiting review, per instructions (STOP before commit).
+
+---
+
+### Date
+2026-08-01 (Root route redirect to the Filament Admin login)
+
+### Task
+Replace the Laravel welcome page at `/` with a redirect to the real Filament Admin login route, so that `https://oms.ghayathhumanitarian.org` lands on `/admin/login` and `http://172.16.0.100/oms/public` lands on `/oms/public/admin/login`, while the direct login URLs keep working. Explicitly forbidden: hard-coding the production host, the local IP, `/oms/public` or `APP_URL`; any redirect implementation that could drop the `/oms/public` base path; changing the `/admin/login` route, Filament configuration, authentication, permissions, middleware, web-server or deployment configuration, or any unrelated route; running the full test suite; committing or pushing.
+
+### Result
+The Filament login route name was **verified, not guessed**: `php artisan route:list --path=admin/login` returns exactly one route, `GET|HEAD admin/login` → `filament.admin.auth.login`, matching `AdminPanelProvider` (`->id('admin')`, `->path('admin')`, `->login()`).
+
+`routes/web.php` now answers `GET /` with `redirect()->route('filament.admin.auth.login')`. A **named-route** redirect is what makes a single line correct for both deployments: Laravel's `UrlGenerator` composes a named route's URL on top of the incoming request's own root — scheme, host, port and base path — so the same code resolves to `https://<production-host>/admin/login` at the document root and `http://<local-host>/oms/public/admin/login` under the subdirectory. Nothing about either environment is hard-coded and `APP_URL` is not consulted. All other routes are byte-for-byte unchanged (`route:list` still reports 125 routes); `/admin/login` itself was not modified. `resources/views/welcome.blade.php` was left on disk, simply no longer routed.
+
+One environment-specific finding worth recording: this app's `APP_URL` is `http://172.16.0.100/oms/public`, and Laravel's `SetRequestForConsole` bootstrap builds the URL generator's request from it, so `MakesHttpRequests::prepareUrlForRequest()` turns `$this->get('/')` into a request for `/oms/public` — which matches no route and 404s. The existing suite already works around this with `URL::forceRootUrl('http://localhost')` in `setUp()` (see `AttachmentAccessTest`), and the new test follows that same convention.
+
+### Changed Files
+- Modified: `routes/web.php` (root route only, plus an explanatory comment).
+- Added: `tests/Feature/Routing/RootRedirectTest.php`.
+- Modified docs: `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/NEXT_STEPS.md`.
+- **No** Filament configuration, panel provider, authentication, permission, middleware, migration, financial, web-server, `.env` or deployment file was touched.
+
+### Verification
+1. `php artisan test tests/Feature/Routing/RootRedirectTest.php` — **3 passed, 7 assertions, 0 failures**: (a) `GET /` redirects to `route('filament.admin.auth.login')` (`http://localhost/admin/login`); (b) a request arriving under a `/oms/public` base path (simulated via `SCRIPT_NAME`/`SCRIPT_FILENAME` server variables, with the forced root URL cleared) redirects to `http://172.16.0.100/oms/public/admin/login` — proving the base path is preserved and not dropped; (c) `GET /admin/login` still returns **200** to a guest.
+2. `php artisan route:list --path=admin/login` — 1 route, `filament.admin.auth.login`, unchanged.
+3. `php artisan route:list --path=/` — `GET|HEAD /` present, 125 routes total, no route added or removed.
+4. `php artisan oms:check-financial-integrity` — **Result: OK**, 0 orphans, 0 duplicate transaction numbers, 0 unbalanced transactions, 0 FX/base or currency mismatches, 0 persisted balance mismatches.
+5. `git diff --check` — clean.
+6. The full test suite was deliberately **not** run, per the brief.
+
+### Commit Hash
+Not committed — awaiting review, per instructions (STOP before commit).

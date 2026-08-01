@@ -1,6 +1,16 @@
 # Next Steps
 
-## Recommended Next Step (2026-07-30, OMS Task 9B.8 — FINAL Audit acceptance COMPLETE, full suite green, NOT committed)
+## Recommended Next Step (2026-08-01, root route redirect — implemented, focused test green, NOT committed)
+
+**`GET /` now redirects to the Filament Admin login through the verified named route `filament.admin.auth.login`, instead of rendering the Laravel welcome page.** Because the redirect is built from the named route, Laravel composes it on top of the incoming request's own scheme, host, port and base path — so the one line serves both **root-domain production hosting** (`https://<host>/admin/login`) and **local `/oms/public` subdirectory hosting** (`http://<host>/oms/public/admin/login`). No host, IP, subdirectory or `APP_URL` value is hard-coded, `/admin/login` itself is unchanged, and no other route, Filament setting, middleware or deployment file was touched.
+
+Verified: focused `tests/Feature/Routing/RootRedirectTest.php` **3 passed / 7 assertions** (root redirect, `/oms/public` base path preserved, `/admin/login` still 200 for a guest); `route:list` unchanged at 125 routes with `filament.admin.auth.login` intact; `oms:check-financial-integrity` — **Result: OK**; `git diff --check` clean. The full suite was deliberately not run.
+
+**Next: review the diff and the documentation entry, then approve the commit.** Nothing else about this change is outstanding. The items below remain as they were.
+
+---
+
+## Previously Recommended Next Step (2026-07-30, OMS Task 9B.8 — FINAL Audit acceptance COMPLETE, full suite green, NOT committed)
 
 **THE COMPLETE AUDIT INITIATIVE (Tasks 9B.1 – 9B.8) IS MARKED `COMPLETE`.**
 
