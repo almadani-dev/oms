@@ -1,16 +1,16 @@
-# Graph Report - oms  (2026-08-01)
+# Graph Report - oms  (2026-08-19)
 
 ## Corpus Check
-- 886 files · ~603,151 words
+- 932 files · ~677,481 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 13615 nodes · 34053 edges · 571 communities (413 shown, 158 thin omitted)
-- Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 1087 edges (avg confidence: 0.8)
+- 14325 nodes · 36340 edges · 561 communities (391 shown, 170 thin omitted)
+- Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 1334 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `b6ee63b7`
+- Built from commit: `3ca0ba55`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -285,6 +285,7 @@
 - [[_COMMUNITY_Community 267|Community 267]]
 - [[_COMMUNITY_Community 268|Community 268]]
 - [[_COMMUNITY_Community 269|Community 269]]
+- [[_COMMUNITY_Community 270|Community 270]]
 - [[_COMMUNITY_Community 271|Community 271]]
 - [[_COMMUNITY_Community 272|Community 272]]
 - [[_COMMUNITY_Community 273|Community 273]]
@@ -390,6 +391,8 @@
 - [[_COMMUNITY_Community 455|Community 455]]
 - [[_COMMUNITY_Community 456|Community 456]]
 - [[_COMMUNITY_Community 457|Community 457]]
+- [[_COMMUNITY_Community 458|Community 458]]
+- [[_COMMUNITY_Community 459|Community 459]]
 - [[_COMMUNITY_Community 512|Community 512]]
 - [[_COMMUNITY_Community 513|Community 513]]
 - [[_COMMUNITY_Community 514|Community 514]]
@@ -418,119 +421,106 @@
 - [[_COMMUNITY_Community 538|Community 538]]
 - [[_COMMUNITY_Community 539|Community 539]]
 - [[_COMMUNITY_Community 540|Community 540]]
-- [[_COMMUNITY_Community 541|Community 541]]
 - [[_COMMUNITY_Community 542|Community 542]]
-- [[_COMMUNITY_Community 543|Community 543]]
 - [[_COMMUNITY_Community 544|Community 544]]
-- [[_COMMUNITY_Community 546|Community 546]]
-- [[_COMMUNITY_Community 547|Community 547]]
 - [[_COMMUNITY_Community 548|Community 548]]
 - [[_COMMUNITY_Community 549|Community 549]]
 - [[_COMMUNITY_Community 550|Community 550]]
 - [[_COMMUNITY_Community 551|Community 551]]
 - [[_COMMUNITY_Community 552|Community 552]]
 - [[_COMMUNITY_Community 553|Community 553]]
-- [[_COMMUNITY_Community 554|Community 554]]
 - [[_COMMUNITY_Community 555|Community 555]]
-- [[_COMMUNITY_Community 556|Community 556]]
-- [[_COMMUNITY_Community 557|Community 557]]
 - [[_COMMUNITY_Community 558|Community 558]]
 - [[_COMMUNITY_Community 559|Community 559]]
 - [[_COMMUNITY_Community 560|Community 560]]
-- [[_COMMUNITY_Community 561|Community 561]]
-- [[_COMMUNITY_Community 562|Community 562]]
-- [[_COMMUNITY_Community 563|Community 563]]
-- [[_COMMUNITY_Community 564|Community 564]]
 - [[_COMMUNITY_Community 565|Community 565]]
-- [[_COMMUNITY_Community 566|Community 566]]
-- [[_COMMUNITY_Community 567|Community 567]]
 - [[_COMMUNITY_Community 568|Community 568]]
 - [[_COMMUNITY_Community 571|Community 571]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `Decision Template` - 589 edges
-2. `Task Template` - 476 edges
-3. `User` - 397 edges
-4. `TestCase` - 210 edges
-5. `BackupOperation` - 199 edges
-6. `Prompts Log` - 178 edges
-7. `update()` - 136 edges
-8. `Prompt Template` - 124 edges
-9. `AuditEvent` - 109 edges
-10. `constructor()` - 103 edges
+1. `Decision Template` - 621 edges
+2. `Task Template` - 523 edges
+3. `User` - 459 edges
+4. `BackupOperation` - 274 edges
+5. `TestCase` - 230 edges
+6. `Prompts Log` - 208 edges
+7. `AuditEvent` - 183 edges
+8. `update()` - 136 edges
+9. `Prompt Template` - 124 edges
+10. `Attachment` - 119 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `HookSpyCreatePartnerType` --inherits--> `CreatePartnerType`  [EXTRACTED]
   tests/Feature/Audit/Crud/AuditedFilamentLifecycleTest.php → app/Filament/Resources/PartnerTypes/Pages/CreatePartnerType.php
 - `HookSpyEditPartnerType` --inherits--> `EditPartnerType`  [EXTRACTED]
   tests/Feature/Audit/Crud/AuditedFilamentLifecycleTest.php → app/Filament/Resources/PartnerTypes/Pages/EditPartnerType.php
-- `createCompletedBackup()` --references--> `BackupOperation`  [EXTRACTED]
-  tests/Support/Restore/RestoreOrchestratorTestFixtures.php → app/Models/BackupOperation.php
-- `initialProgress()` --references--> `BackupOperation`  [EXTRACTED]
-  tests/Support/Restore/RestoreOrchestratorTestFixtures.php → app/Models/BackupOperation.php
-- `makeClaimedRestoreRow()` --references--> `BackupOperation`  [EXTRACTED]
-  tests/Support/Restore/RestoreOrchestratorTestFixtures.php → app/Models/BackupOperation.php
+- `lineAttrs()` --references--> `Account`  [EXTRACTED]
+  tests/Support/Integrity/IntegrityTestFixtures.php → app/Models/Account.php
+- `makeAccount()` --references--> `Account`  [EXTRACTED]
+  tests/Support/Integrity/IntegrityTestFixtures.php → app/Models/Account.php
+- `makeLine()` --references--> `Account`  [EXTRACTED]
+  tests/Support/Integrity/IntegrityTestFixtures.php → app/Models/Account.php
 
 ## Import Cycles
 - None detected.
 
-## Communities (571 total, 158 thin omitted)
+## Communities (561 total, 170 thin omitted)
 
 ### Community 0 - "Project Cost Budget Payments"
 Cohesion: 0.00
-Nodes (589): Date, Date, Date, Date, Date, Date, Date, Date (+581 more)
+Nodes (621): Date, Date, Date, Date, Date, Date, Date, Date (+613 more)
 
 ### Community 1 - "Exchange Rate History Resource"
 Cohesion: 0.00
-Nodes (476): Applied correction (2026-07-30, same task, before commit) — unknown categorical values must render safely everywhere, Changed Files, Changed Files, Changed Files, Changed Files, Changed Files, Changed Files, Changed Files (+468 more)
+Nodes (523): Applied correction (2026-07-30, same task, before commit) — unknown categorical values must render safely everywhere, Changed Files, Changed Files, Changed Files, Changed Files, Changed Files, Changed Files, Changed Files (+515 more)
 
 ### Community 2 - "Currency & Fiscal Year Editing"
 Cohesion: 0.01
-Nodes (89): addActive(), Ag(), allowsNesting(), Ar(), attrs(), b0(), bi(), cc() (+81 more)
+Nodes (101): Ac(), Ag(), allowsNesting(), attrs(), b0(), baseIndent(), baseIndentFor(), bi() (+93 more)
 
 ### Community 3 - "Relation Managers (Payments/Rates)"
 Cohesion: 0.01
-Nodes (147): $(), $0(), Ab(), ac(), accepts(), addAttributes(), addExtensions(), addGlobalAttributes() (+139 more)
+Nodes (168): $(), $0(), Ab(), ac(), accepts(), addAttributes(), addExtensions(), addGlobalAttributes() (+160 more)
 
 ### Community 4 - "Eloquent Models & Relations"
 Cohesion: 0.01
-Nodes (103): aa(), addControllers(), addPlugins(), addScales(), bd(), bindResponsiveEvents(), bm(), Bt() (+95 more)
+Nodes (107): aa(), addControllers(), addPlugins(), addScales(), bd(), bindResponsiveEvents(), bm(), Bt() (+99 more)
 
 ### Community 5 - "Project Super Pages"
-Cohesion: 0.04
-Nodes (39): Get, Model, Schema, Set, ProjectCostReceiptForm, ExchangeRateHistory, BelongsTo, FiscalYear (+31 more)
+Cohesion: 0.03
+Nodes (50): Schema, ViewAttachment, AccountType, BelongsTo, HasMany, Currency, BelongsTo, HasMany (+42 more)
 
 ### Community 6 - "Partner CRUD Pages"
-Cohesion: 0.04
-Nodes (75): activateHover(), aO(), baseDirAt(), bidiIn(), bidiSpans(), bidiSpansAt(), blockTiles(), bP() (+67 more)
+Cohesion: 0.05
+Nodes (61): after(), baseDirAt(), before(), bidiIn(), bidiSpansAt(), blockTiles(), bP(), Ci() (+53 more)
 
 ### Community 7 - "Project Cost Pages"
 Cohesion: 0.02
-Nodes (101): _a(), acquireContext(), addControllers(), addPlugins(), addScales(), afterDraw(), alpha(), as() (+93 more)
+Nodes (98): active(), addControllers(), addEventListener(), addPlugins(), addScales(), afterDraw(), _animateOptions(), as() (+90 more)
 
 ### Community 8 - "Transaction CRUD Pages"
-Cohesion: 0.05
-Nodes (44): AuditedActions, EditAccount, CreateAccountType, EditAccountType, CreateBankType, EditBankType, CreateCurrency, EditCurrency (+36 more)
+Cohesion: 0.03
+Nodes (71): AuditedActions, DeleteAction, DeleteBulkAction, EditAccount, CreateAccountType, EditAccountType, CreateBankType, EditBankType (+63 more)
 
 ### Community 9 - "Account Type Resource"
 Cohesion: 0.01
-Nodes (177): Date, Date, Date, Date, Date, Date, Date, Date (+169 more)
+Nodes (207): Date, Date, Date, Date, Date, Date, Date, Date (+199 more)
 
 ### Community 10 - "Attachment Resource"
-Cohesion: 0.03
-Nodes (128): _$(), accept(), add(), addElement(), addEventListener(), addInfoPane(), addRange(), addWindowListeners() (+120 more)
+Cohesion: 0.06
+Nodes (39): _$(), addActive(), Ar(), as(), atLastNode(), blur(), chunkEnd(), destroy() (+31 more)
 
 ### Community 11 - "Bank Type Resource"
-Cohesion: 0.04
-Nodes (9): BackupOperation, BelongsTo, BackupJobsTest, BackupNotificationTest, BackupPermissionsAndModelTest, RestoreCommandTest, RestoreManagementUiTest, RestoreMetadataUpserterTest (+1 more)
+Cohesion: 0.03
+Nodes (20): BackupOperation, BelongsTo, BackupAuditRecorder, AuditStatus, Carbon, Throwable, BackupDeletionResult, BackupDeletionService (+12 more)
 
 ### Community 12 - "Partner Type Pages"
 Cohesion: 0.02
 Nodes (124): Date, Date, Date, Date, Date, Date, Date, Date (+116 more)
 
 ### Community 13 - "Project Resource & Pages"
-Cohesion: 0.05
-Nodes (14): isActive(), isTerminal(), AuditValidationException, BackupTestCase, BackupType, InvalidArgumentException, ProcessRunner, QueryException (+6 more)
+Cohesion: 0.04
+Nodes (28): isActive(), isTerminal(), MysqlInformationSchemaDatabaseSizeEstimator, RestoreProgressDurability, RestoreProgressWriter, RestoreRequestService, CurrentDatabaseSizeEstimator, InvalidArgumentException (+20 more)
 
 ### Community 14 - "Project Status Pages"
 Cohesion: 0.06
@@ -538,63 +528,59 @@ Nodes (118): _a(), ad(), after(), Ay(), before(), between(), blockRange(), by() 
 
 ### Community 15 - "Transaction Line Pages"
 Cohesion: 0.03
-Nodes (116): ac(), add(), ae(), after(), Al(), Am(), before(), bl() (+108 more)
+Nodes (119): ac(), ae(), after(), Al(), Am(), before(), bl(), buildFormatParser() (+111 more)
 
 ### Community 16 - "Transaction Super Type Pages"
-Cohesion: 0.10
-Nodes (7): Role, SecurityAuditRecorder, self, SecurityNameDiff, UserSecuritySnapshot, SecurityAuditSubject, SecurityAuditPayloadPolicyTest
+Cohesion: 0.08
+Nodes (9): AuthenticationAuditRecorder, AuditStatus, Role, SecurityAuditRecorder, self, SecurityNameDiff, UserSecuritySnapshot, SecurityAuditSubject (+1 more)
 
 ### Community 17 - "Transaction Type Pages"
-Cohesion: 0.07
-Nodes (12): CreateExecutionPayment, Model, CreateProjectCostBudgetsPayment, Model, Schema, ViewProjectCostBudgetsPayment, BelongsTo, HasMany (+4 more)
+Cohesion: 0.03
+Nodes (28): CreateExecutionPayment, Model, EditExecutionPayment, Model, ExecutionPaymentForm, Model, Schema, Set (+20 more)
 
 ### Community 18 - "Settings Pages"
 Cohesion: 0.03
-Nodes (107): addBox(), addElements(), afterBuildTicks(), afterCalculateLabelRotation(), afterDataLimits(), afterDraw(), afterFit(), afterSetDimensions() (+99 more)
+Nodes (120): $a(), addElements(), afterBuildTicks(), afterCalculateLabelRotation(), afterDataLimits(), afterDatasetsUpdate(), afterFit(), afterSetDimensions() (+112 more)
 
 ### Community 19 - "User Management Pages"
-Cohesion: 0.04
-Nodes (30): Panel, User, create(), delete(), deleteAny(), forceDelete(), forceDeleteAny(), hasPermission() (+22 more)
+Cohesion: 0.02
+Nodes (39): User, create(), delete(), deleteAny(), forceDelete(), forceDeleteAny(), hasPermission(), isTrashed() (+31 more)
 
 ### Community 20 - "Financial Report Refresh Command"
-Cohesion: 0.04
-Nodes (96): addChild(), addDelimiter(), addGaps(), addLeafElement(), addNode(), advance(), ATXHeading(), balance() (+88 more)
+Cohesion: 0.05
+Nodes (70): addChild(), addGaps(), addLeafElement(), addNode(), advance(), ATXHeading(), balance(), blank() (+62 more)
 
 ### Community 21 - "General Financial Page & CSV Export"
-Cohesion: 0.04
-Nodes (104): adjustHitBoxes(), af(), Ao(), aspectRatio(), au(), B(), bh(), _calculateBarIndexPixels() (+96 more)
+Cohesion: 0.03
+Nodes (119): acquireContext(), adjustHitBoxes(), afterDraw(), Ao(), aspectRatio(), bh(), br(), buildTicks() (+111 more)
 
 ### Community 22 - "Projects Report Tables"
-Cohesion: 0.13
-Nodes (6): CreateProjectCostReceipt, Model, BelongsTo, HasMany, ProjectCost, ProjectCostObserver
+Cohesion: 0.10
+Nodes (8): CreateProjectCostReceipt, Model, EditProjectCostReceipt, Model, BelongsTo, HasMany, ProjectCost, ProjectCostObserver
 
 ### Community 23 - "Projects Report Page Queries"
-Cohesion: 0.03
-Nodes (53): ExecutionPaymentResource, BackedEnum, Builder, Schema, Table, UnitEnum, EditExecutionPayment, Attachment (+45 more)
+Cohesion: 0.08
+Nodes (22): Action, flattenValidationMessages(), withVisibleFinancialValidation(), Schema, AttachmentUploadService, Model, AuditPersistenceException, Throwable (+14 more)
 
 ### Community 24 - "Payment & Receipt Proof Images"
 Cohesion: 0.03
-Nodes (40): ViewAccount, ViewAccountType, ViewBankType, ViewCurrency, ViewExchangeRateHistory, Schema, ViewExecutionPayment, ViewFiscalYear (+32 more)
+Nodes (27): handleRecordUpdate(), Model, ListAttachments, ListAuditEvents, BackedEnum, Table, Table, RolesTable (+19 more)
 
 ### Community 25 - "Community 25"
-Cohesion: 0.04
-Nodes (94): addNode(), ag(), Ao(), append(), applyInitialSize(), Bn(), Cc(), cg() (+86 more)
+Cohesion: 0.03
+Nodes (115): add(), addInner(), addMaps(), addNode(), append(), applyInitialSize(), attachHandles(), b0() (+107 more)
 
 ### Community 26 - "Community 26"
-Cohesion: 0.05
-Nodes (25): CreateAccount, Model, Account, BelongsTo, HasMany, Currency, BelongsTo, HasMany (+17 more)
+Cohesion: 0.11
+Nodes (5): BelongsTo, HasMany, Project, ProjectObserver, CleanOperationalDataCommandTest
 
 ### Community 27 - "Community 27"
-Cohesion: 0.03
-Nodes (58): AccountResource, BackedEnum, Builder, Schema, Table, UnitEnum, AccountForm, Schema (+50 more)
-
-### Community 28 - "Community 28"
-Cohesion: 0.08
-Nodes (4): self, RestoreProgressSnapshot, RestoreStaleDetectorTest, RestoreProgressSnapshotTest
+Cohesion: 0.01
+Nodes (127): ViewAccount, AccountTypeResource, BackedEnum, Builder, Schema, Table, UnitEnum, ListAccountTypes (+119 more)
 
 ### Community 29 - "Community 29"
 Cohesion: 0.06
-Nodes (90): addNodeMark(), ak(), Ap(), atEnd(), atStart(), bk(), bl(), bp() (+82 more)
+Nodes (86): ak(), Ap(), atEnd(), atStart(), bk(), bl(), bp(), Ce() (+78 more)
 
 ### Community 30 - "Community 30"
 Cohesion: 0.16
@@ -602,159 +588,151 @@ Nodes (3): RestoreAttachmentRevalidator, self, RestoreAttachmentValidationExcept
 
 ### Community 31 - "Community 31"
 Cohesion: 0.04
-Nodes (108): aa(), acceptToken(), allows(), AQ(), au(), ch(), child(), childAfter() (+100 more)
+Nodes (122): aa(), acceptToken(), allows(), aO(), AQ(), au(), ch(), child() (+114 more)
 
 ### Community 32 - "Community 32"
 Cohesion: 0.03
-Nodes (33): BackupEncryptionException, BackupEnvelopeUnsupportedVersionException, self, BackupIntegrityException, BackupLockedException, self, BackupOperationException, DatabaseDumpException (+25 more)
+Nodes (29): BackupEncryptionException, BackupEnvelopeUnsupportedVersionException, self, BackupIntegrityException, BackupOperationException, DatabaseDumpException, NativeSymlinkDetector, NativeAttachmentMoveRunner (+21 more)
 
 ### Community 33 - "Community 33"
-Cohesion: 0.03
-Nodes (78): ad(), addEventListener(), An(), applyStack(), ar(), average(), beforeDatasetDraw(), beforeDatasetsDraw() (+70 more)
+Cohesion: 0.04
+Nodes (58): ad(), applyStack(), ar(), beforeDatasetDraw(), beforeDatasetsDraw(), beforeDraw(), beforeLayout(), bu() (+50 more)
 
 ### Community 34 - "Community 34"
 Cohesion: 0.05
-Nodes (65): Aa(), ad(), Bt(), Cc(), cf(), Cn(), Cr(), dd() (+57 more)
+Nodes (59): Aa(), ad(), Bt(), Cc(), cf(), Cr(), dd(), dt() (+51 more)
 
 ### Community 35 - "Community 35"
-Cohesion: 0.05
-Nodes (27): ListAccounts, ListAccountTypes, ListAttachments, Schema, ViewAttachment, ListBankTypes, ListCurrencies, ListExchangeRateHistories (+19 more)
+Cohesion: 0.06
+Nodes (22): AccountResource, BackedEnum, Builder, Schema, Table, UnitEnum, ListAccounts, AccountForm (+14 more)
 
 ### Community 36 - "Community 36"
 Cohesion: 0.23
 Nodes (4): RestoreDiskSpaceEstimate, BackupScope, CurrentDatabaseSizeEstimator, RestoreDiskSpaceEstimator
 
 ### Community 37 - "Community 37"
-Cohesion: 0.05
-Nodes (70): Ar(), Bd(), coordsAtPos(), dl(), domAfterPos(), domAtPos(), domFromPos(), domSelection() (+62 more)
+Cohesion: 0.04
+Nodes (84): ag(), Ao(), Ar(), Bd(), cg(), coordsAtPos(), dg(), disconnectSelection() (+76 more)
 
 ### Community 38 - "Community 38"
 Cohesion: 0.04
-Nodes (70): acquireContext(), ag(), apply(), Bc(), bg(), bo(), bs(), ca() (+62 more)
+Nodes (78): add(), ag(), apply(), Bc(), bg(), bo(), bs(), ca() (+70 more)
 
 ### Community 39 - "Community 39"
 Cohesion: 0.09
 Nodes (62): $(), A(), ae(), areRecordsSelected(), areRecordsToggleable(), B(), be(), C() (+54 more)
 
 ### Community 40 - "Community 40"
-Cohesion: 0.10
-Nodes (28): activeForPoint(), addLineStartIfNotCovered(), blockPosCovered(), boundChange(), bS(), compare(), comparePoint(), compareRange() (+20 more)
+Cohesion: 0.06
+Nodes (13): MuwakhaFamilyAccountStatement, ReportExportFormat, Schema, StreamedResponse, MuwakhaFamilyAccountStatementService, Collection, MuwakhaStatementScopeException, self (+5 more)
 
 ### Community 41 - "Community 41"
 Cohesion: 0.08
-Nodes (6): BackupFileLock, BackupDeletionServiceTest, BackupStatus, BackupDownloadControllerTest, BackupIntegrityVerifierTest, BackupScope
+Nodes (5): BackupFileLock, BackupDeletionServiceTest, BackupStatus, BackupDownloadControllerTest, BackupRetentionServiceTest
 
 ### Community 42 - "Community 42"
 Cohesion: 0.05
-Nodes (67): addStoredMark(), Bo(), br(), childAfter(), childBefore(), Cu(), cy(), deleteNode() (+59 more)
+Nodes (68): addStoredMark(), addToSet(), addTransform(), br(), cy(), $d(), deleteNode(), deleteRange() (+60 more)
 
 ### Community 43 - "Community 43"
-Cohesion: 0.05
-Nodes (35): ae(), as(), bo(), bs(), close(), closeQuietly(), Dr(), es() (+27 more)
+Cohesion: 0.04
+Nodes (41): ae(), as(), bo(), bs(), close(), closeQuietly(), co(), Dr() (+33 more)
 
 ### Community 44 - "Community 44"
 Cohesion: 0.09
 Nodes (65): at(), b(), Be(), $c(), ca(), Ct(), D(), de() (+57 more)
 
 ### Community 45 - "Community 45"
-Cohesion: 0.08
-Nodes (65): allowsMarks(), am(), as(), au(), bc(), canAppend(), canReplace(), canReplaceWith() (+57 more)
+Cohesion: 0.06
+Nodes (84): addNodeMark(), allowedMarks(), allowsMarks(), allowsMarkType(), am(), as(), au(), bc() (+76 more)
 
 ### Community 46 - "Community 46"
-Cohesion: 0.10
-Nodes (30): as(), be(), blur(), chunkEnd(), createSet(), Dt(), Er(), filter() (+22 more)
+Cohesion: 0.06
+Nodes (56): addChanges(), addRange(), Ah(), applyTransaction(), asSingle(), be(), changeByRange(), compose() (+48 more)
 
 ### Community 47 - "Community 47"
-Cohesion: 0.08
-Nodes (51): $(), adjustHitBoxes(), At(), bi(), bo(), _computeGridLineItems(), _computeLabelArea(), _computeTitleHeight() (+43 more)
+Cohesion: 0.05
+Nodes (81): $(), adjustHitBoxes(), At(), bh(), bi(), bo(), calculateLabelRotation(), _calculatePadding() (+73 more)
 
 ### Community 48 - "Community 48"
-Cohesion: 0.07
-Nodes (55): addBlockWidget(), addBreak(), addComposition(), addInlineWidget(), addLine(), addLineStart(), addMark(), addText() (+47 more)
+Cohesion: 0.04
+Nodes (74): activeForPoint(), addBlockWidget(), addBreak(), addComposition(), addDelimiter(), addInlineWidget(), addLine(), addLineStart() (+66 more)
 
 ### Community 49 - "Community 49"
-Cohesion: 0.10
-Nodes (25): addCompletion(), addCompletions(), addNamespace(), addNamespaceObject(), cg(), compute(), CY(), decompose() (+17 more)
+Cohesion: 0.05
+Nodes (19): Table, CreateMuwakhaFamily, Model, EditMuwakhaFamily, Model, ViewMuwakhaFamily, Schema, Table (+11 more)
 
 ### Community 50 - "Community 50"
-Cohesion: 0.04
-Nodes (58): add(), addInner(), addMaps(), addToSet(), addTransform(), apply(), applyInner(), applyTransaction() (+50 more)
+Cohesion: 0.18
+Nodes (13): apply(), applyInner(), applyTransaction(), descendants(), fail(), filterTransaction(), fromReplace(), insertAt() (+5 more)
 
 ### Community 51 - "Community 51"
 Cohesion: 0.05
 Nodes (12): Bi(), Bn(), br(), Id(), ji(), on(), qd(), qi() (+4 more)
 
-### Community 53 - "Community 53"
-Cohesion: 0.06
-Nodes (3): BackupCommandsAndSchedulerTest, BackupManagementPageTest, BackupScope
+### Community 54 - "Community 54"
+Cohesion: 0.08
+Nodes (3): MuwakhaFamilyAccount, BelongsTo, MuwakhaFamilyAccountIdentityTest
 
 ### Community 55 - "Community 55"
 Cohesion: 0.06
 Nodes (53): Ah(), at(), Ax(), Ba(), bx(), Ch(), ct(), dx() (+45 more)
 
 ### Community 56 - "Community 56"
-Cohesion: 0.04
-Nodes (56): alpha(), Be(), $c(), color(), darken(), desaturate(), ef(), Es() (+48 more)
+Cohesion: 0.06
+Nodes (43): alpha(), Be(), $c(), color(), darken(), desaturate(), Gc(), greyscale() (+35 more)
 
 ### Community 57 - "Community 57"
-Cohesion: 0.04
-Nodes (81): addBox(), addElements(), afterBuildTicks(), afterCalculateLabelRotation(), afterDataLimits(), afterFit(), afterSetDimensions(), afterTickToLabelConversion() (+73 more)
+Cohesion: 0.06
+Nodes (54): afterBuildTicks(), afterCalculateLabelRotation(), afterDataLimits(), afterFit(), afterSetDimensions(), afterTickToLabelConversion(), afterUpdate(), beforeBuildTicks() (+46 more)
 
 ### Community 58 - "Community 58"
-Cohesion: 0.07
-Nodes (9): PartnerTypeResource, BackedEnum, Builder, UnitEnum, AuditEvent, BelongsTo, AuditedCrudServiceTest, AuditedFilamentCrudTest (+1 more)
-
-### Community 59 - "Community 59"
-Cohesion: 0.17
-Nodes (3): Carbon, RestoreHeartbeat, RestoreProgressPollControllerTest
+Cohesion: 0.06
+Nodes (11): PartnerTypeResource, BackedEnum, Builder, UnitEnum, AuditEvent, BelongsTo, BackupRestoreAuditLedger, AuditEventsMigrationTest (+3 more)
 
 ### Community 60 - "Community 60"
-Cohesion: 0.13
-Nodes (7): SafeBackupPath, self, RestoreArchiveExtractionException, BackupScope, ZipArchive, RestoreArchiveExtractor, RestoreExtractionResult
+Cohesion: 0.05
+Nodes (14): DatabaseRestorer, self, RestoreArchiveExtractionException, self, RestoreDatabaseException, self, RestoreWorkspaceException, BackupScope (+6 more)
 
 ### Community 61 - "Community 61"
-Cohesion: 0.14
-Nodes (6): Attachment, BelongsTo, GeneralExpense, BelongsTo, MorphMany, AttachmentAccessTest
+Cohesion: 0.15
+Nodes (4): GeneralExpense, BelongsTo, MorphMany, AttachmentAccessTest
 
 ### Community 62 - "Community 62"
 Cohesion: 0.05
 Nodes (30): actions(), button(), c(), configureAnimations(), configureTransitions(), constructor(), danger(), dispatch() (+22 more)
 
-### Community 63 - "Community 63"
-Cohesion: 0.08
-Nodes (6): BackupCreationOrchestrator, BackupOperation, BackupScope, BackupSubsystemLockHandle, FilesystemAdapter, BackupCreationOrchestratorTest
-
 ### Community 64 - "Community 64"
-Cohesion: 0.09
-Nodes (10): AccountType, BelongsTo, HasMany, BankType, BelongsTo, HasMany, FinancialAccountGuard, FinancialAttachmentCutoverTest (+2 more)
+Cohesion: 0.05
+Nodes (18): AccountStatementPage, BackedEnum, ReportExportFormat, Schema, StreamedResponse, UnitEnum, CreateAccount, Model (+10 more)
 
 ### Community 65 - "Community 65"
-Cohesion: 0.06
-Nodes (51): cg(), clone(), create(), dtFormatter(), Ec(), En(), eras(), expandFormat() (+43 more)
+Cohesion: 0.09
+Nodes (31): cg(), clone(), dtFormatter(), Ec(), extract(), format(), formatDateTime(), formatDateTimeParts() (+23 more)
 
 ### Community 67 - "Community 67"
-Cohesion: 0.07
-Nodes (21): BackupRetentionCommand, CreateBackup, RestoreWatchdogCommand, CreateBackupJob, Throwable, RetentionCleanupJob, VerifyBackupIntegrityJob, BackupIntegrityVerifier (+13 more)
+Cohesion: 0.05
+Nodes (27): BackupRetentionCommand, CreateBackup, RestoreWatchdogCommand, CreateBackupJob, Throwable, RetentionCleanupJob, VerifyBackupIntegrityJob, BackupNotifier (+19 more)
 
 ### Community 68 - "Community 68"
-Cohesion: 0.06
-Nodes (14): AttachmentCollectionResult, AttachmentCollector, BackupArchiveBuilder, self, SymlinkDetector, ZipArchive, BackupManifestBuilder, BackupScope (+6 more)
+Cohesion: 0.07
+Nodes (13): AttachmentCollectionResult, AttachmentCollector, BackupArchiveBuilder, self, SymlinkDetector, ZipArchive, BackupManifestBuilder, BackupScope (+5 more)
 
 ### Community 70 - "Community 70"
-Cohesion: 0.04
-Nodes (75): Ac(), addActions(), advanceFully(), advanceStack(), allActions(), bd(), Bh(), c0() (+67 more)
+Cohesion: 0.05
+Nodes (62): addActions(), advanceFully(), advanceStack(), allActions(), build(), c0(), canShift(), close() (+54 more)
 
 ### Community 71 - "Community 71"
-Cohesion: 0.05
-Nodes (57): afterAutoSkip(), an(), Ar(), bc(), beforeLayout(), buildLookupTable(), buildTicks(), cn() (+49 more)
+Cohesion: 0.10
+Nodes (28): afterAutoSkip(), Ar(), buildLookupTable(), buildTicks(), cn(), computeTickLimit(), Do(), _generate() (+20 more)
 
 ### Community 72 - "Community 72"
-Cohesion: 0.06
-Nodes (48): average(), cc(), dataset(), ec(), _eventHandler(), first(), Ge(), getCenterPoint() (+40 more)
+Cohesion: 0.07
+Nodes (39): average(), cc(), dataset(), ec(), first(), Ge(), getCenterPoint(), _getLegendItemAt() (+31 more)
 
 ### Community 73 - "Community 73"
 Cohesion: 0.04
-Nodes (48): Next Steps, Pending Items, Previously Recommended Next Step (2026-07-15, operational data cleanup — DONE), Previously Recommended Next Step (2026-07-15, transaction descriptions), Previously Recommended Next Step (2026-07-16, execution payment credit account editable — DONE), Previously Recommended Next Step (2026-07-16, General Exchange form rearrangement — DONE), Previously Recommended Next Step (2026-07-16, responsive credit/debit account layout — DONE), Previously Recommended Next Step (2026-07-18, financial transaction balance guard + automated verification — DONE, committed) (+40 more)
+Nodes (51): Next Steps, Pending Items, Previously Recommended Next Step (2026-07-15, operational data cleanup — DONE), Previously Recommended Next Step (2026-07-15, transaction descriptions), Previously Recommended Next Step (2026-07-16, execution payment credit account editable — DONE), Previously Recommended Next Step (2026-07-16, General Exchange form rearrangement — DONE), Previously Recommended Next Step (2026-07-16, responsive credit/debit account layout — DONE), Previously Recommended Next Step (2026-07-18, financial transaction balance guard + automated verification — DONE, committed) (+43 more)
 
 ### Community 74 - "Community 74"
 Cohesion: 0.07
@@ -765,28 +743,28 @@ Cohesion: 0.11
 Nodes (9): BackfillTransactionDescriptions, BelongsTo, HasMany, Transaction, ClassifiedTransaction, Collection, TransactionFlowClassifier, Collection (+1 more)
 
 ### Community 76 - "Community 76"
-Cohesion: 0.08
-Nodes (46): _(), Ae(), ai(), ao(), bf(), da(), di(), fd() (+38 more)
+Cohesion: 0.10
+Nodes (41): _(), Ae(), ai(), ao(), bf(), da(), di(), fi() (+33 more)
 
 ### Community 77 - "Community 77"
-Cohesion: 0.07
-Nodes (45): afterAutoSkip(), ah(), at(), Ba(), Bf(), buildLookupTable(), buildTicks(), contains() (+37 more)
+Cohesion: 0.06
+Nodes (60): af(), at(), B(), Ba(), Bf(), _computeLabelSizes(), determineDataLimits(), df() (+52 more)
 
 ### Community 78 - "Community 78"
 Cohesion: 0.08
-Nodes (34): A(), An(), applyDisabledState(), b(), be(), Bt(), constructor(), disable() (+26 more)
+Nodes (33): A(), An(), applyDisabledState(), be(), Bt(), constructor(), disable(), ei() (+25 more)
 
 ### Community 79 - "Community 79"
 Cohesion: 0.12
 Nodes (44): At(), b(), bi(), bn(), Ce(), ci(), cn(), ct() (+36 more)
 
 ### Community 81 - "Community 81"
-Cohesion: 0.09
-Nodes (6): Schema, PermissionInfolist, Schema, PermissionsTable, Table, PermissionRegistry
+Cohesion: 0.08
+Nodes (5): PermissionInfolist, Schema, PermissionsTable, Table, PermissionRegistry
 
 ### Community 82 - "Community 82"
-Cohesion: 0.06
-Nodes (57): Ao(), applyStack(), _calculateBarIndexPixels(), _calculateBarValuePixels(), calculateCircumference(), calculateTotal(), _circumference(), _computeAngle() (+49 more)
+Cohesion: 0.10
+Nodes (35): Ao(), applyStack(), _calculateBarIndexPixels(), _calculateBarValuePixels(), calculateCircumference(), calculateTotal(), _circumference(), _computeAngle() (+27 more)
 
 ### Community 83 - "Community 83"
 Cohesion: 0.08
@@ -794,59 +772,59 @@ Nodes (31): A(), An(), applyDisabledState(), be(), Bt(), constructor(), disable(
 
 ### Community 84 - "Community 84"
 Cohesion: 0.13
-Nodes (42): At(), bi(), bn(), Ce(), ci(), cn(), ct(), di() (+34 more)
+Nodes (43): At(), b(), bi(), bn(), Ce(), ci(), cn(), ct() (+35 more)
 
 ### Community 85 - "Community 85"
-Cohesion: 0.07
-Nodes (40): _calculateBarValuePixels(), calculateCircumference(), calculateTotal(), _circumference(), _computeAngle(), countVisibleElements(), datasetAnimationScopeKeys(), df() (+32 more)
+Cohesion: 0.05
+Nodes (64): addBox(), addEventListener(), afterAutoSkip(), au(), buildLookupTable(), _calculateBarIndexPixels(), _calculateBarValuePixels(), calculateCircumference() (+56 more)
 
 ### Community 86 - "Community 86"
-Cohesion: 0.11
-Nodes (8): Table, AuditEventsTable, Table, AuditRawValue, AuditEvent, BackedEnum, AuditUnknownValueLabellingTest, AuditEvent
+Cohesion: 0.12
+Nodes (5): Table, AuditEventsTable, Table, AuditRawValue, AuditUnknownValueLabellingTest
 
 ### Community 87 - "Community 87"
-Cohesion: 0.08
-Nodes (37): afterDatasetsUpdate(), Ea(), _f(), formatOffset(), getDatasetMeta(), getIndexAngle(), getMaxBorderWidth(), getMeta() (+29 more)
+Cohesion: 0.11
+Nodes (25): ah(), An(), average(), bi(), Dt(), getCenterPoint(), _getLegendItemAt(), getProps() (+17 more)
 
 ### Community 88 - "Community 88"
 Cohesion: 0.14
 Nodes (3): Permission, Role, RoleManagementServiceTest
 
 ### Community 89 - "Community 89"
-Cohesion: 0.03
-Nodes (39): AccountTypeResource, BackedEnum, Builder, Schema, Table, UnitEnum, AccountTypeForm, Schema (+31 more)
+Cohesion: 0.19
+Nodes (4): LinesRelationManager, Model, Schema, Table
 
 ### Community 90 - "Community 90"
-Cohesion: 0.13
-Nodes (9): Action, BackupManagementPage, BackedEnum, RestoreActivityState, Table, UnitEnum, BackupAuthorization, Authenticatable (+1 more)
+Cohesion: 0.08
+Nodes (13): BackupManagementPage, BackedEnum, RestoreActivityState, Table, UnitEnum, BackupOverviewWidget, BackupAuthorization, Authenticatable (+5 more)
 
 ### Community 91 - "Community 91"
-Cohesion: 0.08
-Nodes (15): BackupSubsystemLockHandle, LockMode, AttachmentSwapHandle, self, AttachmentSwapPhase, Throwable, RestoreAttachmentActivationService, activate() (+7 more)
+Cohesion: 0.10
+Nodes (12): BackupSubsystemLock, LockMode, BackupSubsystemLockHandle, LockMode, AttachmentSwapHandle, self, activate(), finalize() (+4 more)
 
 ### Community 92 - "Community 92"
-Cohesion: 0.11
+Cohesion: 0.10
 Nodes (5): reconstruct(), self, RestoreOperationSnapshot, self, RestoreOperationSnapshotTest
 
 ### Community 93 - "Community 93"
 Cohesion: 0.03
-Nodes (118): addChanges(), addChunk(), addInner(), addMapping(), addSelection(), adjust(), Ah(), annotation() (+110 more)
+Nodes (156): accept(), add(), addChunk(), addEventListener(), addInfoPane(), addInner(), addMapping(), addToSet() (+148 more)
 
 ### Community 95 - "Community 95"
-Cohesion: 0.08
-Nodes (9): BelongsTo, MorphMany, ProjectCostBudgetsPayment, ProjectCostBudgetsPaymentObserver, AppServiceProvider, Event, ServiceProvider, BalanceGuardIntegrationTest (+1 more)
+Cohesion: 0.12
+Nodes (5): BelongsTo, MorphMany, ProjectCostBudgetsPayment, ProjectCostBudgetsPaymentObserver, ExecutionPaymentCreditAccountTest
 
 ### Community 96 - "Community 96"
-Cohesion: 0.09
-Nodes (31): addToSet(), childString(), Ci(), dd(), enforceCursorAssoc(), fd(), Fi(), flush() (+23 more)
+Cohesion: 0.08
+Nodes (40): an(), ch(), D(), dc(), determineDataLimits(), dh(), diff(), endOf() (+32 more)
 
 ### Community 97 - "Community 97"
 Cohesion: 0.09
-Nodes (8): self, RestorePreflightException, NativeFilesystemIdentity, BackupScope, RestorePreflightChecker, RestorePreflightResult, FilesystemIdentity, FakeFilesystemIdentity
+Nodes (7): self, RestorePreflightException, BackupScope, RestorePreflightChecker, RestorePreflightResult, BackupScope, RestorePreflightCheckerTest
 
 ### Community 98 - "Community 98"
-Cohesion: 0.06
-Nodes (21): self, RestoreMaintenanceModeException, LaravelArtisanCommandRunner, LaravelMaintenanceModeInspector, RestoreMaintenanceMode, ArtisanCommandRunner, MaintenanceModeInspector, FakeArtisanCommandRunner (+13 more)
+Cohesion: 0.29
+Nodes (3): self, RestoreMaintenanceModeException, RestoreMaintenanceMode
 
 ### Community 99 - "Community 99"
 Cohesion: 0.12
@@ -854,83 +832,91 @@ Nodes (3): BackupOperationSnapshot, self, BackupOperationSnapshotTest
 
 ### Community 101 - "Community 101"
 Cohesion: 0.08
-Nodes (32): check(), checkAttrs(), endIndex(), getObj(), hasProtocol(), iy(), join(), Lr() (+24 more)
+Nodes (32): Bo(), check(), checkAttrs(), childAfter(), childBefore(), Cu(), endIndex(), findIndex() (+24 more)
 
 ### Community 102 - "Community 102"
-Cohesion: 0.16
-Nodes (5): PermissionResource, BackedEnum, Model, Table, UnitEnum
-
-### Community 103 - "Community 103"
-Cohesion: 0.06
-Nodes (6): AuditTestCase, AuditEventFiltersTest, AuditEventResourceAuthorizationTest, AuditUiTestCase, AuditEvent, User
+Cohesion: 0.14
+Nodes (6): PermissionResource, BackedEnum, Model, Schema, Table, UnitEnum
 
 ### Community 104 - "Community 104"
-Cohesion: 0.11
-Nodes (31): addAll(), addDOM(), addElement(), addElementByRule(), addTextNode(), allowedMarks(), allowsMarkType(), clearIncompatible() (+23 more)
+Cohesion: 0.12
+Nodes (27): addAll(), addDOM(), addElement(), addElementByRule(), addTextNode(), closeExtra(), currentPos(), enter() (+19 more)
 
 ### Community 105 - "Community 105"
-Cohesion: 0.17
-Nodes (31): _a(), aa(), ba(), br(), Bt(), ca(), ct(), ei() (+23 more)
+Cohesion: 0.15
+Nodes (35): $(), _a(), aa(), ba(), br(), Bt(), ca(), Cn() (+27 more)
 
 ### Community 106 - "Community 106"
-Cohesion: 0.04
-Nodes (77): active(), addTree(), B(), baseTheme(), between(), bu(), buildDeco(), checkAsyncSchedule() (+69 more)
+Cohesion: 0.03
+Nodes (95): active(), addTree(), B(), baseTheme(), between(), bu(), checkAsyncSchedule(), commit() (+87 more)
 
 ### Community 107 - "Community 107"
-Cohesion: 0.09
-Nodes (34): addBlock(), addLineDeco(), balanced(), baseIndent(), baseIndentFor(), blankContent(), blockAt(), column() (+26 more)
+Cohesion: 0.05
+Nodes (66): activateHover(), addBlock(), addElement(), addLineDeco(), balanced(), bidiSpans(), blankContent(), blockAt() (+58 more)
 
 ### Community 108 - "Community 108"
 Cohesion: 0.08
 Nodes (8): constructor(), define(), dm(), lm(), om(), qe(), registerListeners(), yt()
 
 ### Community 109 - "Community 109"
-Cohesion: 0.07
-Nodes (43): ae(), apply(), ba(), Bt(), chartOptionScopes(), constructor(), describe(), _e() (+35 more)
+Cohesion: 0.05
+Nodes (59): acquireContext(), addBox(), ae(), apply(), beforeUpdate(), Bt(), _cachedScopes(), chartOptionScopes() (+51 more)
 
 ### Community 110 - "Community 110"
 Cohesion: 0.08
 Nodes (13): ListTransactionLines, ViewTransactionLine, Schema, TransactionLineForm, Table, TransactionLinesTable, BackedEnum, Builder (+5 more)
 
 ### Community 111 - "Community 111"
-Cohesion: 0.17
-Nodes (4): BackedEnum, UnitEnum, ProjectStatusResource, CrudRedirectStandardTest
+Cohesion: 0.11
+Nodes (8): BackedEnum, Builder, Schema, UnitEnum, ProjectStatusResource, Schema, ProjectStatusForm, CrudRedirectStandardTest
 
 ### Community 112 - "Community 112"
 Cohesion: 0.22
 Nodes (4): PhpWord, Section, StreamedResponse, ProjectFinancialDetailsWordExportService
 
 ### Community 113 - "Community 113"
-Cohesion: 0.12
+Cohesion: 0.11
 Nodes (10): launch(), self, RestoreProcessLaunchException, LinuxDetachedRestoreProcessLauncher, Process, RestoreProcessLaunchResult, Process, WindowsDetachedRestoreProcessLauncher (+2 more)
 
+### Community 114 - "Community 114"
+Cohesion: 0.05
+Nodes (14): GeneralExpenseResource, BackedEnum, Builder, Schema, Table, UnitEnum, EditGeneralExpense, Model (+6 more)
+
+### Community 115 - "Community 115"
+Cohesion: 0.12
+Nodes (4): MuwakhaFamilyProject, BelongsTo, MuwakhaFamilyService, MuwakhaFamilyCreateProjectLinksTest
+
 ### Community 118 - "Community 118"
-Cohesion: 0.11
-Nodes (7): run(), ProcessRunResult, SymfonyProcessRunner, run(), SymfonyProcessStreamInputRunner, ProcessStreamInputRunner, FakeProcessStreamInputRunner
+Cohesion: 0.04
+Nodes (23): AppServiceProvider, run(), ProcessRunResult, SymfonyProcessRunner, run(), LaravelArtisanCommandRunner, LaravelMaintenanceModeInspector, NativeFilesystemIdentity (+15 more)
 
 ### Community 119 - "Community 119"
 Cohesion: 0.08
 Nodes (11): Schema, TransactionForm, Table, TransactionsTable, BackedEnum, Builder, Model, Schema (+3 more)
 
 ### Community 120 - "Community 120"
-Cohesion: 0.11
-Nodes (25): afterDatasetsUpdate(), beforeDatasetDraw(), beforeDatasetsDraw(), beforeDraw(), co(), generateLabels(), getDatasetMeta(), getMaxBorderWidth() (+17 more)
+Cohesion: 0.13
+Nodes (23): afterDatasetsUpdate(), _createItems(), Ea(), format(), getDatasetMeta(), getLabelAndValue(), getLabelForValue(), getMaxBorderWidth() (+15 more)
 
 ### Community 121 - "Community 121"
-Cohesion: 0.16
+Cohesion: 0.15
 Nodes (3): AccountCurrencyIntegrityChecker, DatabaseRelationshipIntegrityChecker, IntegrityCheckReport
 
 ### Community 122 - "Community 122"
 Cohesion: 0.08
 Nodes (7): a(), d(), f(), H(), ji(), L(), pt()
 
+### Community 124 - "Community 124"
+Cohesion: 0.16
+Nodes (4): ListMuwakhaFamilies, ReportExportFormat, StreamedResponse, MuwakhaFamilyResourceTest
+
 ### Community 125 - "Community 125"
 Cohesion: 0.06
-Nodes (6): Table, AttachmentsTable, Table, FinancialAttachmentRegistry, Builder, Carbon
+Nodes (14): AttachmentsTable, Table, AttachmentController, Request, StreamedResponse, Attachment, BelongsTo, AttachmentStorageService (+6 more)
 
 ### Community 126 - "Community 126"
-Cohesion: 0.19
-Nodes (11): RestoreAuditFacts, AuditActorContext, AuditStatus, BackupOperation, BackupOperationSnapshot, BackupStatus, RestoreOperationSnapshot, RestoreProgressSnapshot (+3 more)
+Cohesion: 0.18
+Nodes (7): self, RestoreAuditFacts, AuditFailureMode, AuditStatus, BackupStatus, Throwable, RestoreAuditRecorder
 
 ### Community 127 - "Community 127"
 Cohesion: 0.24
@@ -938,27 +924,19 @@ Nodes (4): DonorFinancialReportWordExportService, PhpWord, Section, StreamedResp
 
 ### Community 128 - "Community 128"
 Cohesion: 0.14
-Nodes (14): BackupDeletionRejectedException, self, BackupOperation, BackupOperationSnapshot, BackupStatus, BackupSubsystemLockHandle, RestoreOperationSnapshot, RestoreProgressSnapshot (+6 more)
+Nodes (6): PreparedRestore, BackupStatus, Throwable, RestoreOrchestrator, self, RestoreProgressSnapshot
 
 ### Community 129 - "Community 129"
-Cohesion: 0.12
-Nodes (27): $(), ar(), c(), de(), f(), fe(), g(), Gt() (+19 more)
+Cohesion: 0.13
+Nodes (24): ar(), c(), de(), f(), fe(), g(), Hn(), $i() (+16 more)
 
 ### Community 130 - "Community 130"
-Cohesion: 0.13
-Nodes (27): af(), as(), Ba(), En(), es(), Fc(), gd(), hl() (+19 more)
-
-### Community 131 - "Community 131"
-Cohesion: 0.21
-Nodes (13): cr(), di(), Dr(), Ee(), getContext(), getMaximumSize(), isAttached(), kl() (+5 more)
-
-### Community 132 - "Community 132"
-Cohesion: 0.23
-Nodes (4): AuditLogger, Throwable, AuditRecordRequest, AuditLoggerTransactionTest
+Cohesion: 0.11
+Nodes (31): af(), as(), Ba(), En(), es(), Fc(), gd(), gf() (+23 more)
 
 ### Community 133 - "Community 133"
-Cohesion: 0.13
-Nodes (5): AuditFieldDiff, AuditModelSnapshotter, Model, AuditSubjectDefinition, Model
+Cohesion: 0.22
+Nodes (3): AuditFieldDiff, AuditModelSnapshotter, Model
 
 ### Community 134 - "Community 134"
 Cohesion: 0.22
@@ -969,52 +947,40 @@ Cohesion: 0.15
 Nodes (3): CleanOperationalData, OperationalCleanupReport, OperationalDataCleanupService
 
 ### Community 136 - "Community 136"
-Cohesion: 0.10
-Nodes (6): AttachmentResource, BackedEnum, Builder, Model, UnitEnum, AttachmentResourceHardeningTest
+Cohesion: 0.09
+Nodes (7): AttachmentResource, BackedEnum, Builder, Model, Table, UnitEnum, AttachmentResourceHardeningTest
 
 ### Community 137 - "Community 137"
-Cohesion: 0.15
-Nodes (25): At(), Cn(), Da(), dt(), Ee(), En(), fr(), Ge() (+17 more)
+Cohesion: 0.17
+Nodes (21): At(), dt(), Ee(), En(), fr(), Ge(), h(), he() (+13 more)
 
 ### Community 138 - "Community 138"
-Cohesion: 0.07
-Nodes (5): AuditEventResource, AuditViewAuthorization, Authenticatable, AuditEventResourceReadOnlyTest, UnitEnum
+Cohesion: 0.08
+Nodes (6): AuditEventResource, Model, UnitEnum, AuditViewAuthorization, Authenticatable, AuditEventResourceAuthorizationTest
 
-### Community 139 - "Community 139"
-Cohesion: 0.20
-Nodes (4): self, RestoreWorkspaceException, SymlinkDetector, RestoreWorkspace
+### Community 140 - "Community 140"
+Cohesion: 0.08
+Nodes (5): AuthenticationAuditTest, RoleSecurityAuditTest, Permission, Role, SecurityAuditTestCase
 
 ### Community 142 - "Community 142"
 Cohesion: 0.25
 Nodes (4): DonorFinancialReportExcelExportService, Spreadsheet, StreamedResponse, Worksheet
 
 ### Community 144 - "Community 144"
-Cohesion: 0.15
-Nodes (23): _a(), ar(), bc(), ci(), cl(), df(), fl(), gi() (+15 more)
+Cohesion: 0.18
+Nodes (10): ci(), Cn(), Ha(), ho(), ki(), kl(), od(), tn() (+2 more)
 
 ### Community 145 - "Community 145"
-Cohesion: 0.29
-Nodes (4): BackupAuditRecorder, AuditActorContext, AuditStatus, BackupOperation
-
-### Community 146 - "Community 146"
-Cohesion: 0.12
-Nodes (5): self, RestoreProgressWriteException, RestoreProgressDurability, RestoreProgressWriter, RestoreLaunchServiceTest
+Cohesion: 0.08
+Nodes (13): BackedEnum, Builder, Schema, Table, UnitEnum, ProjectCostReceiptResource, Get, Model (+5 more)
 
 ### Community 147 - "Community 147"
 Cohesion: 0.11
 Nodes (10): handleRecordCreation(), Model, getRedirectUrl(), authorizeReportExport(), canAccess(), canExportReport(), bootHasUserTracking(), UserFactory (+2 more)
 
 ### Community 148 - "Community 148"
-Cohesion: 0.13
-Nodes (7): AuditActorContext, Request, self, AuditActorResolver, Request, AuditActorType, AuditActorContextTest
-
-### Community 149 - "Community 149"
-Cohesion: 0.10
-Nodes (5): BackupAuditTest, AuditEvent, BackupOperation, User, RestoreActivityOrdinaryOperationGateTest
-
-### Community 150 - "Community 150"
-Cohesion: 0.11
-Nodes (23): af(), bm(), du(), Fd(), fg(), $g(), hl(), injectCSS() (+15 more)
+Cohesion: 0.08
+Nodes (12): AuditActorContext, AuditActorType, Request, self, AuditActorResolver, Request, AuditLogger, AuditFailureMode (+4 more)
 
 ### Community 151 - "Community 151"
 Cohesion: 0.17
@@ -1025,47 +991,47 @@ Cohesion: 0.17
 Nodes (23): closeDropdown(), createOptionElement(), deferPositionDropdown(), destroy(), filterOptions(), focusNextOption(), focusPreviousOption(), getVisibleOptions() (+15 more)
 
 ### Community 153 - "Community 153"
-Cohesion: 0.21
-Nodes (12): ac(), cs(), Es(), lo(), ls(), nc(), path(), sc() (+4 more)
+Cohesion: 0.18
+Nodes (14): ac(), cs(), Es(), getBasePosition(), getBaseValue(), lo(), ls(), nc() (+6 more)
+
+### Community 154 - "Community 154"
+Cohesion: 0.10
+Nodes (4): AuditLabels, AuditActorType, AuditStatus, AuditLabelCoverageTest
 
 ### Community 155 - "Community 155"
 Cohesion: 0.23
 Nodes (4): AccountStatementWordExportService, PhpWord, Section, StreamedResponse
 
 ### Community 156 - "Community 156"
-Cohesion: 0.14
-Nodes (4): RestoreEphemeralTablePolicy, RestoreEphemeralTableCleaner, RestoreEphemeralTablePolicyTest, FakeRestoreEphemeralTableCleaner
-
-### Community 157 - "Community 157"
-Cohesion: 0.14
-Nodes (3): RestoreActivityState, RestoreActivityGuard, RestoreActivityGuardTest
+Cohesion: 0.29
+Nodes (3): RestoreEphemeralTablePolicy, RestoreEphemeralTableCleaner, FakeRestoreEphemeralTableCleaner
 
 ### Community 159 - "Community 159"
-Cohesion: 0.09
-Nodes (9): BackupOverviewWidget, BackupOperationNotification, BackupLabels, BackupScope, BackupStatus, BackupType, RestorePhaseLabels, StatsOverviewWidget (+1 more)
+Cohesion: 0.14
+Nodes (6): BackupOperationNotification, BackupLabels, BackupScope, BackupStatus, BackupType, BackupLabelsTest
 
 ### Community 160 - "Community 160"
 Cohesion: 0.14
 Nodes (3): AuditRedactor, SettingValuePolicy, AuditRedactorTest
 
 ### Community 161 - "Community 161"
-Cohesion: 0.20
+Cohesion: 0.21
 Nodes (3): BackupScheduleCalculator, CarbonImmutable, BackupScheduleCalculatorTest
 
 ### Community 162 - "Community 162"
-Cohesion: 0.18
-Nodes (21): Dn(), fn(), Ii(), Jr(), jt(), Kr(), Li(), mr() (+13 more)
+Cohesion: 0.16
+Nodes (24): Dn(), fn(), Gi(), ia(), Ii(), Jr(), jt(), Kr() (+16 more)
 
 ### Community 164 - "Community 164"
-Cohesion: 0.10
-Nodes (30): bh(), calculateLabelRotation(), _calculatePadding(), _computeLabelItems(), fit(), _fitCols(), _fitRows(), getIndexAngle() (+22 more)
+Cohesion: 0.11
+Nodes (18): bl(), data(), fl(), Fo(), fr(), gl(), Gn(), gr() (+10 more)
 
 ### Community 166 - "Community 166"
-Cohesion: 0.16
-Nodes (8): BackedEnum, ProjectFinancialSnapshot, StreamedResponse, Table, UnitEnum, ProjectsGeneralFinancialPage, HasTable, InteractsWithTable
+Cohesion: 0.15
+Nodes (7): BackedEnum, StreamedResponse, Table, UnitEnum, ProjectsGeneralFinancialPage, HasTable, InteractsWithTable
 
 ### Community 168 - "Community 168"
-Cohesion: 0.26
+Cohesion: 0.24
 Nodes (4): PhpWord, Section, StreamedResponse, TrialBalanceWordExportService
 
 ### Community 169 - "Community 169"
@@ -1073,84 +1039,76 @@ Cohesion: 0.14
 Nodes (9): close(), E(), G(), init(), P(), Q(), setUpResizeObserver(), X() (+1 more)
 
 ### Community 170 - "Community 170"
-Cohesion: 0.09
-Nodes (27): a$(), charCategorizer(), cP(), cS(), E$(), getCursor(), getDeco(), gT() (+19 more)
+Cohesion: 0.04
+Nodes (79): a$(), addCompletion(), addCompletions(), addNamespace(), addNamespaceObject(), addSelection(), cg(), charCategorizer() (+71 more)
 
 ### Community 171 - "Community 171"
-Cohesion: 0.16
-Nodes (20): Ac(), bl(), ce(), Dc(), dl(), Do(), el(), ff() (+12 more)
+Cohesion: 0.15
+Nodes (22): Ac(), bl(), ce(), Dc(), df(), dl(), Do(), el() (+14 more)
 
 ### Community 172 - "Community 172"
-Cohesion: 0.17
-Nodes (20): An(), cd(), dr(), hf(), _i(), Ie(), kt(), lr() (+12 more)
-
-### Community 175 - "Community 175"
-Cohesion: 0.26
-Nodes (4): AuditEvent, BackupOperation, User, RestoreAuditTest
+Cohesion: 0.10
+Nodes (38): _a(), An(), ar(), bc(), cd(), cl(), dr(), fl() (+30 more)
 
 ### Community 176 - "Community 176"
-Cohesion: 0.16
-Nodes (7): AccountStatementPage, Account, BackedEnum, ReportExportFormat, Schema, StreamedResponse, UnitEnum
+Cohesion: 0.10
+Nodes (6): MuwakhaFamilyForm, Schema, MuwakhaReference, Builder, MuwakhaReferenceException, self
 
 ### Community 177 - "Community 177"
-Cohesion: 0.19
-Nodes (5): AttachmentAuditMetadata, Attachment, Model, AttachmentAuditRecorder, Attachment
+Cohesion: 0.18
+Nodes (4): AttachmentAuditMetadata, FinancialAuditSubject, Model, AttachmentAuditRecorder
 
 ### Community 178 - "Community 178"
-Cohesion: 0.17
-Nodes (8): handleRecordUpdate(), Model, AttachmentAccessAuditRecorder, Attachment, Carbon, Throwable, User, AuditFailureMode
+Cohesion: 0.21
+Nodes (5): MuwakhaFamilyAccountStatementWordExportService, PhpWord, Section, StreamedResponse, Table
 
 ### Community 179 - "Community 179"
-Cohesion: 0.17
-Nodes (4): DatabaseRestorer, self, RestoreDatabaseException, BackupErrorSanitizer
+Cohesion: 0.10
+Nodes (25): addElements(), buildOrUpdateControllers(), buildOrUpdateElements(), Ce(), clear(), clearCache(), _dataCheck(), _destroy() (+17 more)
 
 ### Community 181 - "Community 181"
-Cohesion: 0.12
-Nodes (12): BackedEnum, Builder, Schema, Table, UnitEnum, ProjectSuperResource, Schema, ProjectSuperForm (+4 more)
+Cohesion: 0.10
+Nodes (13): ListProjectSupers, BackedEnum, Builder, Schema, Table, UnitEnum, ProjectSuperResource, Schema (+5 more)
 
 ### Community 182 - "Community 182"
 Cohesion: 0.29
 Nodes (4): ComprehensiveFinancialTransactionsExcelExportService, Spreadsheet, StreamedResponse, Worksheet
 
 ### Community 183 - "Community 183"
-Cohesion: 0.12
-Nodes (5): AttachmentSwapMarkerSigner, AttachmentSwapMarkerWriter, RestoreProgressDurability, AttachmentSwapStateInspector, AttachmentSwapState
+Cohesion: 0.07
+Nodes (8): AttachmentSwapMarker, AttachmentSwapMarkerReader, AttachmentSwapMarkerSigner, AttachmentSwapMarkerWriter, RestoreProgressDurability, AttachmentSwapStateInspector, AttachmentSwapState, AttachmentSwapMarkerWriterReaderTest
 
 ### Community 184 - "Community 184"
 Cohesion: 0.18
 Nodes (19): al(), bo(), co(), Dn(), Eo(), er(), hi(), il() (+11 more)
-
-### Community 186 - "Community 186"
-Cohesion: 0.07
-Nodes (8): Collection, RefreshProjectsFinancialReport, BelongsTo, HasMany, ProjectFinancialSnapshot, markProjectSnapshotDirty(), ProjectsGeneralFinancialReportService, ReportExportAuthorizationTest
 
 ### Community 193 - "Community 193"
 Cohesion: 0.11
 Nodes (17): 10. Maintenance mode ownership, 11. Commands operators may safely run, 12. Commands/actions operators must NOT run blindly, 13. Linux production notes, 14. Windows local-development limitations, 1. How to identify an active or stale restore, 1a. The normal first step for a genuinely stale restore (OMS Task 7C.8), 1b. Viewing live progress without the admin panel (+9 more)
 
 ### Community 195 - "Community 195"
-Cohesion: 0.09
-Nodes (14): RestoreCommand, Controller, JsonResponse, Request, RestoreLaunchController, JsonResponse, RestoreProgressPollController, self (+6 more)
-
-### Community 196 - "Community 196"
-Cohesion: 0.15
-Nodes (4): CheckFinancialIntegrity, FinancialIntegrityChecker, IntegrityViolation, self
+Cohesion: 0.08
+Nodes (14): RestoreCommand, BackupDownloadController, Request, StreamedResponse, Controller, JsonResponse, Request, RestoreLaunchController (+6 more)
 
 ### Community 197 - "Community 197"
 Cohesion: 0.18
 Nodes (6): DonorFinancialReportPage, BackedEnum, ReportExportFormat, Schema, StreamedResponse, UnitEnum
 
 ### Community 198 - "Community 198"
-Cohesion: 0.07
-Nodes (11): FinancialAuditDiff, self, FinancialAuditFieldNames, FinancialAuditLabeller, FinancialAuditRecorder, FinancialAuditSubject, Model, FinancialAuditSnapshotter (+3 more)
+Cohesion: 0.24
+Nodes (3): FinancialAuditSnapshotter, FinancialAuditSubject, FinancialAuditValue
 
 ### Community 199 - "Community 199"
 Cohesion: 0.26
 Nodes (4): AccountStatementExcelExportService, Spreadsheet, StreamedResponse, Worksheet
 
 ### Community 200 - "Community 200"
-Cohesion: 0.19
-Nodes (7): BackedEnum, Model, UnitEnum, RoleResource, Permission, Role, RoleOperationAndTargetSafetyTest
+Cohesion: 0.07
+Nodes (14): EditRole, Model, ListRoles, ViewRole, Model, Schema, UnitEnum, RoleResource (+6 more)
+
+### Community 201 - "Community 201"
+Cohesion: 0.17
+Nodes (4): AttachmentSwapPhase, self, self, RestoreAttachmentMarkerException
 
 ### Community 203 - "Community 203"
 Cohesion: 0.22
@@ -1161,20 +1119,16 @@ Cohesion: 0.09
 Nodes (4): AuditedFilamentLifecycleTest, HookSpyCreatePartnerType, HookSpyEditPartnerType, Model
 
 ### Community 210 - "Community 210"
-Cohesion: 0.15
-Nodes (10): FiscalYearResource, BackedEnum, Builder, Schema, Table, UnitEnum, FiscalYearForm, Schema (+2 more)
+Cohesion: 0.24
+Nodes (4): MuwakhaFamilyAccountStatementExcelExportService, Spreadsheet, StreamedResponse, Worksheet
 
 ### Community 211 - "Community 211"
-Cohesion: 0.15
-Nodes (10): Schema, UserForm, Table, UsersTable, BackedEnum, Builder, Schema, Table (+2 more)
-
-### Community 213 - "Community 213"
-Cohesion: 0.06
-Nodes (12): TestCase, AttachmentUploadServiceTest, Attachment, GeneralExpense, AttachmentAccessAuditTest, Attachment, User, Account (+4 more)
+Cohesion: 0.07
+Nodes (15): Model, EditUser, Model, Schema, UserForm, Table, UsersTable, BackedEnum (+7 more)
 
 ### Community 215 - "Community 215"
-Cohesion: 0.33
-Nodes (3): AttachmentStorageService, FilesystemAdapter, StreamedResponse
+Cohesion: 0.12
+Nodes (8): MuwakhaFamilyResource, BackedEnum, Builder, Schema, UnitEnum, MuwakhaFamilyInfolist, Schema, Section
 
 ### Community 217 - "Community 217"
 Cohesion: 0.22
@@ -1184,33 +1138,25 @@ Nodes (17): Ae(), Ai(), De(), fn(), Ft(), ht(), ii(), Le() (+9 more)
 Cohesion: 0.24
 Nodes (3): BackupEnvelopeCorruptException, self, SecretstreamEnvelope
 
-### Community 220 - "Community 220"
-Cohesion: 0.17
-Nodes (3): ProjectFinancialSnapshot, StreamedResponse, ProjectFinancialDetailsPage
+### Community 226 - "Community 226"
+Cohesion: 0.16
+Nodes (6): Collection, RefreshProjectsFinancialReport, BelongsTo, HasMany, ProjectFinancialSnapshot, markProjectSnapshotDirty()
 
 ### Community 227 - "Community 227"
-Cohesion: 0.23
-Nodes (8): BackupDownloadController, BackupOperation, BackupOperation, BackupScope, User, RestoreRequestService, BackupSubsystemLock, StreamedResponse
+Cohesion: 0.26
+Nodes (3): self, RestoreRequestRejectedException, BackupScope
 
 ### Community 228 - "Community 228"
-Cohesion: 0.05
-Nodes (50): $a(), add(), addEventListener(), br(), bs(), ca(), _cachedScopes(), ci() (+42 more)
+Cohesion: 0.04
+Nodes (65): _a(), add(), alpha(), ba(), ca(), ci(), color(), da() (+57 more)
 
 ### Community 229 - "Community 229"
-Cohesion: 0.20
-Nodes (14): active(), _animateOptions(), cancel(), _createAnimations(), _createDescriptors(), _descriptors(), _notify(), _notifyStateChanges() (+6 more)
-
-### Community 230 - "Community 230"
-Cohesion: 0.20
-Nodes (14): active(), _animateOptions(), cancel(), _createAnimations(), _createDescriptors(), _descriptors(), _notify(), _notifyStateChanges() (+6 more)
+Cohesion: 0.18
+Nodes (15): active(), _animateOptions(), cancel(), _createAnimations(), _createDescriptors(), _descriptors(), nd(), _notify() (+7 more)
 
 ### Community 232 - "Community 232"
-Cohesion: 0.09
-Nodes (9): CreateGeneralExchange, Model, Schema, ViewGeneralExchange, GeneralExchange, BelongsTo, MorphMany, BalanceGuardIntegrationTest (+1 more)
-
-### Community 236 - "Community 236"
-Cohesion: 0.28
-Nodes (6): BackupDeletionService, BackupOperation, BackupStatus, User, BackupDeletionEligibility, BackupDeletionResult
+Cohesion: 0.04
+Nodes (25): GeneralExchangeResource, BackedEnum, Builder, Schema, Table, UnitEnum, CreateGeneralExchange, Model (+17 more)
 
 ### Community 238 - "Community 238"
 Cohesion: 0.15
@@ -1229,7 +1175,7 @@ Cohesion: 0.23
 Nodes (13): am(), be(), cm(), De(), oe(), pe(), Rt(), sm() (+5 more)
 
 ### Community 242 - "Community 242"
-Cohesion: 0.27
+Cohesion: 0.30
 Nodes (4): Spreadsheet, StreamedResponse, Worksheet, TrialBalanceExcelExportService
 
 ### Community 243 - "Community 243"
@@ -1241,8 +1187,8 @@ Cohesion: 0.26
 Nodes (7): AuthenticationAuditSubscriber, Authenticatable, Attempting, Dispatcher, Failed, Login, Logout
 
 ### Community 250 - "Community 250"
-Cohesion: 0.14
-Nodes (16): br(), Di(), Gd(), If(), je(), K(), kd(), ki() (+8 more)
+Cohesion: 0.15
+Nodes (3): FinancialAuditDiff, self, FinancialAuditFieldNames
 
 ### Community 251 - "Community 251"
 Cohesion: 0.17
@@ -1252,33 +1198,17 @@ Nodes (12): Be(), ei(), ii(), le(), ni(), oi(), r(), ri() (+4 more)
 Cohesion: 0.21
 Nodes (3): e(), i(), r()
 
-### Community 257 - "Community 257"
-Cohesion: 0.31
-Nodes (3): RestoreMetadataUpserter, RestoreMetadataReconstructor, FakeRestoreMetadataReconstructor
-
 ### Community 259 - "Community 259"
-Cohesion: 0.22
-Nodes (11): apply(), B(), it(), le(), ls(), Mt(), _o(), rr() (+3 more)
-
-### Community 261 - "Community 261"
-Cohesion: 0.15
-Nodes (4): ExecutionPaymentForm, Model, Schema, Set
-
-### Community 266 - "Community 266"
-Cohesion: 0.05
-Nodes (22): GeneralExchangeResource, BackedEnum, Builder, Schema, Table, UnitEnum, EditGeneralExchange, Attachment (+14 more)
+Cohesion: 0.24
+Nodes (10): apply(), B(), it(), le(), ls(), Mt(), _o(), vo() (+2 more)
 
 ### Community 269 - "Community 269"
 Cohesion: 0.27
 Nodes (4): AccountPolicy, PartnerPolicy, ProjectCostReceiptPolicy, AuthorizesCrud
 
 ### Community 272 - "Community 272"
-Cohesion: 0.06
-Nodes (12): BelongsTo, MorphMany, ProjectCostReceipt, BelongsTo, TransactionLine, ProjectCostReceiptObserver, JournalBalanceIntegrityChecker, Collection (+4 more)
-
-### Community 274 - "Community 274"
-Cohesion: 0.18
-Nodes (7): BackupRestoreFailure, Throwable, BackupOperation, BackupOperationSnapshot, RestoreOperationSnapshot, RestoreProgressSnapshot, self
+Cohesion: 0.11
+Nodes (7): BelongsTo, MorphMany, ProjectCostReceipt, ProjectCostReceiptObserver, MarksProjectSnapshotDirty, FinancialAuditAtomicityTest, ProjectCostReceiptAccountValidationTest
 
 ### Community 277 - "Community 277"
 Cohesion: 0.22
@@ -1293,8 +1223,8 @@ Cohesion: 0.22
 Nodes (9): scripts, dev, post-autoload-dump, post-create-project-cmd, post-root-package-install, post-update-cmd, pre-package-uninstall, setup (+1 more)
 
 ### Community 280 - "Community 280"
-Cohesion: 0.13
-Nodes (15): 2. ARCHITECTURE, Accounting model (double-entry) — [DECISION], Audit Log — attachments & report exports (OMS Task 9B.5), Audit Log — backup & restore (OMS Task 9B.6), Audit Log — FINAL ACCEPTANCE (OMS Task 9B.8) — **the Audit initiative is `COMPLETE`**, Audit Log — financial integration (OMS Task 9B.3), Audit Log foundation (OMS Task 9B.1 — schema/service layer; wired to general CRUD only as of 9B.2, see below), Audit Log — general CRUD integration (OMS Task 9B.2 — master-data models only) (+7 more)
+Cohesion: 0.12
+Nodes (16): 2. ARCHITECTURE, Accounting model (double-entry) — [DECISION], Audit Log — attachments & report exports (OMS Task 9B.5), Audit Log — backup & restore (OMS Task 9B.6), Audit Log — FINAL ACCEPTANCE (OMS Task 9B.8) — **the Audit initiative is `COMPLETE`**, Audit Log — financial integration (OMS Task 9B.3), Audit Log foundation (OMS Task 9B.1 — schema/service layer; wired to general CRUD only as of 9B.2, see below), Audit Log — general CRUD integration (OMS Task 9B.2 — master-data models only) (+8 more)
 
 ### Community 281 - "Community 281"
 Cohesion: 0.22
@@ -1305,24 +1235,24 @@ Cohesion: 0.28
 Nodes (9): _e(), em(), ha(), Ia(), It(), ot(), Pp(), ra() (+1 more)
 
 ### Community 286 - "Community 286"
-Cohesion: 0.18
-Nodes (8): Request, SetLocale, Attachment, Model, Closure, DateTimeInterface, Filesystem, Response
+Cohesion: 0.36
+Nodes (4): Request, SetLocale, Closure, Response
 
 ### Community 288 - "Community 288"
-Cohesion: 0.15
-Nodes (5): AttachmentSwapMarker, AttachmentSwapPhase, self, AttachmentSwapMarkerReader, AttachmentSwapMarkerWriterReaderTest
+Cohesion: 0.20
+Nodes (4): IntegrityViolation, self, JournalBalanceIntegrityChecker, Collection
 
 ### Community 289 - "Community 289"
-Cohesion: 0.38
-Nodes (6): AuthorizesReportAccess, Currency, HasSchemas, InteractsWithSchemas, Page, ReportExportSubject
+Cohesion: 0.36
+Nodes (4): MuwakhaFamiliesExcelExportService, Spreadsheet, StreamedResponse, Worksheet
 
 ### Community 291 - "Community 291"
 Cohesion: 0.29
 Nodes (3): RestoreReconciliationSnapshot, RestoreReconciliationSnapshotRecoveryTest, RestoreReconciliationSnapshotTest
 
 ### Community 292 - "Community 292"
-Cohesion: 0.18
-Nodes (4): AuditEventInfolist, AuditEvent, Schema, Section
+Cohesion: 0.20
+Nodes (3): AuditEventInfolist, Schema, Section
 
 ### Community 294 - "Community 294"
 Cohesion: 0.50
@@ -1349,8 +1279,8 @@ Cohesion: 0.15
 Nodes (3): self, RestoreAttachmentManifest, RestoreAttachmentManifestTest
 
 ### Community 308 - "Community 308"
-Cohesion: 0.15
-Nodes (10): BankTypeResource, BackedEnum, Builder, Schema, Table, UnitEnum, BankTypeForm, Schema (+2 more)
+Cohesion: 0.20
+Nodes (12): bd(), Bh(), delayAndroidKey(), forceFlush(), handleEvent(), ignoreDuringComposition(), keydown(), runHandlers() (+4 more)
 
 ### Community 309 - "Community 309"
 Cohesion: 0.29
@@ -1381,20 +1311,16 @@ Cohesion: 0.19
 Nodes (6): BackedEnum, ReportExportFormat, Schema, StreamedResponse, UnitEnum, TrialBalancePage
 
 ### Community 319 - "Community 319"
-Cohesion: 0.19
+Cohesion: 0.16
 Nodes (4): AuditSubjectRegistry, Model, AuditSubjectNotRegisteredException, self
 
 ### Community 320 - "Community 320"
-Cohesion: 0.15
-Nodes (10): Schema, TransactionSuperTypeForm, Table, TransactionSuperTypesTable, BackedEnum, Builder, Schema, Table (+2 more)
-
-### Community 321 - "Community 321"
-Cohesion: 0.35
-Nodes (3): FinancialAuditTestCase, AttachmentWriteAuditTest, GeneralExpense
+Cohesion: 0.12
+Nodes (11): ListTransactionSuperTypes, Schema, TransactionSuperTypeForm, Table, TransactionSuperTypesTable, BackedEnum, Builder, Schema (+3 more)
 
 ### Community 322 - "Community 322"
-Cohesion: 0.15
-Nodes (4): Schema, ListAuditEvents, ViewAuditEvent, Testable
+Cohesion: 0.09
+Nodes (4): BackedEnum, Schema, ViewAuditEvent, AuditEventResourceReadOnlyTest
 
 ### Community 323 - "Community 323"
 Cohesion: 0.21
@@ -1419,10 +1345,6 @@ Nodes (6): 1. PROJECT OVERVIEW, Critical environment facts, Tech stack, What it 
 ### Community 329 - "Community 329"
 Cohesion: 0.60
 Nodes (3): AdminPanelProvider, Panel, PanelProvider
-
-### Community 330 - "Community 330"
-Cohesion: 0.38
-Nodes (3): BackupRetentionService, BackupOperation, BackupRetentionReport
 
 ### Community 332 - "Community 332"
 Cohesion: 0.40
@@ -1465,60 +1387,44 @@ Cohesion: 0.67
 Nodes (3): Corrections applied after the first 9B.2 review (2026-07-28), Open items carried out of 9B.2 (not defects, decisions to revisit), Previously Recommended Next Step (2026-07-28, OMS Task 9B.2 — Audit Log general CRUD integration — implemented, verified, NOT yet committed)
 
 ### Community 445 - "Community 445"
-Cohesion: 0.17
-Nodes (9): Schema, SettingForm, BackedEnum, Schema, Table, UnitEnum, SettingResource, Table (+1 more)
+Cohesion: 0.44
+Nodes (3): FinancialAuditRecorder, FinancialAuditSubject, Model
+
+### Community 458 - "Community 458"
+Cohesion: 0.40
+Nodes (4): MuwakhaFamiliesWordExportService, PhpWord, Section, StreamedResponse
 
 ### Community 512 - "Community 512"
-Cohesion: 0.25
-Nodes (3): GeneralExpensesTable, Table, TransactionLine
+Cohesion: 0.08
+Nodes (8): ExecutionPaymentsTable, Table, GeneralExpensesTable, Table, BelongsTo, TransactionLine, TransactionLineDescriptionBuilder, BalanceGuardIntegrationTest
 
 ### Community 513 - "Community 513"
 Cohesion: 0.23
 Nodes (13): addBadgesForSelectedOptions(), addSingleBadge(), addSingleSelectionDisplay(), createBadgeElement(), createRemoveButton(), getLabelForSingleSelection(), getLabelsForMultipleSelection(), getSelectedOptionLabel() (+5 more)
 
 ### Community 514 - "Community 514"
-Cohesion: 0.25
-Nodes (5): GeneralExpenseResource, BackedEnum, Builder, Table, UnitEnum
+Cohesion: 0.24
+Nodes (10): beforeDatasetDraw(), beforeDatasetsDraw(), beforeDraw(), co(), generateLabels(), _getSortedDatasetMetas(), getSortedVisibleDatasetMetas(), getVisibleDatasetCount() (+2 more)
 
 ### Community 516 - "Community 516"
 Cohesion: 0.67
 Nodes (3): Detail — first pass (2026-07-28, Graphify cache-tracking hygiene), Extension applied the same day — both earlier findings resolved, Residual finding — your decision, not applied
-
-### Community 518 - "Community 518"
-Cohesion: 0.29
-Nodes (4): EditGeneralExpense, Attachment, GeneralExpense, Model
-
-### Community 519 - "Community 519"
-Cohesion: 0.13
-Nodes (3): IntegrityTestFixtures, CheckFinancialIntegrityCommandTest, AccountCurrencyIntegrityCheckerTest
 
 ### Community 523 - "Community 523"
 Cohesion: 0.33
 Nodes (3): BackupKeyRing, BackupKeyConfigurationException, self
 
 ### Community 524 - "Community 524"
-Cohesion: 0.09
-Nodes (10): self, Throwable, RestoreReconciliationException, LaravelRestoreDatabaseConnectionResetter, BackupOperationSnapshot, RestoreOperationSnapshot, RestoreReconciler, RestoreDatabaseConnectionResetter (+2 more)
-
-### Community 525 - "Community 525"
-Cohesion: 0.40
-Nodes (5): co(), Ga(), lo(), qa(), xa()
+Cohesion: 0.24
+Nodes (4): self, Throwable, RestoreReconciliationException, RestoreReconciler
 
 ### Community 526 - "Community 526"
-Cohesion: 0.16
-Nodes (4): self, RestoreAttachmentRollbackException, self, RestoreAttachmentSwapException
-
-### Community 528 - "Community 528"
-Cohesion: 0.29
-Nodes (5): Carbon, RestoreProgressSnapshot, User, RestoreStaleAcknowledgmentService, StaleRestoreObservation
+Cohesion: 0.09
+Nodes (9): AttachmentSwapPhase, Throwable, RestoreAttachmentActivationService, self, RestoreAttachmentFinalizationException, self, RestoreAttachmentRollbackException, self (+1 more)
 
 ### Community 531 - "Community 531"
 Cohesion: 0.67
 Nodes (3): Four items a reviewer should consciously accept, Item left open for OMS Task 9B.6, Previously Recommended Next Step (2026-07-29, OMS Task 9B.5 attachment & report-export audit — implemented, focused tests green, real-local verification DONE, NOT committed)
-
-### Community 532 - "Community 532"
-Cohesion: 0.20
-Nodes (3): Permission, Role, SecurityAuditTestCase
 
 ### Community 533 - "Community 533"
 Cohesion: 0.35
@@ -1526,67 +1432,63 @@ Nodes (3): AuditedCrudService, Model, Relation
 
 ### Community 534 - "Community 534"
 Cohesion: 0.21
-Nodes (5): Get, Model, Schema, Set, ProjectCostBudgetsPaymentForm
+Nodes (4): Get, Model, Set, ProjectCostBudgetsPaymentForm
 
 ### Community 537 - "Community 537"
-Cohesion: 0.22
-Nodes (4): Schema, GeneralExpenseForm, Model, Schema
+Cohesion: 0.60
+Nodes (3): seedBankTypes(), seedMuwakhaProjectSuper(), up()
 
 ### Community 538 - "Community 538"
 Cohesion: 0.33
 Nodes (6): Applied correction (2026-07-30) — unknown categorical values can no longer break the page, Correction to what 9B.6 predicted, Five things a reviewer should consciously accept, Previously Recommended Next Step (2026-07-30, OMS Task 9B.7 read-only Audit Log UI — implemented, focused tests green, real-local verification DONE, NOT committed), The item 9B.6 left open for this phase — answered, Two deliberate non-features
 
+### Community 539 - "Community 539"
+Cohesion: 0.60
+Nodes (3): mapCurrentAccount(), normalizeCurrentAccountName(), up()
+
 ### Community 540 - "Community 540"
-Cohesion: 0.33
-Nodes (3): MysqlInformationSchemaDatabaseSizeEstimator, CurrentDatabaseSizeEstimator, FakeCurrentDatabaseSizeEstimator
+Cohesion: 0.83
+Nodes (3): down(), hasIndex(), up()
 
 ### Community 542 - "Community 542"
 Cohesion: 0.50
 Nodes (4): After that: OMS Task 9B.5 — attachments and exports, Answer to the item 9B.3 left open for this phase, Previously Recommended Next Step (2026-07-29, OMS Task 9B.4 users/roles/permissions/authentication audit — implemented, focused tests green, real-DB verification DONE, NOT committed), Three items a reviewer should consciously accept
 
-### Community 543 - "Community 543"
-Cohesion: 0.39
-Nodes (5): BackupOperation, BackupStatus, RestoreProgressSnapshot, Throwable, RestoreTerminalResultWriter
-
-### Community 546 - "Community 546"
-Cohesion: 0.47
-Nodes (6): Ea(), format(), getLabelAndValue(), getLabelForValue(), ne(), numeric()
+### Community 548 - "Community 548"
+Cohesion: 0.67
+Nodes (3): Consciously deferred (not defects), Five things the reviewer must consciously accept, Previously Recommended Next Step (2026-08-16, OMS Muwakha Families — implemented, focused + regression green, NOT committed)
 
 ### Community 550 - "Community 550"
 Cohesion: 0.40
 Nodes (5): Answer to the item 9B.5 left open for this phase, Five items a reviewer should consciously accept, Item left open for OMS Task 9B.7, Previously Recommended Next Step (2026-07-30, OMS Task 9B.6 backup & restore audit — implemented, focused tests green, real-local verification DONE, NOT committed), Three paths that were reported as non-existent rather than implemented
 
-### Community 557 - "Community 557"
-Cohesion: 0.22
-Nodes (4): Schema, Role, Schema, RoleForm
-
-### Community 563 - "Community 563"
-Cohesion: 0.40
-Nodes (3): Schema, PartnerTypeForm, Schema
+### Community 555 - "Community 555"
+Cohesion: 0.16
+Nodes (6): BackupCreationOrchestrator, BackupScope, BackupType, FilesystemAdapter, BackupLockedException, self
 
 ### Community 571 - "Community 571"
 Cohesion: 0.50
 Nodes (4): Previously Recommended Next Step (2026-07-30, OMS Task 9B.8 — FINAL Audit acceptance COMPLETE, full suite green, NOT committed), Reports and exports — no pending task, The one deployment-only acceptance item, Two things the reviewer must consciously accept before approving
 
 ## Knowledge Gaps
-- **1568 isolated node(s):** `Current Context`, `Recent Changes`, `Important Notes`, `Sensitive Data Rules`, `Recommended Next Step (2026-08-01, root route redirect — implemented, focused test green, NOT committed)` (+1563 more)
+- **1686 isolated node(s):** `FinancialAccountRole`, `$schema`, `name`, `type`, `description` (+1681 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **158 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **170 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `TestCase` connect `Project Super Pages` to `Community 515`, `Community 519`, `Community 521`, `Community 522`, `Community 524`, `Project Resource & Pages`, `Community 527`, `Transaction Type Pages`, `User Management Pages`, `Community 532`, `Projects Report Page Queries`, `Payment & Receipt Proof Images`, `Community 26`, `Community 28`, `Community 544`, `Community 32`, `Community 551`, `Community 559`, `Community 560`, `Community 561`, `Community 52`, `Community 564`, `Community 567`, `Community 568`, `Community 61`, `Community 64`, `Community 66`, `Community 68`, `Community 69`, `Community 88`, `Community 92`, `Community 94`, `Community 95`, `Community 98`, `Community 99`, `Community 111`, `Community 113`, `Community 114`, `Community 116`, `Community 117`, `Community 118`, `Community 121`, `Community 123`, `Community 136`, `Community 141`, `Community 158`, `Community 159`, `Community 160`, `Community 161`, `Community 163`, `Community 174`, `Community 180`, `Community 183`, `Community 185`, `Community 186`, `Community 188`, `Community 189`, `Community 190`, `Community 192`, `Community 194`, `Community 200`, `Community 208`, `Community 212`, `Community 214`, `Community 221`, `Community 222`, `Community 223`, `Community 224`, `Community 226`, `Community 231`, `Community 232`, `Community 233`, `Community 235`, `Community 237`, `Community 242`, `Community 245`, `Community 246`, `Community 247`, `Community 248`, `Community 249`, `Community 254`, `Community 258`, `Community 262`, `Community 263`, `Community 264`, `Community 265`, `Community 267`, `Community 268`, `Community 272`, `Community 273`, `Community 275`, `Community 288`, `Community 289`, `Community 290`, `Community 291`, `Community 303`, `Community 304`, `Community 305`, `Community 307`, `Community 315`, `Community 316`, `Community 323`, `Community 331`?**
-  _High betweenness centrality (0.071) - this node is a cross-community bridge._
-- **Why does `User` connect `User Management Pages` to `Project Super Pages`, `Community 520`, `Bank Type Resource`, `Project Resource & Pages`, `Community 527`, `Transaction Super Type Pages`, `Transaction Type Pages`, `Community 532`, `Projects Report Page Queries`, `Payment & Receipt Proof Images`, `Community 26`, `Community 544`, `Community 551`, `Community 41`, `Community 562`, `Community 53`, `Community 54`, `Community 566`, `Community 567`, `Community 61`, `Community 64`, `Community 66`, `Community 67`, `Community 88`, `Community 90`, `Community 95`, `Community 100`, `Community 111`, `Community 116`, `Community 125`, `Community 136`, `Community 138`, `Community 140`, `Community 148`, `Community 149`, `Community 163`, `Community 165`, `Community 178`, `Community 186`, `Community 187`, `Community 194`, `Community 200`, `Community 208`, `Community 212`, `Community 214`, `Community 219`, `Community 221`, `Community 222`, `Community 223`, `Community 224`, `Community 226`, `Community 231`, `Community 232`, `Community 233`, `Community 244`, `Community 245`, `Community 246`, `Community 247`, `Community 248`, `Community 249`, `Community 257`, `Community 258`, `Community 262`, `Community 263`, `Community 264`, `Community 265`, `Community 267`, `Community 268`, `Community 272`, `Community 284`, `Community 285`, `Community 289`, `Community 290`, `Community 303`, `Community 304`, `Community 305`, `Community 318`, `Community 331`?**
-  _High betweenness centrality (0.036) - this node is a cross-community bridge._
-- **Why does `BackupTestCase` connect `Project Resource & Pages` to `Community 260`, `Project Super Pages`, `Bank Type Resource`, `Community 146`, `Community 530`, `Community 149`, `Community 156`, `Community 284`, `Community 157`, `Community 28`, `Community 32`, `Community 291`, `Community 165`, `Community 41`, `Community 306`, `Community 53`, `Community 187`, `Community 59`, `Community 63`, `Community 68`, `Community 205`, `Community 206`, `Community 80`, `Community 219`, `Community 225`, `Community 234`, `Community 115`, `Community 124`?**
-  _High betweenness centrality (0.025) - this node is a cross-community bridge._
-- **Are the 118 inferred relationships involving `User` (e.g. with `.table()` and `.configure()`) actually correct?**
-  _`User` has 118 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 56 inferred relationships involving `BackupOperation` (e.g. with `.notifyBestEffort()` and `.handle()`) actually correct?**
-  _`BackupOperation` has 56 INFERRED edges - model-reasoned connections that need verification._
-- **What connects `Current Context`, `Recent Changes`, `Important Notes` to the rest of the system?**
-  _1568 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Why does `TestCase` connect `Payment & Receipt Proof Images` to `Community 512`, `Community 515`, `Project Super Pages`, `Community 518`, `Community 519`, `Transaction CRUD Pages`, `Community 521`, `Community 522`, `Project Resource & Pages`, `Community 527`, `Community 528`, `User Management Pages`, `Projects Report Page Queries`, `Community 26`, `Community 27`, `Community 28`, `Community 544`, `Community 32`, `Community 559`, `Community 560`, `Community 52`, `Community 568`, `Community 61`, `Community 64`, `Community 66`, `Community 69`, `Community 75`, `Community 86`, `Community 88`, `Community 92`, `Community 94`, `Community 95`, `Community 99`, `Community 111`, `Community 113`, `Community 114`, `Community 116`, `Community 117`, `Community 118`, `Community 121`, `Community 123`, `Community 125`, `Community 128`, `Community 132`, `Community 136`, `Community 139`, `Community 140`, `Community 141`, `Community 158`, `Community 159`, `Community 160`, `Community 161`, `Community 163`, `Community 168`, `Community 174`, `Community 180`, `Community 183`, `Community 185`, `Community 186`, `Community 188`, `Community 189`, `Community 190`, `Community 192`, `Community 194`, `Community 200`, `Community 208`, `Community 209`, `Community 212`, `Community 213`, `Community 214`, `Community 216`, `Community 222`, `Community 223`, `Community 224`, `Community 230`, `Community 231`, `Community 232`, `Community 233`, `Community 235`, `Community 237`, `Community 245`, `Community 246`, `Community 247`, `Community 248`, `Community 249`, `Community 254`, `Community 263`, `Community 264`, `Community 268`, `Community 270`, `Community 272`, `Community 273`, `Community 275`, `Community 290`, `Community 291`, `Community 303`, `Community 304`, `Community 305`, `Community 307`, `Community 315`, `Community 316`, `Community 318`, `Community 323`, `Community 331`?**
+  _High betweenness centrality (0.078) - this node is a cross-community bridge._
+- **Why does `User` connect `User Management Pages` to `Community 512`, `Project Super Pages`, `Community 518`, `Transaction CRUD Pages`, `Bank Type Resource`, `Project Resource & Pages`, `Community 527`, `Transaction Super Type Pages`, `Projects Report Page Queries`, `Payment & Receipt Proof Images`, `Community 26`, `Community 544`, `Community 40`, `Community 41`, `Community 49`, `Community 53`, `Community 54`, `Community 58`, `Community 61`, `Community 64`, `Community 66`, `Community 67`, `Community 88`, `Community 90`, `Community 95`, `Community 100`, `Community 103`, `Community 111`, `Community 115`, `Community 116`, `Community 118`, `Community 124`, `Community 125`, `Community 126`, `Community 131`, `Community 132`, `Community 136`, `Community 138`, `Community 139`, `Community 140`, `Community 148`, `Community 149`, `Community 150`, `Community 163`, `Community 165`, `Community 167`, `Community 175`, `Community 186`, `Community 187`, `Community 194`, `Community 200`, `Community 205`, `Community 208`, `Community 209`, `Community 211`, `Community 212`, `Community 213`, `Community 214`, `Community 219`, `Community 221`, `Community 222`, `Community 223`, `Community 224`, `Community 227`, `Community 231`, `Community 232`, `Community 233`, `Community 244`, `Community 245`, `Community 246`, `Community 247`, `Community 248`, `Community 249`, `Community 257`, `Community 263`, `Community 264`, `Community 268`, `Community 270`, `Community 272`, `Community 284`, `Community 285`, `Community 290`, `Community 303`, `Community 304`, `Community 305`, `Community 318`, `Community 331`?**
+  _High betweenness centrality (0.065) - this node is a cross-community bridge._
+- **Why does `BackupOperation` connect `Bank Type Resource` to `Community 128`, `Community 257`, `Project Super Pages`, `Community 520`, `Community 267`, `Project Resource & Pages`, `Community 146`, `Community 147`, `User Management Pages`, `Community 149`, `Payment & Receipt Proof Images`, `Community 284`, `Community 285`, `Community 157`, `Community 287`, `Community 32`, `Community 291`, `Community 36`, `Community 165`, `Community 41`, `Community 555`, `Community 175`, `Community 53`, `Community 187`, `Community 63`, `Community 67`, `Community 195`, `Community 205`, `Community 90`, `Community 92`, `Community 97`, `Community 225`, `Community 227`, `Community 234`, `Community 236`, `Community 126`?**
+  _High betweenness centrality (0.031) - this node is a cross-community bridge._
+- **Are the 128 inferred relationships involving `User` (e.g. with `.table()` and `.configure()`) actually correct?**
+  _`User` has 128 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 58 inferred relationships involving `BackupOperation` (e.g. with `.notifyBestEffort()` and `.failed()`) actually correct?**
+  _`BackupOperation` has 58 INFERRED edges - model-reasoned connections that need verification._
+- **What connects `FinancialAccountRole`, `$schema`, `name` to the rest of the system?**
+  _1686 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Project Cost Budget Payments` be split into smaller, more focused modules?**
-  _Cohesion score 0.003395585738539898 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.00322061191626409 - nodes in this community are weakly interconnected._

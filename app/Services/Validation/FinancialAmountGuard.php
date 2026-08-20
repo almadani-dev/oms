@@ -77,6 +77,63 @@ class FinancialAmountGuard
     }
 
     /**
+     * A deduction the operator ASKED for must be large enough to actually
+     * record. Called by the two deduction/FX workflows (project cost budget
+     * disbursements, general exchanges) alongside assertDisbursementInputs().
+     *
+     * Since 2026-08-19 a 0% deduction is a valid business case and simply
+     * produces NO transaction line at all (see
+     * FinancialTransactionBalanceGuard::assertBalancedMultiCurrencyLines).
+     * That creates one narrow gap this method closes: a percentage that is
+     * greater than zero but so small that `round(original × pct / 100, 2)`
+     * lands on 0.00 — e.g. 0.4% of 1.00. Such a deduction can neither be
+     * written (a debit_base = credit_base = 0 line is forbidden, and
+     * assertValidLinePayload() must keep forbidding it) nor silently
+     * dropped (the operator explicitly entered a non-zero percentage and
+     * would never be told it had no effect).
+     *
+     * Rejecting it here, on the percentage field the operator actually
+     * typed, is the only outcome that is both honest and safe. After this
+     * assertion passes, `percentage > 0` and `amount > 0` are equivalent
+     * for both deductions — which is what lets the line payload, the
+     * account validation, the balance mutations and the audit role map all
+     * agree on which optional roles exist.
+     */
+    public static function assertDeductionsAreRecordable(
+        float $administrativePercentage,
+        float $administrativeAmount,
+        float $transferPercentage,
+        float $transferAmount
+    ): void {
+        self::assertDeductionRecordable(
+            $administrativePercentage,
+            $administrativeAmount,
+            'administrative_percentage',
+            'النسبة الإدارية',
+        );
+
+        self::assertDeductionRecordable(
+            $transferPercentage,
+            $transferAmount,
+            'transfer_percentage',
+            'نسبة التحويل',
+        );
+    }
+
+    private static function assertDeductionRecordable(
+        float $percentage,
+        float $amount,
+        string $field,
+        string $label
+    ): void {
+        if (round($percentage, 2) > 0 && round($amount, 2) <= 0) {
+            throw ValidationException::withMessages([
+                $field => "{$label} صغيرة جدًا: قيمتها المحتسبة تساوي صفرًا بعد التقريب، فلا يمكن تسجيلها كسطر قيد. ضع صفرًا لإلغاء الخصم أو ارفع النسبة.",
+            ]);
+        }
+    }
+
+    /**
      * Full guard for the deduction/FX workflows: project cost budget
      * disbursements and general exchanges. Validates the original amount,
      * both percentages (individually and combined), the FX rate, and the

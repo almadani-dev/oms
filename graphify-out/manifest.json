@@ -420,13 +420,13 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/GeneralExchanges/Pages/CreateGeneralExchange.php": {
-    "mtime": 1785313309.4346173,
-    "ast_hash": "d70034864e44ce3be3a50a7d0134d011",
+    "mtime": 1787126680.916792,
+    "ast_hash": "2098e9d16d372c567ce0792a33e00c20",
     "semantic_hash": ""
   },
   "app/Filament/Resources/GeneralExchanges/Pages/EditGeneralExchange.php": {
-    "mtime": 1785321948.5786371,
-    "ast_hash": "41dad6f9e46f9a1d6ec870bae6be7281",
+    "mtime": 1787126680.9177923,
+    "ast_hash": "ab727fe8896f0f99b60233f1337550fd",
     "semantic_hash": ""
   },
   "app/Filament/Resources/GeneralExchanges/Pages/ListGeneralExchanges.php": {
@@ -440,8 +440,8 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/GeneralExchanges/Schemas/GeneralExchangeForm.php": {
-    "mtime": 1785221253.689999,
-    "ast_hash": "45136793c86829ba39a172c86f2fb7b2",
+    "mtime": 1787127758.3258252,
+    "ast_hash": "443ae94652ad56e1df983ceaad4cd022",
     "semantic_hash": ""
   },
   "app/Filament/Resources/GeneralExchanges/Tables/GeneralExchangesTable.php": {
@@ -580,13 +580,13 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectCostBudgetsPayments/Pages/CreateProjectCostBudgetsPayment.php": {
-    "mtime": 1785313151.9951878,
-    "ast_hash": "f73d2544e85dccc3da55856c2360c488",
+    "mtime": 1787126500.5864697,
+    "ast_hash": "25decf35f334891eacbf717a13ff8fe4",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectCostBudgetsPayments/Pages/EditProjectCostBudgetsPayment.php": {
-    "mtime": 1785321979.8399258,
-    "ast_hash": "d78f11696de1be215f0527ddb0c9c668",
+    "mtime": 1787126574.3817978,
+    "ast_hash": "594901a9149ea5bc1ed7f0c4c0399bc7",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectCostBudgetsPayments/Pages/ListProjectCostBudgetsPayments.php": {
@@ -605,8 +605,8 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectCostBudgetsPayments/Schemas/ProjectCostBudgetsPaymentForm.php": {
-    "mtime": 1785221253.6952028,
-    "ast_hash": "6beeac894cde2ce8ffd802cb93357aca",
+    "mtime": 1787127758.3248267,
+    "ast_hash": "ee74d21e170473705c14f7bc36efb988",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectCostBudgetsPayments/Tables/ProjectCostBudgetsPaymentsTable.php": {
@@ -1490,8 +1490,8 @@
     "semantic_hash": ""
   },
   "app/Services/Audit/Crud/AuditSubjectRegistry.php": {
-    "mtime": 1785313439.5387075,
-    "ast_hash": "b7a8fff871ca9208da93c9f3ca26302c",
+    "mtime": 1786952733.896748,
+    "ast_hash": "7c69479faa740c31a9fb059ec1500dea",
     "semantic_hash": ""
   },
   "app/Services/Audit/Crud/AuditedCrudService.php": {
@@ -1750,8 +1750,8 @@
     "semantic_hash": ""
   },
   "app/Services/Integrity/JournalBalanceIntegrityChecker.php": {
-    "mtime": 1785221253.7013028,
-    "ast_hash": "a494e176697cf9b59e4fdc03640caadd",
+    "mtime": 1787126733.5254562,
+    "ast_hash": "3838bc20ad4719c464f1282571525ad7",
     "semantic_hash": ""
   },
   "app/Services/Integrity/TransactionNumberIntegrityChecker.php": {
@@ -2320,8 +2320,8 @@
     "semantic_hash": ""
   },
   "app/Services/Transactions/Backfill/TransactionFlowClassifier.php": {
-    "mtime": 1784100845.7063951,
-    "ast_hash": "0f85c7d16f57289b2831bcff5769e6ee",
+    "mtime": 1787126733.5254562,
+    "ast_hash": "bfd8ce5593e31d9f5f6f2f750c6b7dee",
     "semantic_hash": ""
   },
   "app/Services/Transactions/Support/FormatsTransactionText.php": {
@@ -2350,13 +2350,13 @@
     "semantic_hash": ""
   },
   "app/Services/Validation/FinancialAmountGuard.php": {
-    "mtime": 1784358260.161485,
-    "ast_hash": "d9a8cc1d36510b975a2bbbe30a8ff10a",
+    "mtime": 1787126350.915264,
+    "ast_hash": "607fef829c2eea583925ba53ea9f271c",
     "semantic_hash": ""
   },
   "app/Services/Validation/FinancialTransactionBalanceGuard.php": {
-    "mtime": 1785221253.7013028,
-    "ast_hash": "e376e33f1d40647c77b4e519c7bb061a",
+    "mtime": 1787126283.2303762,
+    "ast_hash": "22688fad27aa88d10bd0c1673881bbe9",
     "semantic_hash": ""
   },
   "app/Support/Backup/BackupAuthorization.php": {
@@ -2380,8 +2380,8 @@
     "semantic_hash": ""
   },
   "app/Support/Permissions/PermissionRegistry.php": {
-    "mtime": 1784804192.862108,
-    "ast_hash": "21c03cea98d35d6db8ebc506db0b65e7",
+    "mtime": 1786878957.5770366,
+    "ast_hash": "e5c5d3afdf250d0b92008ef4497ab278",
     "semantic_hash": ""
   },
   "app/Support/Restore/RestorePhaseLabels.php": {
@@ -3285,8 +3285,8 @@
     "semantic_hash": ""
   },
   "tests/Feature/Audit/Crud/AuditCrudInfrastructureTest.php": {
-    "mtime": 1785314545.315323,
-    "ast_hash": "7f098e6d69dc18431a08e6d51db520ae",
+    "mtime": 1786952909.1117103,
+    "ast_hash": "36ddfca485fc73ec6a9a3743e64d9945",
     "semantic_hash": ""
   },
   "tests/Feature/Audit/Crud/AuditedCrudAtomicityTest.php": {
@@ -3385,8 +3385,8 @@
     "semantic_hash": ""
   },
   "tests/Feature/Commands/BackfillTransactionDescriptionsCommandTest.php": {
-    "mtime": 1785314960.3898447,
-    "ast_hash": "fd00d9491772e4990fbe0693cb343249",
+    "mtime": 1787127566.1416912,
+    "ast_hash": "aad8aa2faf6af21af4dcabe3bcbd723b",
     "semantic_hash": ""
   },
   "tests/Feature/Commands/CheckFinancialIntegrityCommandTest.php": {
@@ -3410,8 +3410,8 @@
     "semantic_hash": ""
   },
   "tests/Feature/Crud/CrudRedirectStandardStructureTest.php": {
-    "mtime": 1784716860.375392,
-    "ast_hash": "45a644bd6ad1e92ee6f9bb7b1244ce99",
+    "mtime": 1786878836.9798207,
+    "ast_hash": "e6052cf409b1d3be2cacee8925f3c07e",
     "semantic_hash": ""
   },
   "tests/Feature/Crud/CrudRedirectStandardTest.php": {
@@ -3470,8 +3470,8 @@
     "semantic_hash": ""
   },
   "tests/Feature/Integrity/JournalBalanceIntegrityCheckerTest.php": {
-    "mtime": 1785221253.7125359,
-    "ast_hash": "d3152fb4240394ef39d90dfd81a97a12",
+    "mtime": 1787127473.3878605,
+    "ast_hash": "4d2e0dd97f97a09edf2822cb1f4e3227",
     "semantic_hash": ""
   },
   "tests/Feature/Integrity/TransactionNumberIntegrityCheckerTest.php": {
@@ -4040,8 +4040,8 @@
     "semantic_hash": ""
   },
   "tests/Unit/Services/Validation/FinancialTransactionBalanceGuardTest.php": {
-    "mtime": 1785221253.7145414,
-    "ast_hash": "40f2c56dd056bdeeab1389c2be52606d",
+    "mtime": 1787127409.275678,
+    "ast_hash": "97f3d7b9fffe745ab759b032733ecbcf",
     "semantic_hash": ""
   },
   "tests/Unit/Support/Backup/BackupLabelsTest.php": {
@@ -4060,8 +4060,8 @@
     "semantic_hash": ""
   },
   "OMS_Master_Reference.md": {
-    "mtime": 1785413453.4350019,
-    "ast_hash": "14dc9ef7866df94ca46db5fb909e3acd",
+    "mtime": 1787128455.64626,
+    "ast_hash": "3ca1be0813640f403ae3b174034bdcc2",
     "semantic_hash": ""
   },
   "README.md": {
@@ -4070,23 +4070,23 @@
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1785587192.1310053,
-    "ast_hash": "9d376427a3b49381d45c9960ff2e1d7e",
+    "mtime": 1787128608.3262877,
+    "ast_hash": "639b70556176e2f9e9b82b86bb89e244",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
-    "mtime": 1785413561.0696657,
-    "ast_hash": "8db5dcc8a3db05bea27db65264b43364",
+    "mtime": 1787128608.3299956,
+    "ast_hash": "5eb709c3efe635d0e6d6d2bf8b5d16b9",
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1785587220.1545663,
-    "ast_hash": "a826143e09e8c2eefb29d3061dd8acb4",
+    "mtime": 1787128666.1235366,
+    "ast_hash": "6c2f2917fc896f3594f21145462a21e2",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
-    "mtime": 1785413577.914367,
-    "ast_hash": "6bb0040a353f59b7166c766b74404913",
+    "mtime": 1787128666.1132782,
+    "ast_hash": "5052ecbd719db942d9c8455ac286e7e5",
     "semantic_hash": ""
   },
   "docs/RESTORE_RECOVERY.md": {
@@ -4095,8 +4095,8 @@
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1785587210.701481,
-    "ast_hash": "f1accfe0b03abb2977b82ab39eb78518",
+    "mtime": 1787128608.328335,
+    "ast_hash": "5dac26a7447d9af34aa5c29c7954e662",
     "semantic_hash": ""
   },
   "public/robots.txt": {
@@ -4280,8 +4280,8 @@
     "semantic_hash": ""
   },
   "app/Services/Audit/Reports/ReportExportSubject.php": {
-    "mtime": 1785321787.149824,
-    "ast_hash": "6a3d8708c27c624274d2c4e9ff26da15",
+    "mtime": 1787038095.26636,
+    "ast_hash": "1a3b7cabc30ca4be8a25cce6e27fc42e",
     "semantic_hash": ""
   },
   "tests/Feature/Audit/Attachments/AttachmentAccessAuditTest.php": {
@@ -4365,8 +4365,8 @@
     "semantic_hash": ""
   },
   "app/Support/Audit/AuditLabels.php": {
-    "mtime": 1785406649.859075,
-    "ast_hash": "d6de1c246412b06a6991cb8b0a84afbe",
+    "mtime": 1787038066.3457048,
+    "ast_hash": "e19614ff13573d9028a708307650b10d",
     "semantic_hash": ""
   },
   "app/Support/Audit/AuditPayloadPresenter.php": {
@@ -4432,6 +4432,236 @@
   "tests/Feature/Routing/RootRedirectTest.php": {
     "mtime": 1785587132.0941482,
     "ast_hash": "1cb308620538bcfe86b7815c724c1153",
+    "semantic_hash": ""
+  },
+  "app/Filament/Concerns/ReportsFinancialValidationFailures.php": {
+    "mtime": 1787126304.9477017,
+    "ast_hash": "8820f855741fbe438f1bc8a1110834e1",
+    "semantic_hash": ""
+  },
+  "app/Filament/Resources/MuwakhaFamilies/MuwakhaFamilyResource.php": {
+    "mtime": 1787038179.9864848,
+    "ast_hash": "d3caa3e09b79ba7a378fe29bc5a55855",
+    "semantic_hash": ""
+  },
+  "app/Filament/Resources/MuwakhaFamilies/Pages/CreateMuwakhaFamily.php": {
+    "mtime": 1786877667.3436055,
+    "ast_hash": "0b8d182695df6f2f30e236408a99bdd9",
+    "semantic_hash": ""
+  },
+  "app/Filament/Resources/MuwakhaFamilies/Pages/EditMuwakhaFamily.php": {
+    "mtime": 1786952779.2005632,
+    "ast_hash": "02cd24ea47de840ebb549464041d8f3f",
+    "semantic_hash": ""
+  },
+  "app/Filament/Resources/MuwakhaFamilies/Pages/ListMuwakhaFamilies.php": {
+    "mtime": 1786947888.6423872,
+    "ast_hash": "4866221b178aa15716c5b4dbe6b000f6",
+    "semantic_hash": ""
+  },
+  "app/Filament/Resources/MuwakhaFamilies/Pages/MuwakhaFamilyAccountStatement.php": {
+    "mtime": 1787041493.3245986,
+    "ast_hash": "c0edd68c840a868a65902478e31b7c19",
+    "semantic_hash": ""
+  },
+  "app/Filament/Resources/MuwakhaFamilies/Pages/ViewMuwakhaFamily.php": {
+    "mtime": 1787038192.5653775,
+    "ast_hash": "a6b4d753049b1a6e6cefa04673ceaaa4",
+    "semantic_hash": ""
+  },
+  "app/Filament/Resources/MuwakhaFamilies/RelationManagers/ProjectsRelationManager.php": {
+    "mtime": 1786877633.466129,
+    "ast_hash": "b00e8811f1e3d8469281d623e79dd299",
+    "semantic_hash": ""
+  },
+  "app/Filament/Resources/MuwakhaFamilies/Schemas/MuwakhaFamilyForm.php": {
+    "mtime": 1786964602.6732848,
+    "ast_hash": "90d8785a392a63a4bfa291a7dcdc7051",
+    "semantic_hash": ""
+  },
+  "app/Filament/Resources/MuwakhaFamilies/Schemas/MuwakhaFamilyInfolist.php": {
+    "mtime": 1786967527.7294953,
+    "ast_hash": "034e7ff588021b5c977c121867bafd4b",
+    "semantic_hash": ""
+  },
+  "app/Filament/Resources/MuwakhaFamilies/Tables/MuwakhaFamiliesTable.php": {
+    "mtime": 1786947858.9743602,
+    "ast_hash": "9df203f0d056b5a93e25aa63dc6d8912",
+    "semantic_hash": ""
+  },
+  "app/Models/MuwakhaFamily.php": {
+    "mtime": 1786961940.0455444,
+    "ast_hash": "f6f5149734f2c4e7b044f8a41605eeff",
+    "semantic_hash": ""
+  },
+  "app/Models/MuwakhaFamilyAccount.php": {
+    "mtime": 1786952613.0394514,
+    "ast_hash": "44c2cf9c04bffdd22ba3e358d01fd512",
+    "semantic_hash": ""
+  },
+  "app/Models/MuwakhaFamilyProject.php": {
+    "mtime": 1786876933.2816265,
+    "ast_hash": "e856f97737998dbd1aa1405714111421",
+    "semantic_hash": ""
+  },
+  "app/Policies/MuwakhaFamilyPolicy.php": {
+    "mtime": 1786877524.1526248,
+    "ast_hash": "1f92b74e1d613b417b909b25f649e1f8",
+    "semantic_hash": ""
+  },
+  "app/Services/Muwakha/MuwakhaFamiliesExcelExportService.php": {
+    "mtime": 1786947880.261986,
+    "ast_hash": "808e4410d8b143f02c86dad52cbaf54d",
+    "semantic_hash": ""
+  },
+  "app/Services/Muwakha/MuwakhaFamiliesWordExportService.php": {
+    "mtime": 1786947883.9400816,
+    "ast_hash": "516d8b1043ed78e8e88a2787fae70e8d",
+    "semantic_hash": ""
+  },
+  "app/Services/Muwakha/MuwakhaFamilyAccountStatementExcelExportService.php": {
+    "mtime": 1787038264.3368647,
+    "ast_hash": "91144c1f7c7ff1df624da404dfb663e9",
+    "semantic_hash": ""
+  },
+  "app/Services/Muwakha/MuwakhaFamilyAccountStatementService.php": {
+    "mtime": 1787041464.2662878,
+    "ast_hash": "c13c826f18814ee9513010b5f2366b1d",
+    "semantic_hash": ""
+  },
+  "app/Services/Muwakha/MuwakhaFamilyAccountStatementWordExportService.php": {
+    "mtime": 1787038311.9814487,
+    "ast_hash": "0c9d1ce3bb29c5f1cc9c89c36a34f102",
+    "semantic_hash": ""
+  },
+  "app/Services/Muwakha/MuwakhaFamilyExportRow.php": {
+    "mtime": 1786947875.643994,
+    "ast_hash": "700c798b35027c30eb499644fb45b7b7",
+    "semantic_hash": ""
+  },
+  "app/Services/Muwakha/MuwakhaFamilyProjectService.php": {
+    "mtime": 1786877329.5665188,
+    "ast_hash": "99f041cb1c6c2884216185863260ce2a",
+    "semantic_hash": ""
+  },
+  "app/Services/Muwakha/MuwakhaFamilyService.php": {
+    "mtime": 1786964650.5057878,
+    "ast_hash": "bc686ff71fb00b6a4e148aad5f6f13c5",
+    "semantic_hash": ""
+  },
+  "app/Support/Muwakha/MuwakhaAccountIdentity.php": {
+    "mtime": 1786952644.0672255,
+    "ast_hash": "f5aae8f2e4b8081d9f9a645a840b3dae",
+    "semantic_hash": ""
+  },
+  "app/Support/Muwakha/MuwakhaReference.php": {
+    "mtime": 1786947749.4606714,
+    "ast_hash": "bf576d4b1cc479c825006f84d2ef1f71",
+    "semantic_hash": ""
+  },
+  "app/Support/Muwakha/MuwakhaReferenceException.php": {
+    "mtime": 1786947763.7883334,
+    "ast_hash": "31de46e5b1451e38a84f47d08d3663d0",
+    "semantic_hash": ""
+  },
+  "app/Support/Muwakha/MuwakhaStatementScopeException.php": {
+    "mtime": 1787037841.4702425,
+    "ast_hash": "da6276ddc0cdfd7f41e2669a3ececff6",
+    "semantic_hash": ""
+  },
+  "database/migrations/2026_08_16_100000_drop_unique_from_accounts_account_code.php": {
+    "mtime": 1786876843.1093884,
+    "ast_hash": "fea777ac82ac591d7e84bd1192c2e0b1",
+    "semantic_hash": ""
+  },
+  "database/migrations/2026_08_16_100001_create_muwakha_families_table.php": {
+    "mtime": 1786947946.6401527,
+    "ast_hash": "ca7a6fd4ba2c3db06129627cad83861b",
+    "semantic_hash": ""
+  },
+  "database/migrations/2026_08_16_100002_create_muwakha_family_projects_table.php": {
+    "mtime": 1786876876.7932265,
+    "ast_hash": "4dca1dd8eaa6dadc7ccc16c9bf42e76a",
+    "semantic_hash": ""
+  },
+  "database/migrations/2026_08_16_100003_seed_muwakha_reference_data.php": {
+    "mtime": 1786876907.1396399,
+    "ast_hash": "20be311d8a61f052d9b78989ba4108a4",
+    "semantic_hash": ""
+  },
+  "database/migrations/2026_08_17_100000_create_muwakha_family_accounts_table.php": {
+    "mtime": 1786952581.006214,
+    "ast_hash": "e1d43f07ef8a2919abbae0b6229551a2",
+    "semantic_hash": ""
+  },
+  "database/migrations/2026_08_17_100001_backfill_muwakha_family_accounts.php": {
+    "mtime": 1786952601.6125176,
+    "ast_hash": "cd237fb697057c40e2cc859c6cd7ebff",
+    "semantic_hash": ""
+  },
+  "resources/views/filament/resources/muwakha-families/pages/muwakha-family-account-statement.blade.php": {
+    "mtime": 1787038375.2927315,
+    "ast_hash": "54507a18a1a5b9e41f06310f2ef398d9",
+    "semantic_hash": ""
+  },
+  "tests/Feature/GeneralExchanges/ZeroPercentageDeductionTest.php": {
+    "mtime": 1787127341.3381064,
+    "ast_hash": "240d3c60397cadba08e91050b0c6c776",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Muwakha/MuwakhaFamilyAccountIdentityTest.php": {
+    "mtime": 1786953242.3615875,
+    "ast_hash": "c44824433f5a62e3e6fa2a9ac95c3176",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Muwakha/MuwakhaFamilyAccountStatementTest.php": {
+    "mtime": 1787040166.328573,
+    "ast_hash": "855547f3712b06d1a312c04cc0adc888",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Muwakha/MuwakhaFamilyCreateProjectLinksTest.php": {
+    "mtime": 1786965532.6750088,
+    "ast_hash": "7e703562aaaa34dc64ca9b667fb3a1b4",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Muwakha/MuwakhaFamilyCurrencyTest.php": {
+    "mtime": 1786953622.0019763,
+    "ast_hash": "9fa876eecbabd98a75b9df0c5b89686f",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Muwakha/MuwakhaFamilyLinkedAccountsTest.php": {
+    "mtime": 1786967363.6366506,
+    "ast_hash": "deab7ac6d43f6304f68f5d7baed085bb",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Muwakha/MuwakhaFamilyResourceTest.php": {
+    "mtime": 1787044089.260553,
+    "ast_hash": "8d0dc0094e219590f819b76f258c7f8a",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Muwakha/MuwakhaFamilyServiceTest.php": {
+    "mtime": 1786952838.7291298,
+    "ast_hash": "ef47b7b7c321bf603105499f5679af26",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Muwakha/MuwakhaSchemaTest.php": {
+    "mtime": 1786877199.8895695,
+    "ast_hash": "13fe13176b47a07451af7532205542e1",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Muwakha/MuwakhaTestCase.php": {
+    "mtime": 1786947966.5229092,
+    "ast_hash": "c88a3b39d412a24e36c69eb7012387e6",
+    "semantic_hash": ""
+  },
+  "tests/Feature/ProjectCostBudgetsPayments/ZeroPercentageDeductionFormTest.php": {
+    "mtime": 1787127775.4239597,
+    "ast_hash": "4ac4ee2c44dfa6d31bcf6ab88c8a6ab6",
+    "semantic_hash": ""
+  },
+  "tests/Feature/ProjectCostBudgetsPayments/ZeroPercentageDeductionTest.php": {
+    "mtime": 1787127232.0250914,
+    "ast_hash": "c040a72e42656fffe3db570ebe575686",
     "semantic_hash": ""
   }
 }

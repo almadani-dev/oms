@@ -8,6 +8,9 @@ use App\Models\BankType;
 use App\Models\Currency;
 use App\Models\ExchangeRateHistory;
 use App\Models\FiscalYear;
+use App\Models\MuwakhaFamily;
+use App\Models\MuwakhaFamilyAccount;
+use App\Models\MuwakhaFamilyProject;
 use App\Models\Partner;
 use App\Models\PartnerType;
 use App\Models\Project;
@@ -17,6 +20,7 @@ use App\Models\ProjectSuper;
 use App\Models\Setting;
 use App\Models\TransactionSuperType;
 use App\Models\TransactionType;
+use App\Services\Audit\AuditRedactor;
 use App\Services\Audit\Financial\FinancialAuditValue;
 use App\Services\Audit\Exceptions\AuditSubjectNotRegisteredException;
 use Illuminate\Database\Eloquent\Model;
@@ -79,6 +83,17 @@ final class AuditSubjectRegistry
         'updated_by',
         'remember_token',
         'is_dirty',
+    ];
+
+    /**
+     * Muwakha family columns whose VALUES must never reach an audit payload.
+     * Real personal identifiers, redacted by the `muwakha_family` subject's
+     * value policy while `changed_fields` still records that they changed.
+     */
+    public const MUWAKHA_PRIVATE_FIELDS = [
+        'martyr_national_id',
+        'guardian_national_id',
+        'guardian_phone',
     ];
 
     /** @var array<class-string<Model>, AuditSubjectDefinition>|null */
@@ -337,6 +352,116 @@ final class AuditSubjectRegistry
                     ? FinancialAuditValue::rate($value)
                     : $value,
             ),
+
+            // ---- OMS Muwakha Families (مشروع المؤاخاة) ---------------------
+            //
+            // Ordinary master data whose lifecycle is a single save, so both
+            // use this architecture (event_category `crud`) and inherit its
+            // REQUIRED atomicity. Creating a family also creates its Account,
+            // which produces its own separate `account` event — two events for
+            // one submission, describing two genuinely different subjects.
+            // That is deliberate and is NOT the financial "one action = one
+            // event" rule, which governs a single ledger operation.
+            //
+            // PRIVACY: `martyr_national_id`, `guardian_national_id` and
+            // `guardian_phone` are real personal identifiers and their VALUES
+            // are never stored in an audit payload. They are replaced with
+            // AuditRedactor::MARKER by the subject value policy below.
+            //
+            // Change tracking is fully preserved: `changed_fields` is derived
+            // from the model's own getDirty() BEFORE any value policy runs
+            // (AuditModelSnapshotter::pendingDiff), so the trail still records
+            // exactly WHICH of these fields changed and when — only the before
+            // and after values are withheld. The live `muwakha_families` row
+            // remains the authoritative source for the actual identifiers.
+            //
+            // Done as a subject value policy rather than by adding
+            // `national_id`/`phone` to AuditRedactor's global denylist,
+            // following the precedent set by SettingValuePolicy and by the
+            // `setting_name`/`parent_id` aliases: solve it inside the subject
+            // rather than broadening a global rule that every other subject
+            // also has to live with.
+
+            new AuditSubjectDefinition(
+                modelClass: MuwakhaFamily::class,
+                alias: 'muwakha_family',
+                auditedFields: [
+                    'martyr_name',
+                    'martyr_national_id',
+                    'martyr_date_of_birth',
+                    'martyrdom_date',
+                    'children_count',
+                    'guardian_name',
+                    'guardian_national_id',
+                    'guardian_date_of_birth',
+                    'guardian_phone',
+                    'account_holder_name',
+                    'account_id',
+                    'notes',
+                ],
+                // The subject label deliberately carries the martyr NAME only.
+                // Including the national id would have written the very
+                // identifier the value policy below withholds into
+                // `subject_label`, which is displayed in the audit list.
+                labelResolver: static fn (MuwakhaFamily $family): ?string => self::joinParts([
+                    'أسرة الشهيد',
+                    $family->martyr_name,
+                ]),
+                relationLabels: [
+                    'account_id' => static fn (mixed $id): ?string => self::accountLabel($id),
+                ],
+                valuePolicy: static fn (string $field, mixed $value, array $row): mixed => in_array(
+                    $field,
+                    self::MUWAKHA_PRIVATE_FIELDS,
+                    true,
+                ) && $value !== null
+                    ? AuditRedactor::MARKER
+                    : $value,
+            ),
+
+            new AuditSubjectDefinition(
+                modelClass: MuwakhaFamilyProject::class,
+                alias: 'muwakha_family_project',
+                auditedFields: [
+                    'muwakha_family_id',
+                    'project_id',
+                    'card_code',
+                ],
+                labelResolver: static fn (MuwakhaFamilyProject $link): ?string => self::joinParts([
+                    self::muwakhaFamilyLabel($link->muwakha_family_id),
+                    self::projectLabel($link->project_id),
+                    $link->card_code,
+                ]),
+                relationLabels: [
+                    'muwakha_family_id' => static fn (mixed $id): ?string => self::muwakhaFamilyLabel($id),
+                    'project_id' => static fn (mixed $id): ?string => self::projectLabel($id),
+                ],
+            ),
+
+            // Durable family <-> Account ownership. Registered so a new
+            // mapping is audited like any other domain row; it is never
+            // updated or deleted by the application, so in practice only
+            // `created` events appear. `account_holder_name` is ordinary
+            // business data, not a personal identifier of the redacted kind
+            // (it is displayed in the families table and both exports), so no
+            // value policy applies here.
+            new AuditSubjectDefinition(
+                modelClass: MuwakhaFamilyAccount::class,
+                alias: 'muwakha_family_account',
+                auditedFields: [
+                    'muwakha_family_id',
+                    'account_id',
+                    'account_holder_name',
+                ],
+                labelResolver: static fn (MuwakhaFamilyAccount $mapping): ?string => self::joinParts([
+                    self::muwakhaFamilyLabel($mapping->muwakha_family_id),
+                    self::accountLabel($mapping->account_id),
+                ]),
+                relationLabels: [
+                    'muwakha_family_id' => static fn (mixed $id): ?string => self::muwakhaFamilyLabel($id),
+                    'account_id' => static fn (mixed $id): ?string => self::accountLabel($id),
+                ],
+            ),
         ];
 
         $indexed = [];
@@ -368,6 +493,47 @@ final class AuditSubjectRegistry
             ->find($projectId);
 
         return $project === null ? null : self::joinCodeAndName($project->code, $project->name);
+    }
+
+    /**
+     * A bounded "code — name" label for one account id, resolved withTrashed()
+     * so a family's account still reads legibly in a deletion snapshot. Reads
+     * only the three columns the label needs.
+     */
+    private static function accountLabel(mixed $accountId): ?string
+    {
+        if ($accountId === null) {
+            return null;
+        }
+
+        $account = Account::withTrashed()
+            ->select(['id', 'account_code', 'name'])
+            ->find($accountId);
+
+        return $account === null ? null : self::joinParts([$account->account_code, $account->name]);
+    }
+
+    /**
+     * A bounded label for one Muwakha family id. withTrashed() because a link
+     * removal is frequently audited while the owning family is already
+     * soft-deleted.
+     */
+    private static function muwakhaFamilyLabel(mixed $familyId): ?string
+    {
+        if ($familyId === null) {
+            return null;
+        }
+
+        $family = MuwakhaFamily::withTrashed()
+            ->select(['id', 'martyr_name'])
+            ->find($familyId);
+
+        // Name only — never the national id. A label is displayed text, and
+        // this one must not reintroduce the identifier the `muwakha_family`
+        // value policy withholds.
+        return $family === null
+            ? null
+            : self::joinParts(['أسرة الشهيد', $family->martyr_name]);
     }
 
     private static function settingReference(Setting $setting): ?string

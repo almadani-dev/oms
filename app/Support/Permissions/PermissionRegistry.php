@@ -40,6 +40,17 @@ final class PermissionRegistry
     private const OPERATIONS_ROLES = ['view_any', 'view', 'create', 'update', 'delete'];
 
     /**
+     * CRUD plus a table export, and deliberately NO `restore`.
+     *
+     * `restore` is omitted even though the model uses SoftDeletes: the Muwakha
+     * Families feature ships no Restore UI and no Force Delete UI by approved
+     * design, so registering a restore permission would advertise an ability
+     * nothing can exercise. This is a conscious break from
+     * OPERATIONS_SOFT_DELETE's rule, not an oversight.
+     */
+    private const OPERATIONS_CRUD_WITH_EXPORT = ['view_any', 'view', 'create', 'update', 'delete', 'export'];
+
+    /**
      * Full CRUD resources whose model uses SoftDeletes (confirmed inventory:
      * 19 resources + `users`). `restore` is included; `force_delete` is
      * deliberately excluded from every ordinary role's permission set —
@@ -75,6 +86,20 @@ final class PermissionRegistry
     private const MODULES_NO_SOFT_DELETE = [
         'exchange_rate_histories' => 'تاريخ أسعار الصرف',
         'settings' => 'الإعدادات العامة',
+    ];
+
+    /**
+     * Resources exposing CRUD + export. The export permission is filed on the
+     * resource module (`muwakha_families.export`) rather than under
+     * `reports.*`, because this is a resource-table export, not one of the six
+     * financial report pages — filing it under التقارير would put a project
+     * resource's data in the reports permission group where an administrator
+     * would not think to look for it.
+     *
+     * @var array<string,string>
+     */
+    private const MODULES_CRUD_WITH_EXPORT = [
+        'muwakha_families' => 'أسر المؤاخاة',
     ];
 
     /**
@@ -195,6 +220,13 @@ final class PermissionRegistry
             ];
         }
 
+        foreach (self::MODULES_CRUD_WITH_EXPORT as $module => $label) {
+            $groups[$module] = [
+                'label' => $label,
+                'permissions' => self::operationPermissions($module, $label, self::OPERATIONS_CRUD_WITH_EXPORT),
+            ];
+        }
+
         foreach (self::MODULES_READ_ONLY as $module => $label) {
             $groups[$module] = [
                 'label' => $label,
@@ -265,6 +297,7 @@ final class PermissionRegistry
             'update' => "تعديل {$moduleLabel}",
             'delete' => "حذف {$moduleLabel}",
             'restore' => "استرجاع {$moduleLabel}",
+            'export' => "تصدير {$moduleLabel}",
             default => "{$operation} {$moduleLabel}",
         };
     }
@@ -345,6 +378,12 @@ final class PermissionRegistry
      * Project report exports are not granted by default — nothing in the
      * confirmed inventory clearly requires it for this role yet.
      *
+     * Muwakha families ARE granted in full, export included: the register is
+     * operationally owned by project management, lives under the المشاريع
+     * navigation group, and is administered entirely from its own resource.
+     * This is the one place a role receives an `export` permission on a
+     * resource rather than on a report page.
+     *
      * @return list<string>
      */
     private static function projectManagerDefaults(): array
@@ -353,6 +392,12 @@ final class PermissionRegistry
 
         foreach (['projects', 'project_costs', 'project_supers'] as $module) {
             foreach (self::OPERATIONS_SOFT_DELETE as $operation) {
+                $permissions[] = "{$module}.{$operation}";
+            }
+        }
+
+        foreach (array_keys(self::MODULES_CRUD_WITH_EXPORT) as $module) {
+            foreach (self::OPERATIONS_CRUD_WITH_EXPORT as $operation) {
                 $permissions[] = "{$module}.{$operation}";
             }
         }
@@ -384,6 +429,16 @@ final class PermissionRegistry
         }
 
         foreach (self::MODULES_NO_SOFT_DELETE as $module => $label) {
+            $permissions[] = "{$module}.view_any";
+            $permissions[] = "{$module}.view";
+        }
+
+        // View-only, matching this role's stated intent ("across every
+        // operational module except users"). The `export` permission is
+        // deliberately NOT granted — a Viewer may read the families list on
+        // screen without being able to extract the whole beneficiary register,
+        // including national ids and phone numbers, into a file.
+        foreach (self::MODULES_CRUD_WITH_EXPORT as $module => $label) {
             $permissions[] = "{$module}.view_any";
             $permissions[] = "{$module}.view";
         }

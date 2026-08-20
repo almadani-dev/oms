@@ -443,6 +443,130 @@ class FinancialTransactionBalanceGuardTest extends TestCase
         ];
     }
 
+    /* =====================================================================
+     | Multi-currency — OPTIONAL deduction lines (2/3/4-line shapes)
+     |
+     | A 0% administrative or transfer percentage produces no line at all,
+     | because a debit_base = credit_base = 0 row is meaningless accounting
+     | that assertValidLinePayload() rejects. A null line here therefore means
+     | "this deduction does not exist" and contributes 0 to
+     | amount_after_deductions. It is never a way to smuggle a malformed line
+     | past the guard.
+     ===================================================================== */
+
+    public function test_multi_currency_three_line_payload_without_administrative_deduction_is_accepted(): void
+    {
+        // 1000 - 0 - 20 = 980 * 3.75 = 3675.00
+        FinancialTransactionBalanceGuard::assertBalancedMultiCurrencyLines(
+            $this->multiLine(credit: 1000.00, role: 'source', currencyId: 1),
+            null,
+            $this->multiLine(debit: 20.00, role: 'transfer_fee', currencyId: 1),
+            $this->multiLine(debit: 3675.00, role: 'destination', currencyId: 2, fxRate: 3.75),
+            1,
+            2,
+        );
+
+        $this->expectNotToPerformAssertions();
+    }
+
+    public function test_multi_currency_three_line_payload_without_transfer_fee_is_accepted(): void
+    {
+        // 1000 - 50 - 0 = 950 * 3.75 = 3562.50
+        FinancialTransactionBalanceGuard::assertBalancedMultiCurrencyLines(
+            $this->multiLine(credit: 1000.00, role: 'source', currencyId: 1),
+            $this->multiLine(debit: 50.00, role: 'administrative_deduction', currencyId: 1),
+            null,
+            $this->multiLine(debit: 3562.50, role: 'destination', currencyId: 2, fxRate: 3.75),
+            1,
+            2,
+        );
+
+        $this->expectNotToPerformAssertions();
+    }
+
+    public function test_multi_currency_two_line_payload_without_either_deduction_is_accepted(): void
+    {
+        // 1000 - 0 - 0 = 1000 * 3.75 = 3750.00
+        FinancialTransactionBalanceGuard::assertBalancedMultiCurrencyLines(
+            $this->multiLine(credit: 1000.00, role: 'source', currencyId: 1),
+            null,
+            null,
+            $this->multiLine(debit: 3750.00, role: 'destination', currencyId: 2, fxRate: 3.75),
+            1,
+            2,
+        );
+
+        $this->expectNotToPerformAssertions();
+    }
+
+    public function test_a_three_line_payload_whose_destination_ignores_the_missing_deduction_is_rejected(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        // The admin deduction is absent, so the net is 980 — but the
+        // destination was still computed as if 50 had been deducted (930 *
+        // 3.75). Dropping a line must never quietly loosen the FX equation.
+        FinancialTransactionBalanceGuard::assertBalancedMultiCurrencyLines(
+            $this->multiLine(credit: 1000.00, role: 'source', currencyId: 1),
+            null,
+            $this->multiLine(debit: 20.00, role: 'transfer_fee', currencyId: 1),
+            $this->multiLine(debit: 3487.50, role: 'destination', currencyId: 2, fxRate: 3.75),
+            1,
+            2,
+        );
+    }
+
+    public function test_a_two_line_payload_with_a_wrong_destination_amount_is_rejected(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        FinancialTransactionBalanceGuard::assertBalancedMultiCurrencyLines(
+            $this->multiLine(credit: 1000.00, role: 'source', currencyId: 1),
+            null,
+            null,
+            $this->multiLine(debit: 3750.01, role: 'destination', currencyId: 2, fxRate: 3.75),
+            1,
+            2,
+        );
+    }
+
+    public function test_a_two_line_payload_still_rejects_a_wrong_destination_currency(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        FinancialTransactionBalanceGuard::assertBalancedMultiCurrencyLines(
+            $this->multiLine(credit: 1000.00, role: 'source', currencyId: 1),
+            null,
+            null,
+            $this->multiLine(debit: 3750.00, role: 'destination', currencyId: 3, fxRate: 3.75),
+            1,
+            2,
+        );
+    }
+
+    public function test_a_present_but_zero_valued_deduction_line_is_still_rejected(): void
+    {
+        // The whole point of omitting the line: passing it as a zero-valued
+        // line instead must remain invalid, in assertValidLinePayload().
+        $this->expectException(ValidationException::class);
+
+        FinancialTransactionBalanceGuard::assertValidLinePayload([
+            $this->multiLine(credit: 1000.00, role: 'source', currencyId: 1),
+            $this->multiLine(debit: 0, role: 'administrative_deduction', currencyId: 1),
+            $this->multiLine(debit: 3750.00, role: 'destination', currencyId: 2, fxRate: 3.75),
+        ]);
+    }
+
+    public function test_a_two_line_payload_is_accepted_by_the_structural_line_check(): void
+    {
+        FinancialTransactionBalanceGuard::assertValidLinePayload([
+            $this->multiLine(credit: 1000.00, role: 'source', currencyId: 1),
+            $this->multiLine(debit: 3750.00, role: 'destination', currencyId: 2, fxRate: 3.75),
+        ]);
+
+        $this->expectNotToPerformAssertions();
+    }
+
     /** A single multi-currency line with an explicit currency/fx_rate. */
     private function multiLine(string $role, int $currencyId, float $debit = 0, float $credit = 0, float $fxRate = 1): array
     {

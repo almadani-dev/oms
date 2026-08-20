@@ -21,6 +21,7 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Actions;
+use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
@@ -123,6 +124,11 @@ class ProjectCostBudgetsPaymentForm
                     ->afterStateUpdated(fn (Set $set) => self::clearAmounts($set))
                     ->columnSpanFull(),
 
+                // 0 is a valid, fully supported value: it means "no
+                // administrative deduction", which writes no line and needs no
+                // account. Dropping to 0 clears this deduction's account
+                // cascade and disables its card; raising it above 0 re-enables
+                // an EMPTY card - no previous selection is ever restored.
                 TextInput::make('administrative_percentage')
                     ->label('النسبة الإدارية %')
                     ->numeric()
@@ -130,7 +136,7 @@ class ProjectCostBudgetsPaymentForm
                     ->minValue(0)
                     ->maxValue(100)
                     ->live(onBlur: true)
-                    ->afterStateUpdated(fn (Set $set) => self::clearAmounts($set)),
+                    ->afterStateUpdated(fn (Set $set, $state) => self::onDeductionPercentageUpdated($set, 'admin', $state)),
 
                 TextInput::make('transfer_percentage')
                     ->label('نسبة التحويل %')
@@ -139,7 +145,7 @@ class ProjectCostBudgetsPaymentForm
                     ->minValue(0)
                     ->maxValue(100)
                     ->live(onBlur: true)
-                    ->afterStateUpdated(fn (Set $set) => self::clearAmounts($set)),
+                    ->afterStateUpdated(fn (Set $set, $state) => self::onDeductionPercentageUpdated($set, 'transfer', $state)),
 
                 Select::make('disbursement_currency_id')
                     ->label('عملة الصرف')
@@ -168,7 +174,7 @@ class ProjectCostBudgetsPaymentForm
                         ->label('احسب')
                         ->button()
                         ->action(fn (Get $get, Set $set) => self::calculate($get, $set)),
-                ])->columnSpanFull(),
+                ])->key('deduction_calculator')->columnSpanFull(),
 
                 TextInput::make('administrative_amount')
                     ->label('مبلغ النسبة الإدارية')
@@ -194,158 +200,202 @@ class ProjectCostBudgetsPaymentForm
 
             /* =====================================================
              | SECTION 3 - الحسابات
+             |
+             | One card per accounting role, laid out 2x2 on desktop and
+             | stacking to a single column on narrow screens (Grid's own
+             | responsive behaviour - no custom CSS). RTL source order puts
+             | المصدر / النسبة الإدارية on the first row and التحويل / الوجهة
+             | on the second, matching the approved layout.
+             |
+             | The two deduction cards stay VISIBLE when their percentage is
+             | 0 and are disabled instead, so the role is always discoverable
+             | on screen even when it is not in use.
              ===================================================== */
-            Section::make('الحسابات')->columns(2)->schema([
+            Grid::make(['default' => 1, 'md' => 2])->schema([
 
-                // 3a) حساب المصدر (دائن) - عملة التكلفة
-                Select::make('source_account_type_id')
-                    ->label('نوع حساب المصدر (دائن)')
-                    ->options(fn () => AccountType::orderBy('name')->pluck('name', 'id'))
-                    ->required()
-                    ->live()
-                    ->afterStateUpdated(function (Set $set) {
-                        $set('source_bank_type_id', null);
-                        $set('source_account_id', null);
-                    }),
+                // 3a) حساب المصدر (دائن) - عملة التكلفة - always required
+                Section::make('حساب المصدر (دائن)')->columns(2)->schema([
 
-                Select::make('source_bank_type_id')
-                    ->label('نوع بنك المصدر')
-                    ->options(fn () => BankType::orderBy('name')->pluck('name', 'id'))
-                    ->required()
-                    ->live()
-                    ->disabled(fn (Get $get) => blank($get('source_account_type_id')))
-                    ->afterStateUpdated(fn (Set $set) => $set('source_account_id', null)),
+                    Select::make('source_account_type_id')
+                        ->label('نوع حساب المصدر (دائن)')
+                        ->options(fn () => AccountType::orderBy('name')->pluck('name', 'id'))
+                        ->required()
+                        ->live()
+                        ->afterStateUpdated(function (Set $set) {
+                            $set('source_bank_type_id', null);
+                            $set('source_account_id', null);
+                        }),
 
-                TextInput::make('source_currency')
-                    ->label('العملة')
-                    ->disabled()
-                    ->dehydrated(false),
+                    Select::make('source_bank_type_id')
+                        ->label('نوع بنك المصدر')
+                        ->options(fn () => BankType::orderBy('name')->pluck('name', 'id'))
+                        ->required()
+                        ->live()
+                        ->disabled(fn (Get $get) => blank($get('source_account_type_id')))
+                        ->afterStateUpdated(fn (Set $set) => $set('source_account_id', null)),
 
-                Select::make('source_account_id')
-                    ->label('حساب المصدر (دائن - يخرج منه المبلغ الأصلي)')
-                    ->options(fn (Get $get) => self::accountOptions(
-                        $get('source_account_type_id'),
-                        $get('source_bank_type_id'),
-                        self::costCurrencyId($get)
-                    ))
-                    ->required()
-                    ->searchable()
-                    ->disabled(fn (Get $get) => blank($get('source_bank_type_id')))
-                    ->helperText('حساب الجمعية بعملة التكلفة')
-                    ->columnSpanFull(),
+                    TextInput::make('source_currency')
+                        ->label('العملة')
+                        ->disabled()
+                        ->dehydrated(false),
 
-                // 3b) حساب النسبة الإدارية (مدين) - عملة التكلفة
-                Select::make('admin_account_type_id')
-                    ->label('نوع حساب النسبة الإدارية (مدين)')
-                    ->options(fn () => AccountType::orderBy('name')->pluck('name', 'id'))
-                    ->required()
-                    ->live()
-                    ->afterStateUpdated(function (Set $set) {
-                        $set('admin_bank_type_id', null);
-                        $set('admin_account_id', null);
-                    }),
+                    Select::make('source_account_id')
+                        ->label('حساب المصدر (دائن - يخرج منه المبلغ الأصلي)')
+                        ->options(fn (Get $get) => self::accountOptions(
+                            $get('source_account_type_id'),
+                            $get('source_bank_type_id'),
+                            self::costCurrencyId($get)
+                        ))
+                        ->required()
+                        ->searchable()
+                        ->disabled(fn (Get $get) => blank($get('source_bank_type_id')))
+                        ->helperText('حساب الجمعية بعملة التكلفة')
+                        ->columnSpanFull(),
 
-                Select::make('admin_bank_type_id')
-                    ->label('نوع بنك النسبة الإدارية')
-                    ->options(fn () => BankType::orderBy('name')->pluck('name', 'id'))
-                    ->required()
-                    ->live()
-                    ->disabled(fn (Get $get) => blank($get('admin_account_type_id')))
-                    ->afterStateUpdated(fn (Set $set) => $set('admin_account_id', null)),
+                ]),
 
-                TextInput::make('admin_currency')
-                    ->label('العملة')
-                    ->disabled()
-                    ->dehydrated(false),
+                // 3b) حساب النسبة الإدارية (مدين) - عملة التكلفة - only when النسبة الإدارية > 0
+                Section::make('حساب النسبة الإدارية (مدين)')
+                    ->columns(2)
+                    ->disabled(fn (Get $get) => ! self::isAdministrativeDeductionActive($get))
+                    ->description(fn (Get $get) => self::isAdministrativeDeductionActive($get)
+                        ? null
+                        : 'النسبة الإدارية 0% - لا يوجد خصم إداري ولن يُنشأ سطر قيد لهذا الحساب.')
+                    ->schema([
 
-                Select::make('admin_account_id')
-                    ->label('حساب النسبة الإدارية (مدين)')
-                    ->options(fn (Get $get) => self::accountOptions(
-                        $get('admin_account_type_id'),
-                        $get('admin_bank_type_id'),
-                        self::costCurrencyId($get)
-                    ))
-                    ->required()
-                    ->searchable()
-                    ->disabled(fn (Get $get) => blank($get('admin_bank_type_id')))
-                    ->helperText('يدخل فيه مبلغ النسبة الإدارية')
-                    ->columnSpanFull(),
+                        Select::make('admin_account_type_id')
+                            ->label('نوع حساب النسبة الإدارية (مدين)')
+                            ->options(fn () => AccountType::orderBy('name')->pluck('name', 'id'))
+                            ->required(fn (Get $get) => self::isAdministrativeDeductionActive($get))
+                            ->disabled(fn (Get $get) => ! self::isAdministrativeDeductionActive($get))
+                            ->live()
+                            ->afterStateUpdated(function (Set $set) {
+                                $set('admin_bank_type_id', null);
+                                $set('admin_account_id', null);
+                            }),
 
-                // 3c) حساب التحويل (مدين) - عملة التكلفة
-                Select::make('transfer_account_type_id')
-                    ->label('نوع حساب التحويل (مدين)')
-                    ->options(fn () => AccountType::orderBy('name')->pluck('name', 'id'))
-                    ->required()
-                    ->live()
-                    ->afterStateUpdated(function (Set $set) {
-                        $set('transfer_bank_type_id', null);
-                        $set('transfer_account_id', null);
-                    }),
+                        Select::make('admin_bank_type_id')
+                            ->label('نوع بنك النسبة الإدارية')
+                            ->options(fn () => BankType::orderBy('name')->pluck('name', 'id'))
+                            ->required(fn (Get $get) => self::isAdministrativeDeductionActive($get))
+                            ->live()
+                            ->disabled(fn (Get $get) => ! self::isAdministrativeDeductionActive($get)
+                                || blank($get('admin_account_type_id')))
+                            ->afterStateUpdated(fn (Set $set) => $set('admin_account_id', null)),
 
-                Select::make('transfer_bank_type_id')
-                    ->label('نوع بنك التحويل')
-                    ->options(fn () => BankType::orderBy('name')->pluck('name', 'id'))
-                    ->required()
-                    ->live()
-                    ->disabled(fn (Get $get) => blank($get('transfer_account_type_id')))
-                    ->afterStateUpdated(fn (Set $set) => $set('transfer_account_id', null)),
+                        TextInput::make('admin_currency')
+                            ->label('العملة')
+                            ->disabled()
+                            ->dehydrated(false),
 
-                TextInput::make('transfer_currency')
-                    ->label('العملة')
-                    ->disabled()
-                    ->dehydrated(false),
+                        Select::make('admin_account_id')
+                            ->label('حساب النسبة الإدارية (مدين)')
+                            ->options(fn (Get $get) => self::accountOptions(
+                                $get('admin_account_type_id'),
+                                $get('admin_bank_type_id'),
+                                self::costCurrencyId($get)
+                            ))
+                            ->required(fn (Get $get) => self::isAdministrativeDeductionActive($get))
+                            ->searchable()
+                            ->disabled(fn (Get $get) => ! self::isAdministrativeDeductionActive($get)
+                                || blank($get('admin_bank_type_id')))
+                            ->helperText('يدخل فيه مبلغ النسبة الإدارية')
+                            ->columnSpanFull(),
 
-                Select::make('transfer_account_id')
-                    ->label('حساب التحويل / الصراف (مدين)')
-                    ->options(fn (Get $get) => self::accountOptions(
-                        $get('transfer_account_type_id'),
-                        $get('transfer_bank_type_id'),
-                        self::costCurrencyId($get)
-                    ))
-                    ->required()
-                    ->searchable()
-                    ->disabled(fn (Get $get) => blank($get('transfer_bank_type_id')))
-                    ->helperText('يدخل فيه مبلغ نسبة التحويل')
-                    ->columnSpanFull(),
+                    ]),
 
-                // 3d) حساب الوجهة (مدين) - عملة الصرف
-                Select::make('destination_account_type_id')
-                    ->label('نوع حساب الوجهة (مدين)')
-                    ->options(fn () => AccountType::orderBy('name')->pluck('name', 'id'))
-                    ->required()
-                    ->live()
-                    ->afterStateUpdated(function (Set $set) {
-                        $set('destination_bank_type_id', null);
-                        $set('destination_account_id', null);
-                    }),
+                // 3c) حساب التحويل (مدين) - عملة التكلفة - only when نسبة التحويل > 0
+                Section::make('حساب التحويل / الصرافة (مدين)')
+                    ->columns(2)
+                    ->disabled(fn (Get $get) => ! self::isTransferDeductionActive($get))
+                    ->description(fn (Get $get) => self::isTransferDeductionActive($get)
+                        ? null
+                        : 'نسبة التحويل 0% - لا توجد عمولة تحويل ولن يُنشأ سطر قيد لهذا الحساب.')
+                    ->schema([
 
-                Select::make('destination_bank_type_id')
-                    ->label('نوع بنك الوجهة')
-                    ->options(fn () => BankType::orderBy('name')->pluck('name', 'id'))
-                    ->required()
-                    ->live()
-                    ->disabled(fn (Get $get) => blank($get('destination_account_type_id')))
-                    ->afterStateUpdated(fn (Set $set) => $set('destination_account_id', null)),
+                        Select::make('transfer_account_type_id')
+                            ->label('نوع حساب التحويل (مدين)')
+                            ->options(fn () => AccountType::orderBy('name')->pluck('name', 'id'))
+                            ->required(fn (Get $get) => self::isTransferDeductionActive($get))
+                            ->disabled(fn (Get $get) => ! self::isTransferDeductionActive($get))
+                            ->live()
+                            ->afterStateUpdated(function (Set $set) {
+                                $set('transfer_bank_type_id', null);
+                                $set('transfer_account_id', null);
+                            }),
 
-                TextInput::make('destination_currency')
-                    ->label('العملة')
-                    ->disabled()
-                    ->dehydrated(false),
+                        Select::make('transfer_bank_type_id')
+                            ->label('نوع بنك التحويل')
+                            ->options(fn () => BankType::orderBy('name')->pluck('name', 'id'))
+                            ->required(fn (Get $get) => self::isTransferDeductionActive($get))
+                            ->live()
+                            ->disabled(fn (Get $get) => ! self::isTransferDeductionActive($get)
+                                || blank($get('transfer_account_type_id')))
+                            ->afterStateUpdated(fn (Set $set) => $set('transfer_account_id', null)),
 
-                Select::make('destination_account_id')
-                    ->label('حساب الوجهة (مدين - المبلغ النهائي)')
-                    ->options(fn (Get $get) => self::accountOptions(
-                        $get('destination_account_type_id'),
-                        $get('destination_bank_type_id'),
-                        $get('disbursement_currency_id')
-                    ))
-                    ->required()
-                    ->searchable()
-                    ->disabled(fn (Get $get) => blank($get('destination_bank_type_id')))
-                    ->helperText('حساب الجمعية بعملة الصرف')
-                    ->columnSpanFull(),
+                        TextInput::make('transfer_currency')
+                            ->label('العملة')
+                            ->disabled()
+                            ->dehydrated(false),
 
-            ]),
+                        Select::make('transfer_account_id')
+                            ->label('حساب التحويل / الصراف (مدين)')
+                            ->options(fn (Get $get) => self::accountOptions(
+                                $get('transfer_account_type_id'),
+                                $get('transfer_bank_type_id'),
+                                self::costCurrencyId($get)
+                            ))
+                            ->required(fn (Get $get) => self::isTransferDeductionActive($get))
+                            ->searchable()
+                            ->disabled(fn (Get $get) => ! self::isTransferDeductionActive($get)
+                                || blank($get('transfer_bank_type_id')))
+                            ->helperText('يدخل فيه مبلغ نسبة التحويل')
+                            ->columnSpanFull(),
+
+                    ]),
+
+                // 3d) حساب الوجهة (مدين) - عملة الصرف - always required
+                Section::make('حساب الوجهة (مدين)')->columns(2)->schema([
+
+                    Select::make('destination_account_type_id')
+                        ->label('نوع حساب الوجهة (مدين)')
+                        ->options(fn () => AccountType::orderBy('name')->pluck('name', 'id'))
+                        ->required()
+                        ->live()
+                        ->afterStateUpdated(function (Set $set) {
+                            $set('destination_bank_type_id', null);
+                            $set('destination_account_id', null);
+                        }),
+
+                    Select::make('destination_bank_type_id')
+                        ->label('نوع بنك الوجهة')
+                        ->options(fn () => BankType::orderBy('name')->pluck('name', 'id'))
+                        ->required()
+                        ->live()
+                        ->disabled(fn (Get $get) => blank($get('destination_account_type_id')))
+                        ->afterStateUpdated(fn (Set $set) => $set('destination_account_id', null)),
+
+                    TextInput::make('destination_currency')
+                        ->label('العملة')
+                        ->disabled()
+                        ->dehydrated(false),
+
+                    Select::make('destination_account_id')
+                        ->label('حساب الوجهة (مدين - المبلغ النهائي)')
+                        ->options(fn (Get $get) => self::accountOptions(
+                            $get('destination_account_type_id'),
+                            $get('destination_bank_type_id'),
+                            $get('disbursement_currency_id')
+                        ))
+                        ->required()
+                        ->searchable()
+                        ->disabled(fn (Get $get) => blank($get('destination_bank_type_id')))
+                        ->helperText('حساب الجمعية بعملة الصرف')
+                        ->columnSpanFull(),
+
+                ]),
+
+            ])->columnSpanFull(),
 
             /* =====================================================
              | SECTION 4 - تفاصيل المعاملة
@@ -442,6 +492,73 @@ class ProjectCostBudgetsPaymentForm
         $set('transfer_amount', number_format($transferAmount, 2, '.', ''));
         $set('amount_after_deductions', number_format($afterDeduct, 2, '.', ''));
         $set('final_amount', number_format($finalAmount, 2, '.', ''));
+    }
+
+    /* =========================================================
+     | Optional-deduction helpers
+     |
+     | A 0% administrative or transfer percentage is a valid business case:
+     | that deduction has no account, writes no transaction line, moves no
+     | balance and carries no audit role. Its account card therefore stays
+     | VISIBLE (so the operator can see the role exists and is simply not in
+     | use) but is disabled, unvalidated and cleared.
+     |
+     | Three independent layers enforce that, deliberately - the UI is a
+     | convenience, never the financial guarantee:
+     |   1. the card and its inputs are disabled, so a disabled field sets
+     |      saved(false) and is not dehydrated into the submitted payload;
+     |   2. the account state is actively cleared the moment the percentage
+     |      reaches 0, so there is nothing stale left to submit;
+     |   3. the Create/Edit pages ignore the deduction's account entirely when
+     |      its derived amount is 0, and never even hand it to
+     |      FinancialAccountGuard.
+     |
+     | Layer 3 alone is sufficient for correctness. Layers 1 and 2 exist so the
+     | screen never shows a required-looking field the operator cannot fill.
+     ========================================================= */
+
+    public static function isAdministrativeDeductionActive(Get $get): bool
+    {
+        return (float) ($get('administrative_percentage') ?: 0) > 0;
+    }
+
+    public static function isTransferDeductionActive(Get $get): bool
+    {
+        return (float) ($get('transfer_percentage') ?: 0) > 0;
+    }
+
+    /**
+     * Drop every stored selection for one deduction's account cascade.
+     *
+     * The read-only `{$role}_currency` display is deliberately NOT cleared:
+     * it states which currency the account WOULD have to be in, which stays
+     * true while the deduction is switched off, and it is populated by the
+     * cost/source-currency cascade rather than by this field - clearing it
+     * here would leave the card blank if the operator raised the percentage
+     * again without re-touching the currency.
+     *
+     * Nothing is stashed for later restoration. Turning a deduction back on
+     * always means choosing its account again.
+     */
+    public static function clearDeductionAccountState(Set $set, string $role): void
+    {
+        $set("{$role}_account_type_id", null);
+        $set("{$role}_bank_type_id", null);
+        $set("{$role}_account_id", null);
+    }
+
+    /**
+     * Percentage-changed hook shared by both deduction inputs: the derived
+     * amounts always become stale, and when the deduction has just been
+     * switched off its account cascade is cleared too.
+     */
+    public static function onDeductionPercentageUpdated(Set $set, string $role, mixed $state): void
+    {
+        self::clearAmounts($set);
+
+        if ((float) ($state ?: 0) <= 0) {
+            self::clearDeductionAccountState($set, $role);
+        }
     }
 
     /**

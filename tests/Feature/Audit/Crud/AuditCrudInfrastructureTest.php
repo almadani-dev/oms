@@ -45,6 +45,10 @@ class AuditCrudInfrastructureTest extends AuditedCrudTestCase
             \App\Models\AccountType::class => 'account_type',
             \App\Models\Currency::class => 'currency',
             \App\Models\ExchangeRateHistory::class => 'exchange_rate_history',
+            // Muwakha families — family register + its project links.
+            \App\Models\MuwakhaFamily::class => 'muwakha_family',
+            \App\Models\MuwakhaFamilyProject::class => 'muwakha_family_project',
+            \App\Models\MuwakhaFamilyAccount::class => 'muwakha_family_account',
         ], $this->registry()->aliases());
     }
 

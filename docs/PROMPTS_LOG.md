@@ -1,6 +1,163 @@
 # Prompts Log
 
 ### Date
+2026-08-19 (Three-turn sequence: production bug diagnosis → impact audit → implementation, BUD/EXT zero percentages)
+
+### Prompt
+A deliberately staged sequence, each turn fencing off the next. Turn 1 was a bug report framed as an investigation: *"This task is DIAGNOSIS ONLY … Do NOT change any code yet. Do NOT clear production data. Do NOT guess the cause"*, with a required report structure ending *"If evidence is insufficient because a fresh failed request is required: STOP and tell me exactly what action to perform."* Turn 2 converted the finding into *"Impact Audit Only — Do Not Modify Code Yet"*, enumerating every consumer to inspect and repeating *"If anything is unclear, STOP AND ASK — DO NOT GUESS."* Turn 3 authorised implementation across both workflows, restated the accounting invariant twice (*"Do NOT weaken `assertValidLinePayload()`"*, *"The correct fix is to not build the zero line"*), and carried an explicit data ruling: *"Production is still test-only and its data will be deleted. Do NOT create a migration to rewrite historical BUD/EXT transactions."*
+
+### Purpose
+**The framing "device-specific bug" was wrong, and the diagnosis-only fence is what made that discoverable.** The report described the same user succeeding on Device A and failing on Device B, which points hard at sessions, CSRF, cookies or cached assets — and the brief dutifully asked for all of them to be audited. They were, and they were clean: `AuthenticateSession` only invalidates on a password change, so two devices cannot evict each other. Had the turn permitted edits, the plausible-looking session/proxy findings (there is genuinely no `trustProxies()` configured) would have been an inviting place to start fixing. Being forbidden to fix anything forced the cheaper question first — *what does this code do when the form is submitted?* — and the answer was that a 0% deduction builds a zero-valued journal line, gets rejected under the error key `lines`, and renders nothing because no field owns that key. Not device-specific at all: **input-specific**, and reported as device-specific because two operators habitually typed different percentages. Running the real guard classes over the four percentage combinations turned a hypothesis into a reproduction without touching production.
+
+**The most valuable instruction was the one that produced an argument rather than compliance.** The brief said the deduction line's existence should follow the *percentage*. Implementing that literally leaves a hole: 0.4% of 1.00 derives to 0.00, so a positive percentage would still build a forbidden zero line. Both obvious resolutions are wrong — write the line (violates the invariant the brief protects twice) or drop it silently (discards a deduction the operator typed and shows up as an unexplained final amount). The third option, rejecting it on the percentage field, was added and flagged rather than quietly chosen, and its real payoff was structural: once that assertion passes, `percentage > 0` and `amount > 0` are equivalent, which is precisely what stops the line payload, the account guard, the balance mutations and the audit role map from drifting apart. A brief specified in terms of the input needed one guarantee tying the input back to the derived amount.
+
+**"Do not weaken the guard", stated twice, was doing real work.** The failing assertion was `assertValidLinePayload()`, and the shortest path to green was to let zero lines through. That would have made 0% work while quietly permitting meaningless journal rows in flows where they are genuine defects. Repeating the constraint moved the fix to the only correct place — never build the line — which then propagated: positional `$lines[0..3]` access had to become role-keyed, the integrity checker had to learn three more valid shapes, and `['destination','source']` had to be classified as multi-currency rather than as an ordinary two-line pair. That last one was the sharpest trap in the change: filed as single-currency it would have demanded `fx_rate == 1` and reported perfectly correct two-line disbursements as unbalanced.
+
+**The audit turn paid for itself in what it found downstream rather than in the fix itself.** Enumerating consumers surfaced two hard blockers a page-level change would have missed entirely — `JournalBalanceIntegrityChecker`'s `count() === 4` and `TransactionFlowClassifier`'s exact-count check — and, just as usefully, established that `TransactionLineDescriptionBuilder` already documented zero-amount deduction lines as *legitimate placeholders*. Two layers of the same codebase had contradictory beliefs about whether a 0% line was valid, which is the clearest evidence available that this was a design gap rather than a typo. It also proved the audit's negative half: the donor report, the snapshotter, the diff, the view pages and the delete paths were all already null-safe and needed nothing, so the change stayed narrow.
+
+### Date
+2026-08-18 (Recovery after an unexpected power outage — Muwakha Family Account Statement)
+
+### Prompt
+A recovery brief rather than a feature brief. It opened by refusing to trust its own premise — *"The implementation had reportedly reached the testing/verification stage when the machine powered off. Do NOT assume the previous process completed cleanly"* — and made that refusal operational: *"Do not trust prior terminal output unless the result is reproducible from the current on-disk state"*, *"If you cannot prove a prior test completed, treat it as **not verified**"*, *"Do not report mixed-state or interrupted test numbers as valid."* It fenced off the destructive reflexes an outage invites (*"Do not clean or revert anything automatically"*, *"Do not recreate working code merely because the previous session was interrupted"*, *"Do not alter Accounts / Transactions / Transaction Lines … simply to make tests pass"*) and pre-committed to a stop: *"If the previous session had reached a STOP condition because Project linkage was not reliable, do not bypass it. Report it and STOP."*
+
+### Purpose
+**The instruction that did the most work was "do not recreate working code."** The instinct after a power loss is to re-derive the feature, which would have quietly discarded a complete and correct implementation and replaced it with a fresh one carrying fresh bugs. Treating the audit as the deliverable — lint every changed file, read the tails of the files written closest to the outage, diff the docs, check for orphaned processes — established in a few read-only calls that nothing was truncated. The feature never needed rebuilding; it needed *proving*.
+
+**"Do not trust prior terminal output" turned out to be the load-bearing sentence, and it cut in the unexpected direction.** The surviving evidence was `.phpunit.result.cache`, and it recorded **five failing** statement tests. The tempting reading — the session died with a broken feature — was as wrong as blindly trusting a green run would have been. File mtimes settled it: the cache was written at 11:21, the service and page were edited at 11:24:24 and 11:24:53. The session had died *fixing* those five, and the cache described a state that no longer existed on disk. Both the optimistic and the pessimistic reading of stale evidence were unreproducible; only the rerun was real, and it returned 33/33. An outage does not just cast doubt on success — it casts doubt on recorded failure too.
+
+**The Project-filter clause was a genuine STOP that did not fire, and verifying that mattered more than accepting it.** The prompt demanded an *authoritative structured relationship* and listed the disqualifying shortcuts (notes, text, Account name, Family↔Project membership). The implementation claimed two FK paths in a docblock — but a docblock is prose, and prose survives an outage whether or not the code beneath it does. Checking every column of both chains against the actual migrations was what converted a claim into a finding. It also surfaced *why* Path B exists: execution payments write `project_cost_id = NULL`, so Path A alone would have produced a confidently empty statement for the very movements the report exists to show. That is the failure mode the prompt's "must NOT infer" list was aimed at, reached from an unexpected direction — not by inferring from text, but by trusting a structurally valid path that happens to be blank for this feature's main case.
+
+**"Resume from the smallest necessary test scope" kept the one real defect legible.** Running the full suite would have buried a single expectation failure in thousands of results; the graduated scope surfaced it immediately as what it was — a page-list assertion that legitimately had to gain `account-statement`, not a production bug — so the fix stayed one line and the guard against restore/force-delete pages stayed intact.
+
+
+---
+
+### Date
+2026-08-17 (Muwakha Family View — compact full-width linked-accounts table, repositioned)
+
+### Prompt
+A layout-only brief, scoped hard: *"Refine the Muwakha Family View page layout only … The current `الحسابات المرتبطة بالأسرة` section is visually too tall because each mapped Account is rendered as a vertical RepeatableEntry/card. Change it to a compact **full-width table-style section**."* It then fixed the position exactly — *"`ملاحظات` → `الحسابات المرتبطة بالأسرة` → `مشاريع المؤاخاة`"*, *"It must span the full available content width, not sit inside the left/right two-column upper layout"* — and fenced everything else off: *"Do not change: schema, models unless only a small presentation/query helper change is required, historical Account matching, reuse logic, account creation, exports, permissions, audit, financial workflow."*
+
+### Purpose
+**"Visually too tall because each Account is rendered as a vertical card" pointed at a symptom whose cause was one level down.** The section was *already* a `RepeatableEntry::table()` producing real `<table>` markup, so the diagnosis "it is a card list" was not literally true — but the complaint was. Rendering the page and reading the HTML showed why: every one of the seven cells emitted its own label column above its value, so each row was seven labelled stacks and read exactly like a card. That is why the fix is `hiddenLabel()` on each cell rather than a switch to a different component. Taking the reported symptom at face value would have produced a rewrite; taking it as *wrong* would have produced a "works as intended" reply. Neither was right.
+
+**The required order is what settled the component choice.** The instinctive way to make something "resemble the existing OMS/Filament tables" is a relation manager with a real table builder — but Filament renders relation managers after the whole infolist, so that table could only land *below* `مشاريع المؤاخاة`, never between it and `ملاحظات`. The ordering sentence therefore ruled out the obvious implementation, and keeping the section in the infolist has the side benefit of matching *"Do not add: edit / delete / restore / change-current-account / unlink actions"* by construction rather than by discipline.
+
+**"Keep the existing rule" and the list of untouched concerns is why this stayed a one-file change.** The behaviour — deleted Accounts hidden as a display filter, mappings kept, per-mapping holder names, the authorization-gated link, the separate `الحساب الحالي محذوف` warning — was already correct and already tested. The brief's explicit *"models unless only a small presentation/query helper change is required"* was an invitation that turned out not to be needed: `MuwakhaFamily::visibleAccountLinks()` already returned exactly the right rows in exactly the right order with its eager loads, so no model change was made.
+
+**Layout requirements got layout assertions.** Because the defect was invisible to every existing test — all of which passed against the tall version — the ordering, the full-width span and the one-row-per-Account structure are now asserted directly, the ordering one on the real page response rather than on the Livewire component, since the relation manager only appears in the full document.
+
+### Result
+Delivered as a presentation-only change to `MuwakhaFamilyInfolist.php`, plus the affected View tests. `tests/Feature/Muwakha/MuwakhaFamilyLinkedAccountsTest.php` **12 passed / 121 assertions**; `tests/Feature/Muwakha` **144 passed / 726 assertions**. Full suite **intentionally not run, by explicit user instruction**. Not verified in a live browser. No commit, no push, no Graphify.
+
+---
+
+### Date
+2026-08-17 (Muwakha UI — deleted-account visibility, and project links on the Create form)
+
+### Prompt
+Two refinements in one brief. Part A overruled a decision I had made and documented the day before: *"the existing `بيانات الحساب` section may still expose the current Account through a `withTrashed()` relation … **If an Account is soft-deleted, do not display that Account's details anywhere on the Muwakha Family View page**,"* followed immediately by the boundary — *"keep the `muwakha_family_accounts` mapping untouched … do not restore … do not reactivate … do not modify historical data."* Part B asked for project linking during family creation, with the constraint that mattered most stated twice: *"Reuse the existing `MuwakhaFamilyProjectService` or existing centralized domain validation. **Do not duplicate Project-link business logic inside Filament callbacks**,"* and *"Do not depend only on Select option filtering. Validate server-side using the existing domain service/rules."*
+
+### Purpose
+**Part A corrected a genuine misjudgement of mine.** I had deliberately left the deleted current Account's details visible, reasoning that a vanished payment destination should stay legible as a reported problem — and I had written that reasoning into `docs/DECISIONS_LOG.md` as intentional. The user's rule is better: displaying an account number, IBAN and holder name for a **deleted** account invites someone to pay into it. The warning still reports the fault; it simply refuses to hand over payment details. The prompt's second half is what kept the correction from overshooting — "do not restore, do not modify historical data" is why this became a `->visible()` predicate rather than a repoint or a mapping cleanup.
+
+**"Do not duplicate Project-link business logic inside Filament callbacks" is what produced real atomicity.** The obvious implementation — create the family, then write links in the page's `afterCreate()` — would have committed the family before the links were validated, leaving a family with some of its links on any rejection. Replaying each row through `MuwakhaFamilyProjectService::link()` **inside** `MuwakhaFamilyService::create()`'s existing transaction gave one rollback boundary over Account + family + ownership mapping + links, and made duplicate detection *within a single submission* fall out for free: each row is checked against the rows already inserted, so "same project twice" and "same card code twice" hit exactly the same rules as a link added a month later.
+
+**"Do not depend only on Select option filtering" decided how blank rows are handled.** It would have been convenient to drop rows with no `project_id` before replaying them; instead they are forwarded so the domain service rejects them, because a crafted request is precisely the case where the form's `required()` never ran.
+
+**A naming collision the tests caught twice.** `الحساب الحالي محذوف` contains the badge text `الحساب الحالي`, so the badge-absence assertion written for the previous task started failing on a page where the filter worked perfectly — the same class of false signal as the section description a task earlier. The assertion was moved onto the resolved link collection, where it means what it says.
+
+### Result
+Part A and Part B delivered with no schema change, no migration, no model change and no permission change. Focused Muwakha suite run sequentially (result reported to the user for this run). Full suite **intentionally not run, by explicit user instruction**. No commit, no push, no Graphify.
+
+---
+
+### Date
+2026-08-17 (Muwakha Family View — linked-accounts section)
+
+### Prompt
+A small, tightly-scoped UI brief: *"Do not redesign any existing account-history/reuse logic … add a clear section titled `الحسابات المرتبطة بالأسرة` … This section must display all Accounts mapped to the Family through `muwakha_family_accounts`, not only `muwakha_families.account_id`."* The two instructions that mattered most were the ones drawing a line between display and data: *"**Do not display deleted / soft-deleted Accounts** … Do not delete its mapping and do not change historical data. This is only a display filter. Also do not silently restore or reactivate deleted Accounts,"* and *"The data source must be the mapped Account + the historical `account_holder_name` stored on `muwakha_family_accounts`. **Do not use the Family's current holder name for every historical row.**"*
+
+### Purpose
+**"This is only a display filter" is the sentence that kept the feature honest.** The obvious shortcuts — drop the mapping, or soft-delete it alongside the Account — would both have destroyed the durable ownership record that the exact-reuse logic depends on, and would have done so from a read-only screen. Separating "hidden" from "deleted" is why the tests assert both halves: the Account name is absent from the page **and** the mapping row is still in the database with its holder name intact.
+
+**"Do not use the Family's current holder name for every historical row" prevented a subtle lie.** `accounts` has no holder column, so the family row is the tempting source and would have rendered correctly-looking output — while retroactively reassigning every past Account to today's holder, the exact distortion the Account-immutability rule exists to prevent.
+
+**The read-only constraint was implemented structurally, not by omission.** The section carries no action of any kind, and a test greps the Infolist source for `Action`, `headerActions`, `footerActions` and `recordActions` — so a future edit that adds a "make current" or "restore" button fails immediately rather than quietly creating a second, unaudited path to move a payment destination.
+
+**One test caught a self-inflicted false pass.** The section's description originally read "… الحساب الحالي والحسابات السابقة", which contains the badge text verbatim; `assertSee('الحساب الحالي')` therefore passed even when no badge rendered, and `assertDontSee` failed on a page where the filter was working perfectly. Rewording the description so the badge phrase appears only on a row is what made both assertions actually test the badge.
+
+### Result
+7 focused tests added; `tests/Feature/Muwakha` — **125 passed / 579 assertions, 0 failures**. Only the directly affected Muwakha tests were run, per instruction. No migration, no schema change, no service change, no commit, no push, no Graphify.
+
+---
+
+### Date
+2026-08-17 (FINAL — Muwakha historical family Account design)
+
+### Prompt
+A final pre-commit refinement brief with four stated goals: *"preserve historically correct Account data for financial reports … create a new Account whenever material payment/account identity changes … reuse an exact old Account when the Family returns to the exact same account details … make Muwakha Accounts immediately clear in the general Accounts screen."* It carried the same fence as before — *"Do not redesign the Project financial workflow … If anything below conflicts with the real repository architecture: **STOP AND ASK — DO NOT GUESS.**"* — plus two instructions that shaped the implementation more than the feature list did:
+
+*"Before implementing the mapping migration: inspect the current local database … Do not infer ownership of old unlinked Accounts based solely on: martyr name, Account name, account number. Do not guess."*
+
+*"Do not perform a loose string search like `where name LIKE '%martyr%'`. Do not use account number globally. The reuse search must be: Family-scoped through mappings … Do not rely solely on the canonical Account name; compare the underlying fields too."*
+
+### Purpose
+**"Inspect first, do not infer ownership" turned a tempting cleanup into a reported fact.** The local database held three Accounts with the same account number and near-identical Arabic names, only one of which any family row pointed at. Every heuristic available — martyr name, account name, account number — would have "correctly" mapped all three to family 1, and would have been guesswork dressed as a migration. The backfill therefore reads the `muwakha_families.account_id` foreign key and nothing else: one mapping created, two look-alike Accounts left untouched and reported for human review. The same instruction is why the one permitted rename was fenced twice — unambiguous ownership through the FK **and** zero `transaction_lines`.
+
+**"Compare the underlying fields too, not just the name" prevented a real collision.** The canonical name contains martyr name, currency and account number — but not bank type, IBAN or account-holder name. A comparison on the name alone would have treated "same number, same currency, different bank" as the *same* Account and silently rerouted a family onto the wrong ledger. Building a `MuwakhaAccountIdentity` value object that compares all seven fields, with the name as one of them rather than instead of them, is what makes that impossible.
+
+**"Family-scoped through mappings, never globally" is load-bearing because of an earlier decision.** `accounts.account_code` was deliberately made non-unique on 2026-08-16 precisely so two families could share one real bank number. A global reuse search would have turned that concession into a cross-family ledger merge. The brief's insistence on the mapping scope is what keeps the two decisions compatible.
+
+**The 58-point test list did the same job the 34-point list did last round, one level deeper.** Points 20–25 ("previous Account attributes byte-for-byte unchanged", "previous Transactions unchanged") are implemented as full `getAttributes()` snapshots and row-level `transactions`/`transaction_lines` comparisons; points 32–35 (near-miss vs exact match) became a data-provider matrix that would fail the moment any identity field were dropped from the comparison.
+
+### Result
+Delivered inside the fence. **723 tests, 720 passed, 3 pre-existing skips, 3 857 assertions, 0 failures** across the Muwakha, Audit, CRUD/Integrity, ExecutionPayments and Permissions suites, run sequentially; both migrations applied to the real local database and the backfill verified by direct query; `oms:check-financial-integrity` → **Result: OK, exit 0**. Full suite **intentionally not run, by explicit user instruction**. No commit, no push, no Graphify, no account-history event table, no historical Account mutated.
+
+---
+
+### Date
+2026-08-17 (Muwakha family-account currency — one approved change, fenced) *(Superseded the same day — see the entry above.)*
+
+### Prompt
+A single tightly-fenced change brief: *"We have one approved change to the implemented Muwakha Families feature. Do not redesign anything else. If the repository contradicts an assumption below, **STOP AND ASK — DO NOT GUESS.**"* It specified that family accounts must no longer be fixed to ILS, that the currency is selected from existing OMS currencies with **no hard-coded currency IDs**, and — the load-bearing rule — *"**Never change `currency_id` on the existing Account** … If the user changes the Family Account currency, create a **new Account** … The old Account must remain completely untouched … We explicitly do **not** want an account-history table. The old Account itself is the historical financial record."* It also directed: *"Inspect the real `currencies` schema and existing display conventions and use the system's actual human-readable currency name/label. Do not invent a new currency-name field or hard-code Arabic names if the existing currency reference data already provides the appropriate label,"* plus a 34-point test list, a **scoped** test policy (*"Do not run the full test suite"*, run sequentially), and *"Then **STOP BEFORE COMMIT**."*
+
+### Purpose
+**"Use the system's actual label, do not hard-code Arabic names" is what kept the naming rule correct.** The brief's own examples were `شيكل` / `دولار` / `يورو`, which are values, not a field — and the repository's Muwakha code was reading `currencies.code` (`ILS`) while `AccountForm` and `AccountsTable` both display `currencies.name`. Taking the examples literally would have produced a hard-coded Arabic map that silently disagrees with whatever an administrator actually typed into the currency register. Following the instruction instead produced one helper, `MuwakhaReference::currencyDisplayName()` over `currencies.name`, that every surface reads.
+
+**"Never change `currency_id` on the existing Account" was implemented mechanically rather than by discipline.** The rule is easy to satisfy today and easy to break later by adding one field to an update payload. It is enforced instead by the shape of the code: `currency_id` appears in **no** Account UPDATE payload anywhere in `MuwakhaFamilyService`, and the only place a currency is written is the shared `makeAccount()` creation helper.
+
+**"Do not redesign anything else" bounded a change that invites scope creep.** A currency-per-account model tempts an account-history table, a currency filter, a per-currency balance view. The brief pre-empted the first explicitly; the other two were left alone. The list table's new `العملة` column was added as **toggleable and hidden by default**, per the brief's own instruction that a new column must match the approved toggleable design rather than becoming a default column.
+
+**The 34-point test list translated the prose guarantee into checkable facts.** In particular points 21–29 ("old Account still exists / active / same currency / name / code / bank / IBAN / balance / ledger untouched") are what turn "remains completely untouched" from an intention into an assertion — implemented as a full `getAttributes()` snapshot comparison plus a row-level comparison of `transactions` and `transaction_lines` before and after the fork.
+
+### Result
+Delivered inside the stated fence. **298 tests, 298 passed, 1 480 assertions, 0 failures** across the Muwakha suite and the directly affected Account/Audit/Export/Execution-Payment suites, run sequentially; `oms:check-financial-integrity` → **Result: OK, exit 0**. Full suite **intentionally not run, by explicit user instruction**. No commit, no push, no Graphify, no account-history table.
+
+---
+
+### Date
+2026-08-16 (OMS Muwakha Families — read-only audit first, then implementation)
+
+### Prompt
+Two prompts, deliberately sequenced. The first was a **read-only architecture audit**: *"Does the existing OMS `accounts` system already represent real beneficiary payment accounts/bank wallets that can be reused, or is `accounts` primarily an accounting chart-of-accounts abstraction? … DO NOT implement anything yet. Do not guess from documentation if the actual code gives a different answer."* The second was the implementation brief, which repeated the same discipline: *"This is an implementation task, but you MUST begin with a short read-only impact audit before changing code,"* with an explicit list of STOP conditions — including *"If there is no safe/unique way to identify that main project through the existing hierarchy, or more than one live root project matches that name: **STOP and report before implementing the project-link filtering**"* — and *"If you need clarification, STOP AND ASK — DO NOT GUESS."* Two later prompts refined it: redact personal identifiers in audit payloads, grant Project Manager the full set, and *"Do not run the full test suite … Stop and wait for review."*
+
+### Purpose
+**The audit-before-implementation split is what made this feature correct rather than plausible.** The design brief described "a main/root project with child projects", and a reasonable implementer would have built exactly that. The read-only audit established from the live schema that `projects` has **no self-referencing parent column at all** — the only hierarchy is `projects_super` → `projects.project_super_id` — and that no row named `مشروع المؤاخاة` existed in either table. Had the audit been skipped, the likely outcome was a second, parallel hierarchy added to the core `projects` table: a change that would have been hard to reverse and that the brief itself elsewhere forbade.
+
+**The explicit STOP clause is what turned a discovered mismatch into a decision rather than a guess.** Two STOP conditions fired — the missing root, and the total absence of any reference-data shipping pattern in the repository — and both were answered by the user before any file was written. The same clause is why "the root project itself is not selectable" ended up satisfied *structurally* (a `ProjectSuper` is not a `Project`, so it cannot appear in a project Select) instead of by a filter that a forged request could bypass.
+
+**"Do not guess from documentation if the actual code gives a different answer" earned its place twice.** The documentation's account of the `accounts` table was accurate, but only the code showed that `project_cost_budgets_payments` stores **no** beneficiary account at all — the account lives solely on `transaction_lines.account_id`, tagged by a `notes` string that all read-back code still matches on. And the first audit's §7 had to report honestly that `accounts` held **zero rows**, so the real-world format of `account_code`/`iban` could not be characterised from data rather than inventing a plausible sample.
+
+**The later privacy prompt changed the design in a way testing alone would not have caught.** Redacting the three identifier values was straightforward; the non-obvious part was that `subject_label` and the family relation label also carried `martyr_national_id`, and those are displayed in the audit UI. Redacting only the payload would have looked complete and leaked anyway.
+
+### Result
+Feature implemented end-to-end with no change to Transaction posting, balances, FX, project reports or the Execution Payment workflow. Focused + regression: **1502 passed / 6388 assertions, 0 failures, 5 pre-existing skips**; `oms:check-financial-integrity` → **Result: OK**. Full suite **intentionally not run, by explicit user instruction**. Not committed.
+
+---
+
+### Date
 2026-07-30 (Roadmap cleanup — remove the obsolete PDF export roadmap)
 
 ### Prompt

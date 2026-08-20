@@ -152,6 +152,15 @@ final class AuditLabels
         // 9B.6 backup/restore (BackupRestoreAuditSubject)
         'backup' => 'نسخة احتياطية',
         'restore' => 'عملية استعادة',
+
+        // Muwakha families — two CRUD subjects (AuditSubjectRegistry) plus the
+        // resource-table export subject (ReportExportSubject::MuwakhaFamilies,
+        // label copied verbatim from its label() method).
+        'muwakha_family' => 'أسرة مؤاخاة',
+        'muwakha_family_project' => 'ارتباط أسرة بمشروع مؤاخاة',
+        'muwakha_family_account' => 'ارتباط أسرة بحساب مؤاخاة',
+        'muwakha_families' => 'أسر المؤاخاة',
+        'muwakha_family_account_statement' => 'كشف حساب الأسرة',
     ];
 
     /**

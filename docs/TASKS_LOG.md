@@ -12,7 +12,327 @@
 
 ### Verification
 
+
+---
+
+### Date
+2026-08-19 (BUD/EXT optional deduction lines — 0% administrative / transfer percentage)
+
+### Task
+Make a 0% administrative or transfer percentage a valid business case in BOTH صرف مبلغ المشروع (`ProjectCostBudgetsPaymentResource`, BUD) and التحويلات العامة (`GeneralExchangeResource`, EXT): no transaction line, no account validation, no balance movement and no audit role for an inactive deduction — without weakening `FinancialTransactionBalanceGuard`'s rejection of zero-valued lines. Plus four separate account cards in a 2×2 grid on both forms, and a visible notification for financial guard rejections.
+
+### Result
+Implemented in full for both workflows, Create and Edit. Line shapes are now 4 / 3 / 3 / 2 by deduction; source and destination always present. Line payloads are keyed by role instead of array position. Zero-value lines remain forbidden and are still asserted as such. A percentage `> 0` whose derived amount rounds to `0.00` is now rejected on its own field rather than silently dropped or written as a zero line.
+
+### Changed Files
+
+**Production — validation**
+- `app/Services/Validation/FinancialTransactionBalanceGuard.php` — `assertBalancedMultiCurrencyLines()` takes `?array $adminLine` / `?array $transferLine`; a null line contributes 0 to `amount_after_deductions`. Every FX, currency, direction, cent and zero-line check unchanged. `assertValidLinePayload()` untouched.
+- `app/Services/Validation/FinancialAmountGuard.php` — new `assertDeductionsAreRecordable()`.
+- `app/Services/Validation/FinancialAccountGuard.php` — **unchanged** (callers omit the spec instead).
+
+**Production — pages**
+- `app/Filament/Concerns/ReportsFinancialValidationFailures.php` — **new**; danger notification + re-throw.
+- `app/Filament/Resources/ProjectCostBudgetsPayments/Pages/CreateProjectCostBudgetsPayment.php`
+- `app/Filament/Resources/ProjectCostBudgetsPayments/Pages/EditProjectCostBudgetsPayment.php`
+- `app/Filament/Resources/GeneralExchanges/Pages/CreateGeneralExchange.php`
+- `app/Filament/Resources/GeneralExchanges/Pages/EditGeneralExchange.php`
+  (all four: role-keyed `buildLines()`, conditional account specs, conditional balance mutations, conditional audit role map via `buildAuditAccountRoles()` / `buildAuditAccountRolesFromLines()`, wrapped in `withVisibleFinancialValidation()`)
+
+**Production — forms**
+- `app/Filament/Resources/ProjectCostBudgetsPayments/Schemas/ProjectCostBudgetsPaymentForm.php`
+- `app/Filament/Resources/GeneralExchanges/Schemas/GeneralExchangeForm.php`
+  (both: four `Section` cards in `Grid::make(['default' => 1, 'md' => 2])`, `disabled()` deduction cards with an explanatory description, conditional `required()`, `onDeductionPercentageUpdated()` clearing, `->key('deduction_calculator')` on the احسب action so it is addressable in tests)
+
+**Production — downstream**
+- `app/Services/Integrity/JournalBalanceIntegrityChecker.php` — `MULTI_CURRENCY_ROLE_SETS` (four shapes); strict `count($roles) === $lines->count()`; optional roles passed as null.
+- `app/Services/Transactions/Backfill/TransactionFlowClassifier.php` — `resolveRolesByNotesTag()` gains a `$requiredNotes` parameter; both call sites require `LINE_SOURCE` + `LINE_DESTINATION`.
+
+**Tests**
+- `tests/Feature/ProjectCostBudgetsPayments/ZeroPercentageDeductionTest.php` — **new** (21)
+- `tests/Feature/ProjectCostBudgetsPayments/ZeroPercentageDeductionFormTest.php` — **new**, real Livewire (6)
+- `tests/Feature/GeneralExchanges/ZeroPercentageDeductionTest.php` — **new** (18)
+- `tests/Feature/GeneralExchanges/ZeroPercentageDeductionFormTest.php` — **new**, real Livewire (6)
+- `tests/Unit/Services/Validation/FinancialTransactionBalanceGuardTest.php` — +8
+- `tests/Feature/Integrity/JournalBalanceIntegrityCheckerTest.php` — +8
+- `tests/Feature/Commands/BackfillTransactionDescriptionsCommandTest.php` — +5
+
+**Docs** — `OMS_Master_Reference.md` (new **Optional deduction lines — BUD / EXT** section + three corrected lines), `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md`, `docs/PROMPTS_LOG.md`, `docs/NEXT_STEPS.md`.
+
+### Verification
+Baseline before any edit: **78 passed / 440 assertions**; identical 78 still green after implementation.
+
+New/extended focused suites: BUD zero-percentage **21 passed / 132**; BUD Livewire form **6 passed / 61**; EXT zero-percentage **18 passed / 98**; EXT Livewire form **6 passed / 49**; balance guard unit **44 passed / 40**; integrity checker **15 passed / 37**; backfill classifier **22 passed / 75**.
+
+Broad regression sweep (`ProjectCostBudgetsPayments|GeneralExchange|BalanceGuard|JournalBalance|ProjectDisbursementAudit|BackfillTransactionDescriptions|FinancialTransactionBalanceGuard|FinancialAudit|Integrity|ExecutionPayment|ProjectCostReceipt|GeneralExpense|Attachment`): **645 tests, 642 passed, 3 pre-existing skips, 2 213 assertions, exit 0**.
+
+`php artisan oms:check-financial-integrity` → **Result: OK, exit 0** (10 relationships / 0 orphans; 4 transactions / 0 duplicate numbers; 4 transactions / 0 unbalanced; 0 invalid FX; 14 lines / 0 currency mismatches; 11 accounts / 0 balance mismatches).
+
+**The full test suite was NOT run.** The local development database was **not touched by any test** — `phpunit.xml` pins the suite to `DB_CONNECTION=sqlite` / `DB_DATABASE=:memory:`, and its row counts were identical before and after every run (4 transactions, 14 lines, 11 accounts, 3 budgets). `graphify update .` rebuilt the graph (14 325 nodes, 36 340 edges, 561 communities). No migration was created. No historical financial data was modified. Not committed, not pushed.
+
+### Commit
+Not committed.
+
+---
+
+### Date
+2026-08-18 (Muwakha Family Account Statement — `كشف حساب الأسرة`; implemented 2026-08-18, interrupted by a power outage, recovered and verified clean the same day; NOT committed)
+
+### Task
+Implement the per-family financial statement reachable only from the Muwakha Family View page, then — after an unexpected power outage interrupted the implementing session at ~11:24 — audit the surviving on-disk state, prove what was real, and resume from the smallest necessary verification scope.
+
+### Result
+Delivered and verified clean. The feature was found **complete and structurally intact** on disk; it was **not** recreated. One test-expectation fix was required (below).
+
+**Recovery audit (read-only, before any change).** No surviving PHPUnit/PHP/artisan process (only `mysqld`/`node`, both started 11:31, after the reboot). All changed PHP files pass `php -l`; the four files written closest to the outage end with complete closing braces; no truncation, no unmatched braces, no TODO/FIXME placeholders, no duplicate classes, no test referring to missing production code. `git diff --check` clean, no stash. `php artisan migrate:status` — **all applied, none pending**, and **no migration was added for this report** (the newest two belong to the earlier account-mapping work).
+
+**Where testing actually stopped.** File mtimes reconstruct it exactly: test file 11:02 → `OMS_Master_Reference.md` 11:19 → `.phpunit.result.cache` **11:21** → statement service 11:24:24 → statement page 11:24:53 → power loss. The cache held **five failing statement tests**, but it predated the final two production edits, so it recorded a mid-fix state and was treated as **not verified**. `storage/logs/laravel.log` has no 2026-08-18 entries at all. A clean rerun proved the 11:24 edits had landed complete and fixed all five.
+
+**The one recovery edit.** `tests/Feature/Muwakha` returned 176/177 with a single failure: `MuwakhaFamilyResourceTest::test_the_resource_exposes_no_restore_or_force_delete` pins the resource's exact page list, which legitimately gained the approved `account-statement` page. The expectation was updated to `['index', 'create', 'view', 'account-statement', 'edit']`, preserving the test's actual guard — a restore or force-delete page still fails it. No production code was changed during recovery.
+
+### Changed Files
+
+**New — production (6):** `app/Filament/Resources/MuwakhaFamilies/Pages/MuwakhaFamilyAccountStatement.php`, `app/Services/Muwakha/MuwakhaFamilyAccountStatementService.php`, `app/Services/Muwakha/MuwakhaFamilyAccountStatementExcelExportService.php`, `app/Services/Muwakha/MuwakhaFamilyAccountStatementWordExportService.php`, `app/Support/Muwakha/MuwakhaStatementScopeException.php`, `resources/views/filament/resources/muwakha-families/pages/muwakha-family-account-statement.blade.php`
+
+**Modified — production (4):** `app/Filament/Resources/MuwakhaFamilies/MuwakhaFamilyResource.php` (page registration), `app/Filament/Resources/MuwakhaFamilies/Pages/ViewMuwakhaFamily.php` (header action), `app/Services/Audit/Reports/ReportExportSubject.php` (`MuwakhaFamilyAccountStatement` alias), `app/Support/Audit/AuditLabels.php` (`muwakha_family_account_statement` label)
+
+**New — tests (1):** `tests/Feature/Muwakha/MuwakhaFamilyAccountStatementTest.php` (33 tests)
+
+**Modified — tests (1, during recovery):** `tests/Feature/Muwakha/MuwakhaFamilyResourceTest.php` (page-list expectation only)
+
+**No migration, no schema change, no model change.**
+
+### Verification
+
+**The full test suite was intentionally NOT run, by explicit user instruction.** Tests were run **sequentially**, never concurrently, and every figure below comes from a clean run against the current on-disk state — no interrupted or pre-outage number is reported.
+
+1. `tests/Feature/Muwakha/MuwakhaFamilyAccountStatementTest.php` — **33 passed / 194 assertions**
+2. `tests/Feature/Muwakha` (before the fix) — 177 tests, **176 passed, 1 failed** / 915 assertions
+3. `tests/Feature/Muwakha/MuwakhaFamilyResourceTest.php` (after the fix) — **21 passed / 136 assertions**
+4. `tests/Feature/Audit` — **375 passed / 2 658 assertions**
+5. `tests/Feature/Permissions` — 341 tests, **338 passed, 3 pre-existing skips** / 1 819 assertions (identical to the 2026-08-17 run, so the skips are unrelated)
+6. `tests/Feature/Crud` — **91 passed / 275 assertions**
+7. `tests/Feature/Muwakha` (confirming rerun) — **177 passed / 920 assertions**
+
+Totals across the final clean runs: **1 002 tests, 999 passed, 3 pre-existing skips, 0 failures, 5 788 assertions.**
+
+`php artisan oms:check-financial-integrity` → 10 relationships / 0 orphans, 0 duplicate transaction numbers, 0 unbalanced transactions, 0 invalid FX/base values, 0 currency mismatches, 5 accounts / 0 persisted balance mismatches — **Result: OK, exit 0**.
+
+No commit, no push, Graphify deliberately not run. No Account, Transaction, Transaction Line, Muwakha mapping or Project financial data was mutated; tests run on the `testing` connection.
+
 ### Commit Hash
+
+---
+
+### Date
+2026-08-17 (Muwakha Family View — compact full-width linked-accounts table, repositioned; focused tests green, NOT committed)
+
+### Task
+Layout only: turn `الحسابات المرتبطة بالأسرة` from a tall per-Account stack into a compact full-width table-style section, and move it to sit after `ملاحظات` and immediately before `مشاريع المؤاخاة`. No schema, matching, reuse, creation, export, permission, audit or financial change.
+
+### Result
+Delivered. One production file changed.
+
+**Position.** `linkedAccountsSection()` moved to be the **last** infolist component (previously it sat before `ملاحظات`), so the lower page reads `ملاحظات` → `الحسابات المرتبطة بالأسرة` → `مشاريع المؤاخاة`; the Projects relation manager is unchanged and Filament renders it after the whole infolist. The section gained `columnSpanFull()` — Filament emits `--col-span-default: 1 / -1`, verified in the rendered page.
+
+**Compactness.** The section already used `RepeatableEntry::table()`, so the `<table>` markup was correct; what made it tall was that each of the seven cells still rendered its own label above its value. Every cell entry now adds `hiddenLabel()` (keeping `label()` as the single source of the heading wording and as the cell's accessible name), so the heading appears once in `<thead>` and each cell is a single line. Also `TextSize::Small` on the value cells, `TableColumn::width()` totalling 100% across the seven columns, and `wrapHeader()` on `نوع البنك / وسيلة الدفع` and `اسم صاحب الحساب`. Verified in the rendered HTML: no `fi-in-repeatable-item` (the stacked-card wrapper), one `<tr>` per Account, seven `<td>` per row, seven hidden cell labels per row.
+
+**Unchanged and still asserted:** current Account first and badged `الحساب الحالي`, previous badged `سابق`, per-mapping historical `account_holder_name`, soft-deleted Accounts hidden with mappings intact, the Account name linked only when authorized, no actions in the section, and the `الحساب الحالي محذوف` warning behaviour.
+
+**The full test suite was intentionally NOT run, by explicit user instruction.**
+
+### Changed Files
+**Modified — Filament (1):** `app/Filament/Resources/MuwakhaFamilies/Schemas/MuwakhaFamilyInfolist.php` (section reordered to last, `columnSpanFull()`, per-cell `hiddenLabel()`, `TextSize::Small`, column widths, `wrapHeader()`, `TextSize` import)
+**Modified — tests (1):** `tests/Feature/Muwakha/MuwakhaFamilyLinkedAccountsTest.php` (three added cases: table-not-cards, full-width span, section ordering; row-level badge/order assertions added to the existing current-first test; two private helpers `linkedAccountsTable()` / `linkedAccountsRows()`)
+
+No migration, no schema change, no model change, no service change, no permission change.
+
+### Verification
+- `php artisan test tests/Feature/Muwakha/MuwakhaFamilyLinkedAccountsTest.php` → **12 passed / 121 assertions**
+- `php artisan test tests/Feature/Muwakha` → **144 passed / 726 assertions**
+- `php -l` clean on both changed files; `vendor/bin/pint` applied to the test file (`ordered_imports`, `fully_qualified_strict_types`) and clean afterwards
+- Ordering and full-width span verified on the real page response, not only in the Livewire component
+
+Not verified in a live browser session. Graphify deliberately not run.
+
+### Commit Hash
+Not committed.
+
+---
+
+### Date
+2026-08-17 (Muwakha UI — Part A: hide a deleted current Account on the View page; Part B: link Projects from the Create form; focused tests green, NOT committed)
+
+### Task
+Two final UI refinements before commit. **A:** if `muwakha_families.account_id` points at a soft-deleted Account, show no details of it anywhere on the Family View page — only a clear Arabic warning — while leaving the mapping, the Account and all historical data untouched. **B:** allow linking Muwakha Projects directly from the Family **Create** form, in the same save, without reimplementing any link rule.
+
+### Result
+Delivered, no schema change and no architecture redesign.
+
+**Part A.** `MuwakhaFamilyInfolist::currentAccountIsDeleted()` gates every entry in `بيانات الحساب`; when true the section renders only the danger badge `الحساب الحالي محذوف` (`DELETED_ACCOUNT_WARNING`) and hides name, currency, account number, bank type, IBAN, account type and account-holder name. Display rule only: the mapping is not removed, `account_id` is not repointed, nothing is restored or reactivated. The Account also remains excluded from `الحسابات المرتبطة بالأسرة`, so it cannot be badged current.
+
+**Part B.** A create-only `Repeater` section `ربط بمشاريع المؤاخاة` (add-button `إضافة مشروع`, `defaultItems(0)`) with `المشروع` (eligible options, `required()` per row, `distinct()`) and optional `رقم البطاقة / الكود`. Rows arrive as `MuwakhaFamilyService::PROJECT_LINKS_FIELD`, are extracted by reference before `split()`, and are replayed through `MuwakhaFamilyProjectService::link()` **inside the existing create transaction**. `MuwakhaFamilyService` now injects that service. Consequences: duplicate project / duplicate card code **within one submission** are caught by the existing checks (each row is validated against the rows already inserted); a rejected row rolls back the family, the Account, the ownership mapping and every earlier link; `update()` strips the key so an edit can never add links; `ProjectsRelationManager` is untouched.
+
+**The full test suite was intentionally NOT run, by explicit user instruction.**
+
+### Changed Files
+**New — tests (1):** `tests/Feature/Muwakha/MuwakhaFamilyCreateProjectLinksTest.php` (13 tests)
+**Modified — service (1):** `app/Services/Muwakha/MuwakhaFamilyService.php` (`PROJECT_LINKS_FIELD`, `MuwakhaFamilyProjectService` injection, `extractProjectLinks()`, link replay in `create()`)
+**Modified — Filament (2):** `Schemas/MuwakhaFamilyForm.php` (the create-only Repeater section), `Schemas/MuwakhaFamilyInfolist.php` (`DELETED_ACCOUNT_WARNING`, `currentAccountIsDeleted()`, per-entry `visible()`)
+**Modified — tests (1):** `tests/Feature/Muwakha/MuwakhaFamilyLinkedAccountsTest.php` (Part A cases)
+
+No migration, no schema change, no model change, no permission change.
+
+### Verification
+`php vendor/bin/phpunit tests/Feature/Muwakha` — see the focused-suite result reported to the user for this run. Only the directly affected Muwakha tests were run, sequentially. No commit, no push, no Graphify.
+
+### Commit Hash
+(not committed)
+
+---
+
+### Date
+2026-08-17 (Muwakha Family View — read-only `الحسابات المرتبطة بالأسرة` section; focused tests green, NOT committed)
+
+### Task
+One UI refinement before commit: on the **Family View page only**, add a clear section listing **all** Accounts mapped through `muwakha_family_accounts` — not just `muwakha_families.account_id` — excluding soft-deleted Accounts as a display filter, with the current Account badged and first, each row carrying its own historical `account_holder_name`. Read-only; no account-history/reuse logic redesigned.
+
+### Result
+Delivered. `MuwakhaFamily::visibleAccountLinks()` returns the mapped Accounts with `accounts.deleted_at IS NULL`, eager-loading currency and bank type (one query + two eager loads, **no N+1**), then partitions so the current Account is first and previous Accounts follow newest-mapping-first. The owning family is attached to each mapping via `setRelation()` so the badge needs no per-row family query. `MuwakhaFamilyInfolist` renders it as a `RepeatableEntry` in table layout with columns الحالة / اسم الحساب / العملة / رقم الحساب / نوع البنك / IBAN / اسم صاحب الحساب; the holder name is read from the **mapping**, everything else from the Account. Badges: `الحساب الحالي` (success) and `سابق` (gray). The account name links to `AccountResource::getUrl('view')` only when `AccountResource::canView()` passes — otherwise plain text; no custom account page. **Nothing in the section can write**: no action of any kind, and the section's own description was reworded so it no longer contains the badge phrase (it previously did, which made the badge assertions pass vacuously — caught by the tests).
+
+Unchanged, as required: `muwakha_family_accounts` schema, identity matching, Account reuse/creation, family deletion, exports, permissions, financial workflow.
+
+**The full test suite was intentionally NOT run, by explicit user instruction.**
+
+### Changed Files
+**New — tests (1):** `tests/Feature/Muwakha/MuwakhaFamilyLinkedAccountsTest.php` (7 tests covering the 10 required points)
+**Modified — model (1):** `app/Models/MuwakhaFamily.php` (`visibleAccountLinks()`)
+**Modified — Filament (1):** `app/Filament/Resources/MuwakhaFamilies/Schemas/MuwakhaFamilyInfolist.php` (the section, `CURRENT_BADGE`/`PREVIOUS_BADGE`, `statusFor()`, `accountUrlFor()`)
+
+No migration, no schema change, no service change.
+
+### Verification
+`php vendor/bin/phpunit tests/Feature/Muwakha` — **125 passed / 579 assertions, 0 failures** (118 pre-existing + 7 new). Only the directly affected Muwakha focused tests were run, per instruction. No commit, no push, no Graphify.
+
+### Commit Hash
+(not committed)
+
+---
+
+### Date
+2026-08-17 (FINAL — Muwakha historical family Accounts: immutable Accounts, exact historical reuse, `muwakha_family_accounts` ownership mapping; focused + regression tests green, NOT committed)
+
+### Task
+Final refinement of the Muwakha Families feature before commit: preserve historically correct Account data for financial reports; create a new Account whenever material payment/account identity changes; **reuse an exact old Account when the family returns to exactly the same account details**; and make Muwakha Accounts self-describing in the general Accounts screen via a canonical name that includes the account number. Explicitly no redesign of the Project financial workflow.
+
+### Result
+Delivered. `MuwakhaFamilyService` now issues **no Account UPDATE anywhere** — an Account is only ever created. An edit compares the submitted material identity (canonical name + `أفراد` + currency + account number + bank type + normalized IBAN + holder name, owned by the new `MuwakhaAccountIdentity` value object) with the current Account's, then either writes only the family row, **reuses** an exact Account already mapped to that family, or creates exactly one new Account + mapping — always atomically. The new `muwakha_family_accounts` table records durable ownership (`UNIQUE(muwakha_family_id, account_id)`, deliberately **no** family+currency uniqueness, no payment field duplicated); it is **not** an account-history event system. Reuse is strictly family-scoped through those mappings, never global. An inactive/trashed exact match fails safely in Arabic instead of being revived or duplicated around.
+
+**Pre-change local data (§24), recorded before the migration:** 1 live family (0 trashed), 3 accounts, **0 transactions and 0 transaction lines anywhere**. Family 1 (`احمد محمود ننننن`, holder `شسيب`) → Account **45**, `أسرة الشهيد احمد محمود ننننن - شيكل اسرائيلي`, currency `شيكل اسرائيلي`, code `230`, bank 1, active, balance 0.00, **no ledger activity**. Accounts **43** (`… - شيكل اسرائيلي`) and **44** (`… - دولار امريكي`), both code `230`, both active, both with **no ledger activity**, and **neither linked to any family** — they are residue of the earlier same-day currency-fork behaviour in this uncommitted session.
+
+**Backfill actually performed (§3 of the report):** exactly one mapping — family 1 → Account 45, holder `شسيب`. Account 45's name was normalized once to `أسرة الشهيد احمد محمود ننننن - شيكل اسرائيلي - (230)` (permitted: unambiguous ownership through `muwakha_families.account_id` **and** zero `transaction_lines`). **Accounts 43 and 44 were left completely untouched and unmapped** — ownership was not inferred from martyr name, account name or account number, per the explicit instruction not to guess. They are reported here for human review.
+
+**The full test suite was intentionally NOT run, by explicit user instruction.**
+
+### Changed Files
+**New — migrations (2):** `2026_08_17_100000_create_muwakha_family_accounts_table.php`, `2026_08_17_100001_backfill_muwakha_family_accounts.php`
+**New — model (1):** `app/Models/MuwakhaFamilyAccount.php`
+**New — support (1):** `app/Support/Muwakha/MuwakhaAccountIdentity.php` (canonical name + identity + `matches()` + IBAN normalization)
+**New — tests (1):** `tests/Feature/Muwakha/MuwakhaFamilyAccountIdentityTest.php` (34 tests covering the 58 required points)
+**Modified — service (1):** `app/Services/Muwakha/MuwakhaFamilyService.php` (no Account UPDATE; identity comparison; family-scoped reuse; mapping writes; server-side account-number/bank/holder validation)
+**Modified — model (1):** `app/Models/MuwakhaFamily.php` (`familyAccounts()`, `currentFamilyAccount()`)
+**Modified — audit (2):** `app/Services/Audit/Crud/AuditSubjectRegistry.php` (subject `muwakha_family_account`), `app/Support/Audit/AuditLabels.php`
+**Modified — Filament (2):** `Schemas/MuwakhaFamilyForm.php` (preview reacts to the account number too), `Pages/EditMuwakhaFamily.php` (holder loaded from the current mapping)
+**Modified — tests (4):** `MuwakhaTestCase.php` (unchanged this round), `MuwakhaFamilyServiceTest.php`, `MuwakhaFamilyCurrencyTest.php`, `MuwakhaFamilyResourceTest.php`, `tests/Feature/Audit/Crud/AuditCrudInfrastructureTest.php` (alias map)
+
+### Verification
+Run sequentially, never concurrently:
+1. `tests/Feature/Muwakha` — **118 passed / 527 assertions**.
+2. `tests/Feature/Audit/Crud` + `tests/Feature/Audit/Reports` — **86 passed / 640 assertions**.
+3. `tests/Feature/Crud` + `tests/Feature/Integrity` — **111 passed / 322 assertions**.
+4. `tests/Feature/ExecutionPayments` + `tests/Feature/Audit/Financial` — **67 passed / 549 assertions**.
+5. `tests/Feature/Permissions` — **341 tests, 338 passed, 3 pre-existing skips / 1 819 assertions**.
+6. `php artisan migrate --force` — the 2 new migrations applied to the real local database; backfill verified by direct query (see above).
+7. `php artisan oms:check-financial-integrity` — **Result: OK, exit 0** (10 relationships / 0 orphans; 3 accounts checked / 0 persisted-balance mismatches; **0 transactions and 0 transaction lines present**, so the numbering/balance/FX/currency-mismatch checks were trivially clean rather than exercised against real ledger data).
+
+Totals: **723 tests, 720 passed, 3 pre-existing skips, 3 857 assertions, 0 failures.** Full suite deliberately not run. No commit, no push, no Graphify.
+
+### Commit Hash
+(not committed)
+
+---
+
+### Date
+2026-08-17 (Muwakha family-account currency — selectable, and a currency change forks a new Account; SUPERSEDED the same day by the entry above)
+
+### Task
+One approved change to the already-implemented Muwakha Families feature: **family accounts must no longer be fixed to ILS**. The operator selects the Account currency from the existing OMS currencies at creation; the Account name carries the currency; a **currency change creates a new Account** and repoints the family, leaving the old Account and its ledger completely untouched; every other account change keeps updating the same Account. Explicitly **no redesign of anything else**.
+
+### Result
+Delivered. Currency is a required searchable `Select` over the live currencies, stored only in `accounts.currency_id`, with server-side re-validation. Account names follow one centralized rule, `أسرة الشهيد {martyr_name} - {currency display name}`, where the display name is `currencies.name` — the convention `AccountForm` and `AccountsTable` already use. `MuwakhaFamilyService::update()` forks a new Account **only** when the currency changes, atomically with the `account_id` repoint; `currency_id` is present in **no** Account UPDATE payload anywhere, so an existing Account is never re-denominated. **No account-history table was created** — the superseded Accounts are the history. `نوع الحساب = أفراد` remains a read-only hard invariant, `account_type_id` is still not exposed, and global Currency behaviour, Project financial workflows, Transaction posting, balances and FX are untouched.
+
+**The full test suite was intentionally NOT run, by explicit user instruction.** Verification was scoped by the user to the Muwakha suite, directly affected Account/Audit/Export/Execution-Payment regression suites, and the integrity check.
+
+### Changed Files
+**New — tests (1):** `tests/Feature/Muwakha/MuwakhaFamilyCurrencyTest.php` (21 tests covering the 34 required points)
+**Modified — support (2):** `app/Support/Muwakha/MuwakhaReference.php` (removed `CURRENCY_CODE` + `currencyId()`; added `selectableCurrenciesQuery()`, `currencyOptions()`, `findSelectableCurrency()`, `currencyDisplayName()`), `app/Support/Muwakha/MuwakhaReferenceException.php` (removed `currencyMissing()`)
+**Modified — services (4):** `app/Services/Muwakha/MuwakhaFamilyService.php` (currency in `ACCOUNT_FIELDS`; two-argument `accountNameFor()`; shared `makeAccount()`; `requireCurrency()`; the fork branch), `MuwakhaFamilyExportRow.php`, `MuwakhaFamiliesExcelExportService.php`, `MuwakhaFamiliesWordExportService.php`
+**Modified — Filament (5):** `Schemas/MuwakhaFamilyForm.php`, `Schemas/MuwakhaFamilyInfolist.php`, `Tables/MuwakhaFamiliesTable.php`, `Pages/EditMuwakhaFamily.php`, `Pages/ListMuwakhaFamilies.php`
+**Modified — migration comment only (1):** `database/migrations/2026_08_16_100001_create_muwakha_families_table.php` (docblock; **no schema change, no new migration**)
+**Modified — tests (3):** `tests/Feature/Muwakha/MuwakhaTestCase.php`, `MuwakhaFamilyServiceTest.php`, `MuwakhaFamilyResourceTest.php`
+
+### Verification
+Run sequentially, never concurrently:
+1. `tests/Feature/Muwakha` — **84 passed / 363 assertions** (63 pre-existing, updated where they asserted the old name/ILS invariant + 21 new).
+2. `tests/Feature/Crud` + `tests/Feature/Integrity/AccountCurrencyIntegrityCheckerTest.php` — **97 passed / 286 assertions**.
+3. `tests/Feature/Audit/Crud` + `tests/Feature/Audit/Reports` — **86 passed / 629 assertions**.
+4. `tests/Feature/ExecutionPayments` + `Audit/Financial/ExecutionPaymentAuditTest.php` + `Audit/Financial/FinancialMasterDataAuditTest.php` — **31 passed / 202 assertions** (proves existing Account selection by the صرف مبالغ التنفيذ workflow still works).
+5. `php artisan oms:check-financial-integrity` — **Result: OK, exit 0** (10 relationships checked, 0 orphans; 0 transactions, 0 lines and 0 accounts present on the current local database, so the balance/FX/currency checks were trivially clean).
+
+Totals: **298 tests, 298 passed, 1 480 assertions, 0 failures.** Full suite deliberately not run. No commit, no push, no Graphify.
+
+### Commit Hash
+(not committed)
+
+---
+
+### Date
+2026-08-16 (OMS Muwakha Families — مشروع المؤاخاة, implemented, focused + regression tests green, NOT committed)
+
+### Task
+Implement the approved **أسر المؤاخاة** (Muwakha Families) feature end-to-end: a first-class family/beneficiary entity, automatic creation of one dedicated OMS `Account` per family, a many-to-many family↔project link carrying a per-project optional card code, `accounts.account_code` relaxed from UNIQUE to a plain index, four new bank/payment types, a standalone Filament resource under **المشاريع**, Excel + Word exports, permissions, and audit coverage — with **no Muwakha-specific payment engine** and **no change to the existing Execution Payment / Transaction / balance workflow**.
+
+### Result
+*(Superseded 2026-08-17: the `ILS` part of this entry no longer holds — the account currency is selected, and changing it forks a new Account. See the 2026-08-17 entry above. Everything else stands.)*
+
+Delivered. A family owns exactly one `Account` (`أفراد` / `ILS`, zero balance, **no opening-balance transaction**), created atomically with the family; editing a family synchronizes that same Account; deleting a family soft-deletes it and removes its project links while leaving the Account completely untouched. `accounts.account_code` may now repeat across accounts. Two read-only audits (Phase A) preceded any code change and raised **two STOP conditions**, both resolved by explicit user decision before implementation — see `docs/DECISIONS_LOG.md` (2026-08-16).
+
+**The full test suite was intentionally NOT run, by explicit user instruction.** The user scoped verification to the Muwakha suite plus directly affected regression suites and the integrity check.
+
+### Changed Files
+**New — migrations (4):** `2026_08_16_100000_drop_unique_from_accounts_account_code.php`, `2026_08_16_100001_create_muwakha_families_table.php`, `2026_08_16_100002_create_muwakha_family_projects_table.php`, `2026_08_16_100003_seed_muwakha_reference_data.php`
+**New — models (2):** `app/Models/MuwakhaFamily.php`, `app/Models/MuwakhaFamilyProject.php`
+**New — support (2):** `app/Support/Muwakha/MuwakhaReference.php`, `app/Support/Muwakha/MuwakhaReferenceException.php`
+**New — services (5):** `app/Services/Muwakha/MuwakhaFamilyService.php`, `MuwakhaFamilyProjectService.php`, `MuwakhaFamilyExportRow.php`, `MuwakhaFamiliesExcelExportService.php`, `MuwakhaFamiliesWordExportService.php`
+**New — policy (1):** `app/Policies/MuwakhaFamilyPolicy.php`
+**New — Filament (9):** `app/Filament/Resources/MuwakhaFamilies/` — `MuwakhaFamilyResource.php`, `Pages/{List,Create,View,Edit}MuwakhaFamily*.php`, `Schemas/MuwakhaFamilyForm.php`, `Schemas/MuwakhaFamilyInfolist.php`, `Tables/MuwakhaFamiliesTable.php`, `RelationManagers/ProjectsRelationManager.php`
+**Modified (4):** `app/Support/Permissions/PermissionRegistry.php` (new `muwakha_families` module + `export` operation + Project Manager/Viewer defaults); `app/Services/Audit/Crud/AuditSubjectRegistry.php` (two subjects + private-field value policy); `app/Services/Audit/Reports/ReportExportSubject.php` (`MuwakhaFamilies` case); `app/Support/Audit/AuditLabels.php` (three Arabic subject labels)
+**New tests (4 files):** `tests/Feature/Muwakha/{MuwakhaTestCase,MuwakhaSchemaTest,MuwakhaFamilyServiceTest,MuwakhaFamilyResourceTest}.php`
+**Modified tests (2):** `tests/Feature/Audit/Crud/AuditCrudInfrastructureTest.php` (closed alias inventory + 2); `tests/Feature/Crud/CrudRedirectStandardStructureTest.php` (full-page resource inventory 22 → 23)
+
+### Verification
+- **Muwakha focused suite — 63 passed / 244 assertions, 0 failures.**
+- **Permissions + Crud + ExecutionPayments — 447 tests, 444 passed, 3 pre-existing skips / 2155 assertions, 0 failures.**
+- **Audit + Reports — 447 passed / 2801 assertions, 0 failures.**
+- **Unit + Integrity + GeneralExpenses + GeneralExchanges + ProjectCostReceipts + ProjectCostBudgetsPayments — 550 tests, 548 passed, 2 pre-existing skips / 1188 assertions, 0 failures.**
+- Focused/regression total: **1507 tests, 1502 passed, 5 pre-existing skips, 6388 assertions, 0 failures.**
+- `php artisan migrate --force` — 4 migrations DONE against the real local database.
+- `php artisan oms:check-financial-integrity` — **Result: OK, exit 0.**
+- Live schema verified read-only: `accounts.account_code` now carries only `accounts_account_code_index` (`unique=0`); `muwakha_families` and `muwakha_family_projects` exist and are empty; the four bank types exist exactly once each (`bank_types` 6 → 10); `مشروع المؤاخاة` exists once as `MUWAKHA_001` (`projects_super` 4 → 5).
+- **Full suite intentionally not run (explicit user instruction).**
+
+### Commit Hash
+Not committed — awaiting review.
 
 ---
 

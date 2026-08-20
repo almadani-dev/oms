@@ -23,14 +23,15 @@ use Illuminate\Validation\ValidationException;
  * FinancialTransactionBalanceGuard::assertBalancedMultiCurrencyLines() already
  * uses at write time.
  *
- * A transaction's line_role set determines which of the six known valid
- * structures it is (2-line single-currency, or the 4-line multi-currency
- * exchange/disbursement shape). A transaction whose role set matches none of
- * these — including every pre-2026-07-14 historical row where line_role is
- * NULL — cannot be safely classified as balanced or unbalanced without
- * guessing, so it is reported as a separate, bounded WARNING ("unclassified
- * structure") rather than a false-positive violation or a silently-skipped
- * gap.
+ * A transaction's line_role set determines which known valid structure it is
+ * (a 2-line single-currency shape, or one of the four multi-currency
+ * exchange/disbursement shapes — 4, 3 or 2 lines, since both deduction roles
+ * are optional; see MULTI_CURRENCY_ROLE_SETS). A transaction whose role set
+ * matches none of these — including every pre-2026-07-14 historical row where
+ * line_role is NULL — cannot be safely classified as balanced or unbalanced
+ * without guessing, so it is reported as a separate, bounded WARNING
+ * ("unclassified structure") rather than a false-positive violation or a
+ * silently-skipped gap.
  *
  * Bounded: transactions are processed via chunkById; only the current
  * chunk's own lines are ever loaded (one extra query per chunk, no N+1).
@@ -47,7 +48,32 @@ class JournalBalanceIntegrityChecker
         ['opening_balance_counterpart', 'opening_balance_target'],
     ];
 
-    private const MULTI_CURRENCY_ROLE_SET = ['administrative_deduction', 'destination', 'source', 'transfer_fee'];
+    /**
+     * Every valid multi-currency (disbursement / general exchange) role set,
+     * each stored ALREADY SORTED because $roles below is sorted before
+     * comparison.
+     *
+     * Both workflows carry two OPTIONAL deduction lines: a 0% administrative
+     * or transfer percentage writes no line at all, because a
+     * debit_base = credit_base = 0 row is meaningless accounting that
+     * assertValidLinePayload() rejects. So the same logical transaction is
+     * legitimately 4, 3 or 2 lines. Source and destination are always
+     * required - there is no transfer without money leaving one account and
+     * arriving in another.
+     *
+     * ['destination', 'source'] is deliberately listed HERE and not in
+     * SINGLE_CURRENCY_ROLE_SETS even though it is two lines: a two-line
+     * disbursement still converts between currencies and may carry
+     * fx_rate != 1, so routing it through assertBalancedSingleCurrencyLines()
+     * (which demands fx_rate == 1 and one shared currency) would raise false
+     * `unbalanced_transaction` violations on perfectly correct rows.
+     */
+    private const MULTI_CURRENCY_ROLE_SETS = [
+        ['destination', 'source'],
+        ['administrative_deduction', 'destination', 'source'],
+        ['destination', 'source', 'transfer_fee'],
+        ['administrative_deduction', 'destination', 'source', 'transfer_fee'],
+    ];
 
     public function check(IntegrityCheckReport $report): void
     {
@@ -124,8 +150,16 @@ class JournalBalanceIntegrityChecker
     ): void {
         $roles = $lines->pluck('line_role')->filter()->sort()->values()->all();
 
-        $isMultiCurrency = $roles === self::MULTI_CURRENCY_ROLE_SET && $lines->count() === 4;
-        $isSingleCurrency = $lines->count() === 2 && in_array($roles, self::SINGLE_CURRENCY_ROLE_SETS, true);
+        // $roles has already dropped NULL line_roles, so requiring
+        // count($roles) === $lines->count() is what keeps this strict: a
+        // transaction mixing three recognised roles with one unclassified
+        // line, or carrying the same role twice, matches no set and stays
+        // unclassified rather than being validated against the wrong shape.
+        $isMultiCurrency = count($roles) === $lines->count()
+            && in_array($roles, self::MULTI_CURRENCY_ROLE_SETS, true);
+
+        $isSingleCurrency = $lines->count() === 2
+            && in_array($roles, self::SINGLE_CURRENCY_ROLE_SETS, true);
 
         if (! $isMultiCurrency && ! $isSingleCurrency) {
             $unclassified[] = $transactionId;
@@ -150,17 +184,17 @@ class JournalBalanceIntegrityChecker
                 $expectedCurrencyId = (int) $lines->first()->currency_id;
                 FinancialTransactionBalanceGuard::assertBalancedSingleCurrencyLines($payload, $expectedCurrencyId);
             } else {
+                // Source and destination are guaranteed present by every set in
+                // MULTI_CURRENCY_ROLE_SETS; the two deductions are optional and
+                // a missing one is passed as null, contributing 0 to the
+                // amount_after_deductions equation.
                 $byRole = $lines->keyBy('line_role');
-                $sourceLine = $this->linePayload($byRole['source']);
-                $adminLine = $this->linePayload($byRole['administrative_deduction']);
-                $transferLine = $this->linePayload($byRole['transfer_fee']);
-                $destinationLine = $this->linePayload($byRole['destination']);
 
                 FinancialTransactionBalanceGuard::assertBalancedMultiCurrencyLines(
-                    $sourceLine,
-                    $adminLine,
-                    $transferLine,
-                    $destinationLine,
+                    $this->linePayload($byRole['source']),
+                    isset($byRole['administrative_deduction']) ? $this->linePayload($byRole['administrative_deduction']) : null,
+                    isset($byRole['transfer_fee']) ? $this->linePayload($byRole['transfer_fee']) : null,
+                    $this->linePayload($byRole['destination']),
                     (int) $byRole['source']->currency_id,
                     (int) $byRole['destination']->currency_id,
                 );

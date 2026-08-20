@@ -218,16 +218,41 @@ class FinancialTransactionBalanceGuard
      *  - amount_after_deductions is derived here (never trusted from a
      *    stored field) as: source.credit_base - admin.debit_base - transfer.debit_base
      *  - destination FX conversion: destination.debit_base = amount_after_deductions × fx_rate
+     *
+     * OPTIONAL DEDUCTION LINES. `administrative_percentage` and
+     * `transfer_percentage` are both legitimately 0 in these two workflows,
+     * and a 0% deduction has no accounting line at all — writing one would
+     * mean a debit_base = credit_base = amount_currency = 0 row, which
+     * assertValidLinePayload() rejects outright and must keep rejecting.
+     * So $adminLine and $transferLine are nullable: a null line is an
+     * ABSENT deduction and contributes exactly 0 to the
+     * amount_after_deductions equation below. It is never a substitute for
+     * a malformed or zero-valued line — a caller that passes a zero line
+     * still fails, in assertValidLinePayload() first and here second.
+     *
+     * The four valid shapes are therefore:
+     *   source + admin + transfer + destination  (4 lines)
+     *   source + transfer + destination          (3 lines, admin = 0%)
+     *   source + admin + destination             (3 lines, transfer = 0%)
+     *   source + destination                     (2 lines, both = 0%)
+     *
+     * Source and destination are ALWAYS required — there is no disbursement
+     * or exchange without money leaving one account and arriving in another.
      */
     public static function assertBalancedMultiCurrencyLines(
         array $sourceLine,
-        array $adminLine,
-        array $transferLine,
+        ?array $adminLine,
+        ?array $transferLine,
         array $destinationLine,
         int $sourceCurrencyId,
         int $destinationCurrencyId
     ): void {
-        foreach (['المصدر' => $sourceLine, 'النسبة الإدارية' => $adminLine, 'التحويل' => $transferLine] as $label => $line) {
+        $sourceCurrencyLines = array_filter(
+            ['المصدر' => $sourceLine, 'النسبة الإدارية' => $adminLine, 'التحويل' => $transferLine],
+            static fn (?array $line): bool => $line !== null,
+        );
+
+        foreach ($sourceCurrencyLines as $label => $line) {
             if ((int) ($line['currency_id'] ?? 0) !== $sourceCurrencyId) {
                 self::fail("سطر {$label} يجب أن يكون بعملة المصدر نفسها.");
             }
@@ -237,9 +262,12 @@ class FinancialTransactionBalanceGuard
             self::fail('سطر الوجهة يجب أن يكون بعملة الصرف المحددة.');
         }
 
+        // An absent (null) deduction line contributes 0 — that is what "no
+        // administrative deduction" means arithmetically. A PRESENT line
+        // still contributes its own debit_base with no fallback.
         $originalMinor    = self::toMinorUnits($sourceLine['credit_base'] ?? 0);
-        $adminMinor       = self::toMinorUnits($adminLine['debit_base'] ?? 0);
-        $transferMinor    = self::toMinorUnits($transferLine['debit_base'] ?? 0);
+        $adminMinor       = $adminLine === null ? 0 : self::toMinorUnits($adminLine['debit_base'] ?? 0);
+        $transferMinor    = $transferLine === null ? 0 : self::toMinorUnits($transferLine['debit_base'] ?? 0);
         $afterDeductMinor = $originalMinor - $adminMinor - $transferMinor;
 
         if ($afterDeductMinor <= 0) {

@@ -261,6 +261,140 @@ class BackfillTransactionDescriptionsCommandTest extends TestCase
         $this->assertStringContainsString('صرف مبلغ لمشروع مشروع الشتاء بعد الخصومات والتحويل', $tx->fresh()->description);
     }
 
+    /* =====================================================================
+     | Optional deduction tags: 2- and 3-line BUD/EXT flows
+     |
+     | Since 2026-08-19 a 0% administrative or transfer percentage writes no
+     | line at all, so a disbursement or general exchange legitimately carries
+     | a SUBSET of its four notes tags. LINE_SOURCE and LINE_DESTINATION stay
+     | required; the two deduction tags are optional. Everything else about
+     | the classifier stays strict.
+     ===================================================================== */
+
+    public function test_apply_updates_a_three_line_disbursement_without_an_administrative_deduction(): void
+    {
+        $usd     = $this->makeCurrency();
+        $type    = $this->makeTransactionType('صرف مبلغ مشروع');
+        $project = $this->makeProject('مشروع بلا خصم إداري');
+        $pcost   = $this->makeProjectCost($project, $usd);
+        $tx      = $this->makeTransaction($type);
+
+        $source      = $this->makeLine($tx, $this->makeAccount('حساب المصدر', $usd), $usd, 0, 10000, ProjectCostBudget::LINE_SOURCE);
+        $transfer    = $this->makeLine($tx, $this->makeAccount('حساب تحويل', $usd), $usd, 200, 0, ProjectCostBudget::LINE_TRANSFER);
+        $destination = $this->makeLine($tx, $this->makeAccount('حساب الوجهة', $usd), $usd, 9800, 0, ProjectCostBudget::LINE_DESTINATION);
+
+        ProjectCostBudget::create([
+            'project_cost_id' => $pcost->id,
+            'transaction_id'  => $tx->id,
+            'final_amount'    => 9800,
+        ]);
+
+        Artisan::call('transactions:backfill-descriptions', ['--apply' => true]);
+
+        $this->assertSame(TransactionLineRole::Source->value, $source->fresh()->line_role);
+        $this->assertSame(TransactionLineRole::TransferFee->value, $transfer->fresh()->line_role);
+        $this->assertSame(TransactionLineRole::Destination->value, $destination->fresh()->line_role);
+        $this->assertStringContainsString('صرف مبلغ لمشروع مشروع بلا خصم إداري بعد الخصومات والتحويل', $tx->fresh()->description);
+    }
+
+    public function test_apply_updates_a_two_line_disbursement_with_neither_deduction(): void
+    {
+        $usd     = $this->makeCurrency();
+        $type    = $this->makeTransactionType('صرف مبلغ مشروع');
+        $project = $this->makeProject('مشروع بلا خصومات');
+        $pcost   = $this->makeProjectCost($project, $usd);
+        $tx      = $this->makeTransaction($type);
+
+        $source      = $this->makeLine($tx, $this->makeAccount('حساب المصدر', $usd), $usd, 0, 10000, ProjectCostBudget::LINE_SOURCE);
+        $destination = $this->makeLine($tx, $this->makeAccount('حساب الوجهة', $usd), $usd, 10000, 0, ProjectCostBudget::LINE_DESTINATION);
+
+        ProjectCostBudget::create([
+            'project_cost_id' => $pcost->id,
+            'transaction_id'  => $tx->id,
+            'final_amount'    => 10000,
+        ]);
+
+        Artisan::call('transactions:backfill-descriptions', ['--apply' => true]);
+
+        $this->assertSame(TransactionLineRole::Source->value, $source->fresh()->line_role);
+        $this->assertSame(TransactionLineRole::Destination->value, $destination->fresh()->line_role);
+        $this->assertStringContainsString('صرف مبلغ لمشروع مشروع بلا خصومات بعد الخصومات والتحويل', $tx->fresh()->description);
+    }
+
+    public function test_apply_updates_a_two_line_general_exchange_with_neither_deduction(): void
+    {
+        $usd  = $this->makeCurrency();
+        $type = $this->makeTransactionType('تحويل عام');
+        $tx   = $this->makeTransaction($type);
+
+        $source      = $this->makeLine($tx, $this->makeAccount('حساب المصدر', $usd), $usd, 0, 2000, GeneralExchange::LINE_SOURCE);
+        $destination = $this->makeLine($tx, $this->makeAccount('حساب الوجهة', $usd), $usd, 2000, 0, GeneralExchange::LINE_DESTINATION);
+
+        GeneralExchange::create([
+            'transaction_id'  => $tx->id,
+            'original_amount' => 2000,
+            'final_amount'    => 2000,
+            'date'            => '2026-07-18',
+        ]);
+
+        Artisan::call('transactions:backfill-descriptions', ['--apply' => true]);
+
+        $this->assertSame(TransactionLineRole::Source->value, $source->fresh()->line_role);
+        $this->assertSame(TransactionLineRole::Destination->value, $destination->fresh()->line_role);
+        $this->assertNotNull($tx->fresh()->description);
+    }
+
+    public function test_a_disbursement_missing_its_required_source_tag_is_not_classified(): void
+    {
+        $usd     = $this->makeCurrency();
+        $type    = $this->makeTransactionType('صرف مبلغ مشروع');
+        $project = $this->makeProject('مشروع ناقص');
+        $pcost   = $this->makeProjectCost($project, $usd);
+        $tx      = $this->makeTransaction($type);
+
+        // Only a deduction and a destination: LINE_SOURCE is required and
+        // absent, so this must not be classified on a guess.
+        $admin       = $this->makeLine($tx, $this->makeAccount('حساب إداري', $usd), $usd, 300, 0, ProjectCostBudget::LINE_ADMIN);
+        $destination = $this->makeLine($tx, $this->makeAccount('حساب الوجهة', $usd), $usd, 9500, 0, ProjectCostBudget::LINE_DESTINATION);
+
+        ProjectCostBudget::create([
+            'project_cost_id' => $pcost->id,
+            'transaction_id'  => $tx->id,
+            'final_amount'    => 9500,
+        ]);
+
+        Artisan::call('transactions:backfill-descriptions', ['--apply' => true]);
+
+        $this->assertNull($admin->fresh()->line_role);
+        $this->assertNull($destination->fresh()->line_role);
+        $this->assertNull($tx->fresh()->description);
+    }
+
+    public function test_a_disbursement_with_a_duplicated_tag_is_not_classified(): void
+    {
+        $usd     = $this->makeCurrency();
+        $type    = $this->makeTransactionType('صرف مبلغ مشروع');
+        $project = $this->makeProject('مشروع مكرر');
+        $pcost   = $this->makeProjectCost($project, $usd);
+        $tx      = $this->makeTransaction($type);
+
+        $source      = $this->makeLine($tx, $this->makeAccount('حساب المصدر', $usd), $usd, 0, 10000, ProjectCostBudget::LINE_SOURCE);
+        $duplicate   = $this->makeLine($tx, $this->makeAccount('حساب المصدر 2', $usd), $usd, 0, 500, ProjectCostBudget::LINE_SOURCE);
+        $destination = $this->makeLine($tx, $this->makeAccount('حساب الوجهة', $usd), $usd, 10500, 0, ProjectCostBudget::LINE_DESTINATION);
+
+        ProjectCostBudget::create([
+            'project_cost_id' => $pcost->id,
+            'transaction_id'  => $tx->id,
+            'final_amount'    => 10500,
+        ]);
+
+        Artisan::call('transactions:backfill-descriptions', ['--apply' => true]);
+
+        $this->assertNull($source->fresh()->line_role);
+        $this->assertNull($duplicate->fresh()->line_role);
+        $this->assertNull($destination->fresh()->line_role);
+    }
+
     public function test_apply_updates_a_classified_execution_payment(): void
     {
         $usd     = $this->makeCurrency();

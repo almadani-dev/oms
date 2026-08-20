@@ -10,6 +10,225 @@
 
 ### Impact
 
+
+---
+
+### Date
+2026-08-19 (BUD/EXT optional deduction lines)
+
+### Decision
+1. **A 0% deduction produces NO transaction line — the guard is not weakened.** `FinancialTransactionBalanceGuard::assertValidLinePayload()` keeps rejecting `debit_base = credit_base = 0`. Instead `buildLines()` does not build the line, giving 4/3/3/2-line BUD and EXT transactions. Source and destination are always required.
+2. **Line payloads are keyed by ROLE, not array position.** `['source' => …, 'admin' => …?, 'transfer' => …?, 'destination' => …]` replaces `$lines[0..3]` in all four Create/Edit pages.
+3. **`assertBalancedMultiCurrencyLines()` accepts nullable admin/transfer**, a null line contributing 0 — rather than a separate 2-line or 3-line method.
+4. **`FinancialAccountGuard` is unchanged**; callers omit the spec for an inactive deduction.
+5. **NEW RULE (not in the brief): a percentage `> 0` whose derived amount rounds to `0.00` is rejected**, on its own percentage field, via `FinancialAmountGuard::assertDeductionsAreRecordable()`.
+6. **`['destination','source']` is a MULTI-currency role set**, listed in `MULTI_CURRENCY_ROLE_SETS` and deliberately not in `SINGLE_CURRENCY_ROLE_SETS`.
+7. **Error visibility: Layer 1 only.** A danger notification carrying the guard's messages, then re-throw. The repo-wide guard-key (`data.` prefix) refactor is deliberately NOT done.
+8. **No migration and no historical rewrite** of existing BUD/EXT rows.
+
+### Reason
+1. A zero-valued line is meaningless accounting and would corrupt the meaning of a journal, so the correct fix is never to create it. Weakening the guard would have permitted zero lines everywhere, including in flows where they really are a defect.
+2. With a variable-length payload, positional access is an accident waiting to happen: at 3 lines `$lines[1]` is the transfer line, at 2 lines it is the destination line. Role keys make a wrong read impossible rather than merely unlikely.
+3. Two currencies are never summed; the existing FX equation is already the single definition of "balanced" for these flows, and a null deduction contributing 0 is arithmetically exactly what "no deduction" means. A parallel method would have duplicated that definition and let the copies drift.
+4. The guard already iterates whatever specs it is handed, so conditionality belongs at the call site that knows the business rule. Changing the guard would have pushed workflow knowledge into a shared validator used by five flows.
+5. Both alternatives were wrong. Building the line is forbidden; dropping it silently discards a deduction the operator explicitly typed and would show as an unexplained difference in the final amount. Rejecting on the percentage field states the actual problem. **Its structural effect matters more than the edge case**: once it passes, `percentage > 0` ⟺ `amount > 0`, so the line payload, account validation, balance mutations and audit roles cannot disagree about which optional roles exist.
+6. A 2-line disbursement still converts currency and may carry `fx_rate != 1`. Routing it to `assertBalancedSingleCurrencyLines()` — which demands `fx_rate == 1` and one shared currency — would have flagged correct rows as `unbalanced_transaction`. This is the single most dangerous mistake available in this change and is pinned by a dedicated test.
+7. The notification is ~10 lines with no behavioural risk and closes the actual reported symptom (silent no-op). Re-keying ~30 throw sites across six workflows is a different change with a different blast radius and deserves its own verification pass.
+8. Explicit instruction: production carries test-only data due for deletion. Rewriting financial history to tidy a shape is never a side effect of a feature.
+
+### Impact
+- **BUD and EXT transactions now legitimately carry 2, 3 or 4 lines.** Any future consumer must treat a missing `LINE_ADMIN`/`LINE_TRANSFER` as a valid 0% deduction, never as missing data.
+- **Pre-existing 4-line rows with zero-valued deduction lines are untouched** and still reported as `invalid_fx_base_conversion` by `JournalBalanceIntegrityChecker`, exactly as before. None exist locally.
+- **A previously-accepted input is now rejected:** a percentage `> 0` deriving to `0.00`. Previously it produced a silent no-op (the zero line was built and rejected under the invisible `lines` key), so nothing that used to succeed now fails — but the failure is now explicit and explained.
+- **`resolveRolesByNotesTag()` changed signature** (added `$requiredNotes`). Only two call sites exist, both updated.
+- Every financial guard rejection in these four pages is now visible to the operator; the remaining ~30 guard keys still do not bind to their form fields.
+
+---
+
+### Date
+2026-08-18 (Muwakha Family Account Statement — `كشف حساب الأسرة`)
+
+### Decision
+**1. Project filtering traces two authoritative structured paths, and the second is mandatory.** Path A is line level (`transaction_lines.project_cost_id → projects_costs.project_id`), the path `ComprehensiveFinancialTransactionsReportService` already uses. Path B traces the business record (`transactions.id ← project_cost_budgets_payments.transaction_id → project_cost_budgets.project_cost_id → projects_costs.project_id`), the chain `ProjectCostBudgetsPaymentObserver::resolveProjectId()` relies on. Both are correlated `EXISTS` subqueries, never joins. `muwakha_family_projects` plays no part, and Project is never inferred from notes, free text, an Account name, or Family↔Project membership.
+
+**2. Soft-deleted mapped Accounts are included — the deliberate opposite of the Family View page.**
+
+**3. No new permission is introduced.** View reuses `muwakha_families.view`, export reuses `muwakha_families.export`.
+
+**4. No balances of any kind, and no cross-currency total.**
+
+**5. During outage recovery, a stale PHPUnit result cache is evidence of nothing.**
+
+### Reason
+**On Path B.** Path A alone would have been silently wrong rather than merely incomplete. `CreateExecutionPayment::buildLines()` and `EditExecutionPayment` write their two lines with `project_cost_id = NULL`, and an execution payment is precisely how money reaches a Muwakha family Account — so a Project filter built on Path A alone would have returned an empty or partial statement for exactly the movements this report exists to show, while looking perfectly correct. The two paths are mutually exclusive by construction, so no precedence rule is needed. `EXISTS` rather than a join because a join through the payment chain could multiply a ledger row if a transaction ever carried more than one business record, silently doubling a debit/credit total. A Family↔Project link was rejected as a source because being linked to a Project says nothing about whether a given transaction on the family's Accounts belongs to it.
+
+**On soft-deleted Accounts.** The View page and the statement answer different questions. The View page asks *where may money be sent* — a deleted Account must not be offered as a usable destination. The statement asks *where has money already gone* — omitting a deleted Account would silently delete financial history, since its `transaction_lines` are real. The widening is confined to `MuwakhaFamilyAccountStatementService`; deleted Accounts appear in the filter marked `— محذوف` and are never restored, reactivated or written to.
+
+**On permissions.** The statement is a view of data the Muwakha permissions already govern. Adding `muwakha_families.account_statement.*` would have created a permission an administrator must discover and grant before an existing capability kept working, with no security gain — the approved matrix (Super Admin / Admin / Project Manager full, Viewer view-only, Accountant no access) already expresses the intent.
+
+**On balances.** A running balance across a set of Accounts that changes with the Account filter is not a meaningful figure, and an opening balance implies a period boundary this report deliberately does not have (both dates are optional). Totals accumulate inside a currency group only, which makes a blended `ILS + USD` figure structurally impossible rather than merely absent.
+
+**On the result cache.** `.phpunit.result.cache` was written at 11:21 and recorded five failing statement tests, but the service and page were edited at 11:24:24 and 11:24:53 — after it. The cache therefore described a state that no longer existed on disk. Reporting those five as real failures would have been as wrong as reporting a pre-outage green run as a pass; both are unreproducible from current state. A clean rerun resolved it: all 33 pass.
+
+### Impact
+The Project filter offers only Projects the family's own movements actually resolve to; a Project the family is merely linked to is not offered and is rejected server-side. Movements with no Project remain visible under `كل المشاريع` (the existing Comprehensive-report convention — there is no `بدون مشروع` option). Historical completeness is preserved without touching any Account, mapping, Transaction or Transaction Line. No permission migration is needed. The report can never emit a mixed-currency monetary figure.
+
+---
+
+### Date
+2026-08-17 (Muwakha Family View — the linked-accounts section stays an infolist table, and every cell hides its own label)
+
+### Decision
+1. **The section remains a `RepeatableEntry::table()` inside the infolist**, not a second Filament `Table`/relation manager.
+2. **Each cell entry keeps `label()` but adds `hiddenLabel()`.** The heading wording is declared once per column and shown once in `<thead>`.
+3. **Column widths are declared as percentages totalling 100%**, and the two long Arabic headings wrap.
+4. **Layout is now pinned by tests** — table-not-cards, full-width span, and section ordering — alongside the existing behavioural assertions.
+
+### Reason
+Decision 1 is forced by the required order. Filament renders relation managers **after** the entire infolist, so a relation-manager table could only ever appear *below* `مشاريع المؤاخاة`, never between it and `ملاحظات`. Keeping the section in the infolist and making it the last component is the only way to get `ملاحظات` → `الحسابات المرتبطة بالأسرة` → `مشاريع المؤاخاة`. It also keeps the section strictly read-only by construction: a relation manager would have brought a table builder with actions, bulk actions and filters into a screen whose whole point is that a payment destination cannot be changed from it.
+
+Decision 2 is the actual fix for the height. `->table()` was already producing correct `<table>` markup — the tallness came from each cell rendering a label stack above its value, so a row was seven labelled blocks rather than seven values. Filament's stylesheet does hide those labels via a CSS rule, but relying on a published-asset rule for a layout requirement is fragile; `hiddenLabel()` removes the label-column wrapper from the markup itself, so the cell is one line regardless of asset state. `label()` is deliberately kept rather than deleted: it is still the accessible name of the cell and the single place each column's wording is written.
+
+Decision 3 stops the widest row from dictating the whole table — without explicit widths a long IBAN or a long canonical Account name sizes its column and squeezes the rest, which is exactly the failure mode "for many Accounts, the layout should remain compact" describes.
+
+Decision 4 reflects what this task was. The behaviour was already correct and tested; the defect was purely visual, so leaving layout unasserted would let the next infolist edit silently reintroduce the card stack or move the section back above `ملاحظات`.
+
+### Impact
+Presentation only. No schema, model, service, matching, reuse, creation, export, permission, audit or financial change; the only production file touched is `MuwakhaFamilyInfolist.php`. The ordering assertion reads the Projects relation manager's rendered schema component rather than its heading, because the relation manager is a nested Livewire component whose heading is not present in the parent document — a future change to how Filament names that component would need the assertion updated.
+
+---
+
+### Date
+2026-08-17 (Muwakha UI — deleted current Account is reported not described; initial project links come from the Create form)
+
+### Decision
+1. **A soft-deleted current Account is REPORTED, never described.** `بيانات الحساب` renders only `الحساب الحالي محذوف` and hides every detail of that Account. This supersedes the earlier same-day decision to leave that section reading the `withTrashed()` relation as-is.
+2. **It remains a display rule.** The ownership mapping is not removed, `muwakha_families.account_id` is not repointed, and nothing restores or reactivates the Account.
+3. **Initial project links are collected on the Create form but validated and written by the existing domain service**, replayed one row at a time inside `MuwakhaFamilyService::create()`'s transaction. No link rule is reimplemented in a Filament callback.
+4. **`update()` strips the project-link key.** The section is create-only; after creation, links belong to `ProjectsRelationManager`.
+5. **A forged row with no project is rejected, not silently dropped.** Rows are forwarded to the service unfiltered; the form's own `required()` prevents a legitimate blank row from being submitted.
+
+### Reason
+Decision 1 reverses my earlier reasoning, and the user was right to overrule it. I had kept the details visible on the grounds that a vanished payment destination should stay legible as a reported problem — but showing an account number, IBAN and holder name for a **deleted** account invites someone to pay into it, which is a worse failure than an under-informative screen. The warning still reports the problem; it just refuses to supply payment details for an account the system no longer considers live. Keeping it a display rule (decision 2) preserves the distinction that the whole account-history design rests on: hidden is not deleted, and a mapping is a durable ownership fact.
+
+Decision 3 is what makes atomicity real rather than claimed. Filament creates the record and the relation manager writes links separately, which would leave a family committed with only some of its links if one were rejected. Replaying rows through `MuwakhaFamilyProjectService::link()` inside the existing transaction gives three things at once: one rollback boundary covering Account + family + mapping + links; identical validation to a link added later; and duplicate detection *within* a submission for free, because each row is checked against the rows already inserted rather than against a separate in-memory rule that could drift.
+
+Decision 5 follows the same fail-closed discipline used everywhere else in this feature: a Select's options and a `required()` flag are Livewire component state, so the server must reject what the form would never have sent.
+
+### Impact
+A deleted current Account now produces an unambiguous screen with no payment details anywhere on it, while the historical record behind it is bit-for-bit intact. Family creation becomes a single save that can include several project links, without any new schema (`muwakha_family_projects` still owns them; `project_id`/`card_code` were **not** added to `muwakha_families`) and without weakening any uniqueness rule. Reviewers should note one test consequence: `الحساب الحالي محذوف` contains the badge phrase `الحساب الحالي`, so badge-absence can no longer be asserted by page text — the linked-accounts tests assert it on the resolved links instead.
+
+---
+
+### Date
+2026-08-17 (Muwakha Family View — the linked-accounts section is a display filter, not a data rule)
+
+### Decision
+1. **Soft-deleted Accounts are hidden from `الحسابات المرتبطة بالأسرة` by a DISPLAY FILTER ONLY.** The `muwakha_family_accounts` mapping is never removed, the Account is never restored or reactivated, and no data is changed. A deleted Account therefore cannot be badged `الحساب الحالي` — it is filtered out before the badge is computed.
+2. **The section is strictly read-only.** No edit, delete, restore or "make current" action exists there.
+3. **The holder name is read per mapping, never from the family row.**
+4. **The account name links to the ordinary Accounts view page** only when `AccountResource::canView()` passes; otherwise it renders as plain text. No custom account details page.
+5. **The pre-existing `بيانات الحساب` section was left alone**, including that it reads the `withTrashed()` `account()` relation.
+
+### Reason
+Hiding a deleted Account is a UI judgement about what is useful to look at; deleting the mapping would be a claim that the family never owned that ledger, which is false and unrecoverable. Keeping the two apart is the whole point — the mapping is durable ownership, the filter is presentation.
+
+Read-only matters because a family's payment destination may only move through the approved Edit form, where the exact-identity comparison and reuse logic run and the change is audited. A "make current" button here would be a second, unaudited path to the same mutation. Likewise a restore action would let a beneficiary account be revived from a screen that has none of the Accounts resource's own safeguards.
+
+Reading the holder name from the mapping is the only way the section can be historically honest: `accounts` has no holder column, so showing the family's current holder on every row would retroactively rewrite who each historical account was registered to — exactly the distortion the immutability rule exists to prevent.
+
+Decision 5 is deliberate rather than an oversight: `MuwakhaFamily::account()` is `withTrashed()` so a vanished current destination stays visible as a REPORTED problem. Applying the new filter there too would hide a real data fault.
+
+### Impact
+The View page now shows the family's full Account history at a glance without exposing any way to alter it. One test initially passed vacuously because the section description repeated the badge phrase; the description was reworded so a row's badge is the only place `الحساب الحالي` can appear, which is what makes the badge assertions meaningful.
+
+---
+
+### Date
+2026-08-17 (FINAL — Muwakha historical family Accounts: immutability, exact reuse, ownership mapping)
+
+### Decision
+Six decisions. Decision 4 of the earlier same-day entry below ("changing currency forks a new Account") is **superseded and generalized** by decisions 1–3 here.
+
+1. **A Muwakha Account is immutable; material identity change resolves to a different Account.** `MuwakhaFamilyService` issues no Account UPDATE at all — the only Account write in the class is a CREATE. Material identity = canonical name + `أفراد` + currency + account number + bank type + normalized IBAN + account-holder name.
+2. **Exact historical reuse before duplication, strictly family-scoped.** Returning to an identity the family already owns repoints `muwakha_families.account_id` back at that exact Account and writes nothing else. The search runs only through `muwakha_family_accounts` for that family — never globally, never with a `LIKE` on name or number.
+3. **`muwakha_family_accounts` is ownership, not history.** `muwakha_family_id`, `account_id`, `account_holder_name`, timestamps, `UNIQUE(muwakha_family_id, account_id)`. No effective dates, versions, ordering or snapshots. No `UNIQUE(family, currency)` — a family may hold several Accounts in one currency. No payment field duplicated; `accounts` stays authoritative. `account_holder_name` is stored here because it is the one identity field `accounts` has no column for.
+4. **The canonical name gains the account number:** `أسرة الشهيد {martyr_name} - {currency display name} - ({account_code})`, centralized in `MuwakhaAccountIdentity::accountNameFor()`. The bank name is deliberately excluded. The account number is required for Muwakha, so there is no fallback name.
+5. **Normalization is deliberately minimal.** Names and IBAN trimmed; blank IBAN ≡ NULL (the convention `normalizeCardCode()` already established). The **account number is not normalized** beyond a string cast.
+6. **An inactive or soft-deleted exact match fails safely** with an Arabic message — never silently reactivated, restored, or bypassed with a duplicate.
+
+### Reason
+Historical `transaction_line` rows reference `accounts.id`. An Account that has been paid through therefore already IS the historical record of where that money went, and rewriting its name, currency, number, bank or IBAN would make every historical statement and report render **today's** payment details against **yesterday's** money. That is the whole reason the previous "update the same Account" behaviour had to go, and it applies to the martyr name too — the name is part of the Account label a report prints.
+
+Reuse rather than duplication is what keeps that honest in the other direction: a family that alternates between two real bank accounts must land back on the *same* ledger both times, or its money would scatter across an ever-growing set of near-identical Accounts that no report could reconcile. Reuse is family-scoped because `accounts.account_code` is intentionally non-unique across OMS — a global match on number, name or IBAN could attach one family to another family's ledger, and ledger separation is by `accounts.id` alone.
+
+A mapping table is required because `muwakha_families.account_id` holds only the current destination; without a durable record, an Account the family stopped using becomes unreachable and would be duplicated on return. It stays deliberately thin — an account-change EVENT log (dates, versions, snapshots) was rejected: it would duplicate, and eventually contradict, facts the `accounts` and `transaction_lines` rows already hold, and it is a second financial subsystem this change explicitly must not create. `account_holder_name` is the sole exception, because `accounts` genuinely cannot store it.
+
+Refusing to revive an inactive/trashed match follows the same fail-closed discipline as `requireAccount()`: a beneficiary account in an unexpected state is a real problem a human must see, and minting a duplicate to route around it would fragment the ledger silently.
+
+### Impact
+A family may now own several Accounts over time, including several in the same currency, and `muwakha_families.account_id` is only its current destination. Non-account edits (guardian fields, children count, notes, project links, card codes) still write nothing but the family row. Historical financial reports need no change and get none: old Transactions still point at their immutable old Account ids. The general Accounts screen becomes self-describing for Muwakha rows, which matters precisely because account numbers may repeat. Reviewers must consciously accept that the Account count grows with distinct identities and that this is the intended financial record — and that the backfill deliberately left unlinked look-alike Accounts unmapped rather than guessing their owner.
+
+---
+
+### Date
+2026-08-17 (Muwakha family-account currency — selectable, and a currency change forks a new Account) *(Decision 4 superseded the same day — see the entry above.)*
+
+### Decision
+Five decisions, all inside the approved change; nothing else about the Muwakha feature was redesigned.
+
+1. **The family-account currency is an operator choice, not reference data.** `MuwakhaReference::CURRENCY_CODE`/`currencyId()` and `MuwakhaReferenceException::currencyMissing()` were removed. The Select is built from `MuwakhaReference::selectableCurrenciesQuery()` (every live currency, soft-deleted ones excluded) and the **same query** re-validates the submission server-side, raising a field-level Arabic `ValidationException` on `currency_id`. The account **type** (`أفراد`) stays reference data and a hard invariant.
+2. **The display name is `currencies.name`.** That is the label `AccountForm`'s currency Select and `AccountsTable`'s currency filter already show, so the account-name suffix, the table column, the view page and both exports all read one existing convention. No new currency-name field was invented and no Arabic currency name is hard-coded. It is resolved through the single helper `MuwakhaReference::currencyDisplayName()`.
+3. **Account-name generation is centralized in one two-argument function.** `MuwakhaFamilyService::accountNameFor($martyrName, $currencyName)` → `أسرة الشهيد {martyr_name} - {currency display name}`, used by create, normal update, martyr-name change, the forked Account and the form's live preview. There is no second string-building copy anywhere.
+4. **A currency change forks a NEW Account; an existing Account's `currency_id` is never mutated.** `currency_id` is present in no Account UPDATE payload in the codepath at all — the guarantee is mechanical, not conventional. The fork is built from the currently submitted form values, gets zero balance and no opening-balance Transaction, and the `account_id` repoint shares its transaction, so a failure of either leaves the family on its original Account.
+5. **No account-history table.** The superseded Accounts *are* the history.
+
+### Reason
+An Account's `currency_id` is the unit every `transaction_line` posted against it is denominated in. Rewriting it in place would retroactively re-denominate the entire ledger of that account — the exact "1000 USD is not 3000 ILS" cross-currency mixing OMS forbids in every report and in `FinancialTransactionBalanceGuard`. Forking is the only option that keeps a family's future payments in the new currency **and** leaves the money already paid describable in the currency it was actually paid in. A parallel history table was rejected because it would duplicate, and eventually contradict, records the `accounts` table already holds authoritatively — and because a superseded account still needs to appear in the ordinary chart of accounts, statements and trial balance, which only a real Account row does.
+
+Validating the currency server-side against the Select's own query (rather than trusting the submission) follows the rule already established for Muwakha project links: a Select's options are Livewire component state and a crafted request can replace them.
+
+### Impact
+Family accounts may now be created in any live OMS currency, and a family that changes currency accumulates one Account per currency era, each with its own intact ledger. `muwakha_families` gained **no** column and **no** migration was written — the currency lives only in `accounts.currency_id`. Non-currency edits (martyr name, account number, bank, IBAN) still update the same Account, so the common case is unchanged. Global Currency behaviour, Project financial workflows, Transaction posting, balances and FX are untouched, as are the approved Muwakha permission matrix and the personal-data audit redaction. Reviewers must consciously accept that a family's Account count grows with each currency change and that this is the intended financial record, not drift.
+
+---
+
+### Date
+2026-08-16 (OMS Muwakha Families — architecture decisions)
+
+### Decision
+Eight decisions were taken for **أسر المؤاخاة**, three of them by the user after a read-only audit raised STOP conditions.
+
+*(Superseded in part on 2026-08-17 — see the entry above. Decision 4's "for life" now means "for as long as the currency is unchanged": a currency change forks a new Account and repoints the family, leaving the old one untouched. Decision 5 still stands in full, including that the currency lives only on `accounts`. The fixed-`ILS` assumption elsewhere in this entry is gone.)*
+
+1. **The Muwakha root is a `ProjectSuper`, not a `Project`.** A Project is eligible for family linkage exactly when `projects.project_super_id` points at the `مشروع المؤاخاة` row in `projects_super`. That row is shipped by an idempotent data migration (`MUWAKHA` / `MUWAKHA_001`).
+2. **Reference data ships via idempotent data migration**, not a seeder. This establishes a pattern the repository did not previously have.
+3. **`accounts.account_code` is no longer UNIQUE** — replaced with a plain index. Two families may legitimately share one bank/wallet number.
+4. **One family owns exactly one `Account`, for life.** `muwakha_families.account_id` is UNIQUE; an edit never reassigns or recreates it; a delete never touches it.
+5. **Payment details are NOT duplicated on the family.** Account number, bank type, currency and IBAN live only on `accounts`. Only `account_holder_name` is family-owned.
+6. **No `age` column.** Martyr age is computed in completed years **at the date of martyrdom**, never against today.
+7. **Personal identifiers are redacted in audit payloads** (`martyr_national_id`, `guardian_national_id`, `guardian_phone` → `AuditRedactor::MARKER`), while `changed_fields` still records that they changed.
+8. **Role defaults:** Super Admin, Admin and **Project Manager** receive the full `muwakha_families.*` set including `export`; Viewer receives view-only **without** export; Accountant receives none.
+
+### Reason
+**(1) is the decision the whole feature hinged on, and the audit contradicted the brief.** The brief described "a main/root project with child projects", but `projects` has **no self-referencing parent column** — the only hierarchy in OMS is `projects_super` → `projects.project_super_id`. No live row named `مشروع المؤاخاة` existed in either table (`projects` held 0 rows; `projects_super` held ايتام/الطعام/مياه/دواء). Rather than invent a second hierarchy on the core `projects` table, the existing one is used. A useful consequence: because a `ProjectSuper` is a different table from `projects`, the root is **structurally incapable** of appearing in a project Select, so "the root is not selectable as a family project" holds by construction rather than by a filter a forged request could bypass.
+
+**(2)** The repository had no reference-data pattern at all: `DatabaseSeeder` seeds only permissions, settings and the bootstrap admin, and every live `bank_types`/`currencies`/`accounts_type`/`projects_super` row was entered by hand through the UI. A seeder would require someone to remember `db:seed` on every existing installation. A migration rides the normal deploy path exactly once. It matches on **name**, never on a hard-coded id, and skips when a row of that name already exists **including a soft-deleted one** — so it can never create a duplicate name or resurrect a lookup an administrator deliberately deleted.
+
+**(3)** A repository-wide audit confirmed **no production code treats `account_code` as an identifier**: all six real usages are display-label building (`"code - name"`) or `orderBy`. The only `where('account_code', …)` is `CreateAccount::resolveOpeningClearingAccount()`, which probes for a free generated `OPB-{CURRENCY}` code and keeps working — only its collision avoidance stops being database-enforced. Accounts stay financially distinct because every `transaction_line` references `accounts.id`.
+
+**(7)** The values are real personal identifiers and `AuditRedactor` does not treat them as secret-shaped, because they are not credentials. Implemented as a **subject value policy** rather than by adding `national_id`/`phone` to the global denylist — the precedent set by `SettingValuePolicy` and by the `setting_name`/`parent_id` aliases: solve it inside the subject rather than broaden a global rule every other subject must live with. `changed_fields` survives because it is derived from `$model->getDirty()` **before** the value policy runs. The `labelResolver` and the family relation label were also changed to carry the martyr **name only** — they originally included the national id, which would have written the withheld identifier into `subject_label`, a field the audit UI displays.
+
+**(8)** The register is operationally owned by project management and lives under the **المشاريع** navigation group. Viewer is deliberately denied `export`: a Viewer may read the register on screen without being able to extract the entire beneficiary list, national ids included, into a file.
+
+### Impact
+`accounts` keeps its dual role — ledger account **and** real payment destination — and the Execution Payment workflow can select a family's Account as its beneficiary with **no change to any accounting semantics**. No Muwakha payment table, monthly-cycle table, scheduler or separate accounting flow exists.
+
+**Two consequences a reviewer must consciously accept:**
+
+- **The `account_code` UNIQUE index cannot be restored once duplicates exist.** `down()` on `2026_08_16_100000` will fail with a duplicate-key error, deliberately: silently de-duplicating real beneficiary payment accounts, or deleting rows to force the constraint back, would destroy financial data. Reinstating it is a reviewed data decision, never a schema rollback side effect. The migration documents this in its own docblock.
+- **`martyr_national_id` is UNIQUE across soft-deleted rows too, and this feature ships no Restore UI.** Deleting a family therefore reserves that national id permanently. This is the strict reading of "unique across family records" and the safer failure: a duplicate martyr record is a data-integrity problem, a blocked re-entry is a visible one. A composite unique on `(martyr_national_id, deleted_at)` was **rejected** because MySQL treats NULLs as distinct, which would have permitted unlimited duplicate **live** rows — the exact opposite of the requirement.
+
 ---
 
 ### Date

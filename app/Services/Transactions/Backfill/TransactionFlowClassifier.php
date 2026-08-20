@@ -160,6 +160,9 @@ class TransactionFlowClassifier
             ProjectCostBudget::LINE_ADMIN       => TransactionLineRole::AdministrativeDeduction,
             ProjectCostBudget::LINE_TRANSFER    => TransactionLineRole::TransferFee,
             ProjectCostBudget::LINE_DESTINATION => TransactionLineRole::Destination,
+        ], requiredNotes: [
+            ProjectCostBudget::LINE_SOURCE,
+            ProjectCostBudget::LINE_DESTINATION,
         ]);
 
         $projectName = $budget->projectCost?->project?->name;
@@ -182,6 +185,9 @@ class TransactionFlowClassifier
             GeneralExchange::LINE_ADMIN       => TransactionLineRole::AdministrativeDeduction,
             GeneralExchange::LINE_TRANSFER    => TransactionLineRole::TransferFee,
             GeneralExchange::LINE_DESTINATION => TransactionLineRole::Destination,
+        ], requiredNotes: [
+            GeneralExchange::LINE_SOURCE,
+            GeneralExchange::LINE_DESTINATION,
         ]);
 
         $sourceLine      = $transaction->lines->first(fn (TransactionLine $l) => $roles[$l->id] === TransactionLineRole::Source);
@@ -262,19 +268,52 @@ class TransactionFlowClassifier
      * @param  array<string, TransactionLineRole>  $noteToRole
      * @return array<int, TransactionLineRole>
      */
-    protected function resolveRolesByNotesTag(Collection $lines, string $flowName, array $noteToRole): array
-    {
-        if ($lines->count() !== count($noteToRole)) {
+    /**
+     * Map each active line to its role via its notes tag.
+     *
+     * $noteToRole is the CLOSED vocabulary of tags this flow may use; a tag
+     * outside it is always fatal. $requiredNotes is the subset that must
+     * actually be present — the remaining tags are optional.
+     *
+     * Optional tags exist because the disbursement and general-exchange flows
+     * both carry two OPTIONAL deduction lines: a 0% administrative or
+     * transfer percentage writes no line at all (a zero-valued line is
+     * forbidden accounting), so the same flow legitimately produces 4, 3 or 2
+     * lines. Source and destination stay required for both.
+     *
+     * This stays strict in every other respect: an unknown tag, a duplicated
+     * role, a missing required tag, or more lines than the vocabulary allows
+     * all still throw rather than being classified on a guess.
+     *
+     * @param  array<string, TransactionLineRole>  $noteToRole
+     * @param  array<int, string>  $requiredNotes
+     * @return array<int, TransactionLineRole>
+     */
+    protected function resolveRolesByNotesTag(
+        Collection $lines,
+        string $flowName,
+        array $noteToRole,
+        array $requiredNotes,
+    ): array {
+        if ($lines->count() > count($noteToRole)) {
             throw new TransactionClassificationException(
-                "{$flowName} transaction has {$lines->count()} active line(s), expected exactly " . count($noteToRole)
+                "{$flowName} transaction has {$lines->count()} active line(s), expected at most " . count($noteToRole)
+            );
+        }
+
+        if ($lines->count() < count($requiredNotes)) {
+            throw new TransactionClassificationException(
+                "{$flowName} transaction has {$lines->count()} active line(s), expected at least " . count($requiredNotes)
             );
         }
 
         $roles = [];
         $seen  = [];
+        $seenNotes = [];
 
         foreach ($lines as $line) {
-            $role = $noteToRole[(string) $line->notes] ?? null;
+            $note = (string) $line->notes;
+            $role = $noteToRole[$note] ?? null;
 
             if (! $role) {
                 throw new TransactionClassificationException(
@@ -289,7 +328,16 @@ class TransactionFlowClassifier
             }
 
             $seen[$role->value] = true;
+            $seenNotes[$note]   = true;
             $roles[$line->id]   = $role;
+        }
+
+        foreach ($requiredNotes as $requiredNote) {
+            if (! isset($seenNotes[$requiredNote])) {
+                throw new TransactionClassificationException(
+                    "{$flowName} transaction is missing its required line tagged '{$requiredNote}'"
+                );
+            }
         }
 
         return $roles;

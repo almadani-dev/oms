@@ -31,7 +31,7 @@ class CrudRedirectStandardStructureTest extends TestCase
 {
     /**
      * Every current full-page CRUD resource: directory => model singular.
-     * The 22 resources with index/create/view/edit routes. The four read-only
+     * The 23 resources with index/create/view/edit routes. The four read-only
      * resources (Attachments, Permissions, TransactionLines, Transactions) are
      * deliberately absent — they are asserted separately below.
      *
@@ -47,6 +47,7 @@ class CrudRedirectStandardStructureTest extends TestCase
         'FiscalYears' => 'FiscalYear',
         'GeneralExchanges' => 'GeneralExchange',
         'GeneralExpenses' => 'GeneralExpense',
+        'MuwakhaFamilies' => 'MuwakhaFamily',
         'PartnerTypes' => 'PartnerType',
         'Partners' => 'Partner',
         'ProjectCostBudgetsPayments' => 'ProjectCostBudgetsPayment',

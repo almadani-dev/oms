@@ -113,6 +113,184 @@ class JournalBalanceIntegrityCheckerTest extends TestCase
         $this->assertFalse($report->hasWarnings());
     }
 
+    /* =====================================================================
+     | Optional deduction roles: the 2- and 3-line BUD/EXT shapes
+     |
+     | Since 2026-08-19 a 0% administrative or transfer percentage writes no
+     | line at all in both the disbursement and general-exchange workflows, so
+     | the same logical transaction is legitimately 4, 3 or 2 lines. None of
+     | those shapes may be reported as an `unclassified_transaction_structure`
+     | warning — that warning exists for rows the checker genuinely cannot
+     | recognise, and burying real shapes in it would defeat the whole check.
+     ===================================================================== */
+
+    /**
+     * Build one multi-currency transaction, omitting whichever deduction
+     * roles are not requested. Amounts always satisfy the real FX equation:
+     * (1000 - admin - transfer) * 3 = destination.
+     */
+    private function makeMultiCurrencyTransaction(float $admin, float $transfer): int
+    {
+        $sourceCurrency = $this->makeCurrency(['code' => 'USD-' . uniqid()]);
+        $destinationCurrency = $this->makeCurrency(['code' => 'ILS-' . uniqid()]);
+
+        $transaction = $this->makeTransaction();
+
+        $this->makeLine($transaction, $this->makeAccount($sourceCurrency), $sourceCurrency, [
+            'amount_currency' => 1000, 'fx_rate' => 1, 'debit_base' => 0, 'credit_base' => 1000, 'line_role' => 'source',
+        ]);
+
+        if ($admin > 0) {
+            $this->makeLine($transaction, $this->makeAccount($sourceCurrency), $sourceCurrency, [
+                'amount_currency' => $admin, 'fx_rate' => 1, 'debit_base' => $admin, 'credit_base' => 0, 'line_role' => 'administrative_deduction',
+            ]);
+        }
+
+        if ($transfer > 0) {
+            $this->makeLine($transaction, $this->makeAccount($sourceCurrency), $sourceCurrency, [
+                'amount_currency' => $transfer, 'fx_rate' => 1, 'debit_base' => $transfer, 'credit_base' => 0, 'line_role' => 'transfer_fee',
+            ]);
+        }
+
+        $final = round((1000 - $admin - $transfer) * 3, 2);
+
+        $this->makeLine($transaction, $this->makeAccount($destinationCurrency), $destinationCurrency, [
+            'amount_currency' => $final, 'fx_rate' => 3, 'debit_base' => $final, 'credit_base' => 0, 'line_role' => 'destination',
+        ]);
+
+        return $transaction->id;
+    }
+
+    public function test_a_three_line_transaction_without_an_administrative_deduction_passes(): void
+    {
+        $this->makeMultiCurrencyTransaction(admin: 0, transfer: 20);
+
+        $report = $this->check();
+
+        $this->assertFalse($report->hasViolations());
+        $this->assertFalse($report->hasWarnings(), 'a 0% admin deduction is a real shape, not an unclassified one');
+    }
+
+    public function test_a_three_line_transaction_without_a_transfer_fee_passes(): void
+    {
+        $this->makeMultiCurrencyTransaction(admin: 50, transfer: 0);
+
+        $report = $this->check();
+
+        $this->assertFalse($report->hasViolations());
+        $this->assertFalse($report->hasWarnings());
+    }
+
+    public function test_a_two_line_transaction_without_either_deduction_passes(): void
+    {
+        $this->makeMultiCurrencyTransaction(admin: 0, transfer: 0);
+
+        $report = $this->check();
+
+        $this->assertFalse($report->hasViolations());
+        $this->assertFalse($report->hasWarnings());
+    }
+
+    public function test_all_four_shapes_pass_together(): void
+    {
+        $this->makeMultiCurrencyTransaction(admin: 50, transfer: 20);
+        $this->makeMultiCurrencyTransaction(admin: 0, transfer: 20);
+        $this->makeMultiCurrencyTransaction(admin: 50, transfer: 0);
+        $this->makeMultiCurrencyTransaction(admin: 0, transfer: 0);
+
+        $report = $this->check();
+
+        $this->assertFalse($report->hasViolations());
+        $this->assertFalse($report->hasWarnings());
+        $this->assertSame(4, $report->stat('journal_transactions_checked'));
+    }
+
+    /**
+     * A two-line source+destination transaction is a MULTI-currency shape,
+     * not an ordinary two-line single-currency one. Routing it through the
+     * single-currency check (which demands fx_rate = 1 and one shared
+     * currency) would flag this perfectly correct row as unbalanced.
+     */
+    public function test_a_two_line_transaction_is_not_mistaken_for_a_single_currency_pair(): void
+    {
+        $this->makeMultiCurrencyTransaction(admin: 0, transfer: 0);
+
+        $report = $this->check();
+
+        $this->assertFalse($report->hasViolations());
+        $this->assertEmpty($report->violations());
+    }
+
+    public function test_a_three_line_transaction_with_a_wrong_fx_conversion_is_still_detected(): void
+    {
+        $sourceCurrency = $this->makeCurrency(['code' => 'USD-' . uniqid()]);
+        $destinationCurrency = $this->makeCurrency(['code' => 'ILS-' . uniqid()]);
+        $transaction = $this->makeTransaction();
+
+        $this->makeLine($transaction, $this->makeAccount($sourceCurrency), $sourceCurrency, [
+            'amount_currency' => 1000, 'fx_rate' => 1, 'debit_base' => 0, 'credit_base' => 1000, 'line_role' => 'source',
+        ]);
+        $this->makeLine($transaction, $this->makeAccount($sourceCurrency), $sourceCurrency, [
+            'amount_currency' => 20, 'fx_rate' => 1, 'debit_base' => 20, 'credit_base' => 0, 'line_role' => 'transfer_fee',
+        ]);
+        // Should be (1000 - 20) * 3 = 2940. Dropping the admin line must not
+        // make the remaining equation any less strict.
+        $this->makeLine($transaction, $this->makeAccount($destinationCurrency), $destinationCurrency, [
+            'amount_currency' => 3000, 'fx_rate' => 3, 'debit_base' => 3000, 'credit_base' => 0, 'line_role' => 'destination',
+        ]);
+
+        $report = $this->check();
+
+        $this->assertTrue($report->hasViolations());
+        $this->assertNotNull(collect($report->violations())->firstWhere('category', 'invalid_fx_base_conversion'));
+    }
+
+    public function test_a_transaction_missing_its_source_role_stays_unclassified(): void
+    {
+        $sourceCurrency = $this->makeCurrency(['code' => 'USD-' . uniqid()]);
+        $destinationCurrency = $this->makeCurrency(['code' => 'ILS-' . uniqid()]);
+        $transaction = $this->makeTransaction();
+
+        // admin + destination only: no source. This is not a shape the
+        // checker may guess at.
+        $this->makeLine($transaction, $this->makeAccount($sourceCurrency), $sourceCurrency, [
+            'amount_currency' => 20, 'fx_rate' => 1, 'debit_base' => 20, 'credit_base' => 0, 'line_role' => 'administrative_deduction',
+        ]);
+        $this->makeLine($transaction, $this->makeAccount($destinationCurrency), $destinationCurrency, [
+            'amount_currency' => 60, 'fx_rate' => 3, 'debit_base' => 60, 'credit_base' => 0, 'line_role' => 'destination',
+        ]);
+
+        $report = $this->check();
+
+        $this->assertTrue($report->hasWarnings());
+        $this->assertNotNull(collect($report->warnings())->firstWhere('category', 'unclassified_transaction_structure'));
+    }
+
+    public function test_a_transaction_mixing_a_known_role_set_with_a_null_role_line_stays_unclassified(): void
+    {
+        $sourceCurrency = $this->makeCurrency(['code' => 'USD-' . uniqid()]);
+        $destinationCurrency = $this->makeCurrency(['code' => 'ILS-' . uniqid()]);
+        $transaction = $this->makeTransaction();
+
+        $this->makeLine($transaction, $this->makeAccount($sourceCurrency), $sourceCurrency, [
+            'amount_currency' => 1000, 'fx_rate' => 1, 'debit_base' => 0, 'credit_base' => 1000, 'line_role' => 'source',
+        ]);
+        $this->makeLine($transaction, $this->makeAccount($destinationCurrency), $destinationCurrency, [
+            'amount_currency' => 3000, 'fx_rate' => 3, 'debit_base' => 3000, 'credit_base' => 0, 'line_role' => 'destination',
+        ]);
+        // A stray unclassified line: source+destination alone would match, but
+        // the transaction genuinely holds three lines, so it must not be
+        // validated as if it held two.
+        $this->makeLine($transaction, $this->makeAccount($sourceCurrency), $sourceCurrency, [
+            'amount_currency' => 5, 'fx_rate' => 1, 'debit_base' => 5, 'credit_base' => 0, 'line_role' => null,
+        ]);
+
+        $report = $this->check();
+
+        $this->assertTrue($report->hasWarnings());
+        $this->assertNotNull(collect($report->warnings())->firstWhere('category', 'unclassified_transaction_structure'));
+    }
+
     public function test_multi_currency_exchange_with_wrong_fx_conversion_is_detected_as_invalid_fx_base(): void
     {
         $sourceCurrency = $this->makeCurrency(['code' => 'USD-' . uniqid()]);

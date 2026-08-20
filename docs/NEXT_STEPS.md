@@ -1,6 +1,126 @@
 # Next Steps
 
-## Recommended Next Step (2026-08-01, root route redirect — implemented, focused test green, NOT committed)
+## Recommended Next Step (2026-08-19, BUD/EXT optional deduction lines — 0% percentages; focused + regression green, NOT committed)
+
+**Open both Create and Edit screens in the browser and confirm the four account cards and the disabled-card behaviour by eye, then review and approve the commit.** Everything below is verified by automated tests — including real Livewire tests that drive the actual component, not just the page methods — but **not yet in a live browser session**.
+
+**What to check on `صرف مبلغ المشروع` and `التحويلات العامة` alike:**
+
+- **Desktop:** four separate cards — `حساب المصدر (دائن)` · `حساب النسبة الإدارية (مدين)` on the first row, `حساب التحويل / الصرافة (مدين)` · `حساب الوجهة (مدين)` on the second. RTL ordering natural, no layout break, correct in **both dark and light** mode.
+- **Narrow/mobile:** the four cards stack to one column with no horizontal overflow.
+- **`النسبة الإدارية = 0`** → its card stays **visible but disabled**, showing `النسبة الإدارية 0% - لا يوجد خصم إداري ولن يُنشأ سطر قيد لهذا الحساب.` Set it to `1` → the card enables and is **empty**. Same for `نسبة التحويل`.
+- **`احسب` still fills `مبلغ النسبة الإدارية` with `0.00`** at 0% — a zero deduction amount is legitimate and must show as `0.00`, not blank and not `—`.
+- **Edit an existing 0% record:** the card opens disabled and empty. Raise it to a positive value and confirm **no stale account reappears**. Then take a positive record down to `0` and confirm the card clears immediately, disables, saves successfully, and the balances stay correct.
+
+**Two things the reviewer must consciously accept:**
+
+- **A new rejection was added that the brief did not ask for.** `FinancialAmountGuard::assertDeductionsAreRecordable()` rejects a percentage `> 0` whose derived amount rounds to `0.00` (e.g. 0.4% of 1.00), on the percentage field. Nothing that previously succeeded now fails — that input was already a silent no-op — but it is a deliberate addition. Its structural purpose is to make `percentage > 0` and `amount > 0` equivalent, which is what keeps the line payload, account validation, balances and audit roles from disagreeing. See `docs/DECISIONS_LOG.md`.
+- **BUD/EXT transactions now carry 2–4 lines.** Any future report, export or consumer must treat a missing `LINE_ADMIN`/`LINE_TRANSFER` as a valid 0% deduction, never as missing data. Pre-existing 4-line rows with zero-valued deduction lines were deliberately **not** rewritten (no migration), and `JournalBalanceIntegrityChecker` still reports those as `invalid_fx_base_conversion` exactly as before — none exist on the local database.
+
+**Still open, deliberately deferred:** the repo-wide guard-key refactor. All three financial guards throw `ValidationException` keyed by domain field (`admin_account_id`, and `lines` for every line-level check) while Filament resolves errors by state path (`data.admin_account_id`), so ~30 rejection points across all six financial workflows still do not bind to their fields. The four BUD/EXT pages now surface those messages as a danger notification (Layer 1), which closes the silent-no-op symptom but not its cause. That refactor deserves its own task and verification pass.
+
+**Unrelated observation, no action taken:** the local development database grew from 3 to 4 transactions (and 5 to 11 accounts) between 09:53 and 10:27 on 2026-08-19, from ordinary local browser use — before any edit in this task, and not from the test suite (`phpunit.xml` pins tests to `sqlite` / `:memory:`). `oms:check-financial-integrity` reports **OK** on all of it.
+
+---
+
+## Recommended Next Step (2026-08-18, Muwakha Family Account Statement — `كشف حساب الأسرة`; recovered after a power outage, verified clean, NOT committed)
+
+**Open `كشف حساب الأسرة` in the browser from a Family View page and confirm it visually, then review and approve the commit.** Everything below was verified through focused tests and the rendered output, **not yet in a live browser session**. Worth checking by eye: RTL and dark theme; a family whose Accounts span two currencies rendering as two separate sections with no blended figure; several Accounts in one currency merging into a single chronological section with each row naming its own Account; a soft-deleted mapped Account appearing in the Account filter marked `— محذوف`; the `عرض` gate (changing any filter clears the result and both export buttons refuse until `عرض` is pressed again); and the Excel and Word files opening with correct RTL layout and matching the on-screen figures exactly.
+
+**Also worth confirming by eye:** the Project filter is **hidden entirely** when the family's movements resolve to no Project at all, which is the common case for a family that has only ever received execution payments outside a project-cost budget. That is intended, not a rendering fault.
+
+The feature survived the outage complete. The recovery audit found no truncated or partial file, no surviving process, no migration for this report, and no production defect; the sole recovery edit was one test expectation (`MuwakhaFamilyResourceTest`'s exact page list, which legitimately gained `account-statement`). Verified sequentially and clean: statement tests **33 passed / 194**; `tests/Feature/Muwakha` **177 passed / 920**; `tests/Feature/Audit` **375 passed / 2 658**; `tests/Feature/Permissions` **338 passed, 3 pre-existing skips / 1 819**; `tests/Feature/Crud` **91 passed / 275**; `php artisan oms:check-financial-integrity` → **Result: OK, exit 0**. **The full test suite was intentionally NOT run**, and Graphify was deliberately not run.
+
+**One thing the reviewer must consciously accept:** this report reads **soft-deleted** Accounts, which no other Muwakha screen does. `MuwakhaFamilyAccountStatementService` resolves Accounts with `withTrashed()` and never filters `accounts.deleted_at`, so a deleted Account's history appears here and nowhere else. That is the approved behaviour — omitting it would silently delete financial history — but it is a deliberate, narrowly scoped widening and should be accepted knowingly rather than discovered later.
+
+**Unrelated observation, no action taken:** the local development database currently holds **5 accounts**, where the 2026-08-17 entry below recorded 1 (id 45) after the approved test-residue cleanup. The drift predates this recovery and nothing in it touched real business data — tests run on the `testing` connection. Worth a glance before any future local cleanup; it does not affect the feature or any test result above.
+
+**Next: review this feature together with the still-uncommitted Muwakha work below, then approve the commit.** Everything in the entries below remains outstanding and unchanged.
+
+---
+
+## Previously Recommended Next Step (2026-08-17, Muwakha Family View layout — compact full-width linked-accounts table, repositioned; focused tests green, NOT committed)
+
+**Open the Family View page in the browser at desktop width and confirm the section visually.** This was verified through the rendered HTML and focused tests, **not yet in a live browser session**. Check that `الحسابات المرتبطة بالأسرة` now renders as one compact table row per Account — headings once in the header row, each cell a single line, no label repeated inside any cell — that it spans the full content width, and that the lower page reads `ملاحظات` → `الحسابات المرتبطة بالأسرة` → `مشاريع المؤاخاة`. Confirm RTL and the dark theme look right, and that a family with several Accounts stays readable without horizontal overflow (the seven column widths total 100%, and `نوع البنك / وسيلة الدفع` and `اسم صاحب الحساب` wrap their headings).
+
+The change is presentation-only: the single production file touched is `app/Filament/Resources/MuwakhaFamilies/Schemas/MuwakhaFamilyInfolist.php` (section moved to last, `columnSpanFull()`, `hiddenLabel()` + `TextSize::Small` on the cells, `TableColumn::width()`, `wrapHeader()`). No schema, model, service, matching, reuse, creation, export, permission, audit or financial change. Behaviour is unchanged and still asserted: current Account first and badged `الحساب الحالي`, previous badged `سابق`, per-mapping historical `account_holder_name`, soft-deleted Accounts hidden with mappings intact, the Account name linked only when authorized, no actions in the section, and the `الحساب الحالي محذوف` warning untouched.
+
+Verified: `tests/Feature/Muwakha/MuwakhaFamilyLinkedAccountsTest.php` **12 passed / 121 assertions**; `tests/Feature/Muwakha` **144 passed / 726 assertions**. **The full test suite was intentionally NOT run, by explicit user instruction**, and Graphify was deliberately not run.
+
+**Next: review this layout change together with the still-uncommitted Muwakha feature below, then approve the commit.** Everything in the entry below remains outstanding and unchanged.
+
+---
+
+## Previously Recommended Next Step (2026-08-17 FINAL, Muwakha historical family Accounts — immutable Accounts, exact reuse, ownership mapping; focused + regression green, NOT committed)
+
+**The final pre-commit refinement of أسر المؤاخاة is implemented and awaiting review.** A Muwakha Account is now immutable: `MuwakhaFamilyService` issues **no Account UPDATE anywhere**. Account names are canonical — `أسرة الشهيد {martyr_name} - {currency display name} - ({account_code})` — so the general Accounts screen is self-describing. An edit compares the submitted **material identity** (canonical name + `أفراد` + currency + account number + bank type + normalized IBAN + account-holder name) with the current Account's and then either writes only the family row, **reuses an exact Account the family already owns**, or creates exactly one new Account plus one ownership mapping — always atomically. The new `muwakha_family_accounts` table is durable ownership only: **no dates, no versions, no snapshots, no account-history event system.**
+
+Verified sequentially: Muwakha **118 passed / 527**; Audit Crud + Reports **86 passed / 640**; Crud + Integrity **111 passed / 322**; ExecutionPayments + Audit/Financial **67 passed / 549**; Permissions **341 tests, 338 passed, 3 pre-existing skips / 1 819** — **720 passed, 3 857 assertions, 0 failures**. Both migrations applied to the real local database; `php artisan oms:check-financial-integrity` → **Result: OK, exit 0**.
+
+**The full test suite was intentionally NOT run, by explicit user instruction.**
+
+**Plus one UI refinement (same day, after the above):** the Family **View page** gained a read-only section `الحسابات المرتبطة بالأسرة` listing every Account mapped through `muwakha_family_accounts` — current one badged `الحساب الحالي` and first, then previous Accounts newest-mapping-first, each row carrying its **own** historical `account_holder_name`. Soft-deleted Accounts are excluded as a **display filter only** (mapping kept, nothing restored or reactivated). No actions of any kind in the section; the account name links to the ordinary Accounts view page only when authorized. `tests/Feature/Muwakha` → **125 passed / 579 assertions**. No migration, no schema change, no service change.
+
+**Plus two final UI refinements (same day):** **(A)** a soft-deleted current Account is now **reported, not described** — `بيانات الحساب` shows only `الحساب الحالي محذوف` and hides its name, currency, number, bank, IBAN and holder; a display rule only, with the mapping, `account_id` and the Account itself untouched. This **supersedes** my earlier decision to leave that section reading the `withTrashed()` relation. **(B)** the Family **Create** form gained the create-only section `ربط بمشاريع المؤاخاة` (Repeater, `إضافة مشروع`, project + optional card code), whose rows are replayed through `MuwakhaFamilyProjectService::link()` **inside the create transaction** — so one save writes Account + family + ownership mapping + every link, duplicates within a submission are caught by the existing rules, and any rejected row rolls back the whole creation. No schema change; `ProjectsRelationManager` is unchanged and still owns post-create link management.
+
+**Local test residue cleaned (approved by the user):** Accounts **43 and 44** were hard-deleted from the local database after re-verifying, for each, zero references from `muwakha_families.account_id`, `muwakha_family_accounts`, and `transaction_lines`, plus a zero balance — and a schema-wide scan confirming those are the only three foreign keys onto `accounts.id`. The local database now holds 1 family, 1 account (id 45), 1 mapping, 0 transactions, 0 lines. No cleanup code or migration was added.
+
+**Next: review the implementation and the documentation diff together, then approve the commit.** Graphify was deliberately not run.
+
+### Three things the reviewer must consciously accept
+
+- **Account 45 was renamed once** to `أسرة الشهيد احمد محمود ننننن - شيكل اسرائيلي - (230)`. Permitted because ownership is unambiguous through the foreign key **and** it has zero `transaction_lines`. An Account with ledger history is never renamed by a migration.
+- **A family's Account count grows with each distinct identity**, including several Accounts in one currency. That is the intended financial record. Returning to an exact previous identity reuses that Account rather than adding another.
+- **`oms:check-financial-integrity` still runs against a ledger-free local database** (0 transactions, 0 transaction lines), so its numbering/balance/FX/currency checks were trivially clean. The relationship check (10 relationships, 0 orphans) and the account balance check (3 accounts, 0 mismatches) did run.
+
+---
+
+## Previously Recommended Next Step (2026-08-17, Muwakha family-account currency — selectable, currency change forks a new Account; SUPERSEDED the same day)
+
+**The one approved follow-up change to أسر المؤاخاة is implemented and awaiting review.** Family accounts are no longer fixed to ILS: `بيانات الحساب → العملة *` is a required searchable Select over the live OMS currencies, the Account name is `أسرة الشهيد {martyr_name} - {currency display name}` (from `currencies.name`), and **changing a family's currency creates a new Account and repoints `muwakha_families.account_id`, leaving the previous Account and its entire ledger untouched**. Martyr-name, account-number, bank and IBAN changes still update the same Account. `نوع الحساب = أفراد` is still a read-only invariant. **No account-history table, no new migration, no column on `muwakha_families`, and no change to global Currency behaviour, Project financial workflows, Transaction posting, balances or FX.**
+
+Verified sequentially: Muwakha **84 passed / 363 assertions**; Crud + AccountCurrencyIntegrityChecker **97 passed / 286**; Audit Crud + Reports **86 passed / 629**; ExecutionPayments + ExecutionPaymentAudit + FinancialMasterDataAudit **31 passed / 202** — **298 passed, 1 480 assertions, 0 failures**. `php artisan oms:check-financial-integrity` → **Result: OK, exit 0**.
+
+**The full test suite was intentionally NOT run, by explicit user instruction.**
+
+**Next: review the implementation and the documentation diff together, then approve the commit.** Graphify was deliberately not run.
+
+### Three things the reviewer must consciously accept
+
+- **A family that changes currency accumulates one Account per currency era.** That is the intended financial record, not drift — each superseded Account keeps its own balance and ledger in the currency the money was actually moved in. The list table's `العملة` column and the view page show the currently linked Account's currency.
+- **`oms:check-financial-integrity` currently reports 0 transactions, 0 lines and 0 accounts on the local database**, so its balance/FX/currency checks were trivially clean rather than exercised against real data. The relationship check (10 relationships, 0 orphans) did run.
+- **The old fixed-ILS API is gone, not deprecated.** `MuwakhaReference::CURRENCY_CODE`, `MuwakhaReference::currencyId()` and `MuwakhaReferenceException::currencyMissing()` were removed; an invalid currency is now a field-level `ValidationException` on `currency_id`, not a reference-data exception.
+
+---
+
+## Previously Recommended Next Step (2026-08-16, OMS Muwakha Families — implemented, focused + regression green, NOT committed)
+
+**`المشاريع` → `أسر المؤاخاة` is implemented and awaiting review.** A family/beneficiary register for `مشروع المؤاخاة`, built on top of the existing financial architecture: each family owns one ordinary OMS `Account` (`أفراد` / `ILS`, zero balance, **no opening-balance transaction**) that the existing صرف مبالغ التنفيذ workflow can select as its beneficiary. **No Muwakha payment engine, monthly-cycle table or scheduler was created, and Transaction posting, balances, FX, project reports and the Execution Payment workflow are untouched.**
+
+Verified: Muwakha **63 passed / 244 assertions**; Permissions+Crud+ExecutionPayments **447 tests, 444 passed, 3 pre-existing skips**; Audit+Reports **447 passed / 2801 assertions**; Unit+Integrity+GeneralExpenses+GeneralExchanges+ProjectCostReceipts+ProjectCostBudgetsPayments **550 tests, 548 passed, 2 pre-existing skips** — **1502 passed, 6388 assertions, 0 failures**. `php artisan migrate --force` applied 4 migrations to the real local database; `php artisan oms:check-financial-integrity` → **Result: OK, exit 0**.
+
+**The full test suite was intentionally NOT run, by explicit user instruction.** Verification was scoped by the user to the Muwakha suite, the directly affected regression suites, and the integrity check.
+
+**Next: review the implementation and the documentation diff together, then approve the commit.** Graphify was deliberately not run; the post-commit hook produces its own refresh commit.
+
+### Five things the reviewer must consciously accept
+
+- **The `accounts.account_code` UNIQUE index cannot be restored once duplicates exist.** `down()` on `2026_08_16_100000` will fail with a duplicate-key error, by design — de-duplicating real beneficiary payment accounts, or deleting rows to force the constraint back on, would destroy financial data. Reinstating it is a reviewed data decision, not a schema rollback.
+- **`martyr_national_id` is UNIQUE across soft-deleted rows, and there is no Restore UI.** Deleting a family permanently reserves that national id. A composite unique on `(martyr_national_id, deleted_at)` was rejected: MySQL treats NULLs as distinct, so it would have allowed unlimited duplicate **live** rows.
+- **Personal identifiers are redacted in audit payloads, so the audit trail records THAT a national id or phone changed but not the values.** The live `muwakha_families` row is the authoritative source. This was an explicit user decision.
+- **Creating one family writes TWO audit events** — one `muwakha_family` and one `account`. Two different subjects from one submission; this is not the financial "one logical action = one event" rule, which governs a single ledger operation.
+- **`muwakha_families` is the first `ReportExportSubject` alias that is a resource table rather than a report page.** It reuses the existing recorder, REQUIRED mode and `export_requested` action rather than introducing a second export-audit mechanism, and its permission stem is `muwakha_families.export` rather than `reports.*.export`.
+
+### Consciously deferred (not defects)
+
+- **No Excel/CSV import for families** — explicitly out of scope; families are entered through the resource.
+- **Accountant holds no `muwakha_families` permissions.** Deliberate for now; one line in `PermissionRegistry::accountantDefaults()` if that changes.
+- **No family attachments and no `card_code` history.** Both explicitly excluded by the approved design.
+- **`transaction_lines` role tagging still matches on the `notes` string**, not `line_role`, in every read-back path. Pre-existing and untouched by this feature, but it is the fragile seam any future Muwakha-aware reporting would sit on.
+
+---
+
+## Previously Recommended Next Step (2026-08-01, root route redirect — implemented, focused test green, NOT committed)
 
 **`GET /` now redirects to the Filament Admin login through the verified named route `filament.admin.auth.login`, instead of rendering the Laravel welcome page.** Because the redirect is built from the named route, Laravel composes it on top of the incoming request's own scheme, host, port and base path — so the one line serves both **root-domain production hosting** (`https://<host>/admin/login`) and **local `/oms/public` subdirectory hosting** (`http://<host>/oms/public/admin/login`). No host, IP, subdirectory or `APP_URL` value is hard-coded, `/admin/login` itself is unchanged, and no other route, Filament setting, middleware or deployment file was touched.
 

@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\ProjectCostBudgetsPayments\Pages;
 
 use App\Filament\Concerns\RedirectsToResourceView;
+use App\Filament\Concerns\ReportsFinancialValidationFailures;
 use App\Enums\TransactionLineRole;
 use App\Filament\Resources\ProjectCostBudgetsPayments\ProjectCostBudgetsPaymentResource;
 use App\Filament\Resources\ProjectCostBudgetsPayments\Tables\ProjectCostBudgetsPaymentsTable;
@@ -30,6 +31,7 @@ use Illuminate\Support\Facades\DB;
 class EditProjectCostBudgetsPayment extends EditRecord
 {
     use RedirectsToResourceView;
+    use ReportsFinancialValidationFailures;
 
     protected static string $resource = ProjectCostBudgetsPaymentResource::class;
 
@@ -132,60 +134,79 @@ class EditProjectCostBudgetsPayment extends EditRecord
 
     protected function handleRecordUpdate(Model $record, array $data): Model
     {
-        /** @var ProjectCostBudget $record */
-        $projectCost    = ProjectCost::find($data['project_cost_id']);
-        $projectCostId  = $projectCost?->id;
-        $costCurrencyId = $projectCost?->currency_id;
+        return $this->withVisibleFinancialValidation(function () use ($record, $data): Model {
+            /** @var ProjectCostBudget $record */
+            $projectCost    = ProjectCost::find($data['project_cost_id'] ?? null);
+            $projectCostId  = $projectCost?->id;
+            $costCurrencyId = $projectCost?->currency_id;
 
-        $original    = (float) $data['original_amount'];
-        $adminPct    = (float) ($data['administrative_percentage'] ?? 0);
-        $transferPct = (float) ($data['transfer_percentage'] ?? 0);
-        $fxRate      = (float) ($data['fx_rate'] ?? 1);
+            $original    = (float) $data['original_amount'];
+            $adminPct    = (float) ($data['administrative_percentage'] ?? 0);
+            $transferPct = (float) ($data['transfer_percentage'] ?? 0);
+            $fxRate      = (float) ($data['fx_rate'] ?? 1);
 
-        $adminAmount    = round($original * $adminPct / 100, 2);
-        $transferAmount = round($original * $transferPct / 100, 2);
-        $afterDeduct    = round($original - $adminAmount - $transferAmount, 2);
-        $finalAmount    = round($afterDeduct * $fxRate, 2);
+            $adminAmount    = round($original * $adminPct / 100, 2);
+            $transferAmount = round($original * $transferPct / 100, 2);
+            $afterDeduct    = round($original - $adminAmount - $transferAmount, 2);
+            $finalAmount    = round($afterDeduct * $fxRate, 2);
 
-        FinancialAmountGuard::assertDisbursementInputs($original, $adminPct, $transferPct, $fxRate, $afterDeduct, $finalAmount);
+            FinancialAmountGuard::assertDisbursementInputs($original, $adminPct, $transferPct, $fxRate, $afterDeduct, $finalAmount);
+            FinancialAmountGuard::assertDeductionsAreRecordable($adminPct, $adminAmount, $transferPct, $transferAmount);
 
-        // Old lines fetched before the account guard so an unchanged historical
-        // account may remain inactive; see FinancialAccountGuard::requireActiveOnChange().
-        $lines       = $record->transaction?->lines()->with('account')->get();
-        $oldSource   = $lines?->firstWhere('notes', ProjectCostBudget::LINE_SOURCE);
-        $oldAdmin    = $lines?->firstWhere('notes', ProjectCostBudget::LINE_ADMIN);
-        $oldTransfer = $lines?->firstWhere('notes', ProjectCostBudget::LINE_TRANSFER);
-        $oldDest     = $lines?->firstWhere('notes', ProjectCostBudget::LINE_DESTINATION);
+            // Which optional deduction roles the SAVED record will have. The
+            // old record's own roles are independent of these (see $oldAdmin /
+            // $oldTransfer below) - that asymmetry is the whole point: an edit
+            // may add a deduction that did not exist, or remove one that did.
+            $hasAdmin    = $adminAmount > 0;
+            $hasTransfer = $transferAmount > 0;
 
-        $accounts = FinancialAccountGuard::assertAccounts([
-            'source' => [
-                'account_id'      => $data['source_account_id'] ?? null,
-                'account_type_id' => $data['source_account_type_id'] ?? null,
-                'bank_type_id'    => $data['source_bank_type_id'] ?? null,
-                'currency_id'     => $costCurrencyId,
-                'field'           => 'source_account_id',
-                'label'           => 'حساب المصدر',
-                'require_active'  => FinancialAccountGuard::requireActiveOnChange($oldSource?->account_id, $data['source_account_id'] ?? null),
-            ],
-            'admin' => [
-                'account_id'      => $data['admin_account_id'] ?? null,
-                'account_type_id' => $data['admin_account_type_id'] ?? null,
-                'bank_type_id'    => $data['admin_bank_type_id'] ?? null,
-                'currency_id'     => $costCurrencyId,
-                'field'           => 'admin_account_id',
-                'label'           => 'حساب النسبة الإدارية',
-                'require_active'  => FinancialAccountGuard::requireActiveOnChange($oldAdmin?->account_id, $data['admin_account_id'] ?? null),
-            ],
-            'transfer' => [
-                'account_id'      => $data['transfer_account_id'] ?? null,
-                'account_type_id' => $data['transfer_account_type_id'] ?? null,
-                'bank_type_id'    => $data['transfer_bank_type_id'] ?? null,
-                'currency_id'     => $costCurrencyId,
-                'field'           => 'transfer_account_id',
-                'label'           => 'حساب التحويل',
-                'require_active'  => FinancialAccountGuard::requireActiveOnChange($oldTransfer?->account_id, $data['transfer_account_id'] ?? null),
-            ],
-            'destination' => [
+            // Old lines fetched before the account guard so an unchanged historical
+            // account may remain inactive; see FinancialAccountGuard::requireActiveOnChange().
+            // Any of them may legitimately be null: a record saved with a 0%
+            // deduction never had that line at all.
+            $oldLines    = $record->transaction?->lines()->with('account')->get();
+            $oldSource   = $oldLines?->firstWhere('notes', ProjectCostBudget::LINE_SOURCE);
+            $oldAdmin    = $oldLines?->firstWhere('notes', ProjectCostBudget::LINE_ADMIN);
+            $oldTransfer = $oldLines?->firstWhere('notes', ProjectCostBudget::LINE_TRANSFER);
+            $oldDest     = $oldLines?->firstWhere('notes', ProjectCostBudget::LINE_DESTINATION);
+
+            $accountSpecs = [
+                'source' => [
+                    'account_id'      => $data['source_account_id'] ?? null,
+                    'account_type_id' => $data['source_account_type_id'] ?? null,
+                    'bank_type_id'    => $data['source_bank_type_id'] ?? null,
+                    'currency_id'     => $costCurrencyId,
+                    'field'           => 'source_account_id',
+                    'label'           => 'حساب المصدر',
+                    'require_active'  => FinancialAccountGuard::requireActiveOnChange($oldSource?->account_id, $data['source_account_id'] ?? null),
+                ],
+            ];
+
+            if ($hasAdmin) {
+                $accountSpecs['admin'] = [
+                    'account_id'      => $data['admin_account_id'] ?? null,
+                    'account_type_id' => $data['admin_account_type_id'] ?? null,
+                    'bank_type_id'    => $data['admin_bank_type_id'] ?? null,
+                    'currency_id'     => $costCurrencyId,
+                    'field'           => 'admin_account_id',
+                    'label'           => 'حساب النسبة الإدارية',
+                    'require_active'  => FinancialAccountGuard::requireActiveOnChange($oldAdmin?->account_id, $data['admin_account_id'] ?? null),
+                ];
+            }
+
+            if ($hasTransfer) {
+                $accountSpecs['transfer'] = [
+                    'account_id'      => $data['transfer_account_id'] ?? null,
+                    'account_type_id' => $data['transfer_account_type_id'] ?? null,
+                    'bank_type_id'    => $data['transfer_bank_type_id'] ?? null,
+                    'currency_id'     => $costCurrencyId,
+                    'field'           => 'transfer_account_id',
+                    'label'           => 'حساب التحويل',
+                    'require_active'  => FinancialAccountGuard::requireActiveOnChange($oldTransfer?->account_id, $data['transfer_account_id'] ?? null),
+                ];
+            }
+
+            $accountSpecs['destination'] = [
                 'account_id'      => $data['destination_account_id'] ?? null,
                 'account_type_id' => $data['destination_account_type_id'] ?? null,
                 'bank_type_id'    => $data['destination_bank_type_id'] ?? null,
@@ -193,150 +214,226 @@ class EditProjectCostBudgetsPayment extends EditRecord
                 'field'           => 'destination_account_id',
                 'label'           => 'حساب الوجهة',
                 'require_active'  => FinancialAccountGuard::requireActiveOnChange($oldDest?->account_id, $data['destination_account_id'] ?? null),
-            ],
-        ]);
+            ];
 
-        $lines = $this->buildLines($projectCostId, $costCurrencyId, $data, [
-            'original' => $original,
-            'admin'    => $adminAmount,
-            'transfer' => $transferAmount,
-            'final'    => $finalAmount,
-            'fx'       => $fxRate,
-        ]);
+            $accounts = FinancialAccountGuard::assertAccounts($accountSpecs);
 
-        FinancialTransactionBalanceGuard::assertValidLinePayload($lines);
-        FinancialTransactionBalanceGuard::assertBalancedMultiCurrencyLines(
-            $lines[0], $lines[1], $lines[2], $lines[3],
-            (int) $costCurrencyId, (int) $data['disbursement_currency_id']
-        );
-
-        // Pre-change snapshot: taken after every guard has passed but before
-        // the transaction opens, while the budget row, its transaction and
-        // its four old lines are all still pristine. The four old accounts
-        // are read from the OLD lines, never from the submitted data.
-        $audit = app(FinancialAuditRecorder::class);
-
-        $before = $audit->snapshots()->projectDisbursement($record, [
-            FinancialAccountRole::SOURCE => $oldSource?->account_id,
-            FinancialAccountRole::ADMIN => $oldAdmin?->account_id,
-            FinancialAccountRole::TRANSFER => $oldTransfer?->account_id,
-            FinancialAccountRole::DESTINATION => $oldDest?->account_id,
-        ]);
-
-        return DB::transaction(function () use (
-            $record, $data, $projectCost, $projectCostId, $costCurrencyId,
-            $original, $adminPct, $transferPct, $adminAmount, $transferAmount, $afterDeduct, $finalAmount, $fxRate,
-            $oldSource, $oldAdmin, $oldTransfer, $oldDest, $accounts, $lines, $audit, $before
-        ) {
-            $transaction = $record->transaction;
-
-            // STEP 1 - Reverse all old account balances
-            $oldSource?->account?->increment('current_balance', (float) $oldSource->credit_base);
-            $oldAdmin?->account?->decrement('current_balance', (float) $oldAdmin->debit_base);
-            $oldTransfer?->account?->decrement('current_balance', (float) $oldTransfer->debit_base);
-            $oldDest?->account?->decrement('current_balance', (float) $oldDest->debit_base);
-
-            // STEP 2 - Update transaction record
-            $transaction?->update([
-                'fiscal_year_id'      => $data['fiscal_year_id'],
-                'transaction_type_id' => $data['transaction_type_id'],
-                'transaction_time'    => Carbon::parse($data['date']),
-                'partner_id'          => $data['partner_id'],
-                'notes'               => $data['notes'] ?? null,
-                'updated_by'          => auth()->id(),
+            $lines = $this->buildLines($projectCostId, $costCurrencyId, $data, [
+                'original' => $original,
+                'admin'    => $adminAmount,
+                'transfer' => $transferAmount,
+                'final'    => $finalAmount,
+                'fx'       => $fxRate,
             ]);
 
-            // STEP 3 - Replace old transaction_lines, create new ones (hard delete: these are
-            // being immediately recreated, so no soft-deleted duplicates should accumulate)
-            // with the validated payload built above, unchanged.
-            $transaction?->lines()->forceDelete();
-
-            if ($transaction) {
-                foreach ($lines as $line) {
-                    TransactionLine::create($line + ['transaction_id' => $transaction->id]);
-                }
-            }
-
-            // STEP 4 - Update project_cost_budgets row
-            $record->update([
-                'project_cost_id'           => $projectCostId,
-                'original_amount'           => $original,
-                'amount_after_deductions'   => $afterDeduct,
-                'source_currency_id'        => $costCurrencyId,
-                'disbursement_currency_id'  => $data['disbursement_currency_id'],
-                'administrative_percentage' => $adminPct,
-                'transfer_percentage'       => $transferPct,
-                'exchange_percentage'       => 0,
-                'fx_rate'                   => $fxRate,
-                'final_amount'              => $finalAmount,
-                'notes'                     => $data['notes'] ?? null,
-                'updated_by'                => auth()->id(),
-            ]);
-
-            // STEP 5 - Apply new account balances
-            $accounts['source']->decrement('current_balance', $original);
-            $accounts['admin']->increment('current_balance', $adminAmount);
-            $accounts['transfer']->increment('current_balance', $transferAmount);
-            $accounts['destination']->increment('current_balance', $finalAmount);
-
-            // STEP 5b - Regenerate the Arabic line descriptions and the parent
-            // transaction description from the final saved state
-            if ($transaction) {
-                app(TransactionLineDescriptionBuilder::class)->buildAndSaveForTransaction(
-                    $transaction,
-                    $this->buildDisbursementLinePurposes()
-                );
-
-                app(TransactionDescriptionBuilder::class)->buildAndSave(
-                    $transaction,
-                    $this->buildDisbursementSummary($projectCost)
-                );
-            }
-
-            // STEP 6 - Handle file replacement/removal
-            $existing        = $record->attachments()->latest('id')->first();
-            $newTempPath     = $data['payment_image'] ?? null;
-            $removeRequested = (bool) ($data['remove_current_attachment'] ?? false);
-
-            if ($newTempPath) {
-                // Store the replacement first; only soft-delete the previous
-                // active attachment once the new one has succeeded. Passing
-                // $existing makes this ONE attachment.replaced event carrying
-                // both files' metadata - never an uploaded plus a deleted -
-                // so the soft delete below adds no second event.
-                $this->storeAttachment($record, $newTempPath, $finalAmount, $existing);
-                $existing?->delete();
-            } elseif ($removeRequested && $existing) {
-                // Recorded BEFORE the soft delete, while the metadata being
-                // preserved is still the metadata of an active attachment.
-                app(AttachmentAuditRecorder::class)->deleted($existing);
-                $existing->delete();
-            }
-
-            // STEP 7 - One financial AuditEvent for this whole logical edit,
-            // recording only the financial/business fields that actually
-            // changed, with the old and new labels of any reassigned
-            // account/project/currency preserved.
-            $audit->updated(
-                FinancialAuditSubject::ProjectDisbursement,
-                $record,
-                $before,
-                $audit->snapshots()->projectDisbursement($record, [
-                    FinancialAccountRole::SOURCE => $data['source_account_id'],
-                    FinancialAccountRole::ADMIN => $data['admin_account_id'],
-                    FinancialAccountRole::TRANSFER => $data['transfer_account_id'],
-                    FinancialAccountRole::DESTINATION => $data['destination_account_id'],
-                ]),
+            FinancialTransactionBalanceGuard::assertValidLinePayload(array_values($lines));
+            FinancialTransactionBalanceGuard::assertBalancedMultiCurrencyLines(
+                $lines['source'],
+                $lines['admin'] ?? null,
+                $lines['transfer'] ?? null,
+                $lines['destination'],
+                (int) $costCurrencyId,
+                (int) $data['disbursement_currency_id']
             );
 
-            // STEP 8 - Success
-            Notification::make()
-                ->title('تم تعديل الصرف بنجاح')
-                ->success()
-                ->send();
+            // Pre-change snapshot: taken after every guard has passed but before
+            // the transaction opens, while the budget row, its transaction and
+            // its old lines are all still pristine. The old accounts are read
+            // from the OLD lines, never from the submitted data, and a role
+            // whose old line does not exist is omitted entirely.
+            $audit = app(FinancialAuditRecorder::class);
 
-            return $record;
+            $before = $audit->snapshots()->projectDisbursement(
+                $record,
+                $this->buildAuditAccountRolesFromLines($oldSource, $oldAdmin, $oldTransfer, $oldDest),
+            );
+
+            return DB::transaction(function () use (
+                $record, $data, $projectCost, $projectCostId, $costCurrencyId,
+                $original, $adminPct, $transferPct, $adminAmount, $transferAmount, $afterDeduct, $finalAmount, $fxRate,
+                $oldSource, $oldAdmin, $oldTransfer, $oldDest, $accounts, $lines, $audit, $before, $hasAdmin, $hasTransfer
+            ) {
+                $transaction = $record->transaction;
+
+                // STEP 1 - Reverse all OLD account balances. Every reversal is
+                // null-safe because the record being edited may have been saved
+                // with a 0% deduction and so never had that line or account.
+                $oldSource?->account?->increment('current_balance', (float) $oldSource->credit_base);
+                $oldAdmin?->account?->decrement('current_balance', (float) $oldAdmin->debit_base);
+                $oldTransfer?->account?->decrement('current_balance', (float) $oldTransfer->debit_base);
+                $oldDest?->account?->decrement('current_balance', (float) $oldDest->debit_base);
+
+                // STEP 2 - Update transaction record
+                $transaction?->update([
+                    'fiscal_year_id'      => $data['fiscal_year_id'],
+                    'transaction_type_id' => $data['transaction_type_id'],
+                    'transaction_time'    => Carbon::parse($data['date']),
+                    'partner_id'          => $data['partner_id'],
+                    'notes'               => $data['notes'] ?? null,
+                    'updated_by'          => auth()->id(),
+                ]);
+
+                // STEP 3 - Replace old transaction_lines, create new ones (hard delete: these are
+                // being immediately recreated, so no soft-deleted duplicates should accumulate)
+                // with the validated payload built above, unchanged. Because the
+                // whole set is dropped and rebuilt, a deduction line that no
+                // longer applies simply is not recreated - there is no stale row
+                // to clean up separately.
+                $transaction?->lines()->forceDelete();
+
+                if ($transaction) {
+                    foreach ($lines as $line) {
+                        TransactionLine::create($line + ['transaction_id' => $transaction->id]);
+                    }
+                }
+
+                // STEP 4 - Update project_cost_budgets row
+                $record->update([
+                    'project_cost_id'           => $projectCostId,
+                    'original_amount'           => $original,
+                    'amount_after_deductions'   => $afterDeduct,
+                    'source_currency_id'        => $costCurrencyId,
+                    'disbursement_currency_id'  => $data['disbursement_currency_id'],
+                    'administrative_percentage' => $adminPct,
+                    'transfer_percentage'       => $transferPct,
+                    'exchange_percentage'       => 0,
+                    'fx_rate'                   => $fxRate,
+                    'final_amount'              => $finalAmount,
+                    'notes'                     => $data['notes'] ?? null,
+                    'updated_by'                => auth()->id(),
+                ]);
+
+                // STEP 5 - Apply the NEW account balances. A deduction account is
+                // touched only when that deduction survives into the saved
+                // record, so an edit down to 0% reverses the old movement in
+                // STEP 1 and applies nothing here.
+                $accounts['source']->decrement('current_balance', $original);
+
+                if ($hasAdmin) {
+                    $accounts['admin']->increment('current_balance', $adminAmount);
+                }
+
+                if ($hasTransfer) {
+                    $accounts['transfer']->increment('current_balance', $transferAmount);
+                }
+
+                $accounts['destination']->increment('current_balance', $finalAmount);
+
+                // STEP 5b - Regenerate the Arabic line descriptions and the parent
+                // transaction description from the final saved state
+                if ($transaction) {
+                    app(TransactionLineDescriptionBuilder::class)->buildAndSaveForTransaction(
+                        $transaction,
+                        $this->buildDisbursementLinePurposes()
+                    );
+
+                    app(TransactionDescriptionBuilder::class)->buildAndSave(
+                        $transaction,
+                        $this->buildDisbursementSummary($projectCost)
+                    );
+                }
+
+                // STEP 6 - Handle file replacement/removal
+                $existing        = $record->attachments()->latest('id')->first();
+                $newTempPath     = $data['payment_image'] ?? null;
+                $removeRequested = (bool) ($data['remove_current_attachment'] ?? false);
+
+                if ($newTempPath) {
+                    // Store the replacement first; only soft-delete the previous
+                    // active attachment once the new one has succeeded. Passing
+                    // $existing makes this ONE attachment.replaced event carrying
+                    // both files' metadata - never an uploaded plus a deleted -
+                    // so the soft delete below adds no second event.
+                    $this->storeAttachment($record, $newTempPath, $finalAmount, $existing);
+                    $existing?->delete();
+                } elseif ($removeRequested && $existing) {
+                    // Recorded BEFORE the soft delete, while the metadata being
+                    // preserved is still the metadata of an active attachment.
+                    app(AttachmentAuditRecorder::class)->deleted($existing);
+                    $existing->delete();
+                }
+
+                // STEP 7 - One financial AuditEvent for this whole logical edit,
+                // recording only the financial/business fields that actually
+                // changed, with the old and new labels of any reassigned
+                // account/project/currency preserved. Dropping a deduction to 0%
+                // omits its role from the new snapshot, which is exactly what
+                // makes FinancialAuditDiff report that account as removed.
+                $audit->updated(
+                    FinancialAuditSubject::ProjectDisbursement,
+                    $record,
+                    $before,
+                    $audit->snapshots()->projectDisbursement(
+                        $record,
+                        $this->buildAuditAccountRoles($data, $hasAdmin, $hasTransfer),
+                    ),
+                );
+
+                // STEP 8 - Success
+                Notification::make()
+                    ->title('تم تعديل الصرف بنجاح')
+                    ->success()
+                    ->send();
+
+                return $record;
+            });
         });
+    }
+
+    /**
+     * The account role => account id map handed to the audit snapshot for the
+     * POST-edit state. A deduction whose percentage is 0 has no account, so
+     * its role is omitted rather than passed as null.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    protected function buildAuditAccountRoles(array $data, bool $hasAdmin, bool $hasTransfer): array
+    {
+        $roles = [
+            FinancialAccountRole::SOURCE      => $data['source_account_id'] ?? null,
+            FinancialAccountRole::DESTINATION => $data['destination_account_id'] ?? null,
+        ];
+
+        if ($hasAdmin) {
+            $roles[FinancialAccountRole::ADMIN] = $data['admin_account_id'] ?? null;
+        }
+
+        if ($hasTransfer) {
+            $roles[FinancialAccountRole::TRANSFER] = $data['transfer_account_id'] ?? null;
+        }
+
+        return $roles;
+    }
+
+    /**
+     * The same map for the PRE-edit state, read from the record's own old
+     * transaction lines rather than from anything submitted. A deduction line
+     * that does not exist contributes no role at all, so a record saved at 0%
+     * carries no `admin_account_id` on the old side either.
+     *
+     * @return array<string, mixed>
+     */
+    protected function buildAuditAccountRolesFromLines(
+        ?TransactionLine $source,
+        ?TransactionLine $admin,
+        ?TransactionLine $transfer,
+        ?TransactionLine $destination,
+    ): array {
+        $roles = [
+            FinancialAccountRole::SOURCE      => $source?->account_id,
+            FinancialAccountRole::DESTINATION => $destination?->account_id,
+        ];
+
+        if ($admin) {
+            $roles[FinancialAccountRole::ADMIN] = $admin->account_id;
+        }
+
+        if ($transfer) {
+            $roles[FinancialAccountRole::TRANSFER] = $transfer->account_id;
+        }
+
+        return $roles;
     }
 
     /**
@@ -368,30 +465,38 @@ class EditProjectCostBudgetsPayment extends EditRecord
     }
 
     /**
-     * Build the exact four-line TransactionLine payload (source, admin,
-     * transfer, destination — in this fixed order) in memory, without
+     * Build the TransactionLine payload in memory, KEYED BY ROLE
+     * ('source' / 'admin' / 'transfer' / 'destination') and without
      * transaction_id, so it can be validated by
      * FinancialTransactionBalanceGuard before DB::transaction() opens. The
      * transaction_id is merged in at insert time; nothing else is
      * recalculated.
      *
-     * @return array<int, array<string, mixed>>
+     * The two deduction lines are OPTIONAL - a 0% percentage produces no line
+     * at all rather than a forbidden zero-valued one - so this returns 4, 3
+     * or 2 lines. See the matching method on CreateProjectCostBudgetsPayment
+     * for the full shape table.
+     *
+     * @return array<string, array<string, mixed>>
      */
     protected function buildLines(?int $projectCostId, ?int $costCurrencyId, array $data, array $amounts): array
     {
         $uid = auth()->id();
 
-        return [
-            [
-                'account_id' => $data['source_account_id'],
-                'project_cost_id' => $projectCostId, 'currency_id' => $costCurrencyId,
-                'amount_currency' => $amounts['original'], 'fx_rate' => 1,
-                'debit_base' => 0, 'credit_base' => $amounts['original'],
-                'notes' => ProjectCostBudget::LINE_SOURCE,
-                'line_role' => TransactionLineRole::Source->value,
-                'created_by' => $uid, 'updated_by' => $uid,
-            ],
-            [
+        $lines = [];
+
+        $lines['source'] = [
+            'account_id' => $data['source_account_id'],
+            'project_cost_id' => $projectCostId, 'currency_id' => $costCurrencyId,
+            'amount_currency' => $amounts['original'], 'fx_rate' => 1,
+            'debit_base' => 0, 'credit_base' => $amounts['original'],
+            'notes' => ProjectCostBudget::LINE_SOURCE,
+            'line_role' => TransactionLineRole::Source->value,
+            'created_by' => $uid, 'updated_by' => $uid,
+        ];
+
+        if ($amounts['admin'] > 0) {
+            $lines['admin'] = [
                 'account_id' => $data['admin_account_id'],
                 'project_cost_id' => $projectCostId, 'currency_id' => $costCurrencyId,
                 'amount_currency' => $amounts['admin'], 'fx_rate' => 1,
@@ -399,8 +504,11 @@ class EditProjectCostBudgetsPayment extends EditRecord
                 'notes' => ProjectCostBudget::LINE_ADMIN,
                 'line_role' => TransactionLineRole::AdministrativeDeduction->value,
                 'created_by' => $uid, 'updated_by' => $uid,
-            ],
-            [
+            ];
+        }
+
+        if ($amounts['transfer'] > 0) {
+            $lines['transfer'] = [
                 'account_id' => $data['transfer_account_id'],
                 'project_cost_id' => $projectCostId, 'currency_id' => $costCurrencyId,
                 'amount_currency' => $amounts['transfer'], 'fx_rate' => 1,
@@ -408,17 +516,20 @@ class EditProjectCostBudgetsPayment extends EditRecord
                 'notes' => ProjectCostBudget::LINE_TRANSFER,
                 'line_role' => TransactionLineRole::TransferFee->value,
                 'created_by' => $uid, 'updated_by' => $uid,
-            ],
-            [
-                'account_id' => $data['destination_account_id'],
-                'project_cost_id' => $projectCostId, 'currency_id' => $data['disbursement_currency_id'],
-                'amount_currency' => $amounts['final'], 'fx_rate' => $amounts['fx'],
-                'debit_base' => $amounts['final'], 'credit_base' => 0,
-                'notes' => ProjectCostBudget::LINE_DESTINATION,
-                'line_role' => TransactionLineRole::Destination->value,
-                'created_by' => $uid, 'updated_by' => $uid,
-            ],
+            ];
+        }
+
+        $lines['destination'] = [
+            'account_id' => $data['destination_account_id'],
+            'project_cost_id' => $projectCostId, 'currency_id' => $data['disbursement_currency_id'],
+            'amount_currency' => $amounts['final'], 'fx_rate' => $amounts['fx'],
+            'debit_base' => $amounts['final'], 'credit_base' => 0,
+            'notes' => ProjectCostBudget::LINE_DESTINATION,
+            'line_role' => TransactionLineRole::Destination->value,
+            'created_by' => $uid, 'updated_by' => $uid,
         ];
+
+        return $lines;
     }
 
     protected function storeAttachment(ProjectCostBudget $budget, string $tempPath, float $amount, ?Attachment $replacing = null): void
