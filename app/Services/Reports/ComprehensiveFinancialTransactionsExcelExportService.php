@@ -38,7 +38,7 @@ class ComprehensiveFinancialTransactionsExcelExportService
 
     private const COLOR_DANGER_TEXT = 'B91C1C';
 
-    private const LAST_COLUMN = 'O';
+    private const LAST_COLUMN = 'P';
 
     private const NUMBER_FORMAT = '#,##0.00';
 
@@ -125,15 +125,19 @@ class ComprehensiveFinancialTransactionsExcelExportService
         $row = $this->writeGroupedStats($sheet, $row, 'إحصائيات حسب نوع المعاملة', 'نوع المعاملة', $typeSummaries);
         $this->writeDetailTable($sheet, $row + 1, $rows);
 
-        // M/N/O (the three approved description/role columns) get a fixed
+        // A–L are the short/identifier columns (نوع البنك sits at F, directly
+        // beside الحساب, so debit/credit stay at J/K exactly as before).
+        // M–P (البيان, دور سطر القيد, وصف سطر القيد, الملاحظات) get a fixed
         // wrapped width instead of autosize — their text is long and would
-        // otherwise stretch the whole sheet unreasonably wide.
+        // otherwise stretch the whole sheet unreasonably wide. الملاحظات is
+        // the widest: it carries every note source on its own line.
         foreach (range('A', 'L') as $column) {
             $sheet->getColumnDimension($column)->setAutoSize(true);
         }
         $sheet->getColumnDimension('M')->setWidth(40);
         $sheet->getColumnDimension('N')->setWidth(18);
         $sheet->getColumnDimension('O')->setWidth(40);
+        $sheet->getColumnDimension('P')->setWidth(55);
 
         return $spreadsheet;
     }
@@ -273,11 +277,12 @@ class ComprehensiveFinancialTransactionsExcelExportService
         $bannerRow = $headerRow;
         $headerRow = $this->writeSectionBanner($sheet, $bannerRow, 'تفاصيل الحركات المالية');
 
+        // A  B  C  D  E  F  G  H  I  J  K  L  M  N  O  P
         $headers = [
             'التاريخ', 'رقم القيد / رقم المعاملة', 'تصنيف المعاملة', 'نوع المعاملة',
-            'الوصف / البيان', 'الحساب', 'نوع الحساب', 'المشروع',
+            'الحساب', 'نوع البنك', 'نوع الحساب', 'المشروع',
             'العملة', 'مدين', 'دائن', 'المستخدم',
-            'وصف العملية المالية', 'دور سطر القيد', 'وصف سطر القيد',
+            'البيان', 'دور سطر القيد', 'وصف سطر القيد', 'الملاحظات',
         ];
 
         $this->writeTableHeader($sheet, $headerRow, $headers, self::LAST_COLUMN);
@@ -297,8 +302,8 @@ class ComprehensiveFinancialTransactionsExcelExportService
                 $sheet->setCellValueExplicit("B{$dataRow}", (string) $row['reference'], DataType::TYPE_STRING);
                 $sheet->setCellValueExplicit("C{$dataRow}", (string) $row['category'], DataType::TYPE_STRING);
                 $sheet->setCellValueExplicit("D{$dataRow}", (string) $row['type'], DataType::TYPE_STRING);
-                $sheet->setCellValueExplicit("E{$dataRow}", (string) $row['description'], DataType::TYPE_STRING);
-                $sheet->setCellValueExplicit("F{$dataRow}", (string) $row['account'], DataType::TYPE_STRING);
+                $sheet->setCellValueExplicit("E{$dataRow}", (string) $row['account'], DataType::TYPE_STRING);
+                $sheet->setCellValueExplicit("F{$dataRow}", (string) $row['bank_type'], DataType::TYPE_STRING);
                 $sheet->setCellValueExplicit("G{$dataRow}", (string) $row['account_type'], DataType::TYPE_STRING);
                 $sheet->setCellValueExplicit("H{$dataRow}", (string) $row['project'], DataType::TYPE_STRING);
                 $sheet->setCellValueExplicit("I{$dataRow}", (string) $row['currency'], DataType::TYPE_STRING);
@@ -309,15 +314,20 @@ class ComprehensiveFinancialTransactionsExcelExportService
                 $sheet->setCellValueExplicit("M{$dataRow}", (string) $row['transaction_description'], DataType::TYPE_STRING);
                 $sheet->setCellValueExplicit("N{$dataRow}", (string) $row['line_role_label'], DataType::TYPE_STRING);
                 $sheet->setCellValueExplicit("O{$dataRow}", (string) $row['line_description'], DataType::TYPE_STRING);
+                // Full, untruncated notes — one labelled block per source, newline
+                // separated inside a single wrapped cell (see the M:P wrap range).
+                $sheet->setCellValueExplicit("P{$dataRow}", $this->notesText($row['notes'] ?? []), DataType::TYPE_STRING);
                 $dataRow++;
             }
 
             $lastRow = $dataRow - 1;
 
             $sheet->getStyle("J" . ($headerRow + 1) . ":K{$lastRow}")->getNumberFormat()->setFormatCode(self::NUMBER_FORMAT);
-            $sheet->getStyle("E" . ($headerRow + 1) . ":F{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+            // E–H are the Arabic text identifier columns (الحساب, نوع البنك,
+            // نوع الحساب, المشروع).
+            $sheet->getStyle("E" . ($headerRow + 1) . ":H{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
 
-            $wrapRange = "M" . ($headerRow + 1) . ":O{$lastRow}";
+            $wrapRange = "M" . ($headerRow + 1) . ":" . self::LAST_COLUMN . $lastRow;
             $sheet->getStyle($wrapRange)->getAlignment()
                 ->setWrapText(true)
                 ->setVertical(Alignment::VERTICAL_TOP)
@@ -327,6 +337,29 @@ class ComprehensiveFinancialTransactionsExcelExportService
         }
 
         $this->borderRange($sheet, "A{$headerRow}:" . self::LAST_COLUMN . $lastRow);
+    }
+
+    /**
+     * Renders a line's whole notes collection into one wrapped cell:
+     *
+     *     ملاحظات المعاملة: ...
+     *     ملاحظات سطر القيد: ...
+     *
+     * Every source keeps its own label, nothing is truncated, and two records
+     * holding identical text stay as two separate labelled entries.
+     *
+     * @param  array<int, array{label: string, text: string, scope: string}>  $notes
+     */
+    private function notesText(array $notes): string
+    {
+        if ($notes === []) {
+            return '';
+        }
+
+        return implode("\n", array_map(
+            static fn (array $note): string => $note['label'].': '.$note['text'],
+            $notes,
+        ));
     }
 
     /**

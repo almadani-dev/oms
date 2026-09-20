@@ -2860,3 +2860,50 @@ One environment-specific finding worth recording: this app's `APP_URL` is `http:
 
 ### Commit Hash
 Not committed — awaiting review, per instructions (STOP before commit).
+
+---
+
+### Date
+2026-09-20 (تقرير الحركات المالية الشامل — multi-account filter, نوع البنك, all notes, expandable classifications, dual scrollbars, description de-duplication)
+
+### Task
+Implement six approved presentation/filtering changes to `ComprehensiveFinancialTransactionsPage` following a prior impact audit: (1) expandable classification rows in `إحصائيات حسب تصنيف المعاملة` with a 10-column detail table, one open at a time, zero new queries; (2) synchronized horizontal scrollbars above and below `تفاصيل الحركات المالية`; (3) single → multiple account selection; (4) `نوع البنك` at transaction-line level; (5) every reliably-linked notes source, source-labelled; (6) fix the pre-existing `transactions.description` double-render. Explicitly forbidden: migrations, schema changes, any change to accounting or currency logic, `deferLoading()`, N+1, committing or pushing.
+
+### Result
+All six implemented. **Working tree was clean at start** (`git status --porcelain` empty, branch `main`) — no unrelated uncommitted changes existed.
+
+**Accounting safety is demonstrable, not asserted.** `TOLERANCE`, `difference`, `is_balanced`, `debit_base`, `credit_base`, `amount_currency` and `fx_rate` are untouched. Four `+=` lines in `accumulateGrouped()` are textually changed, and the diff of those four lines shows the change is **only the bucket index** (`$summaries[$name]` → `$summaries[$key]`): the `+=` operator, its operands (`$debit` / `$credit`), the `['currencies'][$currency]` sub-key and the target fields are byte-identical. A dedicated test asserts an explicit all-accounts selection produces `category_summaries` and `currency_summaries` **identical** (`assertSame`) to the unfiltered report.
+
+**One deliberate behavioural change** came out of the final verification pass: buckets are now keyed by the lookup **ID** rather than the display name, because neither `transaction_super_types.name` nor `transactions_types.name` carries a unique constraint or a `->unique()` rule. Where two classifications share a name, the statistics table now shows two rows instead of one silently merged row, and detail-row filtering keys off `row['category_key']` so the rows shown are exactly the rows behind the totals. Per-currency grand totals are keyed by currency and are unaffected — asserted: two same-named classifications holding 100 and 250 report separately yet still sum to 350.
+
+**The notes design is the one structural decision.** There is no polymorphic source pointer on `transactions`; five source tables each carry their own nullable `transaction_id`, and receipts + budget payments are one-to-many. Joining them would duplicate debit/credit lines. They are therefore pre-fetched with one bounded `whereIn()` per table (≤ 5 queries, 0 when the period is empty) and merged in PHP after the accumulation loop, so no summary can be affected. Verified: two receipts on one transaction leave `line_count = 1` and the debit total at `120.00`; six transactions each with a receipt still cost ≤ 6 queries total.
+
+**Query cost per report run:** 1 main lines query (unchanged shape, now with one extra `leftJoin` to `bank_types` on an indexed FK) + at most 5 bounded note pre-fetches. Expanding a classification costs **0 queries against `transaction_lines`** (asserted). No pagination was introduced; no `deferLoading()` was used.
+
+### Changed Files
+- Modified: `app/Filament/Pages/ComprehensiveFinancialTransactionsPage.php` — `account_ids` state/filter/audit-payload, `$openCategoryKey`, `toggleCategory()`.
+- Modified: `app/Services/Reports/ComprehensiveFinancialTransactionsReportService.php` — `whereIn` account filter, `bank_types` join, `super_type_id`/`type_id`/`bank_type_name`/`transaction_notes`/`project_cost_notes` selects, `SOURCE_NOTE_TABLES` pre-fetch, `groupKey()`, `ownNotes()`, `note()`, `attachSourceNotes()`, `sourceNotesByTransaction()`; **removed** the `description()` merge helper.
+- Modified: `resources/views/filament/pages/comprehensive-financial-transactions-page.blade.php` — expandable classification rows, dual scroll-sync component, 16-column detail table, per-row notes panel, new CSS.
+- Modified: `app/Services/Reports/ComprehensiveFinancialTransactionsExcelExportService.php` — `LAST_COLUMN` O → P, header/writer/width/wrap/autofilter/border updates, `notesText()`.
+- Modified: `app/Services/Reports/ComprehensiveFinancialTransactionsWordExportService.php` — `نوع البنك` cell, rebalanced line widths, `scopedNotes()`, `addNoteParagraphs()`.
+- Added: `tests/Feature/Reports/ComprehensiveFinancialTransactionsReportServiceTest.php` (18 tests).
+- Added: `tests/Feature/Reports/ComprehensiveFinancialTransactionsPageTest.php` (10 tests).
+- Modified docs: `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md`, `docs/NEXT_STEPS.md`.
+- **No** migration, schema, model, `.env` or deployment file was touched.
+
+### Verification
+1. `php vendor/bin/phpunit tests/Feature/Reports/ComprehensiveFinancialTransactionsReportServiceTest.php` — **18 passed, 44 assertions**.
+2. `php vendor/bin/phpunit tests/Feature/Reports/ComprehensiveFinancialTransactionsPageTest.php` — **10 passed, 32 assertions**.
+3. `php vendor/bin/phpunit tests/Feature/Reports` — **100 passed, 236 assertions**.
+4. `php vendor/bin/phpunit tests/Feature/Reports tests/Feature/Audit/Reports` — **122 passed, 375 assertions** (existing export authorization + audit suites unchanged and green).
+5. Excel export opened back with PhpSpreadsheet and asserted to contain `نوع البنك`, both bank type values, `الملاحظات`, `ملاحظات المعاملة: …` and `ملاحظات سطر القيد: …`; `الوصف / البيان` asserted **absent** and `وصف العملية المالية` asserted to appear exactly once per detail row (2 rows → 2 occurrences), proving the double-render is gone.
+6. Word export unzipped and `word/document.xml` asserted to contain `نوع البنك`, both bank type values, and both note labels with their text.
+7. Blade view compiled via `Blade::compileString()` + `php -l` — no syntax errors; tag balance checked (`div` 45/45, `section` 9/9, `table` 5/5).
+8. The Alpine `x-data` scroll-sync expression was extracted from the compiled output, HTML-entity-decoded and validated with `node --check` — **valid JavaScript**.
+9. Column alignment verified programmatically: detail table 16 `<th>` vs `colspan={{ $detailColumnCount }}` = 16; classification sub-table 10 `<th>` / 10 `<td>`; Excel 16 headers vs writer columns A–P contiguous; Word 9 headers / 9 `addCell()`, widths summing to 11300 — identical to the previous total, so printable width is unchanged.
+10. `php -l` clean on all four modified PHP files and both new test files.
+11. `php artisan view:clear`, `route:clear`, `config:clear`, `clear-compiled` — all succeeded.
+12. `graphify update .` — rebuilt 14387 nodes / 36511 edges / 562 communities.
+
+### Commit Hash
+Not committed — awaiting review, per instructions (STOP before commit).

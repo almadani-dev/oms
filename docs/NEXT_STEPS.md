@@ -1,5 +1,34 @@
 # Next Steps
 
+## Recommended Next Step (2026-09-20, تقرير الحركات المالية الشامل — multi-account, نوع البنك, all notes, expandable classifications, dual scrollbars; focused + regression green, NOT committed)
+
+**Open the report in a browser and confirm the two interactive pieces by eye, then review and approve the commit.** Everything is covered by automated tests — including real Livewire tests that drive the component and exports that are opened back and inspected — but **the scroll-sync and expand/collapse behaviour has not been exercised in a live browser**, and it is the one part of this task that automated tests cannot fully prove.
+
+**What to check on `تقرير الحركات المالية الشامل`:**
+
+- **Dual scrollbars.** Drag the **top** bar → the table and its native bottom bar follow. Drag the **bottom** bar → the top follows. No stutter, jitter or runaway feedback. Then resize the window and confirm both stay aligned and the top bar's thumb resizes with the table.
+- **RTL specifically.** The table starts flush **right**. Scrolling reveals content to the **left**, and both bars agree on position the whole way. This is the highest-risk item: browsers use a **negative** `scrollLeft` for RTL, and the implementation deliberately mirrors the raw value rather than assuming a sign — worth confirming in whichever browsers the team actually uses.
+- **Keyboard.** Tab to the table (it is now a focusable `role="region"`) and confirm the arrow keys scroll it horizontally. This did not work before.
+- **Classification expansion.** Click the chevron beside a classification name: the 10-column detail table opens **below that row**, showing only that classification's movements. Open a second classification and confirm the first **closes automatically**. Click the open one again and confirm it collapses. Confirm the chevron rotates and reads naturally in RTL.
+- **Notes.** A row with notes shows a `N ملاحظة` button; a single short note also shows inline. Expanding shows **every** note with its Arabic source label, **untruncated**, with the author's line breaks preserved. Confirm a note containing something like `<b>x</b>` renders as literal text, not as markup.
+- **`نوع البنك`.** Sits directly beside `الحساب`. Expect **many `—` values** — `accounts.bank_type_id` is nullable and only bank-like accounts carry one. Confirm a bank-to-bank `التحويلات العامة` entry shows **two different** bank types on its two lines.
+- **Multi-account filter.** Select several accounts; confirm `الفلاتر المطبقة` lists them all joined with `، `, and that clearing the selection restores all-accounts behaviour.
+- **Exports.** Open the Excel and Word files and confirm RTL layout, that `نوع البنك` and the full `الملاحظات` are present, and that the figures match the screen exactly.
+
+**One thing the reviewer must consciously accept:** the audit payload key for this report changed from `account_id` (scalar) to `account_ids` (array). **Historical `audit_events` rows were not rewritten** and still carry `account_id`. Anything that reads that payload for this report specifically must handle both shapes. No existing test asserted the old key for this page, so nothing broke — this is a forward-compatibility note, not a defect.
+
+**Two findings recorded, no action taken:**
+
+- **Pint is not enforced on this codebase.** All four modified production files failed `pint --test` with the **exact same fixer sets before any edit** (verified by running Pint against the pristine `HEAD` copies). Formatting was therefore deliberately left matching the surrounding code rather than reformatting, which would have produced a large unrelated diff. If the team wants Pint enforced, that is its own task.
+- **`php artisan optimize:clear` cannot complete locally.** Its `cache:clear` step needs MySQL (the cache driver is `database`) and the local MySQL is not running. `view:clear`, `route:clear`, `config:clear` and `clear-compiled` were run individually and all succeeded. `config:cache` and `route:cache` were **not** run, per the brief.
+
+**Added in the final verification pass:** `accounts.notes` is now surfaced as `ملاحظات الحساب` (line scope — each line carries its own account's notes), reaching the panel, Excel and Word with its source label. It is free: `accounts` is inner-joined on `tl.account_id` and already filtered by `whereNull('a.deleted_at')`, so a line's account is always present and unambiguous. `bank_types.notes` is deliberately **excluded** — it describes the lookup row, not the movement — and a test asserts it never leaks into the notes collection.
+
+**Still open, deliberately out of scope:** `transactions.reference` exists and is still not surfaced by this report. It is free (already joined). It was not in the brief, so it was not added.
+
+---
+
+
 ## Recommended Next Step (2026-08-19, BUD/EXT optional deduction lines — 0% percentages; focused + regression green, NOT committed)
 
 **Open both Create and Edit screens in the browser and confirm the four account cards and the disabled-card behaviour by eye, then review and approve the commit.** Everything below is verified by automated tests — including real Livewire tests that drive the actual component, not just the page methods — but **not yet in a live browser session**.

@@ -96,7 +96,10 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
 
     public ?int $appliedTransactionTypeId = null;
 
-    public ?int $appliedAccountId = null;
+    /**
+     * @var array<int, int>
+     */
+    public array $appliedAccountIds = [];
 
     public ?int $appliedAccountTypeId = null;
 
@@ -133,6 +136,17 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
 
     public int $currenciesCount = 0;
 
+    /**
+     * Stable key ("id-<n>" / "none") of the classification whose detail rows
+     * are currently expanded, or null when every classification is collapsed.
+     * Only one may be open at a time, so only that classification's detail
+     * rows are ever rendered into the DOM.
+     *
+     * Toggling re-renders from the already-loaded $rows — the report is never
+     * regenerated and no financial query is issued. See toggleCategory().
+     */
+    public ?string $openCategoryKey = null;
+
     public function mount(): void
     {
         $this->form->fill([
@@ -141,7 +155,7 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
             'currency_ids' => [],
             'transaction_super_type_id' => null,
             'transaction_type_id' => null,
-            'account_id' => null,
+            'account_ids' => [],
             'account_type_id' => null,
             'project_id' => null,
         ]);
@@ -216,8 +230,9 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
                     ->live()
                     ->afterStateUpdated(fn () => $this->clearResults()),
 
-                Select::make('account_id')
+                Select::make('account_ids')
                     ->label('الحساب')
+                    ->multiple()
                     ->options(fn () => Account::query()
                         ->orderBy('account_code')
                         ->orderBy('name')
@@ -258,6 +273,9 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
         $state = $this->form->getState();
 
         $currencyIds = array_values(array_map('intval', $state['currency_ids'] ?? []));
+        // Empty array = "كل الحسابات" — exactly the same all-accounts behaviour
+        // the single Select expressed by leaving account_id null.
+        $accountIds = array_values(array_map('intval', $state['account_ids'] ?? []));
 
         $result = app(ComprehensiveFinancialTransactionsReportService::class)->generate(
             $state['date_from'],
@@ -265,7 +283,7 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
             $currencyIds,
             $state['transaction_super_type_id'] ? (int) $state['transaction_super_type_id'] : null,
             $state['transaction_type_id'] ? (int) $state['transaction_type_id'] : null,
-            $state['account_id'] ? (int) $state['account_id'] : null,
+            $accountIds,
             $state['account_type_id'] ? (int) $state['account_type_id'] : null,
             $state['project_id'] ? (int) $state['project_id'] : null,
         );
@@ -283,12 +301,26 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
         $this->appliedCurrencyIds = $currencyIds;
         $this->appliedTransactionSuperTypeId = $state['transaction_super_type_id'] ? (int) $state['transaction_super_type_id'] : null;
         $this->appliedTransactionTypeId = $state['transaction_type_id'] ? (int) $state['transaction_type_id'] : null;
-        $this->appliedAccountId = $state['account_id'] ? (int) $state['account_id'] : null;
+        $this->appliedAccountIds = $accountIds;
         $this->appliedAccountTypeId = $state['account_type_id'] ? (int) $state['account_type_id'] : null;
         $this->appliedProjectId = $state['project_id'] ? (int) $state['project_id'] : null;
         $this->appliedFilterLabels = $result['filter_labels'];
 
         $this->hasSubmitted = true;
+        $this->openCategoryKey = null;
+    }
+
+    /**
+     * Expands/collapses one classification in "إحصائيات حسب تصنيف المعاملة".
+     * Opening a different classification closes the previous one, so at most
+     * one detail block exists in the DOM at a time.
+     *
+     * Pure state flip: the view filters the already-hydrated $rows, so this
+     * never touches the database and never recomputes a single total.
+     */
+    public function toggleCategory(string $key): void
+    {
+        $this->openCategoryKey = $this->openCategoryKey === $key ? null : $key;
     }
 
     /**
@@ -364,7 +396,9 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
                 'currency_ids' => $this->appliedCurrencyIds,
                 'transaction_super_type_id' => $this->appliedTransactionSuperTypeId,
                 'transaction_type_id' => $this->appliedTransactionTypeId,
-                'account_id' => $this->appliedAccountId,
+                // Flat list of scalars, exactly like currency_ids. Historical
+                // events keep whatever key they were written with.
+                'account_ids' => $this->appliedAccountIds,
                 'account_type_id' => $this->appliedAccountTypeId,
                 'project_id' => $this->appliedProjectId,
                 'filter_labels' => array_map(
@@ -417,9 +451,10 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
         $this->appliedCurrencyIds = [];
         $this->appliedTransactionSuperTypeId = null;
         $this->appliedTransactionTypeId = null;
-        $this->appliedAccountId = null;
+        $this->appliedAccountIds = [];
         $this->appliedAccountTypeId = null;
         $this->appliedProjectId = null;
         $this->appliedFilterLabels = [];
+        $this->openCategoryKey = null;
     }
 }

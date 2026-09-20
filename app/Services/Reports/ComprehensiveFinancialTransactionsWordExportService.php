@@ -316,27 +316,79 @@ class ComprehensiveFinancialTransactionsWordExportService
         );
 
         $section->addText(
-            'وصف العملية المالية: '.(string) $header['transaction_description'],
+            'البيان: '.(string) $header['transaction_description'],
             ['size' => 9, 'italic' => true],
             ['spaceAfter' => 60],
         );
 
+        // Transaction-scope notes (transactions.notes + every linked financial
+        // source record) belong to the whole entry, so they are written once
+        // per group as readable paragraphs instead of being crushed into the
+        // small per-line table.
+        $this->addNoteParagraphs($section, $this->scopedNotes($header['notes'] ?? [], 'transaction'));
+
         $table = $this->addBorderedTable($section);
 
         $this->addHeaderRow($table, [
-            'الحساب', 'نوع الحساب', 'المشروع', 'العملة', 'مدين', 'دائن', 'دور سطر القيد', 'وصف سطر القيد',
+            'الحساب', 'نوع البنك', 'نوع الحساب', 'المشروع', 'العملة', 'مدين', 'دائن', 'دور سطر القيد', 'وصف سطر القيد',
         ], 7);
 
         foreach ($group['lines'] as $line) {
             $table->addRow();
-            $table->addCell(1900)->addText((string) $line['account'], ['size' => 7]);
-            $table->addCell(1300)->addText((string) $line['account_type'], ['size' => 7], ['alignment' => Jc::CENTER]);
-            $table->addCell(1500)->addText((string) $line['project'], ['size' => 7], ['alignment' => Jc::CENTER]);
-            $table->addCell(900)->addText((string) $line['currency'], ['size' => 7], ['alignment' => Jc::CENTER]);
-            $table->addCell(1100)->addText($this->money($line['debit']), ['size' => 7], ['alignment' => Jc::CENTER]);
-            $table->addCell(1100)->addText($this->money($line['credit']), ['size' => 7], ['alignment' => Jc::CENTER]);
-            $table->addCell(1300)->addText((string) $line['line_role_label'], ['size' => 7], ['alignment' => Jc::CENTER]);
-            $table->addCell(2200)->addText((string) $line['line_description'], ['size' => 7]);
+            $table->addCell(1700)->addText((string) $line['account'], ['size' => 7]);
+            $table->addCell(1200)->addText((string) $line['bank_type'], ['size' => 7], ['alignment' => Jc::CENTER]);
+            $table->addCell(1100)->addText((string) $line['account_type'], ['size' => 7], ['alignment' => Jc::CENTER]);
+            $table->addCell(1300)->addText((string) $line['project'], ['size' => 7], ['alignment' => Jc::CENTER]);
+            $table->addCell(800)->addText((string) $line['currency'], ['size' => 7], ['alignment' => Jc::CENTER]);
+            $table->addCell(1050)->addText($this->money($line['debit']), ['size' => 7], ['alignment' => Jc::CENTER]);
+            $table->addCell(1050)->addText($this->money($line['credit']), ['size' => 7], ['alignment' => Jc::CENTER]);
+            $table->addCell(1100)->addText((string) $line['line_role_label'], ['size' => 7], ['alignment' => Jc::CENTER]);
+            $table->addCell(2000)->addText((string) $line['line_description'], ['size' => 7]);
+        }
+
+        // Line-scope notes stay attached to the line they describe, prefixed
+        // with that line's account so the association survives outside the table.
+        foreach ($group['lines'] as $line) {
+            $lineNotes = $this->scopedNotes($line['notes'] ?? [], 'line');
+
+            if ($lineNotes === []) {
+                continue;
+            }
+
+            $this->addNoteParagraphs($section, $lineNotes, (string) $line['account']);
+        }
+    }
+
+    /**
+     * @param  array<int, array{label: string, text: string, scope: string}>  $notes
+     * @return array<int, array{label: string, text: string, scope: string}>
+     */
+    private function scopedNotes(array $notes, string $scope): array
+    {
+        return array_values(array_filter(
+            $notes,
+            static fn (array $note): bool => $note['scope'] === $scope,
+        ));
+    }
+
+    /**
+     * Writes each note as its own labelled paragraph — full text, never
+     * truncated, and never merged with a note from a different source.
+     *
+     * @param  array<int, array{label: string, text: string, scope: string}>  $notes
+     */
+    private function addNoteParagraphs(Section $section, array $notes, ?string $context = null): void
+    {
+        foreach ($notes as $note) {
+            $label = $context !== null
+                ? $context.' — '.$note['label']
+                : $note['label'];
+
+            // PhpWord's Indentation style exposes left/right only; Word maps
+            // w:ind w:left to the start side for these bidi (RTL) paragraphs.
+            $textRun = $section->addTextRun(['spaceAfter' => 40, 'indentation' => ['left' => 180]]);
+            $textRun->addText($label.': ', ['size' => 8, 'bold' => true, 'color' => self::COLOR_MUTED]);
+            $textRun->addText((string) $note['text'], ['size' => 8]);
         }
     }
 

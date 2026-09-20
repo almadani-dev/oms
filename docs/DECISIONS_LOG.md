@@ -2323,3 +2323,52 @@ Tracked Graphify state is now exactly seven root-level files: `graph.json`, `man
 Local disk is unchanged: 75 snapshot files and 2162 cache files all remain. No real backup file, uploaded attachment, or Claude local-configuration file was read, modified, moved or deleted.
 
 **One finding deliberately left for a separate decision:** `graphify-out/.graphify_python` is tracked and contains a single absolute machine-local interpreter path. It is a convenience probe only — the post-commit hook tries it second of four, and the path cannot exist on any other machine, so the probe simply fails through there. Untracking it (`/graphify-out/.graphify_python` in `.gitignore` + `git rm --cached`) is a zero-risk one-liner, but it was outside the two sources this task scoped, so it is reported rather than applied.
+
+---
+
+### Date
+2026-09-20
+
+### Decision
+Source-record notes for `تقرير الحركات المالية الشامل` are pre-fetched with one bounded `whereIn('transaction_id', …)` per source table and merged in PHP **after** the accumulation loop — never joined into the main transaction-lines query.
+
+### Reason
+There is no polymorphic source pointer on `transactions`. Five tables (`general_expenses`, `general_exchanges`, `project_cost_receipts`, `project_cost_budgets_payments`, `project_cost_budgets`) each carry their own nullable `transaction_id` FK, and **two of them are one-to-many** — a transaction can have several receipts or several budget payments. A `LEFT JOIN` would fan the result out, turning one transaction line into N rows and multiplying its `debit_base`/`credit_base` into every per-currency, per-category and per-type total. Running the pre-fetch after the accumulation loop makes it structurally impossible for a notes change to move a financial figure.
+
+### Impact
+At most 5 extra queries per report run, independent of row or transaction count (0 when the period returns nothing) — never N+1. Regression-tested: two receipts on one transaction leave `line_count = 1` and the debit total unchanged. A future polymorphic `source_type`/`source_id` on `transactions` would let this collapse to one query, but that is a migration and was out of scope.
+
+---
+
+### Date
+2026-09-20
+
+### Decision
+Classification expansion uses **Livewire** (`$openCategoryKey`), while per-row notes expansion uses **Alpine** (`openNotes`). Category and type buckets are keyed by the underlying lookup **ID** (`id-<n>` / `none`, from `tst.id` / `tt.id`); the display name is carried for presentation only, and the UI filters detail rows by `row['category_key']`.
+
+### Reason
+Two different cost profiles for the two expansions. A classification's detail block can be hundreds of rows × 10 columns, so rendering every classification's detail into hidden DOM was rejected on page weight — Livewire lets the server render only the open one, reading the already-hydrated `$rows` at zero database cost. A notes panel is a few short strings, and a server round trip per "show notes" click would be poor UX on a long table, so that one stays client-side.
+
+On the key itself: **neither `transaction_super_types.name` nor `transactions_types.name` has a unique constraint or a `->unique()` validation rule** (verified in both migrations and both Filament form schemas), so two distinct classifications can legitimately share a display name. Keying buckets by name silently merged them into one row whose totals could not be decomposed again — a latent defect. Keying by ID also makes bucket ↔ rows exactly 1:1, which is what lets the UI filter by `category_key` and be certain the rows shown are precisely the rows behind the totals above them.
+
+### Impact
+Toggling a classification issues **0 queries against `transaction_lines`** (asserted by test) but does cost one Livewire round trip, which re-evaluates the filter `Select` option closures — small lookup-table reads that every existing `->live()` filter change already performs.
+
+**Behavioural change, deliberate and narrow:** where two classifications share a display name, the statistics table now shows **two rows instead of one merged row**. No arithmetic changed — the `+=` operator, its operands (`$debit`/`$credit`), the per-currency sub-key and the target fields are all identical; only the bucket index moved from `$name` to `$key`. Per-currency grand totals are keyed by currency and are unaffected (asserted: two same-named classifications holding 100 and 250 report separately but still sum to 350 in `currency_summaries`).
+
+### Caveat
+The notes panel row is a **sibling** of its movement row, and sibling `<tr>`s cannot share an `x-data` scope. State therefore lives on the shared ancestor keyed by `line_id`, rather than giving each row its own `<tbody>` — which would have broken the `nth-child` zebra striping.
+
+---
+
+### Date
+2026-09-20
+
+### Decision
+`bank_types` is joined **without** a `deleted_at` guard; the five source-note tables **are** filtered by `whereNull('deleted_at')`.
+
+### Reason
+These are two different kinds of data. A bank type is a **historical label** — a soft-deleted one must still name the lines that were posted against it, which is exactly how the report already treats `accounts_type`, `currencies`, `transactions_types` and `transaction_super_types` (all joined unguarded; only `projects_costs` and `projects` are guarded). A soft-deleted *source record*, by contrast, is a deleted business document, and its notes should stop appearing.
+
+### Impact
+Both behaviours are covered by tests. Consistent with the report's existing `withTrashed()` usage in `filterLabels()`.
