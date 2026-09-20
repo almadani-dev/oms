@@ -3010,8 +3010,8 @@
     "semantic_hash": ""
   },
   "resources/views/filament/pages/comprehensive-financial-transactions-page.blade.php": {
-    "mtime": 1789899682.322311,
-    "ast_hash": "478587a07152608cb9e4875b6b2e0895",
+    "mtime": 1789901159.3902218,
+    "ast_hash": "5439566e3dcf22cc1630aa758b03b0d4",
     "semantic_hash": ""
   },
   "resources/views/filament/pages/donor-financial-report-page.blade.php": {
@@ -4070,23 +4070,23 @@
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1789899798.6701658,
-    "ast_hash": "d384e72479bd3645ef39cd099f686c72",
+    "mtime": 1789901443.2848144,
+    "ast_hash": "a756574209eb939b5e1c0e8a48931a7d",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
-    "mtime": 1789899815.748301,
-    "ast_hash": "63dc59271612bc3b9ba04d9d828aa11e",
+    "mtime": 1789901443.289336,
+    "ast_hash": "8d989c34c0851a4a27ee63885ba86e8f",
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1789899861.7764747,
-    "ast_hash": "f1eb3f83648a405e225f52996cf18de6",
+    "mtime": 1789901443.2989423,
+    "ast_hash": "d5afc37f8f47db3ec3b6b2d4d775c8ff",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
-    "mtime": 1789899838.211892,
-    "ast_hash": "35c412bd43b5e96317e40db782927688",
+    "mtime": 1789901443.2979379,
+    "ast_hash": "4bebb6d90d09acd740baed078997dc0e",
     "semantic_hash": ""
   },
   "docs/RESTORE_RECOVERY.md": {
@@ -4095,8 +4095,8 @@
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1789899778.057932,
-    "ast_hash": "30b4f4e3aae01e24d9e5ef0aa02b116e",
+    "mtime": 1789901443.28692,
+    "ast_hash": "a6b00f6ed0aad0001b267a7ccf597d07",
     "semantic_hash": ""
   },
   "public/robots.txt": {
@@ -4677,6 +4677,11 @@
   "tests/Feature/Reports/ComprehensiveFinancialTransactionsReportServiceTest.php": {
     "mtime": 1789895323.2813458,
     "ast_hash": "c70e70a92a61da71e88856e5e21cb73d",
+    "semantic_hash": ""
+  },
+  "resources/views/filament/pages/partials/comprehensive-financial-transactions-detail-table.blade.php": {
+    "mtime": 1789901029.414532,
+    "ast_hash": "e2718ce8ff86de8d92be92b34bbe8b30",
     "semantic_hash": ""
   }
 }
