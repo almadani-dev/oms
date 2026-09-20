@@ -1,5 +1,29 @@
 # Next Steps
 
+## Recommended Next Step (2026-09-20, تقرير الحركات المالية الشامل — expanded-classification presentation pass + targeted expand spinner; focused tests green, NOT committed)
+
+**Open the report in a browser, expand a classification, and confirm the spinner and the compact styling by eye — then review and approve the commit.** The change is entirely CSS and Blade markup in one view, so the automated tests prove only that the page still renders and behaves; **nothing in the suite can see a font size, a padding value or a spinner**. This is the one part that needs human eyes.
+
+**What to check on `تقرير الحركات المالية الشامل`:**
+
+- **Spinner targeting — the highest-risk item.** Click one classification chevron and confirm a small spinner replaces **that chevron only**. Every other classification row must keep its chevron, unchanged. If *all* rows spin, the `wire:target` argument stopped matching the `wire:click` argument (see below) — that is the specific failure mode to watch for, and it produces no console error.
+- **Spinner lifecycle.** The spinner appears immediately on click, disappears when the expansion renders, and the chevron returns in the **correct** open/closed rotation. On a fast local machine the request may complete almost instantly; throttle the network in devtools if you want to actually see it.
+- **Double click.** Click the same chevron twice in quick succession and confirm only one toggle happens — the button is `disabled` for the duration of its own request.
+- **No row-height jump.** The chevron and spinner share a fixed `0.9rem` slot, so the classification row must not shift by a pixel when the swap happens. Watch the row below it.
+- **Compact nested table.** The expanded detail table should read as clearly smaller and quieter than the summary table above it: ~12px text, tighter rows, a softer background, lighter separators and a much less prominent header. **Compare the two tables side by side** — if the nested one still looks like a second primary table, the `.cft-subtable` CSS block has probably been moved above `.cft-table` (see the warning below).
+- **Currency pill.** Should be a small marker, not a dominant element, and should not wrap onto two lines.
+- **Notes.** Each source label sits directly above its own note text, gaps between sources are tight, line breaks are preserved, and the text is **complete** — nothing truncated, nothing clamped. Confirm a note containing something like `<b>x</b>` still renders as literal text.
+- **Scanability.** التاريخ / رقم الحركة / نوع المعاملة / نوع البنك / مدين / دائن all stay on one line; الحساب wraps only when it must; البيان has real horizontal room.
+- **Dark mode and RTL.** Toggle dark mode and confirm the nested surface, borders, header and currency pill all read correctly. Confirm the nested table still starts flush right and scrolls left.
+- **The dual scrollbars on `تفاصيل الحركات المالية` were not touched** — but re-drag both bars once to confirm they still mirror each other, since they live in the same view.
+
+**Two things a future editor must not break silently:**
+
+1. **The `.cft-subtable` CSS block must stay *below* the `.cft-table` block** in the view's `<style>`. The nested table is a DOM descendant of `.cft-table`, so the parent's `font-size`, zebra and hover rules cascade into it; the sub-table's overrides carry **identical specificity** and win on source order alone. Moving them up restores the crowded rendering with no error and no failing test.
+2. **`wire:click` and `wire:target` on the classification button must keep byte-identical argument expressions.** Both render from `@js($summary['key'])`. Livewire v4 hashes the parsed target params and compares them to the request's call params; if the quoting diverges, the hashes stop matching and the spinner simply never appears — silently.
+
+**Scope confirmation for the reviewer:** `git status --short` shows exactly one modified production file, the Blade view. `ComprehensiveFinancialTransactionsPage.php` was **not** needed and **not** touched; neither were the report service, either export service, or any migration. No query was added — expanding a classification still filters the already-hydrated `$rows` in PHP, and the spinner is pure client-side Livewire state. Per the permanent project rule, the full suite and the full Feature suite were **not** run; only `tests/Feature/Reports/ComprehensiveFinancialTransactionsPageTest.php` (10 passed, 50 assertions).
+
 ## Recommended Next Step (2026-09-20, تقرير الحركات المالية الشامل — multi-account, نوع البنك, all notes, expandable classifications, dual scrollbars; focused + regression green, NOT committed)
 
 **Open the report in a browser and confirm the two interactive pieces by eye, then review and approve the commit.** Everything is covered by automated tests — including real Livewire tests that drive the component and exports that are opened back and inspected — but **the scroll-sync and expand/collapse behaviour has not been exercised in a live browser**, and it is the one part of this task that automated tests cannot fully prove.

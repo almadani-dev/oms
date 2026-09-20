@@ -35,6 +35,14 @@
             --cft-badge-text: #374151;
             --cft-badge-border: #e5e7eb;
 
+            /* Nested/expanded detail area — deliberately quieter than the
+               parent report table so it reads as secondary detail. */
+            --cft-sub-bg: #fcfcfd;
+            --cft-sub-border: #edeff2;
+            --cft-sub-row-border: #f1f3f5;
+            --cft-sub-th-bg: #f7f8fa;
+            --cft-sub-th-text: #4b5563;
+
             direction: rtl;
             width: 100%;
         }
@@ -65,6 +73,12 @@
             --cft-badge-bg: rgba(255, 255, 255, 0.055);
             --cft-badge-text: #d1d5db;
             --cft-badge-border: rgba(255, 255, 255, 0.10);
+
+            --cft-sub-bg: rgba(17, 24, 39, 0.55);
+            --cft-sub-border: rgba(255, 255, 255, 0.07);
+            --cft-sub-row-border: rgba(255, 255, 255, 0.055);
+            --cft-sub-th-bg: rgba(255, 255, 255, 0.035);
+            --cft-sub-th-text: #cbd5e1;
         }
 
         .cft-stack {
@@ -133,6 +147,19 @@
             padding: 0.28rem 0.65rem;
             font-size: 0.78rem;
             font-weight: 750;
+        }
+
+        /* Compact variant used inside the nested detail table, where the
+           currency pill must stay a quiet marker rather than dominate the
+           row. Inherits every colour token from .cft-badge, so dark mode
+           needs no extra rule. */
+        .cft-badge-xs {
+            padding: 0.08rem 0.34rem;
+            font-size: 0.69rem;
+            font-weight: 700;
+            line-height: 1.35;
+            border-radius: 0.3rem;
+            white-space: nowrap;
         }
 
         .cft-badge-success {
@@ -255,6 +282,42 @@
             border-radius: 0.25rem;
         }
 
+        .cft-toggle[disabled] {
+            cursor: progress;
+            opacity: 0.75;
+        }
+
+        /* Fixed-size slot shared by the chevron and the loading spinner, so
+           swapping one for the other can never nudge the row height. */
+        .cft-toggle-icon {
+            width: 0.9rem;
+            height: 0.9rem;
+            flex: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .cft-spinner {
+            width: 0.9rem;
+            height: 0.9rem;
+            flex: none;
+            border-radius: 999px;
+            border: 2px solid var(--cft-badge-border);
+            border-top-color: var(--cft-muted);
+            animation: cft-spin 0.6s linear infinite;
+        }
+
+        @keyframes cft-spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .cft-spinner {
+                animation-duration: 1.6s;
+            }
+        }
+
         /* Chevron points to the inline-start (right in RTL) when collapsed and
            rotates down when open, so the affordance reads naturally in RTL
            without hardcoding a direction. */
@@ -281,45 +344,99 @@
         }
 
         .cft-detail-inner {
-            padding: 0.9rem;
+            padding: 0.75rem;
         }
 
         .cft-detail-title {
             color: var(--cft-heading);
-            font-size: 0.82rem;
+            font-size: 0.78rem;
             font-weight: 800;
-            margin-bottom: 0.6rem;
+            margin-bottom: 0.5rem;
         }
 
         .cft-subtable-wrap {
             overflow-x: auto;
-            border: 1px solid var(--cft-table-border);
-            border-radius: 0.625rem;
-            background: var(--cft-card-bg);
+            border: 1px solid var(--cft-sub-border);
+            border-radius: 0.5rem;
+            background: var(--cft-sub-bg);
         }
 
         .cft-subtable {
             width: 100%;
             border-collapse: collapse;
-            font-size: 0.78rem;
+            font-size: 12px;
             min-width: 980px;
         }
 
         .cft-subtable th {
-            background: var(--cft-th-bg);
-            color: var(--cft-th-text);
-            font-weight: 750;
-            padding: 0.5rem 0.65rem;
+            background: var(--cft-sub-th-bg);
+            color: var(--cft-sub-th-text);
+            font-size: 12px;
+            font-weight: 800;
+            padding: 7px 9px;
+            line-height: 1.4;
             text-align: right;
             white-space: nowrap;
+            border-bottom: 1px solid var(--cft-sub-border);
         }
 
         .cft-subtable td {
             color: var(--cft-td-text);
-            padding: 0.5rem 0.65rem;
-            border-top: 1px solid var(--cft-table-border);
+            font-size: 12px;
+            padding: 8px 9px;
+            border-top: 1px solid var(--cft-sub-row-border);
             vertical-align: top;
-            line-height: 1.55;
+            line-height: 1.45;
+        }
+
+        /* The nested table sits on its own quiet surface; the parent table's
+           zebra + hover tints would fight it, so they are neutralised and
+           replaced with one very light hover cue. */
+        .cft-subtable tbody tr:nth-child(even) td {
+            background: transparent;
+        }
+
+        .cft-subtable tbody tr:hover td {
+            background: var(--cft-row-even);
+        }
+
+        .cft-subtable tbody tr:first-child td {
+            border-top: 0;
+        }
+
+        /* Numbers inside the nested table: compact, aligned, tabular, and
+           deliberately less bold than the parent report's figures. */
+        .cft-subtable .cft-number {
+            font-size: 12px;
+            font-weight: 500;
+            letter-spacing: -0.01em;
+        }
+
+        .cft-subtable .cft-nowrap {
+            white-space: nowrap;
+        }
+
+        /* Account: compact, wraps only when it truly must. */
+        .cft-sub-account {
+            min-width: 108px;
+            max-width: 190px;
+            word-break: break-word;
+        }
+
+        /* Description: the one column that earns horizontal room. */
+        .cft-sub-description {
+            min-width: 220px;
+            max-width: 340px;
+            word-break: break-word;
+        }
+
+        .cft-sub-notes {
+            min-width: 210px;
+            max-width: 330px;
+        }
+
+        .cft-sub-muted {
+            color: var(--cft-muted);
         }
 
         /* ---- notes ---- */
@@ -351,6 +468,25 @@
             color: var(--cft-td-text);
             font-size: 0.78rem;
             margin-top: 0.3rem;
+        }
+
+        /* Notes inside the nested detail table: label directly above its own
+           text, tighter gaps between sources. Full text is still rendered —
+           nothing here clamps or truncates. */
+        .cft-subtable .cft-notes-list {
+            gap: 0.35rem;
+        }
+
+        .cft-subtable .cft-note-label {
+            font-size: 11px;
+            font-weight: 650;
+            line-height: 1.35;
+            margin-bottom: 0.05rem;
+        }
+
+        .cft-subtable .cft-note-text {
+            font-size: 12px;
+            line-height: 1.45;
         }
 
         .cft-notes-panel {
@@ -507,17 +643,39 @@
                                     @endphp
                                     <tr>
                                         <td>
+                                            {{-- wire:target carries the SAME argument as wire:click, so Livewire
+                                                 matches this element's loading state against that one parameterised
+                                                 call only: clicking one classification never spins the others.
+                                                 The button is disabled for the duration of its own request, which
+                                                 is what stops a double click from queueing a second toggle. --}}
                                             <button
                                                 type="button"
                                                 class="cft-toggle"
                                                 wire:click="toggleCategory(@js($summary['key']))"
+                                                wire:target="toggleCategory(@js($summary['key']))"
                                                 wire:loading.attr="disabled"
                                                 aria-expanded="{{ $isOpen ? 'true' : 'false' }}"
                                                 aria-label="{{ $isOpen ? 'إخفاء' : 'عرض' }} تفاصيل حركات التصنيف: {{ $summary['name'] }}"
                                             >
-                                                <svg class="cft-chevron" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                                                    <path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 0 1 0 1.06L9.06 10l3.73 3.71a.75.75 0 1 1-1.06 1.06l-4.25-4.24a.75.75 0 0 1 0-1.06l4.25-4.24a.75.75 0 0 1 1.06 0Z" clip-rule="evenodd" />
-                                                </svg>
+                                                <span class="cft-toggle-icon">
+                                                    <svg
+                                                        class="cft-chevron"
+                                                        viewBox="0 0 20 20"
+                                                        fill="currentColor"
+                                                        aria-hidden="true"
+                                                        wire:loading.remove
+                                                        wire:target="toggleCategory(@js($summary['key']))"
+                                                    >
+                                                        <path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 0 1 0 1.06L9.06 10l3.73 3.71a.75.75 0 1 1-1.06 1.06l-4.25-4.24a.75.75 0 0 1 0-1.06l4.25-4.24a.75.75 0 0 1 1.06 0Z" clip-rule="evenodd" />
+                                                    </svg>
+                                                    <span
+                                                        class="cft-spinner"
+                                                        role="status"
+                                                        aria-label="جارٍ تحميل التفاصيل"
+                                                        wire:loading.inline-flex
+                                                        wire:target="toggleCategory(@js($summary['key']))"
+                                                    ></span>
+                                                </span>
                                                 <span>{{ $summary['name'] }}</span>
                                             </button>
                                         </td>
@@ -574,30 +732,30 @@
                                                             <tbody>
                                                                 @foreach ($categoryRows as $categoryRow)
                                                                     <tr>
-                                                                        <td dir="ltr" style="text-align: right; white-space: nowrap;">{{ $categoryRow['date'] }}</td>
-                                                                        <td>{{ $categoryRow['reference'] }}</td>
-                                                                        <td>{{ $categoryRow['type'] }}</td>
-                                                                        <td>{{ $categoryRow['account'] }}</td>
-                                                                        <td>{{ $categoryRow['bank_type'] }}</td>
-                                                                        <td><span class="cft-badge" dir="ltr">{{ $categoryRow['currency'] }}</span></td>
-                                                                        <td>
+                                                                        <td class="cft-nowrap" dir="ltr" style="text-align: right;">{{ $categoryRow['date'] }}</td>
+                                                                        <td class="cft-nowrap">{{ $categoryRow['reference'] }}</td>
+                                                                        <td class="cft-nowrap">{{ $categoryRow['type'] }}</td>
+                                                                        <td class="cft-sub-account">{{ $categoryRow['account'] }}</td>
+                                                                        <td class="cft-nowrap">{{ $categoryRow['bank_type'] }}</td>
+                                                                        <td class="cft-nowrap"><span class="cft-badge cft-badge-xs" dir="ltr">{{ $categoryRow['currency'] }}</span></td>
+                                                                        <td class="cft-nowrap">
                                                                             @if ($categoryRow['debit'] > 0)
                                                                                 <span class="cft-number">{!! $money($categoryRow['debit']) !!}</span>
                                                                             @else
-                                                                                <span class="cft-number" style="color: var(--cft-muted);">-</span>
+                                                                                <span class="cft-number cft-sub-muted">-</span>
                                                                             @endif
                                                                         </td>
-                                                                        <td>
+                                                                        <td class="cft-nowrap">
                                                                             @if ($categoryRow['credit'] > 0)
                                                                                 <span class="cft-number">{!! $money($categoryRow['credit']) !!}</span>
                                                                             @else
-                                                                                <span class="cft-number" style="color: var(--cft-muted);">-</span>
+                                                                                <span class="cft-number cft-sub-muted">-</span>
                                                                             @endif
                                                                         </td>
-                                                                        <td style="min-width: 200px;">{{ $categoryRow['transaction_description'] }}</td>
-                                                                        <td style="min-width: 220px;">
+                                                                        <td class="cft-sub-description">{{ $categoryRow['transaction_description'] }}</td>
+                                                                        <td class="cft-sub-notes">
                                                                             @if (count($categoryRow['notes']) === 0)
-                                                                                <span style="color: var(--cft-muted);">—</span>
+                                                                                <span class="cft-sub-muted">—</span>
                                                                             @else
                                                                                 <div class="cft-notes-list">
                                                                                     @foreach ($categoryRow['notes'] as $note)

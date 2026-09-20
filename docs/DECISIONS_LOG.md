@@ -2372,3 +2372,26 @@ These are two different kinds of data. A bank type is a **historical label** —
 
 ### Impact
 Both behaviours are covered by tests. Consistent with the report's existing `withTrashed()` usage in `filterLabels()`.
+
+---
+
+### Date
+2026-09-20 (Expanded classification detail — scope the loading spinner with parameterised `wire:target` rather than local page state)
+
+### Decision
+Scope the classification expand spinner with `wire:target="toggleCategory('<key>')"` — the same argument as the row's `wire:click` — instead of adding a `$loadingCategoryKey` property to `ComprehensiveFinancialTransactionsPage`. Also: style the nested detail table with its own `--cft-sub-*` token set rather than reusing the parent table's tokens, and override the parent's inherited zebra/hover/font rules by source order rather than by raising specificity.
+
+### Reason
+A local loading key would mean a second round trip's worth of state on a component that already re-renders the whole expansion, and it would put UI-only state on a financial report page whose properties are otherwise all report data. Livewire v4.3.1 already supports parameter-aware targeting — verified directly in `livewire.esm.js`, where `getTargets()` hashes the parsed params and `containsTargets()` compares that hash to the request's actual call params — so the framework can distinguish one classification row from another with no PHP change at all. Without the argument, `wire:target="toggleCategory"` would match *any* toggle call and spin every classification row simultaneously, which is the exact failure the brief called out.
+
+Separate tokens for the nested table were chosen over reusing `--cft-card-bg` / `--cft-th-bg` / `--cft-table-border` because reusing them is precisely what made the expansion read as a second primary report table: same surface, same border weight, same header prominence. New tokens let the nested area be quieter in both themes without touching a single value the rest of the report depends on.
+
+Specificity was deliberately *not* raised on the sub-table overrides. The parent rules match sub-table cells only as descendant selectors, and matching their specificity exactly — then relying on source order — keeps both blocks readable and keeps any future parent-table change still overridable the same way, instead of starting a specificity arms race inside one `<style>` element.
+
+### Impact
+`toggleCategory()` and `$openCategoryKey` are unchanged; the page class was not modified at all. Two consequences are load-bearing and easy to break silently:
+
+1. **The `.cft-subtable` CSS block must stay below the `.cft-table` block** in the view's `<style>`. The overrides carry identical specificity and win on order alone; moving them up restores the crowded rendering with no error.
+2. **`wire:click` and `wire:target` must keep byte-identical argument expressions.** Both are rendered from `@js($summary['key'])`. If one is hand-edited to different quoting, the param hashes stop matching and the spinner simply never appears — no console error, no test failure.
+
+No query, migration, accounting or export behaviour is affected, and `tests/Feature/Reports/ComprehensiveFinancialTransactionsPageTest.php` passes unchanged (10 tests, 50 assertions).

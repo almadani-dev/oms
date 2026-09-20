@@ -2907,3 +2907,41 @@ All six implemented. **Working tree was clean at start** (`git status --porcelai
 
 ### Commit Hash
 Not committed — awaiting review, per instructions (STOP before commit).
+
+---
+
+### Date
+2026-09-20 (تقرير الحركات المالية الشامل — expanded-classification presentation pass + targeted expand spinner)
+
+### Task
+Presentation/UX only on `ComprehensiveFinancialTransactionsPage`: make the expanded classification detail table more compact and visually subordinate to the parent summary table, shrink the currency pill, tighten the notes hierarchy, and replace the classification chevron with a per-row loading spinner while its own Livewire request is in flight. Explicitly forbidden: any change to report data, queries, accounting, filters, exports, notes collection, category grouping/keys, scroll synchronization, totals or currency logic.
+
+### Result
+Done entirely in the Blade view — **no PHP page state was needed**. `toggleCategory()` and `$openCategoryKey` are untouched.
+
+**Compact nested table.** The nested table's `th`/`td` rules previously only overrode the parent's padding; the parent's `font-size`, zebra and hover rules still cascaded into it as descendant selectors (`.cft-table tbody tr:nth-child(even) td` matches a `.cft-subtable` cell, because the sub-table *is* a descendant of `.cft-table`). `.cft-subtable` now sets `font-size: 12px` on the table, header and cells, `padding: 7px 9px` / `8px 9px`, `line-height: 1.4`–`1.45`, and explicitly neutralises the inherited zebra (`background: transparent`) plus a lighter hover. Those overrides carry **identical specificity** to the parent rules and win purely on source order — the `.cft-subtable` block sits below the `.cft-table` block in the same `<style>`, and must stay there.
+
+**Subordinate surface.** Five new tokens (`--cft-sub-bg`, `--cft-sub-border`, `--cft-sub-row-border`, `--cft-sub-th-bg`, `--cft-sub-th-text`), defined in both the light and `.dark` token blocks, give the nested area a softer background, lighter separators and a much quieter header than the parent table. No existing token was changed, so nothing outside the nested table moved.
+
+**Currency pill.** New `.cft-badge-xs` modifier (`0.08rem 0.34rem` padding, `0.69rem`, `border-radius: 0.3rem`, `nowrap`) applied only to the nested table's currency cell. It inherits every colour from `.cft-badge`, so dark mode needed no extra rule and the main detail table's badges are unaffected.
+
+**Notes hierarchy.** Scoped `.cft-subtable .cft-note-label` (11px, 650) / `.cft-note-text` (12px, `line-height: 1.45`) and a tighter `0.35rem` list gap. `white-space: pre-wrap` is retained, output stays Blade-escaped, and **no clamp or truncation was added** — the full note text still renders.
+
+**Targeted spinner.** The chevron and a CSS-only spinner now share a fixed `0.9rem` `.cft-toggle-icon` slot, so swapping them cannot change row height. The button carries `wire:target="toggleCategory('<key>')"` with **the same argument as its `wire:click`**, which is what scopes the loading state to that one row: Livewire v4 hashes the target's parsed params (`quickHash(JSON.stringify(params))` in `containsTargets()`) and matches them against the request's actual call params, so only the clicked classification spins. `wire:loading.attr="disabled"` on the button (now also parameter-scoped) is what blocks a double click.
+
+**Query cost:** unchanged. No new query, no new N+1, no new note fetch — the spinner is pure client-side Livewire state and the expansion still filters the already-hydrated `$rows` in PHP.
+
+### Changed Files
+- Modified: `resources/views/filament/pages/comprehensive-financial-transactions-page.blade.php` — only file changed (`git status --short` shows exactly one entry).
+- **Not** modified: `app/Filament/Pages/ComprehensiveFinancialTransactionsPage.php`, `ComprehensiveFinancialTransactionsReportService.php`, both export services, any migration, any accounting service.
+
+### Verification
+1. `php artisan test tests/Feature/Reports/ComprehensiveFinancialTransactionsPageTest.php` — **10 passed, 50 assertions**, 17.2s.
+2. Blade compiled via `Blade::compileString()` and the output run through `php -l` — no syntax errors.
+3. `Illuminate\Support\Js::from()` checked against both real key shapes: `id-12` → `wire:target="toggleCategory('id-12')"`, `none` → `wire:target="toggleCategory('none')"` — byte-identical to the `wire:click` expression, which is the precondition for the param hashes matching.
+4. Livewire v4.3.1 parameterised targeting confirmed in `vendor/livewire/livewire/dist/livewire.esm.js` (`getTargets()` hashes `params`; `containsTargets()` compares that hash to the call's params) and `wire:loading.inline-flex` confirmed supported in the display-modifier list.
+5. `git status --short` — exactly one modified file.
+6. **Not run:** full suite / full Feature suite (permanently forbidden on this project). No unrelated tests run.
+
+### Commit Hash
+Not committed, not pushed — awaiting review.

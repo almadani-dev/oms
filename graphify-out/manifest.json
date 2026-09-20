@@ -3010,8 +3010,8 @@
     "semantic_hash": ""
   },
   "resources/views/filament/pages/comprehensive-financial-transactions-page.blade.php": {
-    "mtime": 1789895257.575634,
-    "ast_hash": "766fa8473808315f0302393f775bb3d7",
+    "mtime": 1789899682.322311,
+    "ast_hash": "478587a07152608cb9e4875b6b2e0895",
     "semantic_hash": ""
   },
   "resources/views/filament/pages/donor-financial-report-page.blade.php": {
@@ -4070,23 +4070,23 @@
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1789895452.889531,
-    "ast_hash": "67f8901c3fc54d66a14cec657c02e890",
+    "mtime": 1789899798.6701658,
+    "ast_hash": "d384e72479bd3645ef39cd099f686c72",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
-    "mtime": 1789895443.3610725,
-    "ast_hash": "38d7dd3e5cd4cd1a98f43b52355f6d76",
+    "mtime": 1789899815.748301,
+    "ast_hash": "63dc59271612bc3b9ba04d9d828aa11e",
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1789895478.1012397,
-    "ast_hash": "47360a39411ca2eaab00163397c64667",
+    "mtime": 1789899861.7764747,
+    "ast_hash": "f1eb3f83648a405e225f52996cf18de6",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
-    "mtime": 1789894155.9086738,
-    "ast_hash": "d57884e56d7eab01ad17b448e60f9821",
+    "mtime": 1789899838.211892,
+    "ast_hash": "35c412bd43b5e96317e40db782927688",
     "semantic_hash": ""
   },
   "docs/RESTORE_RECOVERY.md": {
@@ -4095,8 +4095,8 @@
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1789895469.6026337,
-    "ast_hash": "422c6624b252af978c2b4d94e17f975f",
+    "mtime": 1789899778.057932,
+    "ast_hash": "30b4f4e3aae01e24d9e5ef0aa02b116e",
     "semantic_hash": ""
   },
   "public/robots.txt": {
