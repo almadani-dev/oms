@@ -1,6 +1,25 @@
 # Prompts Log
 
 ### Date
+2026-09-20 (Rejection of a prior design — "DO NOT create a separate compact table design")
+
+### Prompt
+A rejection brief. It opened by refusing the previous turn's output outright — *"The previous compact redesign of the expanded classification table is NOT accepted"* — then specified the replacement by reference rather than by description: render the expanded classification with *"the SAME layout, column structure, sizing, typography, scrolling behavior, and visual styling as the main `تفاصيل الحركات المالية` table below"*, with *"the only difference"* being which rows it contains. It enumerated eleven properties that had to match, forbade shrinking the expanded table *"differently from the main details table"*, demanded the same synchronized top/bottom horizontal scrollbars with *"its own independent scroll state"*, and asked for extraction — *"If possible, create/reuse a Blade partial/component … so both use the same rendering source"* — while fencing that with *"do not over-refactor unrelated code"* and *"if extracting a partial would introduce risk, keep the change scoped"*. A DATA section froze queries, totals, grouping, category keys, notes, account filtering, bank-type logic, exports and accounting logic, and restated *"Opening a classification must not add ledger queries."*
+
+### Purpose
+**Specifying the target by reference instead of by attribute is what made this a one-pass change.** The previous brief had specified the nested table numerically — 12px, 7–9px padding, 1.4–1.5 line-height — and got exactly that, a second table that was internally coherent and wrong. "Same as the one below it" is not vaguer; it is stricter, because it has a single referent that can be pointed at in the file. It also converts the eleven-property checklist from eleven things to implement into one thing to do — move the markup — and then the checklist becomes a way to *verify* rather than a specification to satisfy. The instruction that the two tables differ only in `$rows` is the entire diff.
+
+**"Do not squeeze the columns just to fit the visible screen" named the failure before it happened.** The obvious way to get a 1250px table into a `<td>` is to make it not be 1250px. The line forbidding that forced the real question — *why doesn't it scroll on its own?* — and the answer is a CSS fact that is easy to get wrong in the other direction: `min-width` on a table inside a cell doesn't overflow the cell, it widens the cell, and therefore the parent table. Without that sentence the likely outcome was a narrower nested table that looked fine in a screenshot and quietly wasn't the same table. With it, the fix had to be the wrapper's width, which is where the one piece of genuinely new code in this change ended up.
+
+**The extraction request carried its own escape hatch, and the escape hatch was worth not taking.** *"If extracting a partial would introduce risk, keep the change scoped"* is a real offer, and the honest answer was that the risk here is near zero precisely because the extraction is a verbatim move: the markup is not rewritten, only relocated, so the only new failure mode is a variable that doesn't reach the partial. That turned out to be the one thing worth checking carefully — Blade's `@include` compiles to `$__env->make(view, explicit, get_defined_vars())`, so `@php`-defined locals like `$money` and `$detailColumnCount` do propagate, which is *not* obvious and is the difference between a clean extraction and an undefined-variable error at render time. Confirming that before moving anything is what let the partial keep the page as the single owner of the `colspan` constant.
+
+**"Each expanded classification table must have its own independent scroll state" prevented a plausible over-engineering.** The tempting reading of "extract a partial" is to also hoist the shared Alpine state to a parent scope so the two tables coordinate. That would have been actively wrong: the nested table is a filtered subset of the same `$rows`, so a shared `openNotes` keyed by `line_id` would open the same note in both tables at once. One clause in the brief ruled out a whole class of tidier-looking design.
+
+**The DATA fence did the same work it did last time, in a change that again touched no PHP.** Restating "no ledger queries on open" for what is a markup move sounds redundant until you notice that the straightforward way to give an expanded classification the *main* table's columns is to fetch that classification's rows — and the row shape already in `$rows` has every one of the sixteen fields, so the correct implementation was to filter, not to query. The existing `test_expanding_a_classification_issues_no_database_query` then proves it rather than the brief merely asserting it.
+
+---
+
+### Date
 2026-08-19 (Three-turn sequence: production bug diagnosis → impact audit → implementation, BUD/EXT zero percentages)
 
 ### Prompt

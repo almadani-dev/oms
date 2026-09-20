@@ -1,6 +1,23 @@
 # Next Steps
 
-## Recommended Next Step (2026-09-20, تقرير الحركات المالية الشامل — expanded-classification presentation pass + targeted expand spinner; focused tests green, NOT committed)
+## Recommended Next Step (2026-09-20, تقرير الحركات المالية الشامل — expanded classification now renders the SAME detail table as `تفاصيل الحركات المالية`, from one shared Blade partial; focused tests green, NOT committed)
+
+**Open the report in a browser, expand a classification, and check the nested table against the main one by eye — then review and approve the commit.** The change is a Blade extraction plus one small Alpine width component in two view files; the automated tests prove the page renders, the nested table carries the full 16-column header set and no ledger query is added, but **nothing in the suite can see a column width, a scroll position or a synchronized scrollbar**.
+
+**What to check on `تقرير الحركات المالية الشامل`:**
+
+- **The two tables must be indistinguishable apart from their rows.** Expand a classification and compare its table to `تفاصيل الحركات المالية` further down: same 16 columns in the same order, same font size, same header styling, same row spacing, same currency pill, same debit/credit formatting, same two-line description clamp, same notes toggle. Any visible difference means something did not come through the partial.
+- **Horizontal scrolling is the highest-risk item.** The expanded table must have its **own** thin scrollbar above it and its own native scrollbar below it, both moving together, and dragging either must move only that table. **The classification summary table above it must NOT start scrolling horizontally.** If it does — if the classification headers (`اسم التصنيف` / `عدد المعاملات` / …) stretch and scroll with the detail rows — then `.cft-nested-detail`'s width measurement did not apply, and the nested table's `min-width: 1250px` is widening its parent instead. That is the specific failure this change exists to prevent, and it produces no console error.
+- **Resize the window with a classification open.** The nested table's width is measured through a `ResizeObserver` on the parent scroller; it must re-fit rather than overhang the card or leave a gap.
+- **Independent state.** Open a notes panel inside the expanded table, then open one in the main table below. They must be independent, even for the same movement line. Scroll positions must likewise not follow each other.
+- **Spinner behaviour is unchanged and still needs the same check** as before: clicking one chevron spins **that one only**, the button is disabled for the duration of its own request, and the correct open/closed chevron returns afterwards. Throttle the network in devtools if the local request completes too fast to see.
+- **Dark mode.** The `--cft-sub-*` tokens were deleted along with the compact design; the nested table now uses the main table's tokens in both themes. Toggle dark mode with a classification open and confirm nothing reads as unstyled.
+
+**Then:** review the diff (two view files, one of them new), and commit if approved. Nothing has been committed or pushed.
+
+---
+
+## Previously Recommended Next Step (2026-09-20, تقرير الحركات المالية الشامل — expanded-classification presentation pass + targeted expand spinner; superseded by the entry above — the compact design it describes has been removed)
 
 **Open the report in a browser, expand a classification, and confirm the spinner and the compact styling by eye — then review and approve the commit.** The change is entirely CSS and Blade markup in one view, so the automated tests prove only that the page still renders and behaves; **nothing in the suite can see a font size, a padding value or a spinner**. This is the one part that needs human eyes.
 

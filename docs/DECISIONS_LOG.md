@@ -14,6 +14,36 @@
 ---
 
 ### Date
+2026-09-20 (Expanded classification detail — one shared Blade partial instead of two table designs; pin the nested wrapper's width rather than shrink its columns)
+
+### Decision
+1. **The expanded classification renders the main detail table itself, from a shared partial** — `resources/views/filament/pages/partials/comprehensive-financial-transactions-detail-table.blade.php` — included twice by the page, with only `rows` and `regionLabel` differing. The compact nested design is deleted, not kept as an alternative.
+2. **`$money` and `$detailColumnCount` are NOT passed explicitly**; they ride the `get_defined_vars()` merge that Blade's `@include` compiles to, so the `@php` block at the top of the page stays the single owner of both.
+3. **Each `@include` keeps its own `x-data`** — no attempt was made to hoist scroll/notes state to a shared parent scope.
+4. **The nested table is pinned to the visible width of its parent scroll container** (`.cft-nested-detail`, via `closest('.cft-table-wrap').clientWidth - 24`) instead of being given narrower columns, a smaller `min-width`, or a `table-layout: fixed`.
+5. **The rejected design's CSS was removed outright**, including the five `--cft-sub-*` tokens in both token blocks, rather than left in place unused.
+6. **No new test was committed** for the markup reuse; a throwaway harness was used and deleted.
+
+### Reason
+1. Two hand-maintained copies of a 16-column financial table is exactly what the review rejected, and the failure mode is silent: a column added to one and not the other produces a report that disagrees with itself with no error anywhere. An `@include` makes divergence impossible rather than merely unlikely, and it is a far smaller change than a Blade component with a props contract would have been — the markup moved verbatim, so there is no behavioural surface to re-verify beyond "does it still render".
+2. Restating `$detailColumnCount` in the partial would recreate the exact drift the original comment on it was written to prevent (it exists so the notes-panel `colspan` tracks the column count). Relying on the documented `@include` merge keeps one definition. This is load-bearing and worth knowing: **if the page's `@php` block ever loses `$money` or `$detailColumnCount`, the partial breaks with an undefined-variable error, not a visual glitch.**
+3. Hoisting the state would have meant one `openNotes` shared between the main table and the open classification's table, so opening a note in one would open the same `line_id`'s note in the other — the rows genuinely overlap, since the nested table is a filtered subset of the same `$rows`. Per-instance scope is both simpler and the only correct semantics here.
+4. This is the only part of the change that is new logic rather than moved markup, and the alternative was worse in a non-obvious way. `min-width: 1250px` on a table inside `<td colspan="4">` does not simply overflow — it raises the cell's minimum content width, which widens the *classification summary* table to 1250px. The nested table then fits its cell, renders no scrollbar of its own, and the user ends up dragging the parent table's scrollbar with the classification headers stretched across it. Shrinking the nested columns to avoid that is precisely what the brief forbade. Measuring the parent scroller's `clientWidth` keeps the nested table's real 1250px content scrolling inside its own container. **No feedback loop is possible** because `.cft-table-wrap` is a block element whose `clientWidth` comes from its container, not its content — but that is the property the `ResizeObserver` depends on, so it is the thing to check first if this ever starts thrashing.
+5. Dead CSS for a rejected design is an invitation to restore it by class name. Removing the `--cft-sub-*` tokens too means there is nothing left to re-attach to.
+6. The assertions worth making are about rendered markup — "two detail tables, two ghost scrollbars, no `cft-subtable`" — which pin the *current* layout rather than any behaviour. Committing them would make an intentional future restyle fail tests for no defect. The existing suite already covers what must not change: one-at-a-time expansion, zero ledger queries on expand, and the export payloads.
+
+### Impact
+`ComprehensiveFinancialTransactionsPage.php` was not modified at all; `toggleCategory()`, `$openCategoryKey` and the report/export services are untouched. Three things are load-bearing and fail quietly:
+
+1. **The partial depends on `$money` and `$detailColumnCount` existing in the including view's scope.** Both come from the page's opening `@php` block via `@include`'s implicit variable merge.
+2. **`.cft-nested-detail`'s `24` is `.cft-detail-inner`'s padding (`0.75rem`) doubled.** Change that padding and the nested table overhangs its cell by the difference.
+3. **`wire:click` and `wire:target` must keep byte-identical argument expressions** — unchanged from the previous pass, and still the reason a mismatched edit makes the spinner silently never appear.
+
+`tests/Feature/Reports/ComprehensiveFinancialTransactionsPageTest.php` (10 tests, 50 assertions) and `...ReportServiceTest.php` (24 tests, 64 assertions) pass unchanged.
+
+---
+
+### Date
 2026-08-19 (BUD/EXT optional deduction lines)
 
 ### Decision

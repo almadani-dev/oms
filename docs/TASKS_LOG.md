@@ -16,6 +16,50 @@
 ---
 
 ### Date
+2026-09-20 (Expanded classification detail — reuse the main `تفاصيل الحركات المالية` table via a shared Blade partial; the compact design is removed)
+
+### Task
+Reject the previous compact nested table. Make an expanded classification render a FULL financial-transactions detail table using the same layout, column structure, sizing, typography, scrolling behaviour and visual styling as the main `تفاصيل الحركات المالية` table below it — differing only in which rows it contains. Give it the same full-width horizontal overflow with synchronized top and bottom scrollbars and its own independent scroll state. Extract a shared partial rather than maintain two copies of a 16-column table. Keep the approved per-classification spinner. Change no queries, totals, grouping, category keys, note collection, account filtering, bank-type logic, exports or accounting logic, and add no ledger query when a classification is opened.
+
+### Result
+Done as specified, by extraction rather than duplication.
+
+**The main table's markup was extracted, not copied.** The entire detail-table block — scroll-sync `x-data` wrapper, ghost top scrollbar, `.cft-table-wrap` region, `<table class="cft-table cft-table-detail">`, all 16 `<th>`s, every `<td>`, the per-row notes toggle, the `$singleShortNote` preview and the full notes panel row — moved unmodified into a new partial. The page includes that partial twice. There is now exactly one source for this table.
+
+**Variables.** The partial expects `$rows`, `$money`, `$detailColumnCount` and `$regionLabel`. Only `rows` and `regionLabel` are passed explicitly at each call site; `$money` and `$detailColumnCount` arrive through the `get_defined_vars()` merge that Blade's `@include` compiles to, so the `@php` block at the top of the page still owns both and the `colspan` cannot drift.
+
+**Independent scroll and notes state.** Each `@include` produces its own `x-data` scope (`lock`, `observer`, `openNotes`), so the main table and the open classification's table never share a scroll position or an open notes panel.
+
+**Horizontal navigation.** Identical by construction: same `.cft-scroll-top` ghost bar above, same native scrollbar below, same `mirror()`/`resize()` pair, same `ResizeObserver`, same RTL-sign-agnostic `scrollLeft` copy, same `tabindex="0"` + `role="region"` keyboard-scrollable wrapper (with its own Arabic `aria-label` per instance).
+
+**New: `.cft-nested-detail`.** Without it, the nested table's `min-width: 1250px` propagates out through `<td colspan="4">` and stretches the classification summary table instead, leaving the nested table with no scrollbar of its own. A small Alpine component pins the wrapper to `closest('.cft-table-wrap').clientWidth - 24` (24px = `.cft-detail-inner` padding, both sides) and re-measures via `ResizeObserver`. `.cft-table-wrap`'s `clientWidth` is container-driven, not content-driven, so there is no feedback loop.
+
+**Removed (the rejected compact design, deleted rather than left dormant):** `.cft-subtable-wrap`, `.cft-subtable` and its `th`/`td`/zebra/hover/first-child/number/nowrap rules, `.cft-sub-account`, `.cft-sub-description`, `.cft-sub-notes`, `.cft-sub-muted`, the three `.cft-subtable .cft-note*` overrides, `.cft-badge-xs`, and the five `--cft-sub-*` tokens from both the light and `.dark` token blocks. A repo-wide grep confirms none of these names is referenced anywhere else.
+
+**Spinner:** untouched. `wire:click`/`wire:target` still render from the same `@js($summary['key'])`, `wire:loading.attr="disabled"` still disables only the clicked button, and the chevron/spinner still share the fixed `0.9rem` `.cft-toggle-icon` slot.
+
+**Query cost:** unchanged. The expansion still filters the already-hydrated `$rows` by `category_key` in PHP; opening a classification issues no ledger query.
+
+### Changed Files
+- **Added:** `resources/views/filament/pages/partials/comprehensive-financial-transactions-detail-table.blade.php` — the shared detail table (scroll-sync wrapper, 16 columns, notes panel).
+- **Modified:** `resources/views/filament/pages/comprehensive-financial-transactions-page.blade.php` — main detail section replaced by an `@include`; expanded classification cell replaced by `.cft-nested-detail` + the same `@include`; all `.cft-subtable` / `.cft-sub-*` / `.cft-badge-xs` / `--cft-sub-*` CSS removed; `.cft-nested-detail` added.
+- **Not** modified: `app/Filament/Pages/ComprehensiveFinancialTransactionsPage.php`, `ComprehensiveFinancialTransactionsReportService.php`, `ComprehensiveFinancialTransactionsExcelExportService.php`, `ComprehensiveFinancialTransactionsWordExportService.php`, any migration, any accounting service, any test.
+
+### Verification
+1. `vendor/bin/phpunit tests/Feature/Reports/ComprehensiveFinancialTransactionsPageTest.php` — **10 passed, 50 assertions**. Includes `test_expanding_a_classification_issues_no_database_query` (0 `transaction_lines` queries on expand) and both export payload tests.
+2. `vendor/bin/phpunit tests/Feature/Reports/ComprehensiveFinancialTransactionsReportServiceTest.php` — **24 passed, 64 assertions**.
+3. Both Blade files compiled with `Blade::compileString()` and the output run through `php -l` — no syntax errors.
+4. A **throwaway** test (`TmpCftExpandedMarkupTest`, deleted after the run) rendered the page with one classification expanded and asserted on the real HTML: 2 × `cft-table cft-table-detail`, 2 × `x-ref="ghost"` (both top scrollbars), 1 × `class="cft-nested-detail"`, **0** × `cft-subtable`, 2 × `<th>دور سطر القيد</th>` and 2 × `<th>نوع الحساب</th>` (the nested table carries the full 16-column set), 1 × `class="cft-spinner"`. Passed, 7 assertions.
+5. Repo-wide grep for `cft-subtable` / `cft-sub-` / `cft-badge-xs` — no remaining references.
+6. `git status --short` — one modified file plus the new `partials/` directory.
+7. **Not run:** full suite / full Feature suite (permanently forbidden on this project). No unrelated tests run.
+
+### Commit Hash
+Not committed, not pushed — awaiting review.
+
+---
+
+### Date
 2026-08-19 (BUD/EXT optional deduction lines — 0% administrative / transfer percentage)
 
 ### Task
