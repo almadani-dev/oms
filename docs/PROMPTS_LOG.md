@@ -1,6 +1,25 @@
 # Prompts Log
 
 ### Date
+2026-09-21 ("STOP guessing from code" — forcing diagnosis onto the real authenticated page in Chrome)
+
+### Prompt
+A correction of method, issued after two passes had failed to fix the user's actual symptom. It opened by refusing the mode of work rather than the output: *"STOP guessing from code. This time you MUST reproduce and diagnose the bug on the REAL OMS page in Chrome"*, immediately fenced with *"Do NOT use only a synthetic harness"* and *"Do NOT claim the issue is fixed until you reproduce the exact user sequence in the real page and verify it after the fix."* It then specified the evidence to capture **before** touching code — DOM identity, a named list of geometry readings, scroll state, `getComputedStyle` on four elements, `::-webkit-scrollbar` rules, and whether the node survives or is morphed — and supplied eight candidate causes under the heading *"VERY IMPORTANT DIAGNOSTIC QUESTION"*, closing with *"Do NOT choose one before measuring it."* It ranked its own instructions: *"But Chrome measurements take priority over theory."* On authentication it was explicit — *"DO NOT read .env … DO NOT invent credentials … STOP and ask me to log in manually"* — and it ended *"If you cannot access the authenticated real page in Chrome, STOP and ask me to log in. Do NOT return another theoretical fix."*
+
+### Purpose
+**The instruction that mattered most was the cheapest to write: "Do NOT choose one before measuring it."** Eight candidates were listed, and the true cause was #2 — a stale spacer width — while the *symptom* was #1, `scrollWidth == clientWidth`. Those two are trivially confusable, and the previous passes had in effect picked #6 and fixed it, which was a real defect but not this one. Being required to measure each candidate turned the eight into a checklist that could be *falsified*: node replacement was ruled out by element identity coming back `SAME`, CSS visibility by the thumb returning the instant the width was restored, wrong-element Alpine state by `refresh()` repairing the correct element, and native overlay scrollbars by the thumb being visible in the initial state under identical CSS. None of those eliminations required an argument.
+
+**Forbidding the harness is what surfaced the cause at all.** The bug is that Livewire's morph syncs a surviving element's attributes back to the server-rendered HTML and therefore deletes a width that only exists at runtime. That failure mode **cannot occur in a page without Livewire** — so the harness built in the previous pass was not merely weaker evidence, it was structurally incapable of showing the defect, and it had returned green. "Do not substitute a test harness for the authenticated OMS page" is the single line that separated two failed passes from one successful one.
+
+**Requiring BEFORE evidence prevented the usual trap of fixing and then measuring.** Capturing `style="width: 1926px"` and `topBar 1030/1926` *before* expanding is what made the after-reading (`null`, `1030/1030`) legible as an attribute deletion rather than a layout quirk. It also made a controlled-repetition proof obvious: restore the width by hand, confirm the thumb returns, trigger one more round trip, watch it vanish again — attribution without needing a debugger, which mattered because the browser extension blocked the `MutationObserver` and Livewire-hook scripts that would have been the first instinct.
+
+**"Fix the root cause only" and "smallest robust fix" pulled against each other productively.** The smallest possible fix was to re-apply the width on every Livewire update via a global hook; the brief's preference for local component lifecycle and no shared state ruled that out. What remained was `wire:ignore` on an inert subtree — prevention rather than repair — and, for the second instance of the same defect, the recognition that the Alpine lifecycle *could not* be made reliable there (`hasObserver: true`, host resolved, yet a forced resize verifiably not repaired) and that the width therefore belonged in CSS, where a morph cannot reach it. The brief had anticipated exactly this branch: *"If the issue is CSS/native scrollbar visibility, fix the CSS instead. If the issue is the spacer width, fix the spacer calculation."* Both turned out to apply, to two different elements.
+
+**The authentication clause was load-bearing, not boilerplate.** It converted a blocker into a defined handoff. Stopping to ask for a manual login cost one exchange; the alternative the brief explicitly forbade — *"another theoretical fix"* — had already cost two passes.
+
+---
+
+### Date
 2026-09-20 (Rejection of a prior design — "DO NOT create a separate compact table design")
 
 ### Prompt

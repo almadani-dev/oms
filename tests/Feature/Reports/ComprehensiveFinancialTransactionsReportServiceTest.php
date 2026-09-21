@@ -592,6 +592,68 @@ class ComprehensiveFinancialTransactionsReportServiceTest extends TestCase
         $this->assertSame(350.0, $result['currency_summaries'][0]['total_debit']);
     }
 
+    /**
+     * The type-summary buckets and row['type_key'] are two halves of the same
+     * contract: the UI expands a transaction type by filtering the rows it
+     * already holds on this key, so every bucket must map onto exactly its
+     * own lines — including when two types share a display name.
+     */
+    public function test_type_summaries_expose_a_stable_key_matching_their_rows(): void
+    {
+        $currency = $this->makeCurrency();
+        $account = $this->makeAccount($currency);
+
+        $superId = DB::table('transaction_super_types')->insertGetId([
+            'name' => 'تصنيف مشترك',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $keys = [];
+
+        foreach ([100.0, 250.0] as $amount) {
+            $typeId = DB::table('transactions_types')->insertGetId([
+                'name' => 'نوع مكرر',
+                'transaction_super_type_id' => $superId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $transaction = $this->makeTransaction([
+                'transaction_time' => '2026-07-10 10:00:00',
+                'transaction_type_id' => $typeId,
+            ]);
+            $this->makeLine($transaction, $account, $currency, ['debit_base' => $amount]);
+
+            $keys[] = 'id-'.$typeId;
+        }
+
+        $result = $this->service()->generate('2026-07-01', '2026-07-31');
+
+        // Same name, two buckets — nothing merged on display text.
+        $this->assertCount(2, $result['type_summaries']);
+        $this->assertSame($keys, array_column($result['type_summaries'], 'key'));
+        $this->assertSame(['نوع مكرر', 'نوع مكرر'], array_column($result['type_summaries'], 'name'));
+
+        // Each bucket keeps its own total instead of being collapsed into 350.
+        $this->assertSame(100.0, $result['type_summaries'][0]['currencies'][0]['total_debit']);
+        $this->assertSame(250.0, $result['type_summaries'][1]['currencies'][0]['total_debit']);
+
+        // And filtering rows by key yields exactly that bucket's lines.
+        foreach ($result['type_summaries'] as $summary) {
+            $rows = array_filter(
+                $result['rows'],
+                fn (array $row) => $row['type_key'] === $summary['key'],
+            );
+            $this->assertCount($summary['line_count'], $rows);
+        }
+
+        // Both classifications still roll up under the one shared super type,
+        // and the grand per-currency total is untouched by any of this.
+        $this->assertCount(1, $result['category_summaries']);
+        $this->assertSame(350.0, $result['currency_summaries'][0]['total_debit']);
+    }
+
     // =========================================================
     // helpers
     // =========================================================

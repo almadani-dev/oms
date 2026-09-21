@@ -1,5 +1,25 @@
 # Next Steps
 
+## Recommended Next Step (2026-09-21, `تقرير الحركات المالية الشامل` — expandable transaction types, independent per-table scroll controls, and the disappearing-thumb fix verified in real Chrome; targeted tests green, NOT committed)
+
+**Review the diff and approve the commit.** Unlike the previous two passes, the risky part of this change has already been verified where it actually lives: in Chrome, on the authenticated page, with measurements rather than screenshots alone. What remains is a human read of the code and a decision to commit.
+
+**What was already verified, so you do not need to re-check it by eye:** both bars of all three detail tables show `scrollWidth > clientWidth` with nothing open, with a classification open, with all three open, after collapse, after reopen, and at 760px content width; each table holds its own scroll position (`main -400`, `classification -250`, `type -700`) with no cross-talk; the RTL toward-start arrow moves main `-400 → 0` with its bars following and the other two tables stationary; a reopened block initialises fresh at 0 while the others keep their positions; and after a resize every controller's bounds equal the browser's probed bounds exactly.
+
+**What is still worth a human eye, because no measurement covers it:**
+
+- **The transaction-type detail against the classification detail and the main table.** All three render from the same partial, so they should be indistinguishable apart from their rows — same 16 columns in the same order, same header styling, same spacing, same currency pill, same debit/credit formatting, same notes toggle. A difference would mean something is not coming through the partial.
+- **The new control bars, visually.** Each table now has `[arrow] [track] [arrow]` above *and* below it, plus the native scrollbar. Confirm that reads as intentional rather than crowded at your normal window size, and that the arrows are the right weight against the OMS dark theme — this is the one part of the change that is a **design** decision rather than a correctness one, and it was specified in a question rather than derived from the existing page.
+- **The spinner on a type row.** Click a `نوع المعاملة` chevron and confirm only that row spins, and that classification rows are unaffected.
+
+**Do not re-run the full suite when reviewing.** The permanent OMS rule stands: **never run the full test suite or the full Feature suite.** For this area the relevant targeted commands are `tests/Feature/Reports/ComprehensiveFinancialTransactionsPageTest.php`, `tests/Feature/Reports/ComprehensiveFinancialTransactionsReportServiceTest.php`, and — only because the row shape changed — `tests/Feature/Audit/Reports/ReportExportAuditTest.php` with `tests/Feature/Reports/ReportExportAuthorizationTest.php`.
+
+**One thing to decide before committing:** the report service now emits a `type_key` on every row. It is display-only, reaches neither export (both were checked to read rows by named key), and mirrors the long-standing `category_key` — but it is the only non-view change in the diff, so it is the one line that deserves a deliberate yes.
+
+**Known-unreachable branch, deliberately untested:** a `'none'` transaction-type key cannot occur, because `transactions.transaction_type_id` is `NOT NULL`. A test for it was written and removed rather than forced through an invalid database state.
+
+---
+
 ## Recommended Next Step (2026-09-20, تقرير الحركات المالية الشامل — expanded classification now renders the SAME detail table as `تفاصيل الحركات المالية`, from one shared Blade partial; focused tests green, NOT committed)
 
 **Open the report in a browser, expand a classification, and check the nested table against the main one by eye — then review and approve the commit.** The change is a Blade extraction plus one small Alpine width component in two view files; the automated tests prove the page renders, the nested table carries the full 16-column header set and no ledger query is added, but **nothing in the suite can see a column width, a scroll position or a synchronized scrollbar**.

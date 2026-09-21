@@ -16,6 +16,50 @@
 ---
 
 ### Date
+2026-09-21 (`تقرير الحركات المالية الشامل` — expandable transaction types + per-table independent scroll controls + real-Chrome diagnosis and fix of the disappearing scrollbar thumb)
+
+### Task
+Three briefs in sequence. (1) Give `إحصائيات حسب نوع المعاملة` the same expandable-detail behaviour as `إحصائيات حسب تصنيف المعاملة`, keyed on a stable transaction-type ID rather than a display name, with independent category/type open state, the same canonical detail table, a row-scoped loading spinner, and a genuinely independent horizontal scroll controller for every detail table. (2) Fix a reported missing top scrollbar on dynamically-rendered detail tables. (3) After the first two attempts failed to resolve the user's actual symptom, stop reasoning from code and **reproduce and diagnose the bug on the real authenticated OMS page in Chrome**, capture DOM/geometry/CSS/identity evidence before and after expansion, prove the root cause by measurement, then fix and re-verify. Throughout: no query, total, accounting, currency, grouping, notes, export or schema changes; no migration; targeted tests only; nothing committed or pushed.
+
+### Result
+Done. The first two passes shipped correct, useful work but **did not** identify the user's reported fault; the third pass did, on the real page, and the root cause was not what the earlier passes had theorised.
+
+**Transaction type expansion.** `$openTypeKey` + `toggleTransactionType()` sit alongside `$openCategoryKey` + `toggleCategory()` as separate state, so a classification and a type can be open simultaneously and neither collapses the other. Both reset in `showReport()` and `clearResults()`. The view filters the already-loaded `$rows` by `type_key`, so no ledger query is issued and no total is recomputed.
+
+**Stable keys.** The report service gained exactly one row field, `'type_key' => $this->groupKey($line->type_id)`, mirroring the existing `category_key`; `type_summaries` already carried the matching `'key'`. No query, join or computation was added — the value was already derived one line below for the summary buckets. Both export services were confirmed to read rows only by named key, so the new field reaches neither export.
+
+**Canonical table reused.** The type detail is a third `@include` of the existing shared partial, same 16 columns. Each include now passes a `$blockKey` that becomes a distinct `wire:key`.
+
+**Scroll controls.** Every detail table renders `[arrow] [track] [arrow]` above and below its own table, plus its native scrollbar, with its own refs, `ResizeObserver`, scroll position and arrow state. Arrow direction is derived from computed `direction`; bounds are read back from the browser, so no RTL sign is assumed.
+
+**The real bug, measured in Chrome.** After any expansion above it, the main table kept track and arrows but lost its thumb. The ghost spacer's `style` attribute went from `"width: 1926px;"` to `null`, spacer width 1926 → 1030, `topBar` 1030/1926 → 1030/1030 (zero overflow), while `bodyWrap` (1094/1926), the table (1926) and the DOM identity of block/bar/spacer/wrapper were all unchanged. **Livewire's morph syncs a surviving element's attributes back to the server-rendered HTML, which has no `style` attribute, so every round trip deleted the runtime width**, and nothing re-applied it (`wire:key` preserved the node so Alpine never re-initialised; the observer watched only the wrapper and table, which had not resized). Proven by controlled repetition — restore by hand, thumb returns; one more round trip, `null` again. Node replacement, CSS visibility, wrong-element Alpine state and native overlay scrollbars were each measured and ruled out.
+
+**Second instance of the same defect.** `.cft-nested-detail`'s width pin was also a runtime inline style, also stripped (`style` → `null`, width 1883 vs expected 1070). It could not be repaired via the Alpine lifecycle: `hasObserver` was `true` and the host resolved, yet a forced resize was verifiably not repaired, because the observer belonged to a reused component data object bound to a detached node.
+
+**Fix.** `wire:ignore` on each `.cft-scroll-bar`; the spacers added to each instance's own `ResizeObserver` as local self-repair; the `.cft-nested-detail` width pin moved from runtime JS to durable CSS (`max-width: 0` on `td.cft-detail-cell` plus `width: 100%; min-width: 0` on the block), deleting both Alpine width components; `wire:key` per detail block retained.
+
+**Separate real defect fixed en route:** bounds were re-probed only on a `scrollWidth` change, but the range is `scrollWidth − clientWidth`, so any viewport-only change left them permanently stale. `refresh()` now compares both, and the first measurement runs `$nextTick` → `rAF` → `rAF`.
+
+One test was written and then removed rather than forced: a `'none'` transaction-type-key case is unreachable, because `transactions.transaction_type_id` is `NOT NULL`.
+
+### Changed Files
+- `app/Services/Reports/ComprehensiveFinancialTransactionsReportService.php` — one new row field `type_key`; docblock.
+- `app/Filament/Pages/ComprehensiveFinancialTransactionsPage.php` — `$openTypeKey`, `toggleTransactionType()`, resets in `showReport()` / `clearResults()`.
+- `resources/views/filament/pages/comprehensive-financial-transactions-page.blade.php` — expandable type section with row-scoped spinner; control-bar CSS; `wire:key` + `blockKey` on all three detail blocks; `.cft-nested-detail` width pin replaced by CSS and both Alpine width components removed.
+- `resources/views/filament/pages/partials/comprehensive-financial-transactions-detail-table.blade.php` — `$blockKey`/`wire:key`; top and bottom `[arrow][track][arrow]` control bars; encapsulated `settle()` / `refresh()` / `measure()` / `edges()` / `nudge()` controller; `wire:ignore` on both bars; spacers observed.
+- `tests/Feature/Reports/ComprehensiveFinancialTransactionsPageTest.php` — 7 new tests.
+- `tests/Feature/Reports/ComprehensiveFinancialTransactionsReportServiceTest.php` — 1 new test.
+
+### Verification
+**Targeted tests only** — `ComprehensiveFinancialTransactionsPageTest` 18/18 (94 assertions); `ComprehensiveFinancialTransactionsReportServiceTest` 25/25 (73 assertions); `ReportExportAuditTest` + `ReportExportAuthorizationTest` 50/50 (216 assertions), run because the row shape changed. **No full test suite and no full Feature suite were run.**
+
+**Real Chrome, authenticated, on the actual report page** (period 2020-01-01 → 2027-12-31; 40 lines, 7 transactions). Both bars of all three tables show `scrollWidth > clientWidth` in every state: nothing open (main 1030/1926); classification only (main 1030/1926, category 1004/1817); all three open (type 1004/1817 added); after collapse; after reopen; and at 760px content width (main 653/1926, both details 627/1817). At every state the controller's bounds equalled the browser's probed bounds, including after the resize (`-832`→`-1209`, `-748`→`-1125`). Independent positions proven by moving each table alone — main `-400`, classification `-250`, type `-700`, with no cross-talk. The RTL toward-start arrow moved main `-400 → 0`, both its bars followed, and the other two tables did not move. A reopened block initialised fresh at 0 while the others kept their positions. Screenshots captured for the main control bar and for the main control bar **while both details were open above it** — the exact reported failure state.
+
+**Not committed, not pushed.** No migration, no accounting change, no export change, no query change.
+
+---
+
+### Date
 2026-09-20 (Expanded classification detail — reuse the main `تفاصيل الحركات المالية` table via a shared Blade partial; the compact design is removed)
 
 ### Task

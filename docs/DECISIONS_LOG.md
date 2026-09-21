@@ -2425,3 +2425,82 @@ Specificity was deliberately *not* raised on the sub-table overrides. The parent
 2. **`wire:click` and `wire:target` must keep byte-identical argument expressions.** Both are rendered from `@js($summary['key'])`. If one is hand-edited to different quoting, the param hashes stop matching and the spinner simply never appears — no console error, no test failure.
 
 No query, migration, accounting or export behaviour is affected, and `tests/Feature/Reports/ComprehensiveFinancialTransactionsPageTest.php` passes unchanged (10 tests, 50 assertions).
+
+---
+
+### Date
+2026-09-21 (Transaction-type expansion — a second open-state property rather than one shared key)
+
+### Decision
+Add `$openTypeKey` as a **separate** Livewire property with its own `toggleTransactionType()`, instead of generalising `$openCategoryKey` into one shared "currently open thing" key.
+
+### Reason
+A single key can only express one open block at a time, which would make opening a transaction type silently collapse an open classification. The two sections answer different questions about the same period and are routinely read together. Two properties cost two lines and make the independence structural rather than something the view has to be careful about.
+
+### Impact
+Covered by `test_category_and_type_expansion_states_are_independent`. Both keys are cleared by `showReport()` and `clearResults()`, so a reloaded or invalidated report never keeps a stale expansion.
+
+---
+
+### Date
+2026-09-21 (Expansion keys — extend the service by one row field rather than match on display text)
+
+### Decision
+Expose `type_key` on each report row (`groupKey($line->type_id)`), mirroring the existing `category_key`, and filter expanded type rows by it. Do not group or filter by `$summary['name']`.
+
+### Reason
+`transactions_types.name` has no unique constraint and no unique validation rule, so two distinct types may share a display name; matching on text would merge their detail rows under totals no consumer could decompose. `type_summaries` was already bucketed by this exact key, so keying the rows the same way makes bucket ↔ rows 1:1 by construction. The brief allowed precisely this one service change, and it adds no query, join or computation — the value was already being derived one line below for the summary buckets.
+
+### Impact
+Both export services were checked and read rows only by named key, so the added field reaches neither export. Covered at page level (`test_transaction_type_summaries_are_keyed_by_the_stable_type_id`, `test_expanding_a_transaction_type_shows_only_that_types_rows`) and at service level (`test_type_summaries_expose_a_stable_key_matching_their_rows`).
+
+### Caveat
+A `'none'` type key is unreachable in practice — `transactions.transaction_type_id` is `NOT NULL`. A test for it was written and then **removed** rather than forced through an invalid DB state.
+
+---
+
+### Date
+2026-09-21 (Disappearing scrollbar thumb — `wire:ignore` the control bars, and move the nested width pin from runtime JS to CSS)
+
+### Decision
+Mark each `.cft-scroll-bar` `wire:ignore`, add each instance's ghost spacers to its own `ResizeObserver`, and **replace** the `.cft-nested-detail` Alpine width component with two CSS rules (`max-width: 0` on `td.cft-detail-cell`; `width: 100%; min-width: 0` on the block).
+
+### Reason
+Measured on the real page, not inferred: Livewire's morph syncs a surviving element's attributes back to the server-rendered HTML, which carries no `style` attribute, so **every round trip deleted the spacer's runtime width** — spacer `style` `"width: 1926px;"` → `null`, `topBar` `1030/1926` → `1030/1030`, zero overflow, no native thumb — while the wrapper, the table and every DOM node identity were unchanged. Nothing re-applied it, because `wire:key` preserved the node (so Alpine never re-initialised) and the observer watched only the wrapper and table, which had not resized.
+
+The same defect hit `.cft-nested-detail`, and there it could **not** be fixed inside the Alpine lifecycle: on a broken instance `hasObserver` was `true` and the host resolved, yet forcing a resize was verifiably not repaired, because the observer belonged to a reused component data object bound to a detached node. A stylesheet rule cannot be stripped by a morph and needs no lifecycle at all, so the durable fix was to stop expressing that width in JavaScript.
+
+### Impact
+Removes two `ResizeObserver`s and two Alpine components. `wire:ignore` is safe on these bars specifically because a control bar is inert presentational markup — a track and an empty spacer — with nothing inside that the server re-renders. Verified in Chrome across every state, including all three blocks open simultaneously.
+
+### Caveat
+`wire:ignore` is the prevention; the spacer observation is local insurance in case anything else ever resets a spacer. Neither introduces shared state, and re-applying an unchanged width is a no-op for the observer, so it cannot loop.
+
+---
+
+### Date
+2026-09-21 (Scroll bounds — re-probe on viewport change, not only on content change)
+
+### Decision
+`refresh()` compares **both** the content width (`max(bodyWrap.scrollWidth, table.scrollWidth)`) and the viewport (`bodyWrap.clientWidth`) before re-probing the scroll bounds, and the first measurement of a block runs `$nextTick` → `requestAnimationFrame` → `requestAnimationFrame`.
+
+### Reason
+The usable scroll range is `scrollWidth − clientWidth`, so either term moving invalidates the bounds. These tables' `scrollWidth` is pinned by their own content and effectively never changes, while `clientWidth` changes constantly — so re-probing on content alone left `lo`/`hi` permanently stale after any viewport change, which drives both the arrow disabled-state and the boundary detection. The deferred first measurement exists because a Livewire-inserted block can otherwise be measured mid-layout.
+
+### Impact
+Verified on the real page: narrowing the content to 760px re-measured all three tables (`-832`→`-1209`, `-748`→`-1125`) with the controller's bounds matching the browser's probed bounds exactly. The probe is still gated, so it never cancels an in-flight smooth scroll.
+
+---
+
+### Date
+2026-09-21 (Diagnosis method — measure the real authenticated page before proposing a cause)
+
+### Decision
+For browser-layout and framework-lifecycle bugs on this report, reproduce and measure on the **real authenticated OMS page in Chrome** before naming a root cause. A synthetic harness is not an acceptable substitute.
+
+### Reason
+Two earlier passes produced fixes that were correct in themselves and green in a standalone harness, but neither addressed the user's actual symptom, because the true cause — Livewire's morph stripping a runtime inline style from a surviving node — cannot exist in a page without Livewire. The harness could only ever confirm the hypothesis it was built around. Measuring the real page produced the answer in one pass and also **ruled out** four plausible alternatives (node replacement, CSS visibility, wrong-element Alpine state, native overlay scrollbars) by observation rather than argument.
+
+### Impact
+Documented as the expected approach for this page's UI lifecycle issues. Authentication is a hard boundary: ask the user to log in; never read `.env`, inspect secrets or invent credentials.
+

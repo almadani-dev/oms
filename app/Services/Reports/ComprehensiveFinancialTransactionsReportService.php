@@ -154,6 +154,7 @@ class ComprehensiveFinancialTransactionsReportService
                 'category' => $category,
                 'category_key' => $this->groupKey($line->super_type_id),
                 'type' => $type,
+                'type_key' => $this->groupKey($line->type_id),
                 'account' => trim(($line->account_code ? $line->account_code . ' - ' : '') . $line->account_name),
                 'bank_type' => $line->bank_type_name ?: '—',
                 'account_type' => $line->account_type_name ?: 'غير محدد',
@@ -233,8 +234,9 @@ class ComprehensiveFinancialTransactionsReportService
      * them into one row whose totals no consumer could decompose again.
      *
      * Keying by ID also makes bucket <-> rows exactly 1:1, which is what lets
-     * the UI filter a classification's detail rows by row['category_key'] and
-     * be certain the rows it shows are precisely the rows behind the totals.
+     * the UI filter a classification's detail rows by row['category_key']
+     * and a transaction type's detail rows by row['type_key'], and be certain
+     * the rows it shows are precisely the rows behind the totals.
      * 'name' is carried alongside for display only.
      *
      * @param array<string, array<string, mixed>> $summaries

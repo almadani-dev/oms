@@ -147,6 +147,20 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
      */
     public ?string $openCategoryKey = null;
 
+    /**
+     * Stable key ("id-<n>" / "none") of the transaction type whose detail
+     * rows are currently expanded, or null when every type is collapsed.
+     *
+     * Deliberately a SEPARATE property from $openCategoryKey: the two
+     * sections expand independently, so opening a transaction type never
+     * collapses an open classification and vice versa. One shared key would
+     * make that independence impossible.
+     *
+     * Like the classification key, toggling only re-renders from the
+     * already-loaded $rows — no query, no recomputed total.
+     */
+    public ?string $openTypeKey = null;
+
     public function mount(): void
     {
         $this->form->fill([
@@ -308,6 +322,7 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
 
         $this->hasSubmitted = true;
         $this->openCategoryKey = null;
+        $this->openTypeKey = null;
     }
 
     /**
@@ -321,6 +336,25 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
     public function toggleCategory(string $key): void
     {
         $this->openCategoryKey = $this->openCategoryKey === $key ? null : $key;
+    }
+
+    /**
+     * Expands/collapses one transaction type in "إحصائيات حسب نوع المعاملة".
+     * Opening a different type closes the previous one within THIS section
+     * only — $openCategoryKey is never touched here, so a classification and
+     * a transaction type can be open side by side.
+     *
+     * $key is the service's stable lookup key ("id-<n>" / "none"), never the
+     * display name: two transaction types may legitimately carry the same
+     * name, and matching on text would merge their detail rows.
+     *
+     * Pure state flip: the view filters the already-hydrated $rows by
+     * row['type_key'], so this never touches the database and never
+     * recomputes a single total.
+     */
+    public function toggleTransactionType(string $key): void
+    {
+        $this->openTypeKey = $this->openTypeKey === $key ? null : $key;
     }
 
     /**
@@ -456,5 +490,6 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
         $this->appliedProjectId = null;
         $this->appliedFilterLabels = [];
         $this->openCategoryKey = null;
+        $this->openTypeKey = null;
     }
 }

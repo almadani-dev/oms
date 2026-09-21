@@ -327,10 +327,33 @@
             margin-bottom: 0.5rem;
         }
 
-        /* Width is set by the Alpine component in the markup; this only keeps the
-           block from spilling before that first measurement lands. */
+        /* An expanded detail block must be as wide as the VISIBLE area of the
+           summary table's scroll container, not as wide as the 1250px-min-width
+           detail table it holds — otherwise it stretches its parent table and
+           the block's own scroll bar has nothing left to scroll.
+
+           This is done in CSS, deliberately. It used to be a small Alpine
+           component that measured the host and wrote an inline width. That
+           could not be made reliable: Livewire's morph syncs a surviving
+           element's attributes back to the server-rendered HTML, which has no
+           style attribute, so every round trip stripped the width — and it was
+           measured on the real page that the component's data object can be
+           reused while its DOM node is replaced, leaving the ResizeObserver
+           attached to a detached node and the block permanently full-width
+           (forcing a resize on it was verifiably not repaired). A stylesheet
+           rule cannot be stripped by a morph and needs no lifecycle at all.
+
+           max-width: 0 stops the detail cell from contributing its content's
+           width to the table, so the table keeps the width its real rows ask
+           for; the block then takes the cell's used width, and the detail table
+           overflows into that block's own horizontal scroll container. */
+        .cft-table tbody tr.cft-detail-row > td.cft-detail-cell {
+            max-width: 0;
+        }
+
         .cft-nested-detail {
-            max-width: 100%;
+            width: 100%;
+            min-width: 0;
         }
 
         /* ---- notes ---- */
@@ -369,21 +392,78 @@
             padding-inline-start: 0.8rem;
         }
 
-        /* ---- synchronized top scrollbar (every detail table) ---- */
+        /* ---- horizontal scroll controls (one pair per detail table) ----
 
-        .cft-scroll-top {
+           Every detail table renders this bar twice — above and below its own
+           table — from the shared detail partial. Nothing here is positioned
+           or identified globally: each bar is a plain child of its own Alpine
+           instance, so it is created, sized and removed with the one table it
+           belongs to and can never end up driving another. */
+
+        .cft-scroll-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            margin-bottom: 0.35rem;
+        }
+
+        .cft-scroll-controls-bottom {
+            margin-bottom: 0;
+            margin-top: 0.35rem;
+        }
+
+        .cft-scroll-bar {
+            flex: 1 1 auto;
+            min-width: 0;
             overflow-x: auto;
             overflow-y: hidden;
             /* Firefox/Chrome both keep a usable thumb at this height. */
             height: 14px;
-            margin-bottom: 0.35rem;
             border: 1px solid var(--cft-table-border);
             border-radius: 999px;
             background: var(--cft-soft-bg);
         }
 
-        .cft-scroll-top-ghost {
+        .cft-scroll-ghost {
             height: 1px;
+        }
+
+        .cft-scroll-arrow {
+            flex: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.6rem;
+            height: 1.6rem;
+            padding: 0;
+            border: 1px solid var(--cft-table-border);
+            border-radius: 999px;
+            background: var(--cft-soft-bg);
+            color: var(--cft-td-text);
+            cursor: pointer;
+            transition: opacity 0.15s ease, background 0.15s ease;
+        }
+
+        .cft-scroll-arrow svg {
+            width: 0.85rem;
+            height: 0.85rem;
+        }
+
+        .cft-scroll-arrow:hover:not([disabled]) {
+            background: var(--cft-th-bg);
+            color: var(--cft-heading);
+        }
+
+        .cft-scroll-arrow:focus-visible {
+            outline: 2px solid var(--cft-success);
+            outline-offset: 2px;
+        }
+
+        /* Boundary state is per table: one table running out of room never
+           dims another table's arrows. */
+        .cft-scroll-arrow[disabled] {
+            opacity: 0.35;
+            cursor: default;
         }
 
         .cft-table-wrap:focus-visible {
@@ -582,7 +662,7 @@
                                                 fn ($row) => $row['category_key'] === $summary['key'],
                                             ));
                                         @endphp
-                                        <tr class="cft-detail-row">
+                                        <tr class="cft-detail-row" wire:key="cft-category-detail-{{ $summary['key'] }}">
                                             <td class="cft-detail-cell" colspan="4">
                                                 <div class="cft-detail-inner">
                                                     <div class="cft-detail-title">
@@ -593,32 +673,11 @@
                                                          actually show, so it carries its own synchronized
                                                          top/bottom horizontal scrollbars instead of
                                                          stretching its parent table to 1250px. --}}
-                                                    <div
-                                                        class="cft-nested-detail"
-                                                        x-data="{
-                                                            observer: null,
-                                                            init() {
-                                                                const host = this.$el.closest('.cft-table-wrap');
-                                                                if (! host) return;
-
-                                                                // 24px = the .cft-detail-inner padding on both sides.
-                                                                const fit = () => {
-                                                                    const width = host.clientWidth - 24;
-                                                                    this.$el.style.width = width > 0 ? width + 'px' : '';
-                                                                };
-
-                                                                this.observer = new ResizeObserver(fit);
-                                                                this.observer.observe(host);
-                                                                this.$nextTick(fit);
-                                                            },
-                                                            destroy() {
-                                                                if (this.observer) this.observer.disconnect();
-                                                            },
-                                                        }"
-                                                    >
+                                                    <div class="cft-nested-detail">
                                                         @include('filament.pages.partials.comprehensive-financial-transactions-detail-table', [
                                                             'rows' => $categoryRows,
                                                             'regionLabel' => 'تفاصيل حركات التصنيف: ' . $summary['name'] . ' — جدول قابل للتمرير أفقيًا',
+                                                            'blockKey' => 'cft-detail-table-category-' . $summary['key'],
                                                         ])
                                                     </div>
                                                 </div>
@@ -631,7 +690,11 @@
                     </div>
                 </section>
 
-                {{-- D) Statistics by transaction type (نوع المعاملة) — distinct transactions, line-based totals per currency --}}
+                {{-- D) Statistics by transaction type (نوع المعاملة) — distinct transactions, line-based totals per currency.
+                     Expands exactly like the classification section above and from the very same partial, but off its
+                     own $openTypeKey: a type and a classification can therefore be open at the same time. Detail rows
+                     are filtered in PHP from the already-loaded $rows by the stable type key, so opening a type runs
+                     no query and recomputes no total. --}}
                 <section class="cft-card">
                     <div class="cft-card-title">إحصائيات حسب نوع المعاملة</div>
                     <div class="cft-table-wrap">
@@ -646,8 +709,48 @@
                             </thead>
                             <tbody>
                                 @foreach ($typeSummaries as $summary)
+                                    @php
+                                        $isTypeOpen = $openTypeKey === $summary['key'];
+                                    @endphp
                                     <tr>
-                                        <td>{{ $summary['name'] }}</td>
+                                        <td>
+                                            {{-- wire:target carries the SAME argument as wire:click, so Livewire
+                                                 matches this element's loading state against that one parameterised
+                                                 call only: clicking one type never spins the others, and never
+                                                 spins a classification row either.
+                                                 The button is disabled for the duration of its own request, which
+                                                 is what stops a double click from queueing a second toggle. --}}
+                                            <button
+                                                type="button"
+                                                class="cft-toggle"
+                                                wire:click="toggleTransactionType(@js($summary['key']))"
+                                                wire:target="toggleTransactionType(@js($summary['key']))"
+                                                wire:loading.attr="disabled"
+                                                aria-expanded="{{ $isTypeOpen ? 'true' : 'false' }}"
+                                                aria-label="{{ $isTypeOpen ? 'إخفاء' : 'عرض' }} تفاصيل حركات النوع: {{ $summary['name'] }}"
+                                            >
+                                                <span class="cft-toggle-icon">
+                                                    <svg
+                                                        class="cft-chevron"
+                                                        viewBox="0 0 20 20"
+                                                        fill="currentColor"
+                                                        aria-hidden="true"
+                                                        wire:loading.remove
+                                                        wire:target="toggleTransactionType(@js($summary['key']))"
+                                                    >
+                                                        <path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 0 1 0 1.06L9.06 10l3.73 3.71a.75.75 0 1 1-1.06 1.06l-4.25-4.24a.75.75 0 0 1 0-1.06l4.25-4.24a.75.75 0 0 1 1.06 0Z" clip-rule="evenodd" />
+                                                    </svg>
+                                                    <span
+                                                        class="cft-spinner"
+                                                        role="status"
+                                                        aria-label="جارٍ تحميل التفاصيل"
+                                                        wire:loading.inline-flex
+                                                        wire:target="toggleTransactionType(@js($summary['key']))"
+                                                    ></span>
+                                                </span>
+                                                <span>{{ $summary['name'] }}</span>
+                                            </button>
+                                        </td>
                                         <td>{{ $summary['transaction_count'] }}</td>
                                         <td>
                                             <div class="cft-currency-lines">
@@ -664,6 +767,40 @@
                                             </div>
                                         </td>
                                     </tr>
+
+                                    @if ($isTypeOpen)
+                                        @php
+                                            // Filtered by the bucket's stable lookup ID — the exact key the
+                                            // service aggregates by — so the rows shown are precisely the
+                                            // rows behind the totals on the row above, even when two
+                                            // transaction types happen to share a display name.
+                                            $typeRows = array_values(array_filter(
+                                                $rows,
+                                                fn ($row) => $row['type_key'] === $summary['key'],
+                                            ));
+                                        @endphp
+                                        <tr class="cft-detail-row" wire:key="cft-type-detail-{{ $summary['key'] }}">
+                                            <td class="cft-detail-cell" colspan="4">
+                                                <div class="cft-detail-inner">
+                                                    <div class="cft-detail-title">
+                                                        تفاصيل حركات النوع: {{ $summary['name'] }} ({{ count($typeRows) }} بند)
+                                                    </div>
+                                                    {{-- Pins the nested detail table to the width the type
+                                                         table's own scroll container can actually show, so it
+                                                         carries its own synchronized top/bottom horizontal
+                                                         scroll controls instead of stretching its parent
+                                                         table to 1250px. --}}
+                                                    <div class="cft-nested-detail">
+                                                        @include('filament.pages.partials.comprehensive-financial-transactions-detail-table', [
+                                                            'rows' => $typeRows,
+                                                            'regionLabel' => 'تفاصيل حركات النوع: ' . $summary['name'] . ' — جدول قابل للتمرير أفقيًا',
+                                                            'blockKey' => 'cft-detail-table-type-' . $summary['key'],
+                                                        ])
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    @endif
                                 @endforeach
                             </tbody>
                         </table>
@@ -680,6 +817,7 @@
                     @include('filament.pages.partials.comprehensive-financial-transactions-detail-table', [
                         'rows' => $rows,
                         'regionLabel' => 'تفاصيل الحركات المالية — جدول قابل للتمرير أفقيًا',
+                        'blockKey' => 'cft-detail-table-main',
                     ])
                 </section>
             @endif
