@@ -10,6 +10,33 @@
 
 ### Impact
 
+---
+
+### Date
+2026-09-21 (Scroll synchronization — a value-based echo guard, not a time-based lock)
+
+### Decision
+The three synchronized scroll containers of each detail table are kept in step by recording, on every element, the exact position this controller last **wrote** to it (`el._cftSyncedTo`). A scroll event whose element still sits within 1px of that recorded position is treated as the controller's own mirror landing and is ignored; anything else becomes the single source of truth for that movement. `sync(source)` never writes to its source. The previous `lock` flag released on the next animation frame is removed entirely.
+
+### Reason
+A scroll event is not dispatched when `scrollLeft` is assigned — it is queued and delivered during a later rendering step. Measured on the real page, the mirrored bars' events arrived a frame after `bodyWrap`'s, by which time the rAF-released lock was already false, so the bar handlers ran and assigned `bodyWrap.scrollLeft`. That instant assignment aborts a running smooth scroll: one arrow click travelled 3.2px of its 875px step, with `bodyWrap` visibly yanked backward from -4.8 to the stale -3.2 first. **Any time-based guard is a race against a queue whose delivery time is not specified.** A value-based guard cannot expire early or late: it is still valid on the tenth frame of an animation and on the first, it needs no timers, and duplicate queued events are self-cancelling because both read the same live `scrollLeft` and find every element already in agreement. Storing it as an element expando rather than component state keeps it per-instance for free and out of Alpine's reactive proxy.
+
+### Impact
+One arrow click now completes its full 832px travel with 0 backward steps; five clicks 120ms apart stay monotonic; a real thumb drag produces exactly one source event and two mirror events per step with zero corrections. Applies identically to the main, classification and type tables, which remain fully independent. No global controller was introduced.
+
+---
+
+### Date
+2026-09-21 (Ghost spacer width — content width minus each bar's own viewport deficit)
+
+### Decision
+`refresh()` sizes each control bar's ghost spacer to `content - (bodyWrap.clientWidth - bar.clientWidth)` rather than to the full content width, measuring every bar separately rather than assuming the two are identical.
+
+### Reason
+The premise the previous sizing rested on — stated in the file's own comment, that the bars and the table "share one identical scroll range" — was false when measured. A bar's track is narrower than the table's viewport by the two arrow buttons flanking it, so a full-width spacer gives the bar a **longer** range: 1926 content against a 1094 table viewport is a range of 832, but against a 1030 bar track it is 896. Browser-probed bounds confirmed `body [-832, 0]` vs `bars [-896, 0.8]`. Mirroring a raw `scrollLeft` between unequal ranges misplaces the thumb by the difference and, worse, driving a bar to its own extreme hands `bodyWrap` a value it must clamp — and the clamp propagates back out as another correction. Subtracting the deficit makes the two ranges genuinely equal, which is the precondition the verbatim mirroring always assumed. It also keeps the value-based echo guard reliable, since a mirrored value then lands identically on every element instead of being clamped on one of them.
+
+### Impact
+Main table spacer 1926 → 1862, bar range 896 → 832, exactly matching the table; nested tables compute their own (1753px, 1745px). The spacer stays wider than its track whenever the table actually overflows, so the native thumb remains visible and the disappearing-thumb fix is unaffected — confirmed across four Livewire round trips. Re-applying an unchanged width is still a no-op for the `ResizeObserver`, so this cannot loop.
 
 ---
 

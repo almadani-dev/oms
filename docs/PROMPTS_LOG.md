@@ -1,6 +1,26 @@
 # Prompts Log
 
 ### Date
+2026-09-21 ("Report the evidence BEFORE modifying code" — a brief that named the suspected mechanism and still demanded it be disproved)
+
+### Prompt
+A jitter report for `ComprehensiveFinancialTransactionsPage` opening with *"DO NOT guess and do NOT redesign the scrollbar"* and *"Use the REAL authenticated OMS page in Chrome and diagnose the jitter first."* It listed what to instrument (*"scroll event count per element, current scrollLeft per element, animation/rAF state, synchronization lock state, whether ResizeObserver/refresh()/measure() runs during smooth movement"*), then spelled out a specific suspected chain — *"bodyWrap scroll → topBar assignment → topBar scroll event → bodyWrap assignment → bottomBar event → repeated corrections"* — and a second hypothesis: *"verify whether more than one element is being instructed to perform behavior:'smooth' for the same movement."* It ended that section with *"Report the evidence BEFORE modifying code"*, gave the expected architecture *"if this is the cause"*, listed ten real-Chrome checks to run after the fix, enumerated eight already-verified fixes to preserve, and restated the permanent no-full-suite rule.
+
+### Purpose
+**Naming a suspected chain and still requiring evidence is what made the diagnosis land in one pass.** The hypothesis was right about the mechanism (scroll-event feedback) and wrong about the symptom (the movement was not shaking on its way to the target — it was being killed 3.2px into an 875px step and never arriving). Only a real measurement could tell those apart, and the difference matters: a fix aimed at "smoothing" the motion would have left the abort in place. The brief's two explicit hypotheses were also **separable** — instrumenting for both meant the second one, competing `behavior:'smooth'` animations, could be positively **ruled out** rather than left as an open possibility, which is what licensed keeping `nudge()` exactly as it was.
+
+**"Report the evidence BEFORE modifying code" paid for itself twice.** The first control experiment — disabling `mirror()` at runtime and re-clicking — appeared to *exonerate* the mirror, because the animation still died. Under a fix-first approach that would have sent the work off after a phantom cause. Because the instruction was to keep gathering evidence, the next step was a `scrollLeft` setter trap with stack traces, which named `at Array.forEach / at mirror` outright and revealed that the runtime patch had simply failed to take effect through Alpine's reactive proxy. **A stack trace on the mutation is worth more than any amount of reasoning about the handler.**
+
+**The instruction not to redesign the scrollbar sharpened rather than blocked the second finding.** Measurement showed the three containers did not share one scroll range — the bars' range was 896 against the table's 832, because the arrows narrow the track — which is exactly the kind of discovery that invites replacing the whole ghost-spacer approach with a proportional mapping. The constraint forced the minimal correction instead: subtract each bar's own viewport deficit from its spacer, restoring the invariant the existing design had always assumed. Same architecture, one arithmetic change.
+
+**Listing the eight fixes to preserve turned regression checking into a checklist rather than a judgement call.** "Do NOT regress the disappearing scrollbar bug" in particular is not something a passing test suite can show, since it only manifests on a *surviving* node after a Livewire morph — so it was verified the only way it can be, by driving four expand/collapse round trips in real Chrome and reading the main table's spacer width and thumb visibility after each.
+
+### Result
+See `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md` (2026-09-21 entries) for the full evidence and measurements. One file changed. One blocking question was raised rather than worked around: the Chrome tab initially reported `document.visibilityState: "hidden"`, which freezes `requestAnimationFrame` so that `behavior:'smooth'` never animates and scroll events never dispatch — the user was asked to bring the window to the foreground rather than have a synthetic substitute stand in for the real page. Targeted test green (18 passed, 94 assertions); full suite and full Feature suite not run, per the permanent project rule. Not committed, not pushed.
+
+---
+
+### Date
 2026-09-21 ("STOP guessing from code" — forcing diagnosis onto the real authenticated page in Chrome)
 
 ### Prompt

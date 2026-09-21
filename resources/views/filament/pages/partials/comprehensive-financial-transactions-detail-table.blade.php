@@ -39,15 +39,44 @@
     Scroll controller
     ---------------------------------------------------------------------------
 
-    refresh() keeps both ghost spacers exactly as wide as the table's scrollable
-    content, so the two control bars and the table share one identical scroll
-    range and scrollLeft can be mirrored verbatim between them.
+    refresh() sizes both ghost spacers so that every control bar ends up with
+    exactly the same usable scroll range as the table, which is what lets
+    scrollLeft be mirrored verbatim between them. That is NOT the full content
+    width: a bar's track is narrower than the table's viewport by the two arrow
+    buttons beside it, so a full-width spacer gives the bar a LONGER range than
+    the table. Measured on the real page: content 1926, table viewport 1094
+    (range 832), bar track 1030 (range 896). Mirroring a raw scrollLeft between
+    ranges of different length is off by the difference, and dragging a bar to
+    its own extreme hands bodyWrap a value it has to clamp — and that clamp
+    bounces straight back out as another correction. Each spacer is therefore
+    shortened by its own bar's viewport deficit.
 
-    mirror() copies the raw scrollLeft value. All three containers sit in the
+    sync() copies the raw scrollLeft value. All three containers sit in the
     same dir="rtl" subtree and therefore share whatever sign convention the
     browser uses for scrollLeft in RTL — so nothing here assumes that value is
-    positive. The lock flag, cleared on the next animation frame, stops the
-    scroll handlers from echoing each other.
+    positive.
+
+    Why the echo guard is a VALUE and not a time window: a scroll event is not
+    dispatched when scrollLeft is assigned, it is queued and delivered during a
+    later rendering step. The previous guard was a lock flag released on the
+    next animation frame, and the mirrored bars' events reliably arrived after
+    that — so the bar handlers ran, wrote bodyWrap.scrollLeft back, and each of
+    those assignments is an instant scroll that ABORTS a running smooth scroll.
+    Measured on the real page, one arrow click travelled 3.2px of its 875px
+    step: bodyWrap reached -4.8, was dragged back to the bars' one-frame-stale
+    -3.2, and stopped there for good. That backward yank is the visible shake.
+
+    Instead, every element remembers the exact position this controller last
+    WROTE to it (_cftSyncedTo). A scroll event whose element still sits at that
+    position is this controller's own mirror landing, not a new user gesture,
+    so it is ignored and never written back. No timers, no frame races: a
+    genuine move of 1px or more always wins, and the guard cannot expire early
+    or late. Two events queued for one element are harmless too — both read the
+    same current scrollLeft, so the second one finds every element already in
+    agreement and writes nothing.
+
+    One movement therefore has exactly one source of truth, and only bodyWrap
+    is ever given behavior:'smooth'. The bars are assigned instantly.
 
     measure() probes this element's real numeric scrollLeft bounds by pushing it
     past both extremes and reading back what the browser clamped to, then
@@ -100,7 +129,6 @@
 <div
     wire:key="{{ $blockKey }}"
     x-data="{
-        lock: false,
         observer: null,
         openNotes: null,
         rtl: false,
@@ -118,18 +146,21 @@
 
             this.rtl = getComputedStyle(body).direction === 'rtl';
 
-            const mirror = (from) => {
-                if (this.lock) return;
-                this.lock = true;
-                [body, ...bars].forEach((el) => {
-                    if (el !== from) el.scrollLeft = from.scrollLeft;
-                });
-                this.edges();
-                requestAnimationFrame(() => { this.lock = false; });
+            // A scroll event only becomes a new source of truth when its
+            // element has actually left the position this controller last put
+            // it at. Anything else is one of our own mirror assignments coming
+            // back, and writing it onward would abort the smooth scroll.
+            const onScroll = (el) => {
+                const mirrored = el._cftSyncedTo;
+
+                if (mirrored !== undefined && Math.abs(el.scrollLeft - mirrored) < 1) return;
+
+                this.sync(el);
             };
 
-            body.addEventListener('scroll', () => mirror(body), { passive: true });
-            bars.forEach((bar) => bar.addEventListener('scroll', () => mirror(bar), { passive: true }));
+            [body, ...bars].forEach((el) => {
+                el.addEventListener('scroll', () => onScroll(el), { passive: true });
+            });
 
             // Observes only this instance's own elements, so a resize of one
             // detail table never recalculates another's bars. It keeps the
@@ -183,7 +214,14 @@
             const content = Math.max(body.scrollWidth, this.$refs.table.scrollWidth);
             const viewport = body.clientWidth;
 
-            bars.forEach((bar) => { bar.firstElementChild.style.width = content + 'px'; });
+            // Shortened by this bar's own viewport deficit so the bar's usable
+            // range (spacer - track) equals the table's (content - viewport).
+            // Each bar is measured separately rather than assumed identical.
+            bars.forEach((bar) => {
+                const deficit = Math.max(0, viewport - bar.clientWidth);
+
+                bar.firstElementChild.style.width = Math.max(0, content - deficit) + 'px';
+            });
 
             // Re-probing mid-animation would cancel a smooth scroll, so it only
             // happens when something the bounds actually depend on changed.
@@ -193,7 +231,32 @@
                 this.measure();
             }
 
-            bars.forEach((bar) => { bar.scrollLeft = body.scrollLeft; });
+            // Routed through sync() so these assignments are guarded like any
+            // other mirror: a ResizeObserver callback landing mid-animation
+            // must not turn into a write back onto bodyWrap.
+            this.sync(body);
+        },
+
+        /**
+         * Mirrors one element's position onto the other two, instantly.
+         *
+         * The source element is never written to, so a smooth scroll running
+         * on it is never interrupted. Each target records the position it was
+         * given, which is what lets the scroll handler recognise the resulting
+         * event as this controller's own echo. Targets already in agreement
+         * are skipped, so no echo is ever recorded for an assignment that
+         * would not have produced an event anyway.
+         */
+        sync(source) {
+            const pos = source.scrollLeft;
+
+            [this.$refs.bodyWrap, this.$refs.topBar, this.$refs.bottomBar].forEach((el) => {
+                if (el === source || Math.abs(el.scrollLeft - pos) < 1) return;
+
+                el._cftSyncedTo = pos;
+                el.scrollLeft = pos;
+            });
+
             this.edges();
         },
 

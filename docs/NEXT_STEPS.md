@@ -1,5 +1,23 @@
 # Next Steps
 
+## Recommended Next Step (2026-09-21, `تقرير الحركات المالية الشامل` — arrow-scroll jitter fixed: value-based echo guard replaces the rAF lock, spacers shortened by each bar's viewport deficit; targeted test green, NOT committed)
+
+**Review the diff and approve the commit.** One file changed (`resources/views/filament/pages/partials/comprehensive-financial-transactions-detail-table.blade.php`, +83/-20), and it contains no PHP, no query, no accounting logic and no currency handling. The whole change is inside the Alpine scroll controller: `mirror()` → `sync(source)` with a per-element `_cftSyncedTo` echo guard, the `lock` flag removed, `refresh()`'s tail routed through `sync()`, and one arithmetic change to the ghost-spacer width.
+
+**What was already verified in real Chrome, so you do not need to re-check it by eye:** one arrow click travels the full 832px with 0 backward steps (it previously travelled 3.2px and froze); five clicks 120ms apart stay monotonic end-to-end; real mouse drags of the top and bottom thumbs each produce exactly one source event and two mirror events per step with **zero corrections**; all three tables open at once each animate to their own exact end with `othersMoved: []`; and the surviving main table kept `spacer: 1862px` with a visible thumb across four Livewire expand/collapse round trips, so the disappearing-thumb fix is intact. RTL `atStart`/`atEnd` states are correct at both edges on all three tables.
+
+**What is still worth a human eye, because no measurement covers it:**
+
+- **How the motion actually feels.** The numbers say monotonic and complete; only a person can say whether the ease-out over ~540ms reads as pleasant at this table width. If it feels slow, the lever is the `0.8` viewport multiplier in `nudge()`, not the synchronization.
+- **Thumb tracking during the fastest part of a long throw.** The bars are mirrored from `bodyWrap`'s scroll events, so at peak speed they trail by up to one frame (measured ~45px at the steepest point of an 832px animation) before landing exactly. This is inherent to mirroring on scroll events and is not jitter — but confirm it does not read as a lag at your display's refresh rate.
+- **Subpixel edge values.** The bars probe to `[-832, 0.8]` while `bodyWrap` probes to `[-832, 0]`, a 0.8px difference from device-pixel rounding at `devicePixelRatio 1.25`. It sits inside the guard's 1px tolerance, so it causes no correction loop, but it is why the bars can read `0.8` where the table reads `0` at the start edge.
+
+**Do not re-run the full suite when reviewing.** The permanent OMS rule stands: **never run the full PHPUnit suite or the full Feature suite on this project.** The targeted `tests/Feature/Reports/ComprehensiveFinancialTransactionsPageTest.php` (18 passed, 94 assertions) is the correct scope for a markup change.
+
+**One thing to watch if the control bar's layout ever changes:** the spacer width now depends on `bar.clientWidth`, i.e. on how much horizontal room the two arrow buttons take. Adding a third control, changing the arrow size, or changing the gap in `.cft-scroll-controls` will change the deficit — which is fine, because `refresh()` re-measures each bar separately on every `ResizeObserver` callback, but it does mean the bar's range is no longer derivable from the content width alone.
+
+---
+
 ## Recommended Next Step (2026-09-21, `تقرير الحركات المالية الشامل` — expandable transaction types, independent per-table scroll controls, and the disappearing-thumb fix verified in real Chrome; targeted tests green, NOT committed)
 
 **Review the diff and approve the commit.** Unlike the previous two passes, the risky part of this change has already been verified where it actually lives: in Chrome, on the authenticated page, with measurements rather than screenshots alone. What remains is a human read of the code and a decision to commit.

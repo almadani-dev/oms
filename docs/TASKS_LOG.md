@@ -16,6 +16,61 @@
 ---
 
 ### Date
+2026-09-21 (`تقرير الحركات المالية الشامل` — arrow-scroll jitter diagnosed in real Chrome: scroll-event feedback was aborting the smooth scroll)
+
+### Task
+Diagnose, on the real authenticated OMS page in Chrome, why arrow-button horizontal scrolling shakes instead of moving smoothly — explicitly forbidding guesswork and any redesign of the scrollbar. Determine whether `topBar`/`bodyWrap`/`bottomBar` repeatedly trigger each other during one animation, and whether more than one element is being given `behavior:'smooth'` for the same movement. Report evidence before changing code. Preserve every already-verified fix, above all the disappearing-thumb fix.
+
+### Result
+**Evidence first — the movement was not jittering, it was being killed.** A `requestAnimationFrame` timeline of one arrow click on `wire:key="cft-detail-table-main"`:
+
+```
+t=21.8  body -3.2   top -1.6   bottom -1.6    ← smooth scroll advancing
+t=29.3  body -4.8   top -3.2   bottom -3.2    ← advancing; bars one frame behind
+t=36.3  body -3.2   top -3.2   bottom -3.2    ← body YANKED BACKWARD to the stale bar value
+t=42.6…900  body -3.2 (frozen)                ← animation dead, 3.2px of an 875px step
+```
+
+The per-element scroll-event log for the same click showed the ordering: `body(-3.2)` → `topBar(-3.2)` → `bottomBar(-3.2)` → `body(-3.2)`. A `scrollLeft` setter trap installed on `bodyWrap` then named the writer outright:
+
+```
+t=0.7   scrollBy {"left":-875,"behavior":"smooth"}   ← at Proxy.nudge
+t=36.6  set scrollLeft = -0.8                        ← at Array.forEach / at mirror
+```
+
+**Answers to the two questions asked.** (1) Yes — scroll-event feedback was present: the bars' events re-entered the handler and wrote back onto `bodyWrap`, and an instant `scrollLeft` assignment aborts a running smooth scroll. (2) No — competing smooth animations were **not** present: exactly one `behavior:'smooth'` call appeared in the whole trace, on `bodyWrap`, from `nudge`. The trace also contained no `refresh()`/`measure()`/`ResizeObserver` write during the animation, so the existing geometry gate was working as documented.
+
+**Why the lock failed.** `mirror()` set `lock = true`, wrote the bars, and released it in `requestAnimationFrame`. A scroll event is queued and delivered in a later rendering step, not at assignment time; the bars' events arrived ~7ms after `bodyWrap`'s — a frame later, lock already false. The guard was released *before* the events it existed to suppress.
+
+**Second defect, found by measuring rather than reading.** The file's comment asserted the three containers "share one identical scroll range". They did not: content 1926, `bodyWrap` viewport 1094 (range **832**), bar track 1030 (range **896**) — the arrows narrow the bar. Browser-probed bounds confirmed `body [-832, 0]` vs `bars [-896, 0.8]`. A raw `scrollLeft` mirrored between unequal ranges is off by the difference, and driving a bar to its own extreme handed `bodyWrap` a value it had to clamp, which bounced back out as a further correction — a second, drag-path source of shake.
+
+**Fix.** `mirror()` → `sync(source)`, which never writes to the source (so a smooth scroll on `bodyWrap` is never interrupted) and records on each target the exact position it was given (`el._cftSyncedTo`). The time-based `lock` is gone; the handler ignores any scroll event whose element still sits within 1px of the position this controller last wrote to it. `refresh()`'s tail bar assignments now go through `sync()` too, and each ghost spacer is shortened by its own bar's viewport deficit so the ranges genuinely match.
+
+### Changed Files
+- Modified: `resources/views/filament/pages/partials/comprehensive-financial-transactions-detail-table.blade.php` — the only file changed (`git status --short` shows exactly one non-docs entry). +83 / -20.
+- **Not** modified: `app/Filament/Pages/ComprehensiveFinancialTransactionsPage.php`, `ComprehensiveFinancialTransactionsReportService.php`, both export services, the page view, any CSS file, any migration, any accounting service. No PHP, no query, no accounting logic, no currency handling touched.
+
+### Verification
+All measurements below were taken in real Chrome on the authenticated page (`http://oms.test/admin/comprehensive-financial-transactions`, range 2020-01-01 → 2026-09-21), after `php artisan view:clear` and a full reload that dropped all diagnostic instrumentation.
+
+1. **Ranges now match.** Main table: `spacer 1862px`, `bodyWrap 1926/1094` → probed `[-832, 0]` range 832; bars `1862/1030` → probed `[-832, 0.8]` range 832.8. Before: bar range 896 against table range 832.
+2. **One arrow click:** full **832px** travelled over ~540ms on a proper ease-out curve, **0 backward steps**, final `body/top/bottom = -832/-832/-832`. Before: 3.2px then frozen, with a backward yank.
+3. **Five arrow clicks hammered 120ms apart** (the "hold/click repeatedly" case): continuous monotonic -832 → 0, **0 backward steps**, ends `atStart:true atEnd:false` — correct RTL edge state.
+4. **Real mouse drag of the top thumb** (`left_click_drag` 830→400): 5 drag steps produced exactly 15 scroll events — `topBar` (source) + `body` + `bottomBar` per step, **zero correction events** — all three agreeing at -806.4.
+5. **Real mouse drag of the bottom thumb** (300→800): total/source event ratio exactly **3.00** (5 source, 10 mirror, 0 corrections); `bottomBar` acted as source, `body` and `topBar` mirrored.
+6. **Main, classification and type tables open simultaneously**, each measured independently: `main` spacer 1862 (range 832), `category-id-4` and `type-id-5` spacer 1753 (range 748/749). Arrow test on each in turn — all **0 backward steps**, each travelled to its own exact end (-832 / -748 / -748), bars agreed, and `othersMoved: []` every time. Moving one table never moved another.
+7. **Disappearing-thumb regression check** across four Livewire round trips (expand category → expand type → collapse category → collapse type → expand a different category): the surviving main table kept `spacer: 1862px` and `thumb: true` at every step; each newly inserted nested block mounted with its own correct spacer (1753px, 1745px) and a visible thumb.
+8. **RTL arrow states**: `atStart:true/atEnd:false` at the start edge, `atEnd:true/atStart:false` at the end edge, both false mid-range — verified on all three tables.
+9. `php artisan test tests/Feature/Reports/ComprehensiveFinancialTransactionsPageTest.php` — **18 passed, 94 assertions**, 36.7s.
+10. `php -l` on the partial — no syntax errors. Zero console errors or exceptions on the page.
+11. **Not run:** full suite / full Feature suite (permanently forbidden on this project). No unrelated tests run.
+
+### Commit Hash
+Not committed, not pushed — awaiting review.
+
+---
+
+### Date
 2026-09-21 (`تقرير الحركات المالية الشامل` — expandable transaction types + per-table independent scroll controls + real-Chrome diagnosis and fix of the disappearing scrollbar thumb)
 
 ### Task
