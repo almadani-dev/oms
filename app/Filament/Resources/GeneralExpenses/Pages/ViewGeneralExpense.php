@@ -37,9 +37,11 @@ class ViewGeneralExpense extends ViewRecord
                 TextEntry::make('currency.name')
                     ->label('العملة'),
 
+                // يبقى للسجلات التاريخية؛ السجلات الجديدة بلا جهة مستفيدة تُعرض "—".
                 TextEntry::make('partner.name')
                     ->label('الجهة / المستفيد')
-                    ->state(fn ($record) => $record->partner?->name ?? $record->transaction?->partner?->name),
+                    ->state(fn ($record) => $record->partner?->name ?? $record->transaction?->partner?->name)
+                    ->placeholder('—'),
 
                 TextEntry::make('date')
                     ->label('التاريخ')

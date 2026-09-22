@@ -3088,3 +3088,47 @@ Done entirely in the Blade view — **no PHP page state was needed**. `toggleCat
 
 ### Commit Hash
 Not committed, not pushed — awaiting review.
+
+---
+
+### Date
+2026-09-22 (المصروفات العامة — removal of the `الجهة / المستفيد` field; new records store NULL, historical values preserved)
+
+### Task
+Two-phase. **Phase 1 (audit only, no edits):** a twelve-section impact audit of `GeneralExpense.partner_id` and the corresponding `Transaction.partner_id` — current schema (not migration-file assumptions), Create, Edit, List/View, every report and export, audit/attachments/permissions/observers/factories/tests, read-only data counts, and a NULL-vs-auto-fill comparison. **Phase 2 (implement):** remove the field from the Create/Edit form, store NULL for new records, preserve historical beneficiaries on edit, keep the column/entry for historical display with a `—` placeholder. Explicitly forbidden in both phases: any migration, any accounting-logic change, any report/export change, any partner-data change, creating a Partner record for the organization, committing or pushing, and running the full or full-Feature test suite.
+
+### Result
+Implemented as approved. **No migration was needed** — both `general_expenses.partner_id` and `transactions.partner_id` were already `NULL=YES` with `ON DELETE SET NULL`, verified live against `information_schema` rather than inferred from migration files, and no migration in the project's history had ever altered their nullability. The `->required()` on the form Select was the **only** thing enforcing a beneficiary: no DB constraint, no model rule, no observer, no service-layer guard.
+
+**The field is gone, and removing it alone would have crashed every create.** Both `CreateGeneralExpense` writes used bare `$data['partner_id']`, and Laravel's `HandleExceptions::handleError` turns the resulting `Undefined array key` warning into a thrown `ErrorException`. Both writes are now `$data['partner_id'] ?? null` — the only place a bare null-coalesce is correct, because a create has no prior value to lose.
+
+**Edit uses the record as the source of truth, never submitted data.** `$preservedPartnerId = $record->partner_id ?? $record->transaction?->partner_id` is computed **before** `DB::transaction()` opens (so it is read while the row is still pristine) and passed into the closure's `use (...)` list, then written to *both* tables. The deliberate rejection here was `$data['partner_id'] ?? null`, which would have silently erased the beneficiary of every historical expense whose amount anyone edited. The now-redundant `mutateFormDataBeforeFill()` prefill was removed, so preservation depends on the record rather than on hidden, unrendered form state — a payload that still carries `partner_id` (a stale client, a replayed request) can neither inject nor change one, which is covered by its own test.
+
+**Display kept for historical records.** The table column gained `->placeholder('—')` and `->toggleable(isToggledHiddenByDefault: true)`; the view entry gained `->placeholder('—')`. Both were previously rendering NULL as a **completely blank cell** — Filament v5's `HasPlaceholder` defaults `$placeholder = null` and both `TextColumn::render()` and `TextEntry::render()` only emit the placeholder element `if (filled($placeholder))`, and `AppServiceProvider` sets no global default. The `SelectFilter`, the eager loads, the model's `$fillable` and `partner()` relation, and the audit snapshotter were all left untouched by design, so historical rows keep working.
+
+**Reports and accounting were confirmed untouched by measurement, not assumption.** A case-insensitive `partner` grep across all of `app/Services/Reports/` and `app/Filament/Pages/` matches exactly two lines, both in `DonorFinancialReportService` (lines 42 and 67), which selects a **donor** by id and never reads either `partner_id` column. `ComprehensiveFinancialTransactionsPage`/`ReportService`/both exporters, `AccountStatement*`, `TrialBalance*` and `ProjectsGeneralFinancialReportService` have **zero** partner references; the comprehensive report's only contact with general expenses is `SOURCE_NOTE_TABLES`, which pre-fetches the `notes` column. `transaction_lines` has no partner column at all, so no total, grouping or balance can move.
+
+**One pre-existing test asserted the removed behavior and was adjusted rather than deleted.** `GeneralExpenseAuditTest::test_edit_records_accurate_old_and_new_values` asserted that a submitted `partner_id` changes the record (`changed_fields` = `['amount','description','partner_id']`). That is now intentionally impossible. The stray `altPartner` override was **kept** and the test inverted to prove it is ignored, and `data()` no longer supplies `partner_id` so the suite exercises the payload the current form actually produces. The create test now asserts `partner_id`/`partner_label` are **absent** from the audit payload, which additionally proves `FinancialAuditSnapshotter::finalize()`'s `array_filter` drops a NULL foreign key rather than storing a null.
+
+### Changed Files
+- Modified: `app/Filament/Resources/GeneralExpenses/Schemas/GeneralExpenseForm.php` — removed the `partner_id` Select and the then-unused `use App\Models\Partner;` import.
+- Modified: `app/Filament/Resources/GeneralExpenses/Pages/CreateGeneralExpense.php` — both writes `?? null`.
+- Modified: `app/Filament/Resources/GeneralExpenses/Pages/EditGeneralExpense.php` — prefill removed; `$preservedPartnerId` computed pre-transaction and written to both tables.
+- Modified: `app/Filament/Resources/GeneralExpenses/Tables/GeneralExpensesTable.php` — column `placeholder('—')` + `toggleable(isToggledHiddenByDefault: true)`.
+- Modified: `app/Filament/Resources/GeneralExpenses/Pages/ViewGeneralExpense.php` — entry `placeholder('—')`.
+- Modified: `tests/Feature/Audit/Financial/GeneralExpenseAuditTest.php` — adjusted to the approved behavior.
+- Added: `tests/Feature/GeneralExpenses/GeneralExpensePartnerOptionalTest.php` — 10 tests.
+- **Not** modified: any migration, the `GeneralExpense` model, `GeneralExpenseResource` eager loads, the partner `SelectFilter`, `FinancialAuditSnapshotter`, `DatabaseRelationshipIntegrityChecker`, any report page/service/export, any partner data.
+
+### Verification
+1. `php artisan test tests/Feature/GeneralExpenses/GeneralExpensePartnerOptionalTest.php` — **10 passed, 38 assertions**. Covers: the field is absent from the form while its five neighbours survive; a create payload carrying no `partner_id` key succeeds; both columns read NULL straight from the database via `DB::table()` (bypassing the model, so no relation or accessor can mask the stored value); two balanced lines; balances byte-identical with and without a beneficiary; a historical expense keeps its beneficiary on **both** tables after an unrelated-field edit; a NULL record stays NULL; a submitted `partner_id` is ignored on edit; lines stay balanced after editing a historical record; the view entry's placeholder is `—`.
+2. `php artisan test --filter=GeneralExpenseAuditTest` — **4 passed, 55 assertions**.
+3. `php artisan test tests/Feature/GeneralExpenses` — **28 passed, 99 assertions**.
+4. `php artisan test --filter=FinancialAuditRegressionTest` — **11 passed, 34 assertions**.
+5. `php artisan test --filter=FinancialAttachmentCutoverTest` — **30 passed, 125 assertions**; `--filter=AttachmentWriteAuditTest` — **10 passed, 94 assertions**; `--filter=CrudRedirectStandardTest` — **13 passed, 66 assertions**. These three were run because a `CreateGeneralExpense|EditGeneralExpense|GeneralExpenseForm` grep over `tests/` showed they are the only other suites exercising the changed pages.
+6. `php -l` clean on all five modified production files.
+7. Live MySQL `oms` re-checked read-only after implementation and **unchanged**: 0 `general_expenses`, 7 `transactions`, 1 `partner`; both `partner_id` columns still `nullable=YES`; `migrate:status` shows no pending migrations.
+8. **Not run:** full suite / full Feature suite (permanently forbidden on this project).
+
+### Commit Hash
+Not committed, not pushed — awaiting review.

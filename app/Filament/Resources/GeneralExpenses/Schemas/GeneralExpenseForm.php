@@ -7,7 +7,6 @@ use App\Models\AccountType;
 use App\Models\BankType;
 use App\Models\Currency;
 use App\Models\FiscalYear;
-use App\Models\Partner;
 use App\Models\TransactionSuperType;
 use App\Models\TransactionType;
 use Filament\Forms\Components\Checkbox;
@@ -57,14 +56,6 @@ class GeneralExpenseForm
                         $set('debit_account_id', null);
                         $set('credit_account_id', null);
                     }),
-
-                Select::make('partner_id')
-                    ->label('الجهة / المستفيد')
-                    ->options(fn () => Partner::orderBy('name')->pluck('name', 'id'))
-                    ->searchable()
-                    ->preload(false)
-                    ->optionsLimit(50)
-                    ->required(),
 
                 DatePicker::make('date')
                     ->label('تاريخ المصروف')

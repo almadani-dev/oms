@@ -1,5 +1,23 @@
 # Next Steps
 
+## Recommended Next Step (2026-09-22, المصروفات العامة — `الجهة / المستفيد` removed; new records NULL, historical values preserved; 96 targeted tests green, NOT committed)
+
+**Review the diff and approve the commit.** Five production files changed, all inside `app/Filament/Resources/GeneralExpenses/`, plus one adjusted test and one new test file. No migration, no accounting logic, no report or export, no partner data.
+
+**What is already proven by test, so you do not need to re-check it by hand:** a create payload carrying no `partner_id` key succeeds and leaves NULL in **both** `general_expenses` and `transactions` (read straight from the database with `DB::table()`, bypassing the model so no relation or accessor can mask the value); the two transaction lines are still balanced and the account balances are byte-identical with and without a beneficiary; a historical expense with a partner keeps it on **both** tables after an unrelated-field edit; a NULL record stays NULL; and a submitted `partner_id` on edit is ignored entirely.
+
+**What is worth a human eye in the browser, because no test covers rendering:**
+
+- **Open `/admin/general-expenses/create`** and confirm the beneficiary Select is gone and that the remaining Section 1 layout still reads correctly in RTL. The removed field sat between `currency_id` and `date` in a `columns(2)` grid, so every field after it shifts one cell — the pairing is now amount/currency and date/classification rather than amount/currency and beneficiary/date. Nothing else moved, but the visual rhythm of that section did.
+- **Open the list page and toggle the `الجهة / المستفيد` column on.** It is hidden by default now. Confirm the toggle appears in the column menu and that a NULL row shows `—` rather than an empty cell.
+- **Open a general expense's view page** and confirm the `—` placeholder renders where a beneficiary used to be.
+
+**The dev database has zero general expenses**, so all three checks need a record created first. Creating one through the UI is also the read-only-safe way to confirm the NULL write end to end against real MySQL rather than the SQLite test schema.
+
+**Do not re-run the full suite when reviewing.** The permanent OMS rule stands: **never run the full PHPUnit suite or the full Feature suite on this project.** The correct scope here is `tests/Feature/GeneralExpenses` plus `--filter=GeneralExpenseAuditTest`.
+
+---
+
 ## Recommended Next Step (2026-09-21, `تقرير الحركات المالية الشامل` — arrow-scroll jitter fixed: value-based echo guard replaces the rAF lock, spacers shortened by each bar's viewport deficit; targeted test green, NOT committed)
 
 **Review the diff and approve the commit.** One file changed (`resources/views/filament/pages/partials/comprehensive-financial-transactions-detail-table.blade.php`, +83/-20), and it contains no PHP, no query, no accounting logic and no currency handling. The whole change is inside the Alpine scroll controller: `mirror()` → `sync(source)` with a per-element `_cftSyncedTo` echo guard, the `lock` flag removed, `refresh()`'s tail routed through `sync()`, and one arithmetic change to the ghost-spacer width.
@@ -637,6 +655,7 @@ Open `/admin/project-cost-receipts/1` (and a couple of other receipts) in the br
 Also, create at least one real disbursement (`ProjectCostBudgetsPayments` → "صرف مبلغ") and one execution payment (`ExecutionPayments`) for the seeded donor's project, then re-run the Donor Financial Report and compare its disbursement-source, deductions, final-disbursement, execution-paid, and remaining figures against a manual calculation. This is the one part of the new Donor Financial Report the 2026-07-06 audit could not numerically verify, since the dev DB currently has 0 `project_cost_budgets`/`project_cost_budgets_payments` rows. Also create the first real accounts in the browser (/admin/accounts/create) using the "الرصيد الافتتاحي" section: one account without an opening balance, one with, and one in a second currency; confirm Trial Balance shows متوازن for each currency. Then continue entering real partners, projects, and transactions.
 
 ## Pending Items
+- Now that `general_expenses.partner_id` is write-never (2026-09-22), it is a read-only home for historical beneficiaries at the cost of one non-unique index. If the business ever confirms the beneficiary is gone for good, dropping the column, its relation and its remaining UI is a **separate, explicitly-scoped decision** — do not bundle it into an unrelated change, and re-run the `partner_id` impact audit against production data first, since the dev DB has 0 general expenses and cannot show what would be lost. The same applies to `general_exchanges.partner_id`, which still has its own `الجهة` field and was deliberately left untouched.
 - Responsive credit/debit account layout (2026-07-16) has not yet been visually verified in a live browser session — see the recommended next step above.
 - `ProjectCostBudgetsPaymentForm.php` (صرف مبلغ المشروع) and `GeneralExchangeForm.php` (التحويلات العامة) still render their 4 accounts (1 credit/source + 3 debit) as one unified `Section` rather than the new right/left grid pattern — deliberately deferred (see `docs/DECISIONS_LOG.md`, 2026-07-16) since splitting them apart risks the shared internal `columns(2)` layout. Revisit only as its own explicitly-scoped, tested task if the accounting team wants the visual split.
 - Execution Payment credit-account editability (2026-07-16) has not yet been visually verified in a live browser session — see the previously recommended next step below.

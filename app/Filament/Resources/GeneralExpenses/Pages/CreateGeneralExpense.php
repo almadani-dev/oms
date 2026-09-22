@@ -77,7 +77,8 @@ class CreateGeneralExpense extends CreateRecord
                 'transaction_type_id' => $data['transaction_type_id'],
                 'transaction_number'  => $transactionNumber,
                 'transaction_time'    => Carbon::parse($data['date']),
-                'partner_id'          => $data['partner_id'],
+                // المصروف العام لا يتطلب جهة مستفيدة — السجلات الجديدة تُخزَّن بقيمة NULL.
+                'partner_id'          => $data['partner_id'] ?? null,
                 'notes'               => $data['notes'] ?? null,
                 'created_by'          => auth()->id(),
                 'updated_by'          => auth()->id(),
@@ -95,7 +96,8 @@ class CreateGeneralExpense extends CreateRecord
                 'amount'         => $amount,
                 'currency_id'    => $currencyId,
                 'date'           => Carbon::parse($data['date']),
-                'partner_id'     => $data['partner_id'],
+                // نفس القيمة المكتوبة في المعاملة أعلاه — الجدولان يبقيان متطابقين.
+                'partner_id'     => $data['partner_id'] ?? null,
                 'description'    => $data['description'] ?? null,
                 'notes'          => $data['notes'] ?? null,
                 'created_by'     => auth()->id(),

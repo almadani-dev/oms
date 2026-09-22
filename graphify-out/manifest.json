@@ -455,13 +455,13 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/GeneralExpenses/Pages/CreateGeneralExpense.php": {
-    "mtime": 1785313260.5816193,
-    "ast_hash": "ee887f9c835e7e862005a349e9818ed8",
+    "mtime": 1790059337.4034095,
+    "ast_hash": "6e62d111db48662b065274b17b2f0317",
     "semantic_hash": ""
   },
   "app/Filament/Resources/GeneralExpenses/Pages/EditGeneralExpense.php": {
-    "mtime": 1785321921.738111,
-    "ast_hash": "c7d62149a2a33e57d587889a4052308b",
+    "mtime": 1790059367.231238,
+    "ast_hash": "b134fd02e19adca3f9ecdaf8b14f3d01",
     "semantic_hash": ""
   },
   "app/Filament/Resources/GeneralExpenses/Pages/ListGeneralExpenses.php": {
@@ -470,18 +470,18 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/GeneralExpenses/Pages/ViewGeneralExpense.php": {
-    "mtime": 1784632505.4664488,
-    "ast_hash": "61d4a8bbb55b88a9e7438185db6833d2",
+    "mtime": 1790059376.4682572,
+    "ast_hash": "931e0988616d6c48a8e90fb0eaaa2efa",
     "semantic_hash": ""
   },
   "app/Filament/Resources/GeneralExpenses/Schemas/GeneralExpenseForm.php": {
-    "mtime": 1785221253.6924675,
-    "ast_hash": "2667e0ce20cc9b3e006f67ed03e260ef",
+    "mtime": 1790059326.015139,
+    "ast_hash": "e26e5cd489d4f88034d41c64a81f9154",
     "semantic_hash": ""
   },
   "app/Filament/Resources/GeneralExpenses/Tables/GeneralExpensesTable.php": {
-    "mtime": 1785322051.4253895,
-    "ast_hash": "ee163d004fa3c4dbeebf64b03d24d187",
+    "mtime": 1790059372.3292334,
+    "ast_hash": "50de3287a64baa503bbd84a1c9ae20b2",
     "semantic_hash": ""
   },
   "app/Filament/Resources/PartnerTypes/Pages/CreatePartnerType.php": {
@@ -4070,23 +4070,23 @@
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1789985188.398342,
-    "ast_hash": "5af97fe626d1f8832b830ef682e9268f",
+    "mtime": 1790059902.6876438,
+    "ast_hash": "4dd6e7e22db812decd30459b61b9e6ac",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
-    "mtime": 1789985164.6618104,
-    "ast_hash": "84563aec898a68eb3c75d45f941391e5",
+    "mtime": 1790059866.2723603,
+    "ast_hash": "137043fc185da9db2cadc03121bedaa3",
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1789985164.6668217,
-    "ast_hash": "294ae851497f012c8bee617cf8931a1c",
+    "mtime": 1790059943.6426983,
+    "ast_hash": "41364979c956cfceb41f9cc90360734b",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
-    "mtime": 1789985164.6646526,
-    "ast_hash": "442baedde6734763a177c8fea0665f15",
+    "mtime": 1790059866.2987869,
+    "ast_hash": "40142b0d7d52931b0cf2eae9ad565924",
     "semantic_hash": ""
   },
   "docs/RESTORE_RECOVERY.md": {
@@ -4095,8 +4095,8 @@
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1789985164.6588135,
-    "ast_hash": "eaf34136cd26db34cd739fbfe26f3b42",
+    "mtime": 1790059814.3183749,
+    "ast_hash": "e60ef2a9e7ac38976b7b2c1154543d2c",
     "semantic_hash": ""
   },
   "public/robots.txt": {
@@ -4175,8 +4175,8 @@
     "semantic_hash": ""
   },
   "tests/Feature/Audit/Financial/GeneralExpenseAuditTest.php": {
-    "mtime": 1785313951.6376748,
-    "ast_hash": "29903239f476f7f8e6cec410c70eafbc",
+    "mtime": 1790059623.944,
+    "ast_hash": "fcceaafb26fcc96b54aab650a8b052a8",
     "semantic_hash": ""
   },
   "tests/Feature/Audit/Financial/ProjectCostReceiptAuditTest.php": {
@@ -4680,8 +4680,13 @@
     "semantic_hash": ""
   },
   "resources/views/filament/pages/partials/comprehensive-financial-transactions-detail-table.blade.php": {
-    "mtime": 1789983830.108387,
-    "ast_hash": "53816ae3f2f5dd399b9be0811d67a2ba",
+    "mtime": 1789986196.5703833,
+    "ast_hash": "b7cfc31a1d072b8f5208e67359c1493e",
+    "semantic_hash": ""
+  },
+  "tests/Feature/GeneralExpenses/GeneralExpensePartnerOptionalTest.php": {
+    "mtime": 1790059560.3082669,
+    "ast_hash": "57f09434b5fd9edc226e0f92e04b230f",
     "semantic_hash": ""
   }
 }

@@ -26,7 +26,8 @@ class GeneralExpenseAuditTest extends FinancialAuditTestCase
         return array_merge([
             'amount' => 320,
             'currency_id' => $fx['currency']->id,
-            'partner_id' => $fx['partner']->id,
+            // لا partner_id: الجهة / المستفيد أُزيلت من النموذج، فالمصروف العام
+            // لا يتطلب جهة. هذه هي الحمولة التي ينتجها النموذج الحالي فعلياً.
             'description' => 'فاتورة كهرباء',
             'transaction_super_type_id' => null,
             'transaction_type_id' => $fx['transactionType']->id,
@@ -78,8 +79,14 @@ class GeneralExpenseAuditTest extends FinancialAuditTestCase
         $this->assertStringContainsString('مدين', $new['debit_account_label']);
         $this->assertSame($fx['creditAccount']->id, $new['credit_account_id']);
         $this->assertStringContainsString('دائن', $new['credit_account_label']);
-        $this->assertSame('شريك تجريبي', $new['partner_label']);
         $this->assertSame('2026-07-18', $new['date']);
+
+        // A NULL beneficiary is dropped from the payload by finalize(), so
+        // neither the foreign key nor its label is carried at all.
+        $this->assertArrayNotHasKey('partner_id', $new);
+        $this->assertArrayNotHasKey('partner_label', $new);
+        $this->assertNull($expense->partner_id);
+        $this->assertNull($expense->transaction->partner_id);
 
         foreach ($new as $key => $value) {
             $this->assertIsNotArray($value, "Payload key [{$key}] must be a scalar.");
@@ -95,7 +102,10 @@ class GeneralExpenseAuditTest extends FinancialAuditTestCase
 
         AuditEvent::query()->delete();
 
-        $this->update($expense->fresh(), $this->data($fx, [
+        // The stray partner_id here is deliberate: the edit path reads the
+        // beneficiary from the RECORD, never from submitted data, so a stale
+        // or replayed payload can neither inject nor change one.
+        $updated = $this->update($expense->fresh(), $this->data($fx, [
             'amount' => 999.5,
             'description' => 'فاتورة مياه',
             'partner_id' => $fx['altPartner']->id,
@@ -105,14 +115,17 @@ class GeneralExpenseAuditTest extends FinancialAuditTestCase
 
         $event = $this->onlyEventFor(self::ALIAS, 'updated');
 
-        $this->assertEqualsCanonicalizing(['amount', 'description', 'partner_id'], $event->changed_fields);
+        $this->assertEqualsCanonicalizing(['amount', 'description'], $event->changed_fields);
         $this->assertSame('320.00', $event->old_values['amount']);
         $this->assertSame('999.50', $event->new_values['amount']);
         $this->assertSame('فاتورة كهرباء', $event->old_values['description']);
         $this->assertSame('فاتورة مياه', $event->new_values['description']);
-        $this->assertSame('شريك تجريبي', $event->old_values['partner_label']);
-        $this->assertSame('شريك آخر', $event->new_values['partner_label']);
         $this->assertArrayNotHasKey('debit_account_id', $event->new_values);
+
+        // Unchanged, so never reported — and never written.
+        $this->assertNotContains('partner_id', $event->changed_fields);
+        $this->assertNull($updated->fresh()->partner_id);
+        $this->assertNull($updated->fresh()->transaction->partner_id);
     }
 
     public function test_a_no_op_edit_creates_no_event(): void

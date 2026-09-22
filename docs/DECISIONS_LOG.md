@@ -2531,3 +2531,33 @@ Two earlier passes produced fixes that were correct in themselves and green in a
 ### Impact
 Documented as the expected approach for this page's UI lifecycle issues. Authentication is a hard boundary: ask the user to log in; never read `.env`, inspect secrets or invent credentials.
 
+
+---
+
+### Date
+2026-09-22 (المصروفات العامة — a general expense has no beneficiary; NULL, never the organization itself)
+
+### Decision
+**General Expenses do not require a beneficiary/partner. New General Expenses store `partner_id = NULL` on both `general_expenses` and `transactions`. Historical partner values are preserved on edit. The organization itself is NOT auto-filled as beneficiary.**
+
+The `الجهة / المستفيد` Select was removed from the Create/Edit form. `partner_id` remains in the schema, in `$fillable`, and as a `belongsTo` relation, and remains displayed on the table and view page — for historical records only.
+
+### Reason
+The choice was between storing NULL and auto-filling a Partner record for `جمعية غياث الإنسانية`. NULL won on four grounds, each established from the current code and data rather than from preference:
+
+**NULL was already legal at every layer, so auto-fill solved no structural problem.** Both columns are `NULL=YES` with `ON DELETE SET NULL`, verified live against `information_schema`; no migration has ever altered that; `DatabaseRelationshipIntegrityChecker` already declares `transactions.partner_id` as `nullable: true` and will not flag NULLs; `FinancialAuditSnapshotter::finalize()` drops NULL keys cleanly. The form's `->required()` was the single enforcement point anywhere in the system.
+
+**Nothing consumes the value.** Zero reports, zero exports, zero services, zero guards, zero observers, no API (the app has only `web.php` and `console.php`). `transaction_lines` has no partner column, so double-entry balance is structurally independent of it. Auto-filling would write a value no code path reads.
+
+**The Partner record does not exist.** A `LIKE '%غياث%'` scan of `partners` returned nothing; the table holds exactly one row, an individual donor. Option B could not have been implemented without creating partner data, which was out of scope — and the record it needed would have been a category error, since `partners` models external counterparties (`is_donor`, `partner_type_id` ∈ {جمعية, فرد, وزارة}, email, mobile, address, city, country), not the operating organization. In a double-entry system where the organization *is* the books, recording it as its own counterparty asserts something false.
+
+**NULL degrades gracefully; a placeholder partner does not.** A constant org-partner would have accumulated every general expense forever, dominating any future per-partner statistic with a self-reference, and would have added a constant `partner_id`/`partner_label` pair to every audit payload — noise that makes genuine historical beneficiaries harder to distinguish from the placeholder.
+
+### Impact
+**On edit, the preserved value is read from the record, never from submitted data.** `$data['partner_id'] ?? null` was explicitly rejected: it would have silently erased the beneficiary of every historical expense whose amount anyone edited. `$preservedPartnerId = $record->partner_id ?? $record->transaction?->partner_id` is computed before `DB::transaction()` opens and written to both tables, and the `mutateFormDataBeforeFill()` prefill was removed so the guarantee rests on the record rather than on hidden form state. A stale or replayed payload that still carries `partner_id` is therefore ignored — proven by a dedicated test.
+
+**No migration, no accounting change, no report change.** Totals, grouping and balances cannot move, because no report reads either column and no transaction line carries one.
+
+**The column is now write-never, read-rarely.** That is accepted as the correct home for historical values at the cost of one non-unique index. If the business is ever certain the beneficiary is gone for good, dropping the column and its UI is a separate, deliberate decision that should not be bundled into this one — see `docs/NEXT_STEPS.md`.
+
+**Coverage note:** `GeneralExpenseAuditTest` previously asserted that a submitted `partner_id` changes the record. That behavior is now intentionally impossible, so the test was inverted to prove the value is ignored rather than deleted, and its default payload no longer supplies `partner_id` so it exercises what the current form actually produces.

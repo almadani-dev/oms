@@ -32,10 +32,14 @@ class GeneralExpensesTable
                     ->searchable()
                     ->sortable(),
 
+                // المصروفات العامة الجديدة بلا جهة مستفيدة (NULL). العمود يبقى
+                // للسجلات التاريخية فقط، ومخفي افتراضياً حتى لا يزدحم الجدول.
                 TextColumn::make('partner.name')
                     ->label('الجهة / المستفيد')
                     ->state(fn ($record) => $record->partner?->name ?? $record->transaction?->partner?->name)
-                    ->sortable(),
+                    ->placeholder('—')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 TextColumn::make('amount')
                     ->label('المبلغ')

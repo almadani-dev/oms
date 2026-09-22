@@ -65,7 +65,8 @@ class EditGeneralExpense extends EditRecord
         // Section 1 - expense details
         $data['amount']                    = (float) $record->amount;
         $data['currency_id']               = $currencyId;
-        $data['partner_id']                = $record->partner_id ?? $record->transaction?->partner_id;
+        // لا prefill للجهة / المستفيد: الحقل أُزيل من النموذج، والقيمة التاريخية
+        // تُحفظ في handleRecordUpdate() من السجل مباشرة، لا من حالة نموذج مخفية.
         $data['transaction_super_type_id'] = $record->transaction?->transactionType?->transaction_super_type_id;
         $data['transaction_type_id']       = $record->transaction?->transaction_type_id;
         $data['fiscal_year_id']            = $record->transaction?->fiscal_year_id;
@@ -144,7 +145,12 @@ class EditGeneralExpense extends EditRecord
             FinancialAccountRole::CREDIT => $oldCredit?->account_id,
         ]);
 
-        return DB::transaction(function () use ($record, $data, $amount, $currencyId, $oldDebit, $oldCredit, $accounts, $lines, $audit, $before) {
+        // الجهة / المستفيد أُزيلت من النموذج: المصروف العام لا يتطلب جهة.
+        // القيمة تُقرأ من السجل نفسه - لا من البيانات المُرسَلة - حتى لا يؤدي
+        // تعديل أي حقل آخر إلى مسح جهة مستفيدة تاريخية. السجلات الجديدة تبقى NULL.
+        $preservedPartnerId = $record->partner_id ?? $record->transaction?->partner_id;
+
+        return DB::transaction(function () use ($record, $data, $amount, $currencyId, $oldDebit, $oldCredit, $accounts, $lines, $audit, $before, $preservedPartnerId) {
             $transaction = $record->transaction;
 
             // STEP 1 - Reverse old balances (old debit decrement, old credit increment)
@@ -156,7 +162,7 @@ class EditGeneralExpense extends EditRecord
                 'fiscal_year_id'      => $data['fiscal_year_id'],
                 'transaction_type_id' => $data['transaction_type_id'],
                 'transaction_time'    => Carbon::parse($data['date']),
-                'partner_id'          => $data['partner_id'],
+                'partner_id'          => $preservedPartnerId,
                 'notes'               => $data['notes'] ?? null,
                 'updated_by'          => auth()->id(),
             ]);
@@ -176,7 +182,8 @@ class EditGeneralExpense extends EditRecord
                 'amount'      => $amount,
                 'currency_id' => $currencyId,
                 'date'        => Carbon::parse($data['date']),
-                'partner_id'  => $data['partner_id'],
+                // نفس القيمة المحفوظة المكتوبة في المعاملة - الجدولان يبقيان متطابقين.
+                'partner_id'  => $preservedPartnerId,
                 'description' => $data['description'] ?? null,
                 'notes'       => $data['notes'] ?? null,
                 'updated_by'  => auth()->id(),
