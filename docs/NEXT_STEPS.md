@@ -1,5 +1,48 @@
 # Next Steps
 
+## Recommended Next Step (2026-09-22, سطور المعاملات — global search widened to 15 fields, filters 2 to 8; 30 targeted tests green, NOT committed)
+
+**Open `/admin/transaction-lines`, try a few searches, then approve the commit.** One production file changed plus one new test file. No migration, no accounting logic, no report, no export, no data.
+
+**What is already proven by test and by measurement, so you do not need to re-check it by hand:** each of bank type, cash bank type, transaction number, reference, transaction description, classification, transaction type, account code, account name, currency code, currency name, line description, **notes (whose column is hidden by default)**, the Arabic line-role label, an exact amount and an amount typed as `2,700.00` each find exactly the right row and exclude the other; all six filters select the right rows; an account with no bank type is never claimed by any bank type; the type list is narrowed by the chosen classification with zero leakage across all 7 classifications; search reaches rows beyond the current page; a searched page issues **zero** per-row queries; and soft-deleted lines stay out. The generated SQL was inspected directly: **no joins**, all correlated `EXISTS`, SoftDeletes intact on the line and on all six related tables, `order by id desc` preserved.
+
+**What is worth a human eye in the browser, because no test covers rendering:**
+
+- **Type a partial account name into the `الحساب` filter.** Options are labelled `code - name`, which is the point: two different accounts are both named `حنين البحري` and only the code tells them apart. Confirm that reads well in RTL.
+- **Choose a `تصنيف المعاملة`, then open `نوع المعاملة`.** The type list should already be narrowed. Note that this panel defers filters, so you will still need to press the apply button for the table itself to change — the narrowing happens before that, while you are still editing.
+- **Check the search box placeholder** now reads `ابحث في سطور المعاملات...` (the brief suggested `ابحث في الحركات...`; it was made specific to this page — say if you prefer the original wording).
+- **Confirm the eight filters read correctly in RTL** and that the column layout is untouched.
+
+**One behaviour worth knowing before it surprises you:** Filament splits a multi-word search on whitespace and requires **every** word to match somewhere, which is its default and was already true of the three previously searchable fields. So `صرف مبلغ مشروع` returns 20 rows, not just the 14 whose type carries that exact name — the extra rows contain all three words across their description and البيان. If you would rather a multi-word search be treated as one phrase, that is a one-line change (`splitSearchTerms(false)`), but it would also mean `فلسطين بنك` no longer finds `بنك فلسطين`. Flagging it as a choice rather than making it unasked.
+
+**`transaction.notes` was added in a follow-up refinement**, after confirming the column is real and used — written by the financial create flows from the user's `ملاحظات` input and shown in the comprehensive report as `ملاحظات المعاملة`. Searching the first word of a real transaction note returns exactly that transaction's lines. Note this is the *transaction-level* notes field; `transaction_lines.notes` (already searched) is the one that carries `LINE_*` machine tags.
+
+**`fx_rate` was deliberately left out of search** — it is `1.000000` on nearly every line, so searching it would match almost the whole table. See the Decisions Log entry.
+
+**Do not run the full suite when reviewing.** The permanent OMS rule stands: **never run the full PHPUnit suite or the full Feature suite on this project.** The correct scope here is `tests/Feature/TransactionLines/TransactionLinesTableSearchTest.php`, plus `CrudRedirectStandardStructureTest`, `ResourceHttpAuthorizationTest` and `AuthorizationAcceptanceTest` if you want the regression check repeated.
+
+---
+
+## Recommended Next Step (2026-09-22, سطور المعاملات — permanent `نوع البنك` column added beside `الحساب`; display-only, eager-loaded, NOT committed)
+
+**Open `/admin/transaction-lines` and confirm the rendering, then approve the commit.** Two production files changed, both in `app/Filament/Resources/TransactionLines/`. No migration, no accounting logic, no report, no export, no data.
+
+**What is already proven by measurement, so you do not need to re-check it by hand:** the column resolves through Filament's own column API to the real bank type name on live rows (`بنك فلسطين`, `كاش`); all three null paths — NULL account, NULL `bank_type_id`, and an unresolvable/soft-deleted `bankType` — return NULL state and therefore render `—`; the column reports `toggleable=false` and `hiddenByDefault=false` and sits immediately after `account.name`; `currency.code` is untouched and still always visible; and a 25-row page costs **5 queries** with **0** extra queries while reading the bank type on every row.
+
+**What is worth a human eye in the browser, because no test covers rendering:**
+
+- **Confirm the `نوع البنك` badge sits directly to the side of `الحساب` in RTL** and that the badge styling matches the `العملة` badge beside it in both light and dark mode. The column uses the same `->badge()` treatment `AccountsTable` already uses for this field, but it has not previously appeared in this table's column rhythm.
+- **Open the column-toggle menu and confirm `نوع البنك` is not in it.** Only `وصف سطر القيد`, `ملاحظات` and `تاريخ الإنشاء` should be listed. This is the brief's core requirement and the one thing a screenshot proves faster than any assertion.
+- **Confirm the column header is not clickable for sorting.** This is intentional — see the Decisions Log entry for why a two-hop relationship was left display-only.
+
+**The `—` placeholder cannot be seen in this database as it stands:** there are currently **0** accounts with `bank_type_id` NULL, which is why that case was verified with in-memory relation overrides rather than by creating data. **Do not create an account without a bank type just to see the dash** — the null rendering is already proven, and the brief forbids touching bank-type or account data.
+
+**Optional follow-up, not part of this task:** `ViewTransactionLine` has no infolist and falls back to the shared `TransactionLineForm`, so bank type is absent from the view page. Adding it there means either building a real infolist for the resource or inserting a disabled field into a form schema — a separate decision, deliberately not taken here.
+
+**Do not run the full suite when reviewing.** The permanent OMS rule stands: **never run the full PHPUnit suite or the full Feature suite on this project.** No targeted test exists for this resource's table; verification was manual and is recorded in `docs/TASKS_LOG.md`.
+
+---
+
 ## Recommended Next Step (2026-09-22, المصروفات العامة — `الجهة / المستفيد` removed; new records NULL, historical values preserved; 96 targeted tests green, NOT committed)
 
 **Review the diff and approve the commit.** Five production files changed, all inside `app/Filament/Resources/GeneralExpenses/`, plus one adjusted test and one new test file. No migration, no accounting logic, no report or export, no partner data.

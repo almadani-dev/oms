@@ -1,6 +1,40 @@
 # Prompts Log
 
 ### Date
+2026-09-22 ("If one requested search field would make every search substantially worse, report that specific field and why rather than implementing a bad solution.")
+
+### Prompt
+A fourteen-step brief to widen global search and make the lookup filters searchable on `سطور المعاملات`. It opened with *"STEP 1 — AUDIT CURRENT TABLE FIRST"*, named nine classes to inspect, and added *"If the real relationships differ from the assumptions below, follow the real codebase and do not guess."* The steps that did the real work were the ones that **pre-authorised doing less**: on numeric fields, *"do NOT introduce fragile LIKE casts across large numeric columns just to say 'everything is searchable'"*; on filters, *"Do NOT mechanically add searchable() to simple boolean/small enum filters where it adds no value"*; and the closing escape hatch quoted above. STEP 5 gated the cascade on *"if the page already implements that relationship"*, and STEP 11 demanded *"inspect the generated query for a representative global search and confirm it remains database-side."*
+
+### Purpose
+**The escape hatch is what made the `fx_rate` answer possible.** Every other requested field went in; `fx_rate` is a rate that sits at `1.000000` on nearly every line, so searching it would match almost the whole table and bury real results. Without an explicit licence to decline one field and explain why, the pressure of a checklist is to implement all of it and let the user discover the flood later.
+
+**"Do not guess" plus a named class list surfaced the two findings that shaped the design.** Reading `TransactionLineRole` showed the database stores `beneficiary` while the table renders `مستفيد` — so a `searchable()` on `line_role` would have matched only text the user can never see, and would have looked like it worked. Reading Filament's `applyGlobalSearchToTableQuery` showed it `continue`s on hidden columns — so the existing `searchable()` on `notes` (hidden by default) had **never** done anything, and `description` lost its search whenever its column was toggled off. Neither is visible from the table file alone, and both changed where the search had to be declared.
+
+**"Inspect the generated query" beat reasoning about it.** The first SQL dump was clean on the thing that was asked about — zero joins, all correlated `EXISTS`, SoftDeletes intact on all six related tables — and also showed an unasked-for `(0 = 1)` branch from a `whereIn` over an empty array. That is not a bug, but it is noise in every search that matches no line role, and it was only visible because the SQL was printed rather than assumed.
+
+**Cross-checking hits against an independent query was worth more than counting them.** Three searches returned more rows than the obvious ground truth: `USD` matched four ILS lines, `حنين` matched all 22, `صرف مبلغ مشروع` matched 20 of 14. Each traced to a real cause — the transaction-level البيان names both currencies, names the beneficiary on every transaction, and Filament splits search terms on whitespace and ANDs them. All three are correct. Had the counts simply been eyeballed, the honest options would have been to call them false positives or to wave them through, and both would have been wrong.
+
+---
+
+### Date
+2026-09-22 ("Inspect the current implementation and identify the exact files/classes involved. Do not guess file names if the actual structure differs.")
+
+### Prompt
+A display-only brief for a single new `نوع البنك` column on `سطور المعاملات`, opening with an explicit inspect-before-editing instruction and *"If account.bankType does not exist as a model relation, STOP AND ASK before creating/changing model relationships."* It then fenced the work off in unusual detail: an eleven-section structure that named the data source, forbade a toggle three different ways, required `placeholder('—')`, demanded no N+1 with *"Do NOT fetch bank type inside a row closure with a query"*, and — most usefully — **declined to require sorting or searching**: *"Do NOT force sortable/searchable just for convenience … If adding sorting/searching would require custom joins … then leave the column display-only."* A `DO NOT CHANGE` list enumerated fifteen untouchable areas, and the View page was gated behind *"ONLY if this is a straightforward consistent display change … If the View page structure is more involved, do not expand the scope; report it instead."*
+
+### Purpose
+**Pre-authorising the weaker option is what kept the change two lines.** `account.bankType.name` is a two-hop relationship, and the reflex on a table column is to append `->sortable()->searchable()` because every neighbouring column has them. That would have meant custom joins onto `accounts` and `bank_types` to make a read-only field clickable. Because the brief had already said display-only was an acceptable outcome *and named the tradeoff that would justify it*, the restraint needed no negotiation and no follow-up round.
+
+**The View-page gate worked the same way.** `ViewTransactionLine` has no infolist — it falls back to the shared `TransactionLineForm`, so "add a display field" there actually means inserting a disabled, non-dehydrated field into a **form** schema. An unconditional "also add it to the view page" would have produced exactly that. The escape hatch turned a scope-creep edit into a one-line report.
+
+**The STOP-AND-ASK clause cost nothing and would have caught the worst case.** `Account::bankType()` already existed, so it never fired — but it pre-decided the one branch where an agent is most tempted to be helpful and least entitled to be: inventing a model relationship to satisfy a display request.
+
+**Naming the null cases individually mattered more than it looks.** The brief listed three — account NULL, `bank_type_id` NULL, and *"bank type relation cannot resolve"*. The third is real here precisely because `BankType` uses `SoftDeletes`, and the live database has **zero** accounts with a NULL `bank_type_id`, so a verification pass driven only by existing data would have exercised none of them and reported success.
+
+---
+
+### Date
 2026-09-21 ("Report the evidence BEFORE modifying code" — a brief that named the suspected mechanism and still demanded it be disproved)
 
 ### Prompt

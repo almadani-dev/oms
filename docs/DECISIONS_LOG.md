@@ -2561,3 +2561,51 @@ The choice was between storing NULL and auto-filling a Partner record for `جم�
 **The column is now write-never, read-rarely.** That is accepted as the correct home for historical values at the cost of one non-unique index. If the business is ever certain the beneficiary is gone for good, dropping the column and its UI is a separate, deliberate decision that should not be bundled into this one — see `docs/NEXT_STEPS.md`.
 
 **Coverage note:** `GeneralExpenseAuditTest` previously asserted that a submitted `partner_id` changes the record. That behavior is now intentionally impossible, so the test was inverted to prove the value is ignored rather than deleted, and its default payload no longer supplies `partner_id` so it exercises what the current form actually produces.
+
+---
+
+### Date
+2026-09-22
+
+### Decision
+On the Transaction Lines list, `نوع البنك` is rendered from the nested relationship path `account.bankType.name` as a **display-only** column — always visible, never toggleable, and neither sortable nor searchable — with `account.bankType` added to the resource's existing eager loads. The Transaction Line View page was **not** changed.
+
+### Reason
+**Not sortable/searchable:** `account.bankType.name` is two relationship hops. Filament can sort or search a nested relationship column only via custom joins onto `accounts` and `bank_types`; for a field that exists purely to be read, that buys a query cost and a duplication risk with no functional gain. The brief's stated priority was correct display plus no N+1, in that order, so the column stays presentational and the neighbouring `account.name` continues to carry the table's search and sort.
+
+**Always visible via absence of `toggleable()`, not via a flag:** Filament v5 builds the column-toggle menu only from columns that opt in. Omitting `toggleable()` makes the column structurally impossible to hide, which is stronger than setting a default visible state that a later edit could flip.
+
+**Eager load rather than a row closure:** fetching the bank type inside a per-row closure would issue one query per rendered row. Extending the `with()` in `getEloquentQuery()` keeps the page at a fixed query count regardless of how many lines are listed, and is where the resource already declares its other relationships.
+
+**View page left alone:** `ViewTransactionLine` defines no infolist and falls back to the shared `TransactionLineForm` schema. Adding bank type there would mean inserting a disabled, non-dehydrated field into a **form** schema, not a display entry into an infolist — a different and larger change than the one authorised. The brief said to report such a case rather than expand scope.
+
+**Missing bank type renders `—`, and no data was created:** accounts may legitimately have no bank type. `placeholder('—')` covers a NULL account, a NULL `bank_type_id`, and a `bankType` that cannot resolve (bank types are soft-deletable). Backfilling, creating bank types, or assigning a default was rejected outright — that would alter real financial reference data to satisfy a display concern.
+
+### Impact
+Presentation only. No migration, no schema change, no accounting logic, no report, no export, no bank-type or account data. Currency column behaviour is unchanged and still always visible. Existing list sorting and filtering are unaffected, and SoftDeletes scoping is preserved.
+
+---
+
+### Date
+2026-09-22
+
+### Decision
+On the Transaction Lines list, global search is declared once at table level via `->searchable([...])` rather than with per-column `searchable()`; `line_role` and the amount columns are searched through closures instead of LIKE; `fx_rate` is excluded; and the filter set grows from 2 to 8, with five of them searchable and two deliberately not.
+
+### Reason
+**Table-level over per-column, because per-column silently stops working.** Filament skips a hidden column when building the search constraint (`applyGlobalSearchToTableQuery` hits `continue` on `$column->isHidden()`). `notes` is hidden by default, so its `searchable()` never had any effect, and `description` would stop being searched the moment a user toggled its column off. Search coverage should not depend on which columns someone happens to have visible.
+
+**`line_role` through a closure, because the stored value is not the displayed value.** The column holds the stable English machine value (`beneficiary`) while the table renders the Arabic label (`مستفيد`). A LIKE on the column would match only text the user can never see — worse than not searching it, because it looks supported. Resolving the term against the enum's 11 labels in PHP costs no query (fixed vocabulary), and collapses to one `whereIn`. No match leaves the builder untouched rather than emitting `0 = 1`.
+
+**Amounts by equality, and only for numeric terms.** A `LIKE` over `CAST(decimal AS CHAR)` is non-sargable and would be evaluated on every search — including the text ones — so it was rejected. Gating on `is_numeric` after stripping display separators means a text search adds no amount predicate at all, while `1500` and `2,700.00` both resolve to an exact value comparison.
+
+**`fx_rate` excluded.** It is a rate, in practice `1.000000` on nearly every line, so including it would match almost the whole table and bury real results. This is the "one requested field that would make search worse" case, reported rather than implemented.
+
+**Classification and type filters use scoped `whereHas`, not `relationship()`.** They sit two and three hops from a transaction line, which `SelectFilter::relationship()` cannot express. A scoped `whereHas` stays one query and one `EXISTS`.
+
+**The type filter is narrowed via `getTableFilterFormState()`, not a raw Livewire property.** This panel defers filters, so the applied state (`tableFilters`) is not the state being edited (`tableDeferredFilters`); Filament's accessor resolves that distinction itself, so the cascade does not hardcode which property is live.
+
+**`دور سطر القيد` and `السنة المالية` are deliberately left unsearchable.** Eleven fixed enum values and one fiscal year per year are short enough to scan; adding a search box would be mechanical, not useful.
+
+### Impact
+Search and filter UX only. Every predicate is database-side — correlated `EXISTS` subqueries, no joins — so pagination, `defaultSort('id','desc')`, SoftDeletes scoping on the line and on all six related tables, the resource's eager loads and all column visibility (including the always-visible currency and bank type columns) are unchanged. A searched page still renders with zero per-row queries. No migration, no accounting logic, no report, no export, no data.

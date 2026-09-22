@@ -61,7 +61,7 @@ class TransactionLineResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         // Eager load relationships shown in the table to avoid N+1 queries.
-        return parent::getEloquentQuery()->with(['transaction', 'account', 'currency']);
+        return parent::getEloquentQuery()->with(['transaction', 'account', 'account.bankType', 'currency']);
     }
 
     public static function canCreate(): bool

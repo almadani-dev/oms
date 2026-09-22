@@ -3132,3 +3132,125 @@ Implemented as approved. **No migration was needed** — both `general_expenses.
 
 ### Commit Hash
 Not committed, not pushed — awaiting review.
+
+---
+
+### Date
+2026-09-22
+
+### Task
+Add a permanent `نوع البنك` column beside `الحساب` on the Transaction Lines list page (`سطور المعاملات`). Display-only: always visible, never toggleable, `—` when there is no bank type, sourced from the existing `TransactionLine → account → bankType → name` path, with no N+1.
+
+### Result
+**Done.** Two production files changed, both presentational/query-layer. No migration, no schema, no accounting logic, no report, no export, no data.
+
+**Relationships already existed, so none were created.** `Account::bankType()` is a `belongsTo(BankType::class)` on `bank_type_id` (`app/Models/Account.php:68`); `BankType` uses `SoftDeletes`. The column uses the relationship path `account.bankType.name` directly, matching the project's existing pattern for this field in `AccountsTable` (`TextColumn::make('bankType.name')->label('نوع البنك')->badge()`), so the styling is the same badge treatment already used for bank type elsewhere and RTL/dark mode are inherited from the table rather than overridden.
+
+**Always visible by construction.** The column carries no `toggleable()`. Filament v5 builds its column-toggle menu from columns that opt in, and in this table only `description`, `notes` and `created_at` do — so the new column cannot be hidden from the toggle menu. A resolved-table dump confirmed it reports `toggleable=false`, `hiddenByDefault=false`, and sits immediately after `account.name` in column order. `currency.code` was not touched and remains `toggleable=false`; the OMS rule that currency columns are always visible still holds, and no amount/currency formatting was altered.
+
+**Deliberately not sortable and not searchable.** `account.bankType.name` is a two-hop nested relationship — sorting or searching it in Filament would require custom joins against `accounts` and `bank_types` for a purely presentational field. Per the brief, display correctness plus no N+1 took priority, so it was left display-only and the reason recorded as a comment at the column. `account.name` keeps its existing `searchable()->sortable()`, so existing sorting/filtering is unchanged.
+
+**N+1 avoided in the query layer, never in a row closure.** `account.bankType` was added to the `with()` already present in `TransactionLineResource::getEloquentQuery()`.
+
+### Changed Files
+- Modified: `app/Filament/Resources/TransactionLines/Tables/TransactionLinesTable.php` — added `TextColumn::make('account.bankType.name')->label('نوع البنك')->badge()->placeholder('—')` directly after the `account.name` column, plus a comment recording why it is display-only.
+- Modified: `app/Filament/Resources/TransactionLines/TransactionLineResource.php` — `getEloquentQuery()` eager loads extended from `['transaction', 'account', 'currency']` to `['transaction', 'account', 'account.bankType', 'currency']`.
+- **Not** modified: `ViewTransactionLine`, `TransactionLineForm`, the `TransactionLine`/`Account`/`BankType` models, any migration, seeder, report, export, or any `debit_base` / `credit_base` / `amount_currency` / `fx_rate` / line-role / transaction-create / transaction-edit / balance-update / accounting-guard code.
+
+### Verification
+No test exists that targets this resource's table (`find tests -iname "*transaction*"` returns only audit, integrity, report and description-builder suites), so verification was focused and manual against the real local database.
+
+1. `php -l` clean on both modified files.
+2. **Eager loading confirmed:** `getEloquentQuery()->getEagerLoads()` → `transaction, account, account.bankType, currency`.
+3. **No N+1:** a 25-row page ran **5 queries total** (1 base + 4 eager loads); reading `account.bankType.name` on all 22 returned rows afterwards issued **0 additional queries**. Query count is independent of row count.
+4. **Case 1 — account has a bank type:** line #212 resolved through Filament's own column API to state `'بنك فلسطين'`; line #191 to `'كاش'`.
+5. **Case 2 — no bank type:** all three null paths (`account` NULL, `bank_type_id` NULL, `bankType` unresolvable/soft-deleted) returned state `NULL` through the same column API, which renders the configured placeholder `—`. The live database has **0** accounts with `bank_type_id` NULL, so these were exercised with in-memory relation overrides on a real persisted row — **nothing was saved** (`isDirty()` false afterwards), no backfill, no default bank type, no historical record touched.
+6. **Placement and visibility:** resolved-column dump shows order `transaction.transaction_number → account.name → account.bankType.name → currency.code → …`, with the new column `toggleable=false` / `hiddenByDefault=false`, and `currency.code` still `toggleable=false`.
+7. **Existing filtering/sorting intact:** the account filter plus `defaultSort('id','desc')` builds `select * from transaction_lines where account_id = ? and transaction_lines.deleted_at is null order by id desc` — SoftDeletes still applied.
+8. **Not run:** full suite / full Feature suite (permanently forbidden on this project).
+
+### Commit Hash
+Not committed, not pushed — awaiting review.
+
+---
+
+### Date
+2026-09-22
+
+### Task
+Widen global search on the Transaction Lines list (`سطور المعاملات`) to cover the related transaction / classification / type / account / bank type / currency data, and make the lookup filters searchable. Search must hit the database (not just the visible page), preserve pagination, and avoid both N+1 and expensive joins.
+
+### Result
+**Done.** One production file changed plus one new test file. No migration, no schema, no accounting logic, no report, no export, no data.
+
+**Audit first — what was actually searchable before.** Only three things: `transaction.transaction_number`, `account.name`, and `description`. Everything else — currency, bank type, classification, transaction type, account code, transaction reference/description, notes, line role, amounts — was not searchable at all. The filter set was two entries: `transaction_id` and `account_id`. There was no classification, type, bank type, currency, role or fiscal-year filter on this page, and no classification-to-type cascade anywhere outside the create/edit **forms**.
+
+**Global search was moved from per-column `searchable()` to table-level `->searchable([...])`, which fixed a latent bug.** Filament skips hidden columns when building the search constraint (`Tables\Concerns\CanSearchRecords::applyGlobalSearchToTableQuery` hits `continue` on `$column->isHidden()`). Since `notes` is `toggleable(isToggledHiddenByDefault: true)` it was **never searchable**, and `description` stopped being searched whenever a user toggled its column off. At table level the set is always active and defined in one place.
+
+**Fields now in global search (14 entries).** Line: `description`, `notes`. Transaction: `transaction_number`, `reference`, `description`. Classification/type: `transactionType.name`, `transactionType.transactionSuperType.name`. Account: `account_code`, `name`, `bankType.name`. Currency: `code`, `name`. Plus two closures: the Arabic `line_role` label resolver and the numeric amount matcher.
+
+**`line_role` needed a closure, not a LIKE.** The column stores the English machine value (`beneficiary`); the table renders the Arabic label (`مستفيد`). A LIKE would only match text the user cannot see. The term is resolved against the enum's 11 labels in PHP — a fixed vocabulary, no query — then applied as one `whereIn`. No match leaves the builder untouched (Laravel drops an empty nested where group) rather than emitting `0 = 1`.
+
+**Amounts: exact match, numeric terms only.** `amount_currency` / `debit_base` / `credit_base` are compared by equality after stripping display separators (`2,700.00` becomes `2700.00`). A non-numeric term adds no predicate, so text searches cost nothing extra. A `LIKE` over `CAST(decimal AS CHAR)` was rejected as non-sargable — it would force a full scan on every search, including the text ones.
+
+**Excluded on purpose: `fx_rate`.** It is a rate and is almost always `1.000000`, so matching it would return nearly every line. Reported rather than implemented.
+
+**Filters: eight, five searchable.** `المعاملة` (number + reference), `الحساب` (code + name, options labelled `code - name`), `العملة` (name + code, labelled `name (code)`), `تصنيف المعاملة`, `نوع البنك`. Left unsearchable by judgement: `دور سطر القيد` (11 fixed values) and `السنة المالية` (one row, one per year) — a search box over a list that short adds nothing.
+
+**Classification and type filters could not use `relationship()`** — they sit two and three hops from a line — so each applies a scoped `whereHas`, still one query. `نوع البنك` filters through `account`; an account with `bank_type_id` NULL matches no option and is excluded rather than folded into a type. The `نوع المعاملة` option list is narrowed by the classification currently being edited, read through Filament's own `getTableFilterFormState()` — the supported accessor, and the correct one here because this panel defers filters, so the applied state is not the state being edited.
+
+### Changed Files
+- Modified: `app/Filament/Resources/TransactionLines/Tables/TransactionLinesTable.php` — removed the three per-column `searchable()` calls, added table-level `->searchable([...])` with 12 relationship/column paths plus the `line_role` and amount closures, added `->searchPlaceholder('ابحث في سطور المعاملات...')`, rewrote the filter set from 2 to 8 filters, and added the `applyLineRoleSearch()` / `applyAmountSearch()` helpers.
+- Added: `tests/Feature/TransactionLines/TransactionLinesTableSearchTest.php` — 29 tests.
+- Regenerated: `graphify-out/graph.json`, `graphify-out/GRAPH_REPORT.md`, `graphify-out/manifest.json` (plus a dated snapshot, which is git-ignored) via `graphify update .`, per the project rule.
+- **Not** modified: `TransactionLineResource` (eager loads unchanged), `ViewTransactionLine`, `TransactionLineForm`, the `TransactionLineRole` enum, any model, any migration, seeder, report, export, or any `debit_base` / `credit_base` / `amount_currency` / `fx_rate` / transaction-create / transaction-edit / balance-update / accounting-guard code.
+
+### Verification
+1. `php -l` clean on the modified file.
+2. **`php artisan test tests/Feature/TransactionLines/TransactionLinesTableSearchTest.php` — 29 passed, 73 assertions.** Covers each search probe against a fixture built so the term can only match the field under test (bank type, cash bank type, transaction number, reference, transaction description, classification, type, account code, account name, currency code, currency name, line description, **notes while its column is hidden by default**, the Arabic line-role label, an exact amount, an amount typed with separators, a no-match term), plus the bank-type/classification/type/currency/role/account filters, the "NULL bank type is never claimed by any bank type" walk over every bank type, the cascade narrowing and its un-narrowed counterpart, search reaching beyond the current page (`perPage = 1`), zero per-row queries on a searched page, and soft-deleted lines staying out of results.
+3. **Generated SQL inspected** for `بنك فلسطين`, `مصدر` and `1500`: `joins=0` in all three, 28/14/14 `EXISTS` clauses, **no `0 = 1` branches**, SoftDeletes predicates intact on `transaction_lines` and on all six related tables, `order by id desc` preserved, and the amount predicates present only for the numeric term.
+4. **Every search probe cross-checked against an independently written ground-truth query** on the real local database. Bank type, transaction number, classification, account code and both line roles matched exactly. Three deliberately broader results were traced to a specific field rather than accepted: `USD` picks up four ILS lines because their **transaction's** البيان names USD; `حنين` returns all 22 because every transaction description names the beneficiary; `صرف مبلغ مشروع` returns 20 rather than 14 because Filament splits on whitespace and ANDs the tokens (`shouldSplitSearchTerms` default, pre-existing behaviour). All three are correct matches, not false positives.
+5. **Every filter cross-checked against ground truth** on real data: all 9 cases MATCH, each in **1 query**. Empty selection on each of the four `whereHas` filters returns all 22 rows (no constraint). Summing the per-bank-type results equals the total, with 0 lines on NULL-bank-type accounts. Search + filter compose correctly in one query.
+6. **Cascade verified across all 7 classifications with zero leakage**; the un-narrowed list offers all 11 types.
+7. **Relationship filter option search verified server-side**: `الحساب` by code (`408008` gives `408008 - حنين البحري`) and by name (`حنين` gives both accounts, distinguished by code), `العملة` by code and name, `المعاملة` by number.
+8. **Performance/regression**: paginated page = 6 queries, **0 per-row queries**, on page 1 and on page 2 under an active relationship search. Pagination 10/25/50 and `defaultSort('id','desc')` unchanged. All 11 columns keep their exact previous `toggleable`/`hiddenByDefault` state; `currency.code` and `نوع البنك` remain always visible.
+9. **Other suites touching this resource** (found by grep, run individually): `CrudRedirectStandardStructureTest` — 78 passed, 209 assertions; `ResourceHttpAuthorizationTest` — 67 passed, 155 assertions, 3 pre-existing by-design skips; `AuthorizationAcceptanceTest` — 22 passed, 374 assertions.
+10. `php artisan oms:check-financial-integrity` — **Result: OK, exit code 0**. Live row counts re-checked after the change and identical to the pre-change audit (22 lines, 8 transactions, 11 accounts, 10 bank types, 3 currencies, 11 types, 7 classifications); debit/credit sums unchanged.
+11. **Not run:** full suite / full Feature suite (permanently forbidden on this project).
+
+### Commit Hash
+Not committed, not pushed — awaiting review.
+
+---
+
+### Date
+2026-09-22
+
+### Task
+Follow-up refinement to the Transaction Lines search work: check whether `Transaction` has a real `notes` field that OMS actually uses, and if so add `transaction.notes` to the global search — changing nothing else.
+
+### Result
+**`transactions.notes` exists and is genuinely used, so it was added.** One line of code, plus one test.
+
+**Evidence it is real, not a vestigial column.** Nullable `text` on `transactions`, collation `utf8mb4_unicode_ci` — the same as every other searched column, so Arabic LIKE matching behaves identically. Present in the model's `$fillable`. **Written** by the financial create flows from the user's own `ملاحظات` form input: `CreateGeneralExpense.php:82`, `CreateGeneralExchange.php:148` and the sibling create pages all pass `$data['notes'] ?? null` onto the transaction row. **Read back** by `ComprehensiveFinancialTransactionsReportService` — `t.notes as transaction_notes` (line 108), rendered as `ملاحظات المعاملة` (line 310). On the live database 2 of 8 transactions carry real user content (`شهر 1 + 2+ 3`, `asdf`).
+
+**Worth distinguishing from `transaction_lines.notes`, which was already searched.** The line-level column is filled with `LINE_*` machine tags by some flows (e.g. `GeneralExchange::LINE_SOURCE`); the transaction-level column is purely user-entered, so the newly added field is the cleaner of the two to search.
+
+**Nothing else changed.** Placeholder stays `ابحث في سطور المعاملات...`; `shouldSplitSearchTerms` remains Filament's default `true`; the other 14 search entries, all 8 filters, `defaultSort('id','desc')`, pagination, eager loads and every column's visibility are untouched.
+
+### Changed Files
+- Modified: `app/Filament/Resources/TransactionLines/Tables/TransactionLinesTable.php` — **one line of code added**, `'transaction.notes'` in the table-level `->searchable([...])` array, plus its explanatory comment.
+- Modified: `tests/Feature/TransactionLines/TransactionLinesTableSearchTest.php` — the aid transaction fixture gained a `notes` value, and one test was added: `test_search_matches_transaction_notes`.
+- Regenerated: `graphify-out/` outputs via `graphify update .`, per the project rule.
+- **Not** modified: anything else. No other search entry, no filter, no column, no resource, no model, no migration, no report, no export, no data.
+
+### Verification
+1. `php -l` clean.
+2. **`php artisan test tests/Feature/TransactionLines/TransactionLinesTableSearchTest.php` — 30 passed, 75 assertions** (was 29/73; the one new test is the delta). This was the only test file run, as instructed.
+3. **Resolved-table inspection confirms only the one field moved:** 15 search entries with `transaction.notes` present in position, placeholder still `ابحث في سطور المعاملات...`, `shouldSplitSearchTerms = true`, the same 8 filters in the same order, `defaultSort` still `["id","desc"]`.
+4. **Generated SQL still has `joins = 0`**, and the new predicate appears as a correlated `EXISTS` on `transactions` exactly like its siblings.
+5. **Verified against live data:** searching the first word of each real transaction note returns that transaction's lines and no others — `شهر` returns lines 209,210 of `PAY-2026-0003`; `asdf` returns lines 211,212 of `GEN-2026-0001`.
+6. **Not run:** full suite / full Feature suite (permanently forbidden on this project), and no other test file.
+
+### Commit Hash
+Not committed, not pushed — awaiting review.
