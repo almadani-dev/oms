@@ -4,6 +4,8 @@ namespace Tests\Feature\Reports;
 
 use App\Models\BankType;
 use App\Models\Currency;
+use App\Models\TransactionSuperType;
+use App\Models\TransactionType;
 use App\Services\Reports\ComprehensiveFinancialTransactionsReportService;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\Integrity\IntegrityTestFixtures;
@@ -687,6 +689,346 @@ class ComprehensiveFinancialTransactionsReportServiceTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+    }
+
+    // =========================================================
+    // "طرف الحساب" (account side): all / debit / credit
+    // =========================================================
+
+    /**
+     * Two accounts that each appear on BOTH sides of the ledger, so a side
+     * filter has something real to narrow — with a one-sided fixture every
+     * assertion below would pass by accident.
+     *
+     * T1 (تصنيف التحصيل):  A debit 300  /  B credit 300
+     * T2 (تصنيف الصرف):    A credit 100 /  B debit 100
+     *
+     * Both transactions stay balanced; the side filter never changes that,
+     * it only hides one appearance from the VIEW.
+     *
+     * @return array<string, mixed>
+     */
+    private function bothSidesFixture(): array
+    {
+        $currency = $this->makeCurrency();
+
+        $accountA = $this->makeAccount($currency, ['name' => 'بنك فلسطين']);
+        $accountB = $this->makeAccount($currency, ['name' => 'الصندوق']);
+
+        $collectionType = TransactionType::create([
+            'name' => 'نوع التحصيل',
+            'transaction_super_type_id' => TransactionSuperType::create(['name' => 'تصنيف التحصيل'])->id,
+        ]);
+
+        $paymentType = TransactionType::create([
+            'name' => 'نوع الصرف',
+            'transaction_super_type_id' => TransactionSuperType::create(['name' => 'تصنيف الصرف'])->id,
+        ]);
+
+        $first = $this->makeTransaction([
+            'transaction_time' => '2026-07-10 10:00:00',
+            'transaction_type_id' => $collectionType->id,
+        ]);
+        $this->makeLine($first, $accountA, $currency, ['debit_base' => 300, 'credit_base' => 0]);
+        $this->makeLine($first, $accountB, $currency, ['debit_base' => 0, 'credit_base' => 300]);
+
+        $second = $this->makeTransaction([
+            'transaction_time' => '2026-07-12 10:00:00',
+            'transaction_type_id' => $paymentType->id,
+        ]);
+        $this->makeLine($second, $accountA, $currency, ['debit_base' => 0, 'credit_base' => 100]);
+        $this->makeLine($second, $accountB, $currency, ['debit_base' => 100, 'credit_base' => 0]);
+
+        return compact('currency', 'accountA', 'accountB', 'collectionType', 'paymentType');
+    }
+
+    /**
+     * @param array<int, int> $accountIds
+     * @return array<string, mixed>
+     */
+    private function generateWithSide(array $accountIds, string $side): array
+    {
+        return $this->service()->generate(
+            '2026-07-01',
+            '2026-07-31',
+            [],
+            null,
+            null,
+            $accountIds,
+            null,
+            null,
+            $side,
+        );
+    }
+
+    /**
+     * [account name, debit, credit] per row — the account's generated code
+     * prefix is stripped so the side assertions read as ledger appearances
+     * rather than as fixture ids.
+     *
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<int, array{0: string, 1: float, 2: float}>
+     */
+    private function sideRows(array $rows): array
+    {
+        return array_map(
+            function (array $row): array {
+                $parts = explode(' - ', (string) $row['account']);
+
+                return [end($parts), $row['debit'], $row['credit']];
+            },
+            $rows,
+        );
+    }
+
+    /** TEST 1 / TEST 15 — no account selected + side "all" is the untouched report. */
+    public function test_no_account_selection_with_side_all_matches_the_unfiltered_report(): void
+    {
+        $this->bothSidesFixture();
+
+        $baseline = $this->service()->generate('2026-07-01', '2026-07-31');
+        $withSide = $this->generateWithSide([], ComprehensiveFinancialTransactionsReportService::SIDE_ALL);
+
+        $this->assertCount(4, $baseline['rows']);
+        $this->assertSame($baseline, $withSide);
+        $this->assertArrayNotHasKey('طرف الحساب', $withSide['filter_labels']);
+    }
+
+    /** TEST 2 — one account, side "all": both its appearances survive. */
+    public function test_single_account_with_side_all_keeps_both_debit_and_credit_rows(): void
+    {
+        ['accountA' => $accountA] = $this->bothSidesFixture();
+
+        $result = $this->generateWithSide([$accountA->id], ComprehensiveFinancialTransactionsReportService::SIDE_ALL);
+
+        $this->assertSame([
+            ['بنك فلسطين', 300.0, 0.0],
+            ['بنك فلسطين', 0.0, 100.0],
+        ], $this->sideRows($result['rows']));
+
+        $this->assertSame(300.0, $result['currency_summaries'][0]['total_debit']);
+        $this->assertSame(100.0, $result['currency_summaries'][0]['total_credit']);
+        $this->assertArrayNotHasKey('طرف الحساب', $result['filter_labels']);
+    }
+
+    /** TEST 3 — side "debit" keeps only the lines whose own debit_base > 0. */
+    public function test_single_account_with_side_debit_keeps_only_positive_debit_lines(): void
+    {
+        ['accountA' => $accountA] = $this->bothSidesFixture();
+
+        $result = $this->generateWithSide([$accountA->id], ComprehensiveFinancialTransactionsReportService::SIDE_DEBIT);
+
+        $this->assertSame([['بنك فلسطين', 300.0, 0.0]], $this->sideRows($result['rows']));
+        $this->assertSame(1, $result['line_count']);
+
+        // A one-sided view is EXPECTED to look unbalanced — the underlying
+        // transactions are untouched and still balanced.
+        $this->assertSame(300.0, $result['currency_summaries'][0]['total_debit']);
+        $this->assertSame(0.0, $result['currency_summaries'][0]['total_credit']);
+
+        $this->assertSame('مدين', $result['filter_labels']['طرف الحساب']);
+        $this->assertSame('debit', $result['account_side']);
+    }
+
+    /** TEST 4 — side "credit" keeps only the lines whose own credit_base > 0. */
+    public function test_single_account_with_side_credit_keeps_only_positive_credit_lines(): void
+    {
+        ['accountA' => $accountA] = $this->bothSidesFixture();
+
+        $result = $this->generateWithSide([$accountA->id], ComprehensiveFinancialTransactionsReportService::SIDE_CREDIT);
+
+        $this->assertSame([['بنك فلسطين', 0.0, 100.0]], $this->sideRows($result['rows']));
+        $this->assertSame(0.0, $result['currency_summaries'][0]['total_debit']);
+        $this->assertSame(100.0, $result['currency_summaries'][0]['total_credit']);
+        $this->assertSame('دائن', $result['filter_labels']['طرف الحساب']);
+    }
+
+    /** Debit + credit of one account recompose that account's "all" view exactly. */
+    public function test_debit_and_credit_views_together_recompose_the_all_view(): void
+    {
+        ['accountA' => $accountA] = $this->bothSidesFixture();
+
+        $all = $this->generateWithSide([$accountA->id], ComprehensiveFinancialTransactionsReportService::SIDE_ALL);
+        $debit = $this->generateWithSide([$accountA->id], ComprehensiveFinancialTransactionsReportService::SIDE_DEBIT);
+        $credit = $this->generateWithSide([$accountA->id], ComprehensiveFinancialTransactionsReportService::SIDE_CREDIT);
+
+        $lineIds = fn (array $result): array => array_column($result['rows'], 'line_id');
+
+        $recomposed = array_merge($lineIds($debit), $lineIds($credit));
+        sort($recomposed);
+        $expected = $lineIds($all);
+        sort($expected);
+
+        $this->assertSame($expected, $recomposed);
+        $this->assertSame(
+            $all['currency_summaries'][0]['total_debit'],
+            $debit['currency_summaries'][0]['total_debit'],
+        );
+        $this->assertSame(
+            $all['currency_summaries'][0]['total_credit'],
+            $credit['currency_summaries'][0]['total_credit'],
+        );
+    }
+
+    /** TEST 5 — one side applied to the whole selected-account set, not per account. */
+    public function test_multiple_accounts_with_side_debit_keep_every_selected_account_debit_line(): void
+    {
+        ['accountA' => $accountA, 'accountB' => $accountB] = $this->bothSidesFixture();
+
+        $result = $this->generateWithSide(
+            [$accountA->id, $accountB->id],
+            ComprehensiveFinancialTransactionsReportService::SIDE_DEBIT,
+        );
+
+        $this->assertSame([
+            ['بنك فلسطين', 300.0, 0.0],
+            ['الصندوق', 100.0, 0.0],
+        ], $this->sideRows($result['rows']));
+
+        $this->assertSame(400.0, $result['currency_summaries'][0]['total_debit']);
+        $this->assertSame(0.0, $result['currency_summaries'][0]['total_credit']);
+    }
+
+    /** TEST 6 — same, for the credit side. */
+    public function test_multiple_accounts_with_side_credit_keep_every_selected_account_credit_line(): void
+    {
+        ['accountA' => $accountA, 'accountB' => $accountB] = $this->bothSidesFixture();
+
+        $result = $this->generateWithSide(
+            [$accountA->id, $accountB->id],
+            ComprehensiveFinancialTransactionsReportService::SIDE_CREDIT,
+        );
+
+        $this->assertSame([
+            ['الصندوق', 0.0, 300.0],
+            ['بنك فلسطين', 0.0, 100.0],
+        ], $this->sideRows($result['rows']));
+
+        $this->assertSame(0.0, $result['currency_summaries'][0]['total_debit']);
+        $this->assertSame(400.0, $result['currency_summaries'][0]['total_credit']);
+    }
+
+    /**
+     * TEST 7 — a side with no account selection must never filter the whole
+     * report. This is the safety property the disabled UI control only
+     * *helps* with; the service guarantees it on its own.
+     */
+    public function test_a_side_without_any_account_selection_is_forced_back_to_all(): void
+    {
+        $this->bothSidesFixture();
+
+        $baseline = $this->service()->generate('2026-07-01', '2026-07-31');
+
+        foreach ([
+            ComprehensiveFinancialTransactionsReportService::SIDE_DEBIT,
+            ComprehensiveFinancialTransactionsReportService::SIDE_CREDIT,
+        ] as $side) {
+            $result = $this->generateWithSide([], $side);
+
+            $this->assertCount(4, $result['rows'], "Side {$side} must not narrow an all-accounts report.");
+            $this->assertSame($baseline['rows'], $result['rows']);
+            $this->assertSame('all', $result['account_side']);
+            $this->assertArrayNotHasKey('طرف الحساب', $result['filter_labels']);
+        }
+    }
+
+    /** An unknown/garbage side degrades to "all" rather than filtering blindly. */
+    public function test_an_unknown_side_value_degrades_to_all(): void
+    {
+        ['accountA' => $accountA] = $this->bothSidesFixture();
+
+        $result = $this->generateWithSide([$accountA->id], 'DEBIT');
+
+        $this->assertSame('all', $result['account_side']);
+        $this->assertCount(2, $result['rows']);
+    }
+
+    /** TEST 9 — classification statistics come from the side-filtered rows. */
+    public function test_classification_statistics_reflect_the_account_side_filter(): void
+    {
+        ['accountA' => $accountA] = $this->bothSidesFixture();
+
+        $debit = $this->generateWithSide([$accountA->id], ComprehensiveFinancialTransactionsReportService::SIDE_DEBIT);
+
+        $this->assertCount(1, $debit['category_summaries']);
+        $this->assertSame('تصنيف التحصيل', $debit['category_summaries'][0]['name']);
+        $this->assertSame(1, $debit['category_summaries'][0]['line_count']);
+        $this->assertSame(300.0, $debit['category_summaries'][0]['currencies'][0]['total_debit']);
+        $this->assertSame(0.0, $debit['category_summaries'][0]['currencies'][0]['total_credit']);
+
+        $credit = $this->generateWithSide([$accountA->id], ComprehensiveFinancialTransactionsReportService::SIDE_CREDIT);
+
+        $this->assertCount(1, $credit['category_summaries']);
+        $this->assertSame('تصنيف الصرف', $credit['category_summaries'][0]['name']);
+        $this->assertSame(100.0, $credit['category_summaries'][0]['currencies'][0]['total_credit']);
+    }
+
+    /** TEST 10 — transaction-type statistics come from the same filtered rows. */
+    public function test_transaction_type_statistics_reflect_the_account_side_filter(): void
+    {
+        ['accountA' => $accountA] = $this->bothSidesFixture();
+
+        $debit = $this->generateWithSide([$accountA->id], ComprehensiveFinancialTransactionsReportService::SIDE_DEBIT);
+
+        $this->assertCount(1, $debit['type_summaries']);
+        $this->assertSame('نوع التحصيل', $debit['type_summaries'][0]['name']);
+        $this->assertSame(300.0, $debit['type_summaries'][0]['currencies'][0]['total_debit']);
+
+        $credit = $this->generateWithSide([$accountA->id], ComprehensiveFinancialTransactionsReportService::SIDE_CREDIT);
+
+        $this->assertCount(1, $credit['type_summaries']);
+        $this->assertSame('نوع الصرف', $credit['type_summaries'][0]['name']);
+        $this->assertSame(100.0, $credit['type_summaries'][0]['currencies'][0]['total_credit']);
+    }
+
+    /**
+     * TESTS 11 + 12 — the expansion keys the UI filters $rows by must only
+     * ever address rows that survived the side filter, so an expanded
+     * classification/type can never reveal a hidden opposite-side line.
+     */
+    public function test_expansion_keys_only_address_side_filtered_rows(): void
+    {
+        ['accountA' => $accountA] = $this->bothSidesFixture();
+
+        $debit = $this->generateWithSide([$accountA->id], ComprehensiveFinancialTransactionsReportService::SIDE_DEBIT);
+
+        $categoryKey = $debit['category_summaries'][0]['key'];
+        $typeKey = $debit['type_summaries'][0]['key'];
+
+        $byCategory = array_values(array_filter($debit['rows'], fn (array $row): bool => $row['category_key'] === $categoryKey));
+        $byType = array_values(array_filter($debit['rows'], fn (array $row): bool => $row['type_key'] === $typeKey));
+
+        $this->assertSame([['بنك فلسطين', 300.0, 0.0]], $this->sideRows($byCategory));
+        $this->assertSame([['بنك فلسطين', 300.0, 0.0]], $this->sideRows($byType));
+
+        // The credit classification/type are not even present to expand.
+        $this->assertSame([$categoryKey], array_column($debit['category_summaries'], 'key'));
+        $this->assertSame([$typeKey], array_column($debit['type_summaries'], 'key'));
+    }
+
+    /**
+     * A zero-amount line is neither a debit nor a credit appearance: the
+     * filter reads the amount, never line_role or the transaction type.
+     */
+    public function test_a_zero_amount_line_belongs_to_neither_side(): void
+    {
+        $currency = $this->makeCurrency();
+        $account = $this->makeAccount($currency, ['name' => 'حساب بلا مبلغ']);
+
+        $transaction = $this->makeTransaction(['transaction_time' => '2026-07-10 10:00:00']);
+        $this->makeLine($transaction, $account, $currency, [
+            'debit_base' => 0,
+            'credit_base' => 0,
+            'line_role' => 'debit',
+        ]);
+
+        $all = ComprehensiveFinancialTransactionsReportService::SIDE_ALL;
+        $debit = ComprehensiveFinancialTransactionsReportService::SIDE_DEBIT;
+        $credit = ComprehensiveFinancialTransactionsReportService::SIDE_CREDIT;
+
+        $this->assertCount(1, $this->generateWithSide([$account->id], $all)['rows']);
+        $this->assertCount(0, $this->generateWithSide([$account->id], $debit)['rows']);
+        $this->assertCount(0, $this->generateWithSide([$account->id], $credit)['rows']);
     }
 
     private function makeReceipt(int $transactionId, int $projectCostId, string $notes): int

@@ -20,6 +20,8 @@ use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Concerns\InteractsWithSchemas;
 use Filament\Schemas\Contracts\HasSchemas;
 use Filament\Schemas\Schema;
@@ -101,6 +103,13 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
      */
     public array $appliedAccountIds = [];
 
+    /**
+     * Applied "طرف الحساب" — always one of the service's SIDE_* values, and
+     * always the NORMALIZED one the query actually ran with, so it can never
+     * claim a debit/credit narrowing the exported rows did not receive.
+     */
+    public string $appliedAccountSide = ComprehensiveFinancialTransactionsReportService::SIDE_ALL;
+
     public ?int $appliedAccountTypeId = null;
 
     public ?int $appliedProjectId = null;
@@ -170,6 +179,7 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
             'transaction_super_type_id' => null,
             'transaction_type_id' => null,
             'account_ids' => [],
+            'account_side' => ComprehensiveFinancialTransactionsReportService::SIDE_ALL,
             'account_type_id' => null,
             'project_id' => null,
         ]);
@@ -258,6 +268,28 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
                     ->placeholder('كل الحسابات')
                     ->searchable()
                     ->live()
+                    ->afterStateUpdated(function (Set $set, mixed $state): void {
+                        // Clearing every account removes the only thing the
+                        // side could apply to, so the side goes back to "الكل"
+                        // here rather than lingering as a hidden narrowing.
+                        // showReport() normalizes again regardless.
+                        if (blank($state)) {
+                            $set('account_side', ComprehensiveFinancialTransactionsReportService::SIDE_ALL);
+                        }
+
+                        $this->clearResults();
+                    }),
+
+                Select::make('account_side')
+                    ->label('طرف الحساب')
+                    ->options(fn (): array => ComprehensiveFinancialTransactionsReportService::accountSideOptions())
+                    ->default(ComprehensiveFinancialTransactionsReportService::SIDE_ALL)
+                    ->selectablePlaceholder(false)
+                    // Meaningless without an account to take the side OF, so
+                    // the control stays dead until at least one is selected.
+                    ->disabled(fn (Get $get): bool => blank($get('account_ids')))
+                    ->helperText('يظهر فقط الطرف المحدد من حركات الحسابات المختارة')
+                    ->live()
                     ->afterStateUpdated(fn () => $this->clearResults()),
 
                 Select::make('account_type_id')
@@ -290,6 +322,13 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
         // Empty array = "كل الحسابات" — exactly the same all-accounts behaviour
         // the single Select expressed by leaving account_id null.
         $accountIds = array_values(array_map('intval', $state['account_ids'] ?? []));
+        // The Select is disabled (and therefore undehydrated) with no account
+        // selected; normalizing here makes that independent of the UI, so the
+        // applied snapshot and the query can never disagree.
+        $accountSide = ComprehensiveFinancialTransactionsReportService::normalizeAccountSide(
+            $state['account_side'] ?? null,
+            $accountIds,
+        );
 
         $result = app(ComprehensiveFinancialTransactionsReportService::class)->generate(
             $state['date_from'],
@@ -300,6 +339,7 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
             $accountIds,
             $state['account_type_id'] ? (int) $state['account_type_id'] : null,
             $state['project_id'] ? (int) $state['project_id'] : null,
+            $accountSide,
         );
 
         $this->rows = $result['rows'];
@@ -316,6 +356,7 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
         $this->appliedTransactionSuperTypeId = $state['transaction_super_type_id'] ? (int) $state['transaction_super_type_id'] : null;
         $this->appliedTransactionTypeId = $state['transaction_type_id'] ? (int) $state['transaction_type_id'] : null;
         $this->appliedAccountIds = $accountIds;
+        $this->appliedAccountSide = $result['account_side'];
         $this->appliedAccountTypeId = $state['account_type_id'] ? (int) $state['account_type_id'] : null;
         $this->appliedProjectId = $state['project_id'] ? (int) $state['project_id'] : null;
         $this->appliedFilterLabels = $result['filter_labels'];
@@ -433,6 +474,7 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
                 // Flat list of scalars, exactly like currency_ids. Historical
                 // events keep whatever key they were written with.
                 'account_ids' => $this->appliedAccountIds,
+                'account_side' => $this->appliedAccountSide,
                 'account_type_id' => $this->appliedAccountTypeId,
                 'project_id' => $this->appliedProjectId,
                 'filter_labels' => array_map(
@@ -486,6 +528,7 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
         $this->appliedTransactionSuperTypeId = null;
         $this->appliedTransactionTypeId = null;
         $this->appliedAccountIds = [];
+        $this->appliedAccountSide = ComprehensiveFinancialTransactionsReportService::SIDE_ALL;
         $this->appliedAccountTypeId = null;
         $this->appliedProjectId = null;
         $this->appliedFilterLabels = [];

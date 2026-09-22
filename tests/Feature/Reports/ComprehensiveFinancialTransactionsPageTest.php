@@ -3,8 +3,12 @@
 namespace Tests\Feature\Reports;
 
 use App\Filament\Pages\ComprehensiveFinancialTransactionsPage;
+use App\Models\AuditEvent;
 use App\Models\BankType;
+use App\Models\TransactionSuperType;
+use App\Models\TransactionType;
 use App\Models\User;
+use App\Services\Reports\ComprehensiveFinancialTransactionsReportService;
 use App\Support\Permissions\PermissionRegistry;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\DB;
@@ -97,6 +101,7 @@ class ComprehensiveFinancialTransactionsPageTest extends TestCase
             ->set('data.date_from', '2026-07-01')
             ->set('data.date_to', '2026-07-31')
             ->set('data.account_ids', $filters['account_ids'] ?? [])
+            ->set('data.account_side', $filters['account_side'] ?? ComprehensiveFinancialTransactionsReportService::SIDE_ALL)
             ->call('showReport');
     }
 
@@ -461,6 +466,312 @@ class ComprehensiveFinancialTransactionsPageTest extends TestCase
     }
 
     // =========================================================
+    // "طرف الحساب" (account side)
+    // =========================================================
+
+    /**
+     * One account that appears on both sides of the ledger across two
+     * differently-classified transactions, so the page can prove the side
+     * filter narrows the details AND both statistics sections together.
+     *
+     * T1 (تصنيف التحصيل): بنك فلسطين debit 300 / الصندوق credit 300
+     * T2 (تصنيف الصرف):   بنك فلسطين credit 100 / الصندوق debit 100
+     *
+     * @return array<string, mixed>
+     */
+    private function bothSidesFixture(): array
+    {
+        $currency = $this->makeCurrency();
+
+        $accountA = $this->makeAccount($currency, ['name' => 'بنك فلسطين']);
+        $accountB = $this->makeAccount($currency, ['name' => 'الصندوق']);
+
+        $collectionType = TransactionType::create([
+            'name' => 'نوع التحصيل',
+            'transaction_super_type_id' => TransactionSuperType::create(['name' => 'تصنيف التحصيل'])->id,
+        ]);
+
+        $paymentType = TransactionType::create([
+            'name' => 'نوع الصرف',
+            'transaction_super_type_id' => TransactionSuperType::create(['name' => 'تصنيف الصرف'])->id,
+        ]);
+
+        $first = $this->makeTransaction([
+            'transaction_time' => '2026-07-10 10:00:00',
+            'transaction_type_id' => $collectionType->id,
+        ]);
+        $this->makeLine($first, $accountA, $currency, ['debit_base' => 300, 'credit_base' => 0]);
+        $this->makeLine($first, $accountB, $currency, ['debit_base' => 0, 'credit_base' => 300]);
+
+        $second = $this->makeTransaction([
+            'transaction_time' => '2026-07-12 10:00:00',
+            'transaction_type_id' => $paymentType->id,
+        ]);
+        $this->makeLine($second, $accountA, $currency, ['debit_base' => 0, 'credit_base' => 100]);
+        $this->makeLine($second, $accountB, $currency, ['debit_base' => 100, 'credit_base' => 0]);
+
+        return compact('currency', 'accountA', 'accountB', 'collectionType', 'paymentType');
+    }
+
+    /** The filter starts on "الكل" and applies as "الكل". */
+    public function test_account_side_defaults_to_all(): void
+    {
+        $this->bothSidesFixture();
+
+        $this->page()
+            ->assertSet('data.account_side', 'all')
+            ->assertSet('appliedAccountSide', 'all')
+            ->assertSet('lineCount', 4);
+    }
+
+    /**
+     * The control renders beside "الحساب", and is dead until an account is
+     * selected — there is nothing to take a side OF before that.
+     */
+    public function test_the_account_side_control_is_disabled_until_an_account_is_selected(): void
+    {
+        ['accountA' => $accountA] = $this->bothSidesFixture();
+
+        $this->actingAsSuperAdmin();
+
+        $test = Livewire::test(ComprehensiveFinancialTransactionsPage::class)
+            ->set('data.date_from', '2026-07-01')
+            ->set('data.date_to', '2026-07-31');
+
+        $test->assertSee('طرف الحساب', false)
+            ->assertSee('يظهر فقط الطرف المحدد من حركات الحسابات المختارة', false);
+
+        // It renders between "الحساب" and "نوع الحساب" — i.e. beside the
+        // account filter it qualifies, not at the end of the filter grid.
+        $html = $test->html();
+        $this->assertGreaterThan(
+            strpos($html, 'wire:partial="schema-component::form.account_ids"'),
+            strpos($html, 'wire:partial="schema-component::form.account_side"'),
+        );
+
+        $this->assertTrue(
+            $this->accountSideSelectIsDisabled($test->html()),
+            'The "طرف الحساب" Select must be disabled while no account is selected.',
+        );
+
+        $test->set('data.account_ids', [$accountA->id]);
+
+        $this->assertFalse(
+            $this->accountSideSelectIsDisabled($test->html()),
+            'Selecting an account must enable the "طرف الحساب" Select.',
+        );
+    }
+
+    /**
+     * Filament renders a Select as an Alpine component, so the disabled state
+     * shows up as the "fi-disabled" class inside the field's own markup
+     * rather than as a bare <select disabled>.
+     *
+     * The slice runs from the account_side schema-component marker to the
+     * next field's marker, so the neighbouring "الحساب" / "نوع الحساب"
+     * controls can never leak their own state into the answer.
+     */
+    private function accountSideSelectIsDisabled(string $html): bool
+    {
+        $start = strpos($html, 'wire:partial="schema-component::form.account_side"');
+        $end = strpos($html, 'wire:partial="schema-component::form.account_type_id"');
+
+        $this->assertNotFalse($start, 'The "طرف الحساب" field must be rendered.');
+        $this->assertNotFalse($end, 'The "نوع الحساب" field must follow it.');
+        $this->assertGreaterThan($start, $end, '"طرف الحساب" must sit before "نوع الحساب".');
+
+        return str_contains(substr($html, $start, $end - $start), 'fi-disabled');
+    }
+
+    /** TEST 2 — one account on "الكل" keeps both of its appearances. */
+    public function test_account_side_all_keeps_both_appearances_of_the_selected_account(): void
+    {
+        ['accountA' => $accountA] = $this->bothSidesFixture();
+
+        $this->page(['account_ids' => [$accountA->id]])
+            ->assertSet('appliedAccountSide', 'all')
+            ->assertSet('lineCount', 2)
+            ->assertSet('transactionCount', 2);
+    }
+
+    /** TEST 3 — "مدين" narrows to the account's positive-debit lines only. */
+    public function test_account_side_debit_narrows_the_page_to_debit_appearances(): void
+    {
+        ['accountA' => $accountA] = $this->bothSidesFixture();
+
+        $test = $this->page([
+            'account_ids' => [$accountA->id],
+            'account_side' => 'debit',
+        ]);
+
+        $test->assertSet('appliedAccountSide', 'debit')
+            ->assertSet('lineCount', 1);
+
+        $this->assertSame(300.0, $test->get('rows')[0]['debit']);
+        $this->assertSame(0.0, $test->get('rows')[0]['credit']);
+
+        // A one-sided view is expected to look unbalanced on screen.
+        $this->assertSame(300.0, $test->get('currencySummaries')[0]['total_debit']);
+        $this->assertSame(0.0, $test->get('currencySummaries')[0]['total_credit']);
+
+        $this->assertSame('مدين', $test->get('appliedFilterLabels')['طرف الحساب']);
+        $test->assertSee('طرف الحساب', false)->assertSee('مدين', false);
+    }
+
+    /** TEST 4 — "دائن" narrows to the account's positive-credit lines only. */
+    public function test_account_side_credit_narrows_the_page_to_credit_appearances(): void
+    {
+        ['accountA' => $accountA] = $this->bothSidesFixture();
+
+        $test = $this->page([
+            'account_ids' => [$accountA->id],
+            'account_side' => 'credit',
+        ]);
+
+        $test->assertSet('appliedAccountSide', 'credit')
+            ->assertSet('lineCount', 1);
+
+        $this->assertSame(0.0, $test->get('rows')[0]['debit']);
+        $this->assertSame(100.0, $test->get('rows')[0]['credit']);
+        $this->assertSame('دائن', $test->get('appliedFilterLabels')['طرف الحساب']);
+    }
+
+    /** TEST 5 + 6 — one side applied across the whole selected-account set. */
+    public function test_account_side_applies_to_every_selected_account_not_one_side_each(): void
+    {
+        ['accountA' => $accountA, 'accountB' => $accountB] = $this->bothSidesFixture();
+
+        $debit = $this->page([
+            'account_ids' => [$accountA->id, $accountB->id],
+            'account_side' => 'debit',
+        ]);
+
+        $debit->assertSet('lineCount', 2);
+        $this->assertSame(400.0, $debit->get('currencySummaries')[0]['total_debit']);
+        $this->assertSame(0.0, $debit->get('currencySummaries')[0]['total_credit']);
+
+        $credit = $this->page([
+            'account_ids' => [$accountA->id, $accountB->id],
+            'account_side' => 'credit',
+        ]);
+
+        $credit->assertSet('lineCount', 2);
+        $this->assertSame(0.0, $credit->get('currencySummaries')[0]['total_debit']);
+        $this->assertSame(400.0, $credit->get('currencySummaries')[0]['total_credit']);
+    }
+
+    /**
+     * TEST 7 — a side left over with no account selected must behave as
+     * "الكل": the applied snapshot, the rows and the summary all say so.
+     */
+    public function test_a_side_without_an_account_selection_applies_as_all(): void
+    {
+        $this->bothSidesFixture();
+
+        $test = $this->page(['account_side' => 'credit']);
+
+        $test->assertSet('appliedAccountSide', 'all')
+            ->assertSet('lineCount', 4);
+
+        $this->assertArrayNotHasKey('طرف الحساب', $test->get('appliedFilterLabels'));
+    }
+
+    /**
+     * TEST 8 — clearing the account selection resets the live side control
+     * AND, when the report is re-run, the applied side with it.
+     */
+    public function test_clearing_the_account_selection_resets_the_account_side(): void
+    {
+        ['accountA' => $accountA] = $this->bothSidesFixture();
+
+        $test = $this->page([
+            'account_ids' => [$accountA->id],
+            'account_side' => 'debit',
+        ])->assertSet('appliedAccountSide', 'debit');
+
+        // Changing a filter clears the displayed report (existing behaviour)
+        // and, for account_ids, also drops the now-meaningless side.
+        $test->set('data.account_ids', [])
+            ->assertSet('data.account_side', 'all')
+            ->assertSet('hasSubmitted', false)
+            ->assertSet('appliedAccountSide', 'all');
+
+        $test->call('showReport')
+            ->assertSet('appliedAccountSide', 'all')
+            ->assertSet('lineCount', 4);
+    }
+
+    /** Changing the side alone clears the displayed report, like every other filter. */
+    public function test_changing_the_account_side_clears_the_displayed_report(): void
+    {
+        ['accountA' => $accountA] = $this->bothSidesFixture();
+
+        $this->page(['account_ids' => [$accountA->id]])
+            ->assertSet('hasSubmitted', true)
+            ->set('data.account_side', 'debit')
+            ->assertSet('hasSubmitted', false)
+            ->assertSet('lineCount', 0)
+            ->assertSet('appliedAccountSide', 'all');
+    }
+
+    /** TEST 9 + 10 — both statistics sections come from the filtered dataset. */
+    public function test_both_statistics_sections_reflect_the_account_side(): void
+    {
+        ['accountA' => $accountA] = $this->bothSidesFixture();
+
+        $test = $this->page([
+            'account_ids' => [$accountA->id],
+            'account_side' => 'debit',
+        ]);
+
+        $categories = $test->get('categorySummaries');
+        $types = $test->get('typeSummaries');
+
+        $this->assertCount(1, $categories);
+        $this->assertSame('تصنيف التحصيل', $categories[0]['name']);
+        $this->assertSame(300.0, $categories[0]['currencies'][0]['total_debit']);
+
+        $this->assertCount(1, $types);
+        $this->assertSame('نوع التحصيل', $types[0]['name']);
+        $this->assertSame(300.0, $types[0]['currencies'][0]['total_debit']);
+
+        // The credit-side bucket is absent entirely. Asserted on the amount,
+        // not on the classification NAME: the filter Selects render every
+        // lookup name into the page, so a name can never be a signal here.
+        $test->assertSee('300.00', false)
+            ->assertDontSee('100.00', false);
+    }
+
+    /**
+     * TESTS 11 + 12 — expanding a classification or a transaction type still
+     * works, and shows only rows that survived the side filter.
+     */
+    public function test_expanded_details_respect_the_account_side(): void
+    {
+        ['accountA' => $accountA] = $this->bothSidesFixture();
+
+        $test = $this->page([
+            'account_ids' => [$accountA->id],
+            'account_side' => 'debit',
+        ]);
+
+        $categoryKey = $test->get('categorySummaries')[0]['key'];
+        $typeKey = $test->get('typeSummaries')[0]['key'];
+
+        $test->call('toggleCategory', $categoryKey)->assertSet('openCategoryKey', $categoryKey);
+        $test->call('toggleTransactionType', $typeKey)->assertSet('openTypeKey', $typeKey);
+
+        // Both sections stay independently expandable, exactly as before.
+        $test->assertSee('تفاصيل حركات التصنيف', false)
+            ->assertSee('تفاصيل حركات النوع', false)
+            ->assertSee('300.00', false)
+            // The opposite-side appearance reaches neither detail table.
+            // Again asserted on the amount — account names are also rendered
+            // as options inside the "الحساب" Select.
+            ->assertDontSee('100.00', false);
+    }
+
+    // =========================================================
     // export payload
     // =========================================================
 
@@ -546,5 +857,127 @@ class ComprehensiveFinancialTransactionsPageTest extends TestCase
 
         // Lookup metadata is not a movement note.
         $this->assertStringNotContainsString('ملاحظة نوع البنك', $document);
+    }
+
+    /**
+     * TEST 13 — Excel exports the displayed snapshot, not a fresh query:
+     * only the debit appearance is in the sheet, and the cover states the
+     * applied side.
+     */
+    public function test_excel_export_carries_the_account_side_rows_and_label(): void
+    {
+        ['accountA' => $accountA] = $this->bothSidesFixture();
+
+        $text = $this->excelText($this->page([
+            'account_ids' => [$accountA->id],
+            'account_side' => 'debit',
+        ]));
+
+        $this->assertStringContainsString('طرف الحساب', $text);
+        $this->assertStringContainsString('مدين', $text);
+
+        // Exactly the one surviving line reached the sheet, and the whole
+        // opposite account is absent. (بنك فلسطين itself appears twice — once
+        // as the "الحساب" cover label, once as the detail row — so the sheet's
+        // own line count is the honest assertion here.)
+        $this->assertStringContainsString('عدد بنود القيود | 1', $text);
+        $this->assertStringContainsString('بنك فلسطين', $text);
+        $this->assertStringNotContainsString('الصندوق', $text);
+    }
+
+    /** The default report still labels the side as "الكل" on the Excel cover. */
+    public function test_excel_export_labels_an_unfiltered_side_as_all(): void
+    {
+        $this->bothSidesFixture();
+
+        $text = $this->excelText($this->page());
+
+        $this->assertStringContainsString('طرف الحساب', $text);
+        $this->assertStringContainsString('الكل', $text);
+    }
+
+    /** TEST 14 — same for Word: filtered rows plus the applied side label. */
+    public function test_word_export_carries_the_account_side_rows_and_label(): void
+    {
+        ['accountA' => $accountA] = $this->bothSidesFixture();
+
+        $document = $this->wordDocumentXml($this->page([
+            'account_ids' => [$accountA->id],
+            'account_side' => 'credit',
+        ]));
+
+        $this->assertStringContainsString('طرف الحساب', $document);
+        $this->assertStringContainsString('دائن', $document);
+        $this->assertStringContainsString('بنك فلسطين', $document);
+        $this->assertStringNotContainsString('الصندوق', $document);
+    }
+
+    /** TEST 10 (audit) — the export audit records the APPLIED side. */
+    public function test_export_audit_records_the_applied_account_side(): void
+    {
+        ['accountA' => $accountA] = $this->bothSidesFixture();
+
+        $this->page([
+            'account_ids' => [$accountA->id],
+            'account_side' => 'debit',
+        ])->instance()->exportExcel();
+
+        $event = AuditEvent::query()->latest('id')->first();
+
+        $this->assertNotNull($event, 'The export must be audited.');
+        $this->assertSame('debit', $event->new_values['account_side']);
+        $this->assertContains('طرف الحساب: مدين', $event->new_values['filter_labels']);
+    }
+
+    /**
+     * @param  \Livewire\Features\SupportTesting\Testable  $test
+     */
+    private function excelText($test): string
+    {
+        $binary = $this->streamedBinary($test->instance()->exportExcel());
+
+        $path = tempnam(sys_get_temp_dir(), 'cft').'.xlsx';
+        file_put_contents($path, $binary);
+
+        $sheet = IOFactory::load($path)->getActiveSheet();
+        $text = implode("\n", array_map(
+            fn (array $row) => implode(' | ', array_map(fn ($cell) => (string) $cell, $row)),
+            $sheet->toArray(),
+        ));
+
+        @unlink($path);
+
+        return $text;
+    }
+
+    /**
+     * @param  \Livewire\Features\SupportTesting\Testable  $test
+     */
+    private function wordDocumentXml($test): string
+    {
+        $binary = $this->streamedBinary($test->instance()->exportWord());
+
+        $path = tempnam(sys_get_temp_dir(), 'cft').'.docx';
+        file_put_contents($path, $binary);
+
+        $zip = new \ZipArchive();
+        $this->assertTrue($zip->open($path) === true, 'The .docx must open as a valid archive.');
+        $document = $zip->getFromName('word/document.xml');
+        $zip->close();
+        @unlink($path);
+
+        $this->assertNotFalse($document);
+
+        return (string) $document;
+    }
+
+    private function streamedBinary(?StreamedResponse $response): string
+    {
+        $this->assertInstanceOf(StreamedResponse::class, $response);
+
+        ob_start();
+        $response->sendContent();
+
+        return (string) ob_get_clean();
     }
 }

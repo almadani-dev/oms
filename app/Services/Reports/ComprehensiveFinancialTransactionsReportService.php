@@ -53,8 +53,30 @@ class ComprehensiveFinancialTransactionsReportService
     ];
 
     /**
+     * Side of the selected accounts ("طرف الحساب"). Only ever narrows the
+     * rows of an EXISTING account selection — see normalizeAccountSide().
+     */
+    public const SIDE_ALL = 'all';
+
+    public const SIDE_DEBIT = 'debit';
+
+    public const SIDE_CREDIT = 'credit';
+
+    /**
+     * @var array<string, string> Arabic label per account side.
+     */
+    private const SIDE_LABELS = [
+        self::SIDE_ALL => 'الكل',
+        self::SIDE_DEBIT => 'مدين',
+        self::SIDE_CREDIT => 'دائن',
+    ];
+
+    /**
      * @param array<int, int> $currencyIds empty array = all currencies
      * @param array<int, int> $accountIds empty array = all accounts ("كل الحسابات")
+     * @param string $accountSide self::SIDE_* — narrows the selected accounts to
+     *        their debit or credit appearances; meaningless (and forced back to
+     *        SIDE_ALL) while $accountIds is empty.
      * @return array<string, mixed>
      */
     public function generate(
@@ -66,7 +88,10 @@ class ComprehensiveFinancialTransactionsReportService
         array $accountIds = [],
         ?int $accountTypeId = null,
         ?int $projectId = null,
+        string $accountSide = self::SIDE_ALL,
     ): array {
+        $accountSide = self::normalizeAccountSide($accountSide, $accountIds);
+
         $lines = DB::table('transaction_lines as tl')
             ->join('transactions as t', 't.id', '=', 'tl.transaction_id')
             ->join('accounts as a', 'a.id', '=', 'tl.account_id')
@@ -95,6 +120,13 @@ class ComprehensiveFinancialTransactionsReportService
             ->when($transactionSuperTypeId, fn ($q) => $q->where('tt.transaction_super_type_id', $transactionSuperTypeId))
             ->when($transactionTypeId, fn ($q) => $q->where('t.transaction_type_id', $transactionTypeId))
             ->when($accountIds !== [], fn ($q) => $q->whereIn('tl.account_id', $accountIds))
+            // "طرف الحساب": the accounting source of truth is the line's own
+            // amount, never the transaction type, line_role or description.
+            // A line is a debit appearance only when it actually carries a
+            // positive debit_base. Already normalized above, so these can
+            // never fire without an account selection.
+            ->when($accountSide === self::SIDE_DEBIT, fn ($q) => $q->where('tl.debit_base', '>', 0))
+            ->when($accountSide === self::SIDE_CREDIT, fn ($q) => $q->where('tl.credit_base', '>', 0))
             ->when($accountTypeId, fn ($q) => $q->where('a.account_type_id', $accountTypeId))
             ->when($projectId, fn ($q) => $q->where('pc.project_id', $projectId))
             ->orderBy('t.transaction_time')
@@ -217,8 +249,52 @@ class ComprehensiveFinancialTransactionsReportService
                 $accountIds,
                 $accountTypeId,
                 $projectId,
+                $accountSide,
             ),
+            // The normalized side actually applied to the query above — the
+            // page stores THIS as its applied snapshot, never the live form
+            // value, so the export audit always describes the exported rows.
+            'account_side' => $accountSide,
         ];
+    }
+
+    /**
+     * Single source of truth for what "طرف الحساب" actually means once the
+     * rest of the filters are known.
+     *
+     * The side narrows an account selection; it is not a report-wide
+     * debit/credit filter. With no account selected there is nothing to take
+     * a side of, so a stale 'debit'/'credit' coming from the UI, an export
+     * replay or a direct service call can never silently halve the report —
+     * it collapses back to SIDE_ALL here, before the query is built.
+     *
+     * Static so the page can normalize its own applied snapshot with exactly
+     * the same rule the query used.
+     *
+     * @param array<int, int> $accountIds
+     */
+    public static function normalizeAccountSide(?string $accountSide, array $accountIds): string
+    {
+        if ($accountIds === []) {
+            return self::SIDE_ALL;
+        }
+
+        return in_array($accountSide, [self::SIDE_DEBIT, self::SIDE_CREDIT], true)
+            ? $accountSide
+            : self::SIDE_ALL;
+    }
+
+    /**
+     * @return array<string, string> value => Arabic label, for the filter Select.
+     */
+    public static function accountSideOptions(): array
+    {
+        return self::SIDE_LABELS;
+    }
+
+    public static function accountSideLabel(?string $accountSide): string
+    {
+        return self::SIDE_LABELS[$accountSide] ?? self::SIDE_LABELS[self::SIDE_ALL];
     }
 
     /**
@@ -420,6 +496,7 @@ class ComprehensiveFinancialTransactionsReportService
      *
      * @param array<int, int> $currencyIds
      * @param array<int, int> $accountIds
+     * @param string $accountSide already normalized by generate()
      * @return array<string, string>
      */
     private function filterLabels(
@@ -429,6 +506,7 @@ class ComprehensiveFinancialTransactionsReportService
         array $accountIds,
         ?int $accountTypeId,
         ?int $projectId,
+        string $accountSide,
     ): array {
         $labels = [];
 
@@ -456,6 +534,14 @@ class ComprehensiveFinancialTransactionsReportService
                 ->get(['account_code', 'name'])
                 ->map(fn ($account) => trim(($account->account_code ? $account->account_code . ' - ' : '') . $account->name))
                 ->implode('، ');
+        }
+
+        // Listed immediately after الحساب, and only when it actually narrowed
+        // something — same convention as every other filter here, which stays
+        // out of the summary at its default. Both exporters render the
+        // missing key as "الكل" from their own FILTER_KEYS list.
+        if ($accountSide !== self::SIDE_ALL) {
+            $labels['طرف الحساب'] = self::accountSideLabel($accountSide);
         }
 
         if ($accountTypeId) {

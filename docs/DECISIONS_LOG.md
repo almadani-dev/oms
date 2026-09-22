@@ -12,6 +12,36 @@
 
 ---
 
+
+### Date
+2026-09-22 (`طرف الحساب` — the side is the line's own amount, and it only ever narrows an account selection)
+
+### Decision
+The Comprehensive Financial Transactions report supports an Account Side filter: **All / Debit / Credit**.
+
+The filter is meaningful **only** when one or more accounts are selected.
+
+**Debit** uses `transaction_lines.debit_base > 0`. **Credit** uses `transaction_lines.credit_base > 0`.
+
+The filter affects the entire report dataset, statistics, expanded details and exports.
+
+`ComprehensiveFinancialTransactionsReportService::normalizeAccountSide()` is the single point where this is decided: with no account selected, or with an unrecognised value, the side becomes `all` before the query is built. The disabled UI control and the reset-on-clear are layered on top of that, not relied on for it.
+
+### Reason
+**The accounting source of truth is the amount on the line.** Every other candidate is a description of the movement rather than the movement: `line_role` is nullable on historical lines and names a role (`beneficiary`), not a ledger side; the transaction type and classification describe the entry as a whole and cannot distinguish its two legs; the account name and the transaction description are free text. Only `debit_base`/`credit_base` say which side *this line* actually is.
+
+**`> 0` rather than `IS NOT NULL` or `!= 0`.** Both columns are `decimal(15,2) NOT NULL DEFAULT 0`, so `IS NOT NULL` matches every line and would silently do nothing. `> 0` also means a `0/0` line belongs to neither side, which is the honest answer for a line that is not an appearance at all.
+
+**A side without an account selection has no meaning, and the dangerous reading is the plausible one.** Read report-wide it would be "show me every debit line in the company", which halves the report and silently unbalances every currency total — a result that looks like data rather than like a filter. Enforcing the collapse in the service rather than in the Select means a stale Livewire payload, a replayed export or a future direct service call cannot produce it either.
+
+**One side across the whole selected set, not one side per account.** Per-account sides would require a different state shape (a map, not a scalar), a different UI, and would make the applied-filter summary and both export covers unrepresentable as a single `طرف الحساب: مدين` line. Nothing in the reporting need asks for it.
+
+### Impact
+A visible debit total with no matching credit is now an **expected** state of this report, not a symptom. `currency_summaries[].is_balanced` reports what the visible rows sum to, which under a one-sided view will read unbalanced. No guard, balance formula or synthetic line was introduced to hide that, and the underlying transactions are untouched and still balanced.
+
+The default (`all`) report is byte-identical to before — asserted, not assumed. Because every filter on this report stays out of the on-screen applied-filter summary at its default, `طرف الحساب` is emitted into `filter_labels` only when it narrowed something; both export covers still print `طرف الحساب: الكل` from their own `FILTER_KEYS` fallback, so an exported file always states the side it was produced under.
+
+---
 ### Date
 2026-09-21 (Scroll synchronization — a value-based echo guard, not a time-based lock)
 

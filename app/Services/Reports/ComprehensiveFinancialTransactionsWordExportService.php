@@ -42,7 +42,7 @@ class ComprehensiveFinancialTransactionsWordExportService
      * Applied-filter keys, in display order. Missing keys mean the filter
      * was left on "all" and are shown as "الكل".
      */
-    private const FILTER_KEYS = ['العملات', 'تصنيف المعاملة', 'نوع المعاملة', 'الحساب', 'نوع الحساب', 'المشروع'];
+    private const FILTER_KEYS = ['العملات', 'تصنيف المعاملة', 'نوع المعاملة', 'الحساب', 'طرف الحساب', 'نوع الحساب', 'المشروع'];
 
     /**
      * @param  array<string, string>  $filterLabels

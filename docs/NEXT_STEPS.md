@@ -1,5 +1,20 @@
 # Next Steps
 
+## Recommended Next Step (2026-09-22, `تقرير الحركات المالية الشامل` — `طرف الحساب` filter added; 121 targeted tests green, NOT committed)
+
+**Open `/admin/comprehensive-financial-transactions`, walk scenarios A/B/C below in the browser, then approve the commit.** Four production files and two test files changed. No migration, no Blade change, no accounting logic, no data.
+
+**What is already proven by test and by read-only measurement, so you do not need to re-check it by hand:** `debit` is exactly `tl.debit_base > 0` and `credit` exactly `tl.credit_base > 0`; a `0/0` line belongs to neither side; a side with no account selected cannot narrow the report (proved in the service, so it holds for a stale payload or a replayed export too); an unknown value degrades to `all`; the default report is byte-identical to before; multiple accounts share one side; the main table, the totals, the currency summaries, the classification statistics, the transaction-type statistics and both expansion panels all come from the one filtered dataset; both exports carry the filtered rows and state the side (`الكل` when unfiltered); the export audit stores the **applied** side. Against live data, account `[51] حنين البحري` splits 10 lines into 6 debit + 4 credit whose line-id sets recompose the الكل view exactly.
+
+**What is worth a human eye in the browser, because no test covers rendering:**
+
+- **A / B / C on one account.** Pick an account that moves both ways, run `الكل`, then `مدين`, then `دائن`. B and C should be the two halves of A. Expect B and C to look unbalanced — that is the intended reading of the report, not a fault.
+- **RTL placement.** `طرف الحساب` should sit immediately beside `الحساب` in the filter grid and read cleanly right-to-left, helper text included. The Arabic option labels are `الكل` / `مدين` / `دائن`.
+- **The disabled state.** With no account chosen the Select should be visibly dead; choosing an account should wake it; clearing the account again should send it back to `الكل` rather than leaving `مدين` sitting there.
+- **The applied-filter badges.** A default report should show **no** `طرف الحساب` badge; a narrowed one should show `طرف الحساب: مدين`. An exported Excel/Word cover should always show the row, reading `الكل` when unfiltered.
+- **The expansion panels under both statistics sections**, opened while a side is applied — the horizontal-scroll behaviour there was deliberately not touched and should feel exactly as before.
+
+
 ## Recommended Next Step (2026-09-22, سطور المعاملات — global search widened to 15 fields, filters 2 to 8; 30 targeted tests green, NOT committed)
 
 **Open `/admin/transaction-lines`, try a few searches, then approve the commit.** One production file changed plus one new test file. No migration, no accounting logic, no report, no export, no data.

@@ -15,6 +15,60 @@
 
 ---
 
+
+### Date
+2026-09-22 (`تقرير الحركات المالية الشامل` — `طرف الحساب` filter: All / Debit / Credit, scoped to the selected accounts)
+
+### Task
+Add an account-side filter beside the existing multi-account filter on the Comprehensive Financial Transactions report. Audit the real implementation first and stop if it differs from the brief. The side must read the actual `TransactionLine` amounts — explicitly not the transaction type, classification, `line_role`, account name or description. It must be meaningful only when at least one account is selected, must reach the whole report (details, totals, both statistics sections, both expansion panels, both exports, the export audit) from one applied-filter state, must stay a database-side filter with no added join and no PHP-side row filtering, and must not touch the schema, the accounting logic or the stabilized horizontal-scroll implementation. Targeted tests only; do not commit.
+
+### Result
+**The audit matched the brief on every point, so nothing was escalated.** The account filter state is `account_ids`; live form state lives in `$data` while the applied snapshot lives in the `applied*` properties behind a `hasSubmitted` gate that `clearResults()` drops on any filter change; one `generate()` call produces rows, currency/classification/type summaries in a single pass and both exporters consume that snapshot; the columns are `transaction_lines.debit_base`/`credit_base`; the lines table is aliased `tl`.
+
+**State name: `account_side`**, values `all` / `debit` / `credit` (`SIDE_ALL`/`SIDE_DEBIT`/`SIDE_CREDIT` on the report service), labelled `الكل` / `مدين` / `دائن`, default `all`.
+
+**Query semantics** — added to the existing lines query, after the account predicate:
+
+- `all` → no extra predicate.
+- `debit` → `and tl.debit_base > 0`
+- `credit` → `and tl.credit_base > 0`
+
+**`normalizeAccountSide()` is the guarantee, the disabled control is only the convenience.** With no account selected the side collapses to `all` inside the service before the query is built, and an unrecognised value does the same. On the page, clearing `account_ids` also resets the live `account_side` to `all` via `Set`, and `showReport()` normalizes again before calling the service — so the applied snapshot, the export, the audit and the query can never disagree.
+
+**Multiple accounts take one side between them**, not a side each: `account_id IN (…) AND debit_base > 0`.
+
+### Changed Files
+- `app/Services/Reports/ComprehensiveFinancialTransactionsReportService.php` — `SIDE_*` constants, `SIDE_LABELS`, `normalizeAccountSide()`, `accountSideOptions()`, `accountSideLabel()`; ninth `$accountSide` parameter on `generate()`; two `when()` predicates on the lines query; `account_side` in the returned array; `طرف الحساب` in `filterLabels()`.
+- `app/Filament/Pages/ComprehensiveFinancialTransactionsPage.php` — `$appliedAccountSide`; `account_side` in `mount()`; the `طرف الحساب` Select (disabled while `account_ids` is blank, helper text, `live()` + `clearResults()`); an `afterStateUpdated` on `account_ids` that resets the side when the selection empties; normalization + pass-through in `showReport()`; `account_side` in the export-audit payload; reset in `clearResults()`.
+- `app/Services/Reports/ComprehensiveFinancialTransactionsExcelExportService.php` — `طرف الحساب` added to `FILTER_KEYS`.
+- `app/Services/Reports/ComprehensiveFinancialTransactionsWordExportService.php` — same.
+- `tests/Feature/Reports/ComprehensiveFinancialTransactionsReportServiceTest.php` — 12 new tests.
+- `tests/Feature/Reports/ComprehensiveFinancialTransactionsPageTest.php` — 13 new tests.
+
+No migration. No Blade file changed. No model, guard, balance, currency, account or transaction code touched.
+
+### Verification
+**121 targeted tests green, 523 assertions**, across the four suites that touch this report — `ComprehensiveFinancialTransactionsPageTest` (33), `ComprehensiveFinancialTransactionsReportServiceTest` (38), `ReportExportAuthorizationTest`, `ReportExportAuditTest`. Full suite and full Feature suite **not** run, per the permanent project rule. `php -l` clean on all six changed files.
+
+New coverage, by the brief's own numbering: no account + `all` is byte-identical to the unfiltered report (1, 15); one account + `all` keeps both appearances (2); `debit` keeps only `debit_base > 0` (3); `credit` only `credit_base > 0` (4); multi-account debit and credit (5, 6); a side with no account selection cannot narrow the report (7) and an unknown value degrades to `all`; clearing the account selection resets the side (8); classification (9) and transaction-type (10) statistics come from the filtered rows; both expansions still toggle and address only surviving rows (11, 12); Excel (13) and Word (14) carry the filtered rows **and** the `طرف الحساب` label, with an unfiltered export stating `الكل`; the export audit stores the applied `account_side` and the humanized label; the Select renders between `الحساب` and `نوع الحساب` and is disabled until an account is selected.
+
+Two page assertions were deliberately written against **amounts** rather than classification/account names: the filter Selects render every lookup name into the page HTML, so a whole-page `assertDontSee` on a name can never be a signal there.
+
+**Read-only check against the live database** (`php artisan tinker`, SELECTs only, nothing created or modified). Account `[51] حنين البحري`, period `2026-08-19 .. 2026-09-22`:
+
+| view | lines | txns | debit | credit | label |
+|---|---|---|---|---|---|
+| A) الكل | 10 | 8 | 70,304.40 | 13,030.00 | (omitted) |
+| B) مدين | 6 | 6 | 70,304.40 | 0.00 | مدين |
+| C) دائن | 4 | 4 | 0.00 | 13,030.00 | دائن |
+
+B + C recompose A's line-id set **exactly**; zero lines fall in neither side; `debit` with **no** account selected returns the unfiltered 22-line report; the debit view's classification and transaction-type statistics both report 6 lines against 6 rows.
+
+**Performance:** one extra `where` on the existing query — no join added, no `Collection::filter()` over report rows, nothing evaluated in PHP.
+
+**NOT committed, NOT pushed.**
+
+---
 ### Date
 2026-09-21 (`تقرير الحركات المالية الشامل` — arrow-scroll jitter diagnosed in real Chrome: scroll-event feedback was aborting the smooth scroll)
 

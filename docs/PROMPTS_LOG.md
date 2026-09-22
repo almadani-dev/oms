@@ -1,6 +1,23 @@
 # Prompts Log
 
 ### Date
+2026-09-22 ("If you discover any ambiguity about whether debit/credit should be based on debit_base/credit_base or another canonical field, STOP AND ASK before implementing. Do not guess.")
+
+### Prompt
+An eighteen-section brief for one Select. Section 0 was `FIRST: AUDIT CURRENT IMPLEMENTATION`: it named six files, listed five facts to confirm rather than assume (the account filter's state name, how applied filters are separated from live form state, every consumer the filters reach, whether the columns are still `debit_base`/`credit_base`, whether the lines table is still aliased `tl`), and closed with *"If the current architecture materially differs from this prompt: STOP AND ASK."* Section 3 then enumerated what the side must **not** be inferred from, section 6 pre-authorised the unbalanced-looking output, section 13 forbade `Collection::filter()` after loading, section 15 repeated the permanent no-full-suite rule, and section 18 said do not commit.
+
+### Purpose
+**Naming the forbidden inference sources was worth more than naming the correct one.** `line_role` is the trap: it exists, it is right there in the select list, it holds values that read like sides, and a `where line_role = 'debit'` would have produced plausible output on some data. It is nullable on historical lines and stores a role, not a ledger side, so it would have quietly dropped rows. A brief that only said "use the amounts" would not have forced that to be checked; one that said "do NOT infer from line_role" did.
+
+**Section 2 asked for a disabled control; the useful reading was that it asked for an invariant.** Disabling a Select is a UI state — it does not survive a stale Livewire payload, a replayed export or a direct service call, and Filament's own `disabled()` implies `dehydrated(false)`, so the key simply vanishes from `getState()` rather than arriving as `all`. Putting the collapse in the service (`normalizeAccountSide()`) and having `generate()` hand the normalized value **back** for the page to store made the applied snapshot, the audit and the query provably the same value. The brief's own TEST 7 — "a side without an account selection must NOT filter the whole report" — is the invariant, and it reads as a service test, not a UI test.
+
+**Section 5's "there must be one consistent applied-filter state" was already true, and confirming that was the point of the audit.** `generate()` accumulates rows, per-currency totals and both statistics buckets in one pass over one result set, and the expansion panels filter the already-hydrated `$rows` in Blade. So the honest implementation was *one* `when()` on the existing query — and the work was proving that reached all seven consumers, not wiring seven of them.
+
+**"Do not clutter the applied-filter summary unnecessarily if defaults are normally omitted. Use the current report convention consistently."** This is the instruction that prevented a wrong-looking-but-passing result. The on-screen summary omits defaults; both export covers print every key with `الكل` as the fallback for a missing one. Those are not in conflict — they are the same convention seen from two ends — and the implementation that satisfies both is to emit the label only when it narrowed something and add the key to each exporter's `FILTER_KEYS`. A brief that had simply said "add the label" would have produced `طرف الحساب: الكل` badges on every default report.
+
+---
+
+### Date
 2026-09-22 ("If one requested search field would make every search substantially worse, report that specific field and why rather than implementing a bad solution.")
 
 ### Prompt
