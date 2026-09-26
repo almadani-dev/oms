@@ -1,6 +1,48 @@
 # Prompts Log
 
 ### Date
+2026-09-26 ("Do NOT choose an actor yourself." / "Run the normal importer preflight again immediately before execution." / "DO NOT rerun this command if it reports success." / "Do not assume the audit_events delta. Report its actual delta and explain it based on the records created.")
+
+### Prompt
+The authorization to perform the one real import, issued as a **third** separate message after implementation and after a real-source dry run — each phase forbidding the next until it had been reviewed. It re-listed the source path, project code and actor; required the preflight to be re-run immediately before the write and the import abandoned if anything had changed; required before-counts and max ids to be recorded first; specified the exact command once; enumerated nine read-only verifications (A–I) to perform afterwards; and required a post-import dry run to prove duplicate protection with `--execute` explicitly forbidden a second time.
+
+### Purpose
+**"Do NOT choose an actor yourself" is what kept a real audit trail honest.** The importer can resolve any active user, and picking a plausible one would have attributed 72 families and 288 audit events to someone who never authorized them. Listing the three eligible users read-only — id, name, roles, deleted/active — and stopping cost one round trip and made the attribution a decision with a name behind it.
+
+**Re-running the preflight immediately before the write turned "it passed earlier" into "it passes now".** Between the dry run and the execution the database could have gained a conflicting family or lost a lookup; the second preflight (still 72 READY / 0 ERROR, same source md5) is the only thing that rules that out, and it costs nothing because the preflight writes nothing by construction.
+
+**"Do not assume the audit_events delta" caught the one number that could have been fudged.** The honest answer is +288, which is 4 × 72 — one `created` event each for the Account, the family, the ownership mapping and the project link. Reporting it as "72 audit events" would have looked tidier and been wrong, and the breakdown is also what proves the official service wrote every artefact rather than the importer inserting rows itself.
+
+**Recording max ids before the write is what made the verification provable rather than plausible.** With `accounts.id` at 396 and `audit_events.id` at 1906 beforehand, "the imported rows" became an exact set instead of a guess based on timestamps — which is how the actor attribution, the account type, the zero balances and the absence of orphans could each be asserted over precisely the 72 new rows.
+
+**The staged phases are why the trailing-space finding surfaced at all.** A field-by-field re-read of all 72 rows against the source (1,296 comparisons) was worth doing only because the import was treated as reviewable rather than done; it found that two `notes` values lost a trailing space to the importer's documented trim, and that is now recorded as a known difference instead of being discovered later by someone diffing the spreadsheet.
+
+**"DO NOT rerun if it reports success", plus the required post-import dry run, tested the safety net from the outside.** The second dry run reports 0 READY / 72 ERROR with every row flagged on both the national id and the card code, which is the accidental-second-run scenario proven against real data — the property the preflight was designed for, verified without risking it.
+
+---
+
+### Date
+2026-09-26 ("Before implementing the mapping, inspect the REAL MuwakhaFamilyForm and MuwakhaFamilyService and derive the exact payload field names required by the application. Do not guess field names from this prompt." / "Do not silently 'correct', normalize, merge, renumber or deduplicate business data." / "The importer adapts the source to the official domain. The official domain must NOT be changed to accommodate the import.")
+
+### Prompt
+A brief for a one-time 72-family bulk importer, explicitly scoped to **implementation and dry run only**, forbidding the real import in the same task. It named the official write path to reuse (`CreateMuwakhaFamily → MuwakhaFamilyService::create()`) and the four ways not to write (`DB::table()`, direct `Model::create()`, direct Account creation, a separate accounting path); it supplied the source JSON shape while forbidding the field names in it from being trusted; it listed seven approved source anomalies one by one with "do not fix this" attached to each; it required a pre-implementation report of four named parts before any edit; and it required preflight to report every error for every row rather than stopping at the first.
+
+### Purpose
+**"Derive the payload field names from the real code, do not guess them from this prompt" was the single most load-bearing line, and the two differed in exactly the places that matter.** The brief's shape carries `bank_type_name`, `currency_code`, `card_code` and `account_holder_name` flat on one object; the application wants `bank_type_id`/`currency_id` resolved at runtime, `card_code` nested inside `muwakha_project_links` rows, and four of the keys split off onto the Account rather than the family. A prompt-shaped payload would have been accepted by `create()` and quietly produced wrong rows — `account_code` would have landed as a family column and the project link would never have been written.
+
+**Enumerating the approved anomalies individually is what made them survivable.** "Preserve source values" alone would not have stopped a well-meaning normalization of `/910717941`, and no code reading could tell that two rows for one martyr are two households rather than a duplicate. Each anomaly came with its own instruction, which is why the importer ended up with **no** name-based, account-number-based or sequence-based check anywhere — a design property, not an omission.
+
+**"Report ALL errors, not the first" changed the shape of the code, not just its output.** It forced a three-pass preflight (per-row validation, then in-source duplicates, then database conflicts) where every row is carried through all three passes even after it has failed, so a 72-row spreadsheet is fixed in one round instead of seventy-two.
+
+**Splitting implementation from execution is what let two real defects be found before they mattered.** The dry-run-only instruction made a read-only verification run against the live database the natural next step, and that run — not code review — revealed that validation messages render as raw translation keys here (no `lang/` files are published) and that 72 rows of inline error text are unreadable in a table. Both were fixed while nothing was at stake.
+
+**"Do not weaken the domain" resolved an ambiguity that would otherwise have been tempting.** The martyr-id UNIQUE index spans soft-deleted rows by documented design, which means a soft-deleted family permanently reserves its national id. The import-friendly reading is to ignore trashed rows; the instruction settles it — the preflight checks `withTrashed()` and reports the conflict instead.
+
+**The one thing the brief could not anticipate was the environment.** Targeted tests were written but could not run: `phpunit` is absent from this `--no-dev` deployment and `pdo_sqlite` is absent while `phpunit.xml` pins the suite to `sqlite :memory:`. Asked rather than assumed, and the answer was to install nothing on production — so the honest result is a written-but-unrun test file plus a read-only dry-run verification with before/after table counts proving zero writes.
+
+---
+
+### Date
 2026-09-26 ("If anything differs from the audit below, STOP and ASK — do not guess." / "Do not disable foreign-key safety globally as a shortcut unless the existing trusted cleanup implementation already has a justified safe mechanism." / "do not pretend filesystem deletion can be rolled back by a DB transaction")
 
 ### Prompt

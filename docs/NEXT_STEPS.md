@@ -1,6 +1,60 @@
 # Next Steps
 
-## Recommended Next Step (2026-09-26, operational reset — implemented, targeted tests NOT executable here, reset NOT executed, NOT committed)
+## Recommended Next Step (2026-09-26, Muwakha import EXECUTED — 72/72 families created and verified; review, then commit)
+
+**The data work is finished. What is left is review and a commit.** The 72 families are live in production: `muwakha_families` 0 → 72, `accounts` 37 → 109, `muwakha_family_accounts` 0 → 72, `muwakha_family_projects` 0 → 72, `audit_events` 1608 → 1896 (+288 = 4 × 72). All 72 links are in project #10 `MUWAKHA_20260926_001`, attributed to user #2 (Super Admin). `oms:check-financial-integrity` → **OK, exit 0**. **Do not run the importer with `--execute` again** — a second dry run already proves it refuses (0 READY / 72 ERROR).
+
+**Decide on the commit.** Nothing is committed yet: seven new importer files plus the memory-doc updates from all three phases. Nothing else in the working tree was modified — no domain file, no model, no migration, no JSON.
+
+**Know these two things before you review:**
+
+- **Two `notes` values lost a trailing space** (source rows 21 and 69) to the importer's documented trim. Every other stored value across all 72 families, Accounts, mappings and links is byte-identical to the source (1,294 of 1,296 field comparisons; the other two are those spaces). If byte-exact `notes` are ever required, that belongs in the importer's `normalize()`, not in a data edit.
+- **The targeted tests have still never been run.** `tests/Feature/Muwakha/MuwakhaFamilyImportTest.php` exists and is syntax-clean, but `phpunit` is absent from this `--no-dev` deployment **and** `pdo_sqlite` is absent (`PDO::getAvailableDrivers()` → `mysql` only) while `phpunit.xml` pins the suite to `sqlite :memory:`. Run it on a dev box with `php artisan test --filter=MuwakhaFamilyImportTest`. The import itself is verified by the read-only checks above, not by those tests.
+
+**If the families need reviewing in the UI:** the Muwakha Families list and each family's View page now show 72 records, each with one linked Account and one project link; the `كشف حساب الأسرة` statement for any of them is empty by design — no payment has been made yet, and the import deliberately wrote no opening-balance transaction (0 transactions, 0 transaction lines).
+
+**Also outstanding:** `graphify update .` could not be run (the CLI is not installed here), so `graphify-out/` is stale with respect to the seven importer files.
+
+---
+
+## Previously Recommended Next Step (2026-09-26, Muwakha families bulk importer — implemented, dry run verified read-only, targeted tests NOT run, 0 families imported, NOT committed)
+
+**Produce the real 72-row normalized JSON, run the dry run, read the report, and only then decide on `--execute`.** Six new files, no existing file modified, no migration, no schema change. The 72 families have **not** been imported and `--execute` has never been run.
+
+**The source file does not exist yet.** `storage/app/imports/` is not present in this deployment, so the file has to be created (from the spreadsheet) at `storage/app/imports/muwakha-families-20260926.json` as a JSON array of 72 objects with the keys `source_row, martyr_name, martyr_national_id, martyr_date_of_birth, martyrdom_date, children_count, guardian_name, guardian_national_id, guardian_date_of_birth, guardian_phone, account_holder_name, account_code, bank_type_name, currency_code, iban, card_code, notes`. Any other key is ignored **and warned about**, so an extra display column (e.g. the computed age) is visible in the report rather than silent. `bank_type_name` must match a stored `bank_types.name` exactly; `currency_code` must be a live `currencies.code`.
+
+**Step 1 — dry run (writes nothing):**
+
+```
+php artisan muwakha:import-families \
+  storage/app/imports/muwakha-families-20260926.json \
+  --project=MUWAKHA_20260926_001 \
+  --actor=<USER_ID>
+```
+
+Read `Ready: 72`, `Errors: 0` and `REAL DATABASE WRITES: 0`, and check the ILS/EGP split and the resolved actor line against expectations. Any row error is listed in full below the table. `--expect` defaults to 72, so a file of any other length is refused.
+
+**Step 2 — real import, only after the dry run is clean and reviewed:**
+
+```
+php artisan muwakha:import-families \
+  storage/app/imports/muwakha-families-20260926.json \
+  --project=MUWAKHA_20260926_001 \
+  --actor=<USER_ID> \
+  --execute
+```
+
+It re-runs the identical preflight, aborts before any write if one row fails, and otherwise commits all 72 in one transaction. **Take a fresh verified backup first** (`php artisan oms:backup --type=manual --scope=full --sync`): the import is not destructive, but it writes 72 families, 72 Accounts, 72 mappings, 72 project links and their AuditEvents, and there is no un-import command. Re-running after a successful import aborts on the national-id and card-code conflicts rather than duplicating.
+
+**What is already proven, so it does not need re-checking by hand:** zero writes from every dry-run path (table counts identical before and after — `muwakha_families` 0, `accounts` 37, `muwakha_family_accounts` 0, `muwakha_family_projects` 0, `audit_events` 1608); `MUWAKHA_20260926_001` resolves to «مشروع المؤاخاة» (#10) and is eligible; the `أفراد` account type, `ILS`, `EGP` and `بنك فلسطين` all resolve; a synthetic 72-row file reports 72 READY at the default `--expect`; a 71-row file, a missing file, invalid JSON, an unknown or ineligible project, an unresolvable actor, in-source duplicates, unknown lookups and every reproduced form rule are all refused with zero writes; `php -l` is clean on all seven files and `--help` renders the full signature.
+
+**Outstanding — the targeted tests have NOT been run.** `tests/Feature/Muwakha/MuwakhaFamilyImportTest.php` covers all ten required behaviours (dry run writes nothing, one martyr name with two national ids, duplicate national id rejected, duplicate account code allowed, `G 1111` unchanged, one bad row blocks the batch, the official service is the write path, outer-transaction rollback, actor attribution, pre-write conflict detection) but cannot run here: `phpunit` is absent (`--no-dev` deployment) **and** `pdo_sqlite` is absent (`PDO::getAvailableDrivers()` → `mysql` only) while `phpunit.xml` pins the suite to `sqlite :memory:`. Run it on a dev box with `php artisan test --filter=MuwakhaFamilyImportTest`, or decide to install dev dependencies plus the sqlite extension here — that is a separate, reviewable change and was explicitly declined for now.
+
+**Also outstanding:** nothing is committed, and `graphify update .` could not be run (the CLI is not installed here), so `graphify-out/` is stale with respect to these seven files.
+
+---
+
+## Previously Recommended Next Step (2026-09-26, operational reset — implemented, targeted tests NOT executable here, reset NOT executed, NOT committed)
 
 **Review the PRE-EXECUTION REPORT, then decide two things: how the targeted tests get run, and whether the reset runs against production.** Three production files and one test file changed. No migration, no schema change, no row deleted.
 

@@ -17,6 +17,85 @@
 
 
 ### Date
+2026-09-26 (Muwakha families — REAL IMPORT EXECUTED ONCE: 72/72 families created and verified; NOT committed)
+
+### Task
+Perform the one authorized real import, using the existing importer exactly as implemented: re-run the preflight immediately before execution and stop unless it still reported 72 READY / 0 ERROR; record before counts and max ids; run `--execute` exactly once with `--actor=2`; then verify read-only (counts and deltas, project scoping, card codes, the two `وائل حسن سليم رجب` households, the 10 `DUMMY-MUW-` ids, 71 ILS / 1 EGP, actor and audit attribution, mapping/link integrity) and finally prove duplicate protection with a second dry run. No code change, no JSON change, no tests, no installs, no commit, no second execution.
+
+### Result
+**Executed once, exit 0: `IMPORT COMMITTED: 72 families created in one transaction.`**
+
+Pre-execution preflight re-run immediately before: **72 READY / 0 ERROR**, source md5 `893807c523ce673f8f43f4ba8d933c88` (identical after the import — the file was never touched). Actor #2 (Super Admin) was selected by the user from a read-only list of the three eligible users.
+
+**Counts before → after:** `muwakha_families` 0 → 72 (+72) · `accounts` 37 → 109 (+72) · `muwakha_family_accounts` 0 → 72 (+72) · `muwakha_family_projects` 0 → 72 (+72) · `audit_events` 1608 → 1896 (**+288**). Max ids before: `accounts` 396, `audit_events` 1906, the three Muwakha tables empty — which is what makes "imported rows" identifiable as `accounts.id > 396` and `audit_events.id > 1906`.
+
+**The audit delta is explained, not assumed:** exactly 4 × 72 `created` events — 72 `account`, 72 `muwakha_family`, 72 `muwakha_family_account`, 72 `muwakha_family_project` — one per row the service wrote. All 288 carry `actor_user_id=2`, `actor_type=user`, `actor_name=Super Admin`, `actor_roles=["Super Admin"]`, `status=success`; 0 carry any other actor.
+
+**Field-by-field re-read of all 72 rows against the source: 1,296 comparisons, 1,294 identical.** The two differences are **trailing spaces trimmed from `notes`** on source rows 21 and 69 by the importer's documented trim; no other value differs. Preserved exactly: `910717941` and `/910717941` (families #209 / #210, separate Accounts #461 / #462), all 10 `DUMMY-MUW-` ids, `G 1111` (present once, not renumbered), and the duplicate account numbers.
+
+**Structural verification, all clean:** 72/72 links in project #10 `MUWAKHA_20260926_001` and 0 elsewhere; 72 distinct card codes, 0 duplicates in that project, 0 nulls; every family has exactly 1 mapping and exactly 1 link; 72 distinct `account_id`; 0 mappings pointing at a different Account than the family's; 0 orphan imported Accounts; 0 families missing an Account; every imported Account is type #13 `أفراد`, active, balance 0, not soft-deleted; **0 transactions / 0 transaction lines**; 0 soft-deleted families. EGP family #176 (card `G 37`), Account #428, `فودافون كاش`, `جنيه مصري` — the source's single EGP row; the other 71 Accounts are `شيكل اسرائيلي`.
+
+**Duplicate protection proven after the import:** the same file dry-run again reports **0 READY / 72 ERROR**, exit 1, each row flagged twice (national id already on `muwakha_families`, card code already used in the project), `REAL DATABASE WRITES: 0`, counts unchanged.
+
+### Changed Files
+**No file was changed by this task.** The importer, the domain services, the models and the JSON source are all untouched; only these memory docs were updated.
+
+### Verification
+- Preflight immediately before execution: 72 READY / 0 ERROR.
+- `--execute` run exactly once, exit 0; not repeated.
+- All counts, deltas, scoping, card-code, `وائل`, `DUMMY-MUW-`, currency, actor/audit and mapping/link checks above, each read-only.
+- `php artisan oms:check-financial-integrity` → **Result: OK, exit 0** (109 accounts checked, 0 persisted-balance mismatches, 0 unbalanced transactions, 0 currency mismatches).
+- Post-import protective dry run: refused, zero writes.
+- **Targeted tests still NOT run** (`phpunit` and `pdo_sqlite` both absent on this host); no dev dependency, `vendor/`, `composer.lock` or PHP extension was touched. `graphify update .` still not possible (CLI not installed).
+
+---
+
+
+### Date
+2026-09-26 (Muwakha families one-time bulk importer — `muwakha:import-families`; IMPLEMENTATION + DRY RUN ONLY, targeted tests NOT executed, 0 families imported, NOT committed)
+
+### Task
+Implement a one-time bulk importer for 72 Muwakha families that consumes a normalized JSON array and writes exclusively through the official manual flow `CreateMuwakhaFamily → MuwakhaFamilyService::create()`. No Excel-import domain layer, no `DB::table()` insert, no direct `Model::create()`, no separate Account creation, no second accounting path, and no change to any domain rule. Because a previous audit found that part of the family validation lives only in `MuwakhaFamilyForm`, the importer must reproduce that validation explicitly before calling the service. The target project `MUWAKHA_20260926_001` must be resolved by code at runtime and verified eligible; currencies, bank types and the account type must be resolved at runtime too. Preflight must report ALL errors for all 72 rows, including in-source duplicates and conflicts against existing rows. Approved source anomalies must be preserved exactly. Dry run by default with zero writes; `--execute` implemented but NOT run. Targeted tests only; no full suite; no commit.
+
+### Result
+**The implementation matched the brief with no conflict against the real code, so nothing was escalated.** The payload field names were derived from the real `MuwakhaFamilyForm` and `MuwakhaFamilyService`, not from the brief: family columns plus the four Account keys the service splits off (`account_code`, `bank_type_id`, `iban`, `currency_id`) plus the create-form link rows under `MuwakhaFamilyService::PROJECT_LINKS_FIELD` (`muwakha_project_links`) as `[{project_id, card_code}]`. `account_type_id` is deliberately absent (the form sets `dehydrated(false)`; the service resolves `أفراد`), `account_id` is absent (the service assigns it), and the spreadsheet's age column is not imported at all — `MuwakhaFamily` has no age field, only the computed `martyrAgeAtMartyrdom()`.
+
+**Architecture — four classes and a thin command.** `MuwakhaFamilyImportPreflight` (read-only: parse, resolve, validate, detect conflicts, build the exact payloads) → `MuwakhaFamilyImportReport` (+ `MuwakhaFamilyImportRow`, the per-row verdict) → `MuwakhaFamilyImporter` (one outer transaction, `Auth::setUser()`, one `MuwakhaFamilyService::create()` per row) → `ImportMuwakhaFamilies` (options, report rendering, exit code). Producing a report performs only SELECTs, so a dry run is literally "build the report and print it", and `--execute` runs the same report through the same gate.
+
+**Form validation reproduced field by field** (`rulesFor()`), including what Filament's builders add: `maxLength(n)` → `max:n`, `integer()` → `numeric`+`integer`, `minValue(0)` → `min:0`, DatePicker → `date`, `maxDate(today())` → `before_or_equal:today`, `afterOrEqual('martyr_date_of_birth')` → the same rule by field name (applied only when a DOB is present, the only case the comparison is defined). `tel()` adds no rule in Filament v5, so `guardian_phone` carries only `required`/`max:50`. Two form rules are handled where they belong instead: `martyr_national_id`'s `unique()` is checked against the database **`withTrashed()`**, and the bank/currency Select option sets are resolved by name/code through `MuwakhaReference` so the report can name the missing lookup.
+
+**Source-data rules honoured exactly.** Trim plus `''`/`—` → `NULL` is the only transformation. A placeholder in a non-nullable field becomes a plain `required` failure rather than a family named `—`. No check keys on a name, so two rows for `وائل حسن سليم رجب` with `910717941` and `/910717941` both import with the slash intact; `G 1111` is never renumbered; `DUMMY-MUW-…` ids and short ids pass (the form imposes only `max:50`); duplicate `account_code` across families is explicitly allowed (`accounts.account_code` lost its UNIQUE in migration `2026_08_16_100000`).
+
+**Two defects were found and fixed by the read-only verification, not by inspection.** (1) Validation messages rendered as raw translation keys (`validation.required`) because this repository publishes no `lang/` files — the messages are now stated inline on the preflight. (2) A 72-row table with inline error text is unreadable — row errors now print as a list below the table, keyed by the same row label.
+
+**Safety.** Dry run is the default and writes nothing; `--execute` is a required explicit flag and is refused unless `--actor` resolves to a live, active OMS user AND every row passes; interactive confirmation is deliberately not a safety mechanism. `--expect` (default 72) makes a wrong row count a fatal preflight error. One outer `DB::transaction()` gives all-or-nothing; the service's transaction nests as a savepoint. An accidental second run is caught by the national-id (`withTrashed()`) and project-scoped card-code conflict checks before any write.
+
+### Changed Files
+All seven are NEW; no existing file was modified.
+
+- `app/Console/Commands/ImportMuwakhaFamilies.php`
+- `app/Services/Muwakha/Import/MuwakhaFamilyImportPreflight.php`
+- `app/Services/Muwakha/Import/MuwakhaFamilyImportReport.php`
+- `app/Services/Muwakha/Import/MuwakhaFamilyImportRow.php`
+- `app/Services/Muwakha/Import/MuwakhaFamilyImporter.php`
+- `app/Services/Muwakha/Import/MuwakhaFamilyImportException.php`
+- `tests/Feature/Muwakha/MuwakhaFamilyImportTest.php` (written, NOT run — see Verification)
+
+### Verification
+**Read-only against live `oms`; zero writes, proven by counts taken before and after every dry run** — `muwakha_families` 0, `accounts` 37, `muwakha_family_accounts` 0, `muwakha_family_projects` 0, `audit_events` 1608, identical both times. `--execute` was never used and no family was imported.
+
+- `php -l` clean on all seven new files.
+- Command discovered automatically and `php artisan help muwakha:import-families` renders the argument and all four options (`--project`, `--actor`, `--execute`, `--expect` default `72`).
+- Live lookups all resolve: `MUWAKHA_20260926_001` → «مشروع المؤاخاة» (#10, eligible), the `أفراد` account type, `ILS`, `EGP`, `بنك فلسطين`.
+- Synthetic 72-row dry run at the default `--expect=72`: **72 READY, 0 errors**, ILS 64 / EGP 8, projected 72 families / 72 accounts / 72 mappings / 72 links, `REAL DATABASE WRITES: 0`, exit 0. Included a duplicate `account_code` pair, `—` placeholders in nullable fields and a `G 1111` card code, all accepted.
+- Negative paths, each `REAL DATABASE WRITES: 0`: 71 rows against `--expect=72` (refused), missing file, invalid JSON, missing `--project`, unknown project code, project outside the Muwakha root, unresolvable actor, in-source duplicate `martyr_national_id` (both rows flagged), duplicate `card_code`, unknown currency code, unknown bank type, future martyrdom date, martyrdom before birth, negative `children_count`, unmapped source key (warned, not blocking).
+- **Targeted tests NOT RUN.** `tests/Feature/Muwakha/MuwakhaFamilyImportTest.php` exists and is syntax-clean, but `phpunit` is absent from this `--no-dev` deployment AND `pdo_sqlite` is absent (`PDO::getAvailableDrivers()` → `mysql` only) while `phpunit.xml` pins the suite to `sqlite :memory:`. On explicit instruction no dev dependency, `vendor/`, `composer.lock` or PHP extension was touched. To run in a dev environment: `php artisan test --filter=MuwakhaFamilyImportTest` or `./vendor/bin/phpunit tests/Feature/Muwakha/MuwakhaFamilyImportTest.php`.
+- `graphify update .` not run — the CLI is not installed here.
+
+---
+
+
+### Date
 2026-09-22 (`تقرير الحركات المالية الشامل` — `طرف الحساب` filter: All / Debit / Credit, scoped to the selected accounts)
 
 ### Task

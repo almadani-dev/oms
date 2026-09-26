@@ -14,6 +14,56 @@
 
 
 ### Date
+2026-09-26 (Muwakha import — the importer's trim is the one place stored data differs from the source, and it is disclosed rather than hidden)
+
+### Decision
+The importer trims every string value before it reaches the domain, so the two source `notes` values that carried a **trailing space** (source rows 21 and 69) are stored without it. That is accepted and recorded; the stored values were **not** edited back, and the source file was not modified.
+
+### Reason
+The trim was stated in the implementation's own contract ("trim, then the approved technical null conversion") and is what makes the `—` placeholder and an empty string collapse to `NULL` reliably. It is also what the domain already does for the fields it owns — `MuwakhaAccountIdentity` trims the martyr name, holder name and IBAN, and `MuwakhaFamilyProjectService::normalizeCardCode()` trims the card code — so removing the trim for `notes` alone would make one field behave unlike every neighbouring field.
+
+The post-import verification compared all 72 rows field by field (1,296 comparisons) precisely so that this kind of difference is *found and reported* rather than assumed away. Trailing whitespace carries no business meaning here, and restoring it would mean editing two rows of live data to re-add invisible characters — a worse trade than recording the fact.
+
+### Impact
+Two `muwakha_families.notes` values differ from the source by one trailing space. Every other stored value across all 72 families, their Accounts, mappings and links is byte-identical to the JSON, including the national id carrying a slash, the ten `DUMMY-MUW-` ids, the duplicate account numbers and `G 1111`.
+
+Anyone diffing the spreadsheet against the database should expect exactly these two whitespace differences and nothing else. If byte-exact `notes` are ever required, the fix belongs in the importer's `normalize()` (restrict the trim to the placeholder/blank test) — not in a one-off data edit.
+
+---
+
+
+### Date
+2026-09-26 (Muwakha bulk import — the importer adapts to the domain; the domain does not adapt to the import)
+
+### Decision
+The one-time importer writes **only** through `MuwakhaFamilyService::create()`, once per family, and owns no domain logic of its own. Seven decisions follow from that:
+
+1. **`MuwakhaFamilyForm`'s validation is reproduced explicitly** in `MuwakhaFamilyImportPreflight::rulesFor()`, field by field, because the service re-checks only the parts the Account identity structurally depends on. Nothing is relaxed and nothing is invented — `tel()` adds no rule in Filament, so no phone format is imposed.
+2. **`—` and `''` become `NULL` for every field.** A placeholder in a non-nullable field then fails the same `required` rule the form applies, instead of being imported as the literal `—`.
+3. **No check keys on a name, an account number, or a card-code sequence.** Uniqueness is `martyr_national_id` (checked `withTrashed()`, because the plain UNIQUE index spans soft-deleted rows) and `card_code` within one project. Duplicate `account_code` is legitimate; `G 1111` stays `G 1111`.
+4. **`--actor` is required for `--execute`**, resolved from the users table by id or email, refused when soft-deleted or deactivated, and authenticated with `Auth::setUser()` for the batch only.
+5. **`--execute` is the only write gate.** Dry run is the default, produces the report from SELECTs alone, and an interactive confirmation is deliberately not relied on.
+6. **All 72 or none** — one outer `DB::transaction()`, no continue-on-error, no resume.
+7. **Validation messages are stated inline** on the preflight rather than left to the translator, and row errors print below the table, not inside it.
+
+### Reason
+1–3: the audit that prompted this work found validation split between the form and the service, and the brief approved specific source anomalies (one martyr with two households and two national ids, one of them carrying a slash; `G 1111`; `DUMMY-MUW-…` ids; shared account numbers). Any normalization "helpfully" applied here would silently destroy approved business data, and any name-based uniqueness check would merge two real households.
+
+4: `HasUserTracking` reads `auth()->id()` and `AuditActorResolver` reads `Auth::user()`; a CLI process has neither, so without a resolved actor 72 families and their whole audit trail would record nobody. A deactivated or soft-deleted user is exactly who `User::canAccessPanel()` denies, so attributing the import to one would record an actor who could not have done it through the UI.
+
+5–6: a partial import of a 72-family batch is not correctable by hand — the families that did land would have to be identified, and each carries an Account, a mapping, a link and audit rows. Refusing everything on one bad row is recoverable; half an import is not. The same preflight running before `--execute` is also what makes an accidental second run abort instead of duplicating.
+
+7: a verification dry run against the live installation printed `validation.required` verbatim, because no `lang/` files are published here. A report an operator cannot read is worse than no report, and with 72 rows the error text does not fit in a table cell.
+
+### Impact
+`MuwakhaFamilyService`, `MuwakhaFamilyProjectService`, `MuwakhaAccountIdentity`, `MuwakhaReference`, the Filament resource and every model and migration are **unchanged**. National-id uniqueness, project card-code uniqueness, Muwakha project eligibility, the AuditEvent requirement, the account naming rule and user tracking all keep their existing behaviour and are enforced twice — once as a readable preflight error, once by the untouched domain.
+
+The importer is single-purpose and disposable: it consumes one normalized JSON file, targets one project resolved by code, and has no UI, no queue, no schedule and no Excel dependency.
+
+---
+
+
+### Date
 2026-09-22 (`طرف الحساب` — the side is the line's own amount, and it only ever narrows an account selection)
 
 ### Decision
