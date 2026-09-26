@@ -1,5 +1,23 @@
 # Next Steps
 
+## Recommended Next Step (2026-09-26, operational reset — implemented, targeted tests NOT executable here, reset NOT executed, NOT committed)
+
+**Review the PRE-EXECUTION REPORT, then decide two things: how the targeted tests get run, and whether the reset runs against production.** Three production files and one test file changed. No migration, no schema change, no row deleted.
+
+**What is already proven, so it does not need re-checking by hand:** all 46 live tables are classified and every classified table exists live; no RESTRICT/NO ACTION child is scheduled after its parent (the three `accounts` edges sit at 6→16, 5→16, 4→16); `audit()` issues **zero** write statements, proven with a `DB::listen` hook; `audit()` against live data reports 1,409 operational rows, the 3 expected marker settings, exactly 2 orphan `model_has_roles` rows and 0 orphan `model_has_permissions`, 0 attachment rows and 0 linked files, and no unexpected tables. `php -l` is clean and the command's `--help` renders all six options.
+
+**Decision 1 — how to run the targeted tests.** They cannot run on this machine, for two independent reasons: `phpunit` is not installed (this is a `composer install --no-dev` deployment) and **`pdo_sqlite` is not installed** (`PDO::getAvailableDrivers()` returns `mysql` only) while `phpunit.xml` pins the whole suite to `sqlite :memory:`. A scratch MySQL database is also out, because `oms_user` holds privileges on `oms` alone. Options, in the order they are worth considering:
+
+- **Run them somewhere else** — the Windows/Laragon checkout or any dev box that has dev dependencies and the sqlite extension. Nothing needs installing on this server. Cleanest.
+- **Install here:** `composer install` (adds phpunit and the other dev packages) **plus** a root-level `php-sqlite3` install for the extension. Both are reversible (`composer install --no-dev`), but they change a live server's vendor directory and PHP extension set.
+- **Grant a MySQL user `CREATE` on a scratch schema** and point the tests at MySQL instead of sqlite. This changes `phpunit.xml` for the whole suite, so it is the most invasive of the three despite touching no server package.
+
+**Decision 2 — whether the reset runs against production, and how.** The guard was left exactly as instructed, so `ALLOWED_ENVIRONMENTS` is still `['local','development','testing']` and the live app is `APP_ENV=production`. **Both `apply()` and `audit()` refuse there today** — note that this blocks even the read-only dry run, which is worth deciding on separately from the destructive run. Whatever mechanism is chosen, it should be a reviewable change of its own, not folded into this one.
+
+**Before any real execution, in this order:** take a fresh verified backup with `php artisan oms:backup --type=manual --scope=full --sync` (`--sync` is required; the queued default returns immediately), read `stored_path` back out of `backup_operations` to build the `--backup-file` argument, confirm `verified_at` is set, and only then run the cleanup. Do **not** run any report refresh afterwards — the snapshot and alert tables are meant to stay empty.
+
+**Also outstanding:** `graphify update .` could not be run (the CLI is not installed here), so `graphify-out/` is stale with respect to these changes.
+
 ## Recommended Next Step (2026-09-22, `تقرير الحركات المالية الشامل` — `طرف الحساب` filter added; 121 targeted tests green, NOT committed)
 
 **Open `/admin/comprehensive-financial-transactions`, walk scenarios A/B/C below in the browser, then approve the commit.** Four production files and two test files changed. No migration, no Blade change, no accounting logic, no data.

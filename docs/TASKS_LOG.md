@@ -3308,3 +3308,93 @@ Follow-up refinement to the Transaction Lines search work: check whether `Transa
 
 ### Commit Hash
 Not committed, not pushed — awaiting review.
+
+---
+
+### Date
+2026-09-26
+
+### Task
+Extend the existing `OperationalDataCleanupService` so it becomes THE complete definition of an OMS operational reset: everything operational deleted, settings/lookups + users + permissions + migrations + audit history + backup history preserved. Audit first, implement second, run targeted tests only, then produce a PRE-EXECUTION REPORT and stop — the real reset against the live `oms` database is NOT to be executed.
+
+### Result
+**Implemented. The targeted tests were written but could NOT be executed on this machine — see Verification.** No cleanup was run against the live database. Nothing was committed.
+
+**The contract was deliberately inverted for two tables.** `accounts` and `partners` were on the service's preserve list, and `apply()` merely zeroed `accounts.current_balance`. Six of the twenty existing tests actively asserted that donors and accounts survive. Both tables are now operational data and are deleted outright, and those assertions were replaced by their opposites. This was confirmed with the user before implementing, because no amount of reading the code could have revealed which of the two contracts was intended.
+
+**The deletion order is derived from the 102 real foreign keys in the live schema, not from the migrations' intent.** `accounts` is the target of exactly three RESTRICT foreign keys — `transaction_lines.account_id`, `muwakha_families.account_id`, `muwakha_family_accounts.account_id` — so all three referencing tables are emptied strictly before it. A machine check now walks every RESTRICT/NO ACTION edge in `information_schema` and asserts no child is scheduled after its parent; it reports the three account edges at positions 6→16, 5→16 and 4→16. `partners` turned out to be referenced only by nullOnDelete edges, not RESTRICT as the earlier audit note assumed, and the stale docblock claim about a `projects_costs.account_id` RESTRICT was removed — **that column does not exist**.
+
+**Three Muwakha tables and three history tables were entirely unknown to the service.** `muwakha_families`, `muwakha_family_accounts` and `muwakha_family_projects` were in neither list, so the old service would have left 256 rows behind and then failed to delete `accounts`. `audit_events`, `backup_operations` and `notifications` were also unclassified, meaning the service reported them as "unexpected tables" and never verified they survived. All six are now classified; a consistency check asserts **all 46 live tables are classified and every classified table exists live**.
+
+**`notifications` is preserved.** All 66 rows are `BackupOperationNotification` to users — backup history, not business data. Confirmed with the user rather than assumed.
+
+**Neither special cleanup uses a hard-coded id.** Marker settings are matched by the literal key prefix `restore_e2e_20260727_`, which hits exactly the three live markers and is proven by test not to reach `restore_e2e_20260728_other`, `restore_e2e_marker` or `my_restore_e2e_20260727_marker`. Orphaned Spatie rows are matched by `model_type = (new User)->getMorphClass()` AND a `whereNotExists` against `users` — never ids 4 and 6. A soft-deleted user still occupies its `users` row, so its assignment is correctly **not** treated as an orphan, which has its own test.
+
+**A new fail-closed guard was added for physical files, because the backup does not cover them.** `AttachmentCollector` enumerates only the private `attachments` disk; `storage/app/public` is explicitly excluded from the archive. The old service hardcoded the `public` disk and ignored the `attachments.disk` column added by migration `2026_07_21_000001`. It now honours the per-row disk, and `apply()` **refuses** rather than deleting a linked file that lives on a disk outside `BACKUP_COVERED_DISKS`; `--skip-files` cleans the database only and leaves every file on disk. Currently moot on live data — `attachments` is empty and both disks hold no attachment files — so zero files can be lost either way.
+
+**Filesystem deletion sits outside the DB transaction on purpose.** A rollback cannot restore a deleted file, so wrapping both would imply an atomicity that does not exist. The database half is atomic; the file half runs only after it commits.
+
+**`verify()` was rewritten rather than extended.** Its old account/donor fingerprints asserted the survival of exactly the rows the new contract destroys. It now checks preserved-table counts against an **expected delta** (so `settings`, `model_has_roles` and `model_has_permissions` can legitimately lose specific rows while a wider deletion is still caught), that every operational table ends at 0 active and 0 trashed, that no marker setting or orphan row remains, and that currencies, exchange-rate history, legitimate setting keys, user ids, role/permission counts, valid assignments, audit history, backup history, notifications and migration count are all byte-identical.
+
+**The production safeguard was left exactly as it was**, per explicit instruction: `ALLOWED_ENVIRONMENTS` is still `['local','development','testing']` and no bypass was added. The live app is `APP_ENV=production`, so both `apply()` **and** `audit()` refuse there today. A new test asserts `--apply` is refused in production even with a correct token and a valid backup file.
+
+**An interactive confirmation was added without weakening anything.** It prints the full DELETED/KEPT breakdown and prompts, but only when `$this->input->isInteractive()` and `--force` was not passed. `Artisan::call()` and scheduled/queued invocations are non-interactive and skip it entirely, so existing automated callers are unaffected; the environment + token + backup gate remains the only machine-facing guard. There was no pre-existing `--force`; the new one skips only the prompt.
+
+### Changed Files
+- Modified: `app/Services/Maintenance/OperationalDataCleanupService.php` — rewritten. `accounts`/`partners` moved to operational; the three Muwakha tables added; `audit_events`/`backup_operations`/`notifications` added to preserved; `DELETION_ORDER` is now a pure ordered table list (17 entries) instead of a list mixing table names with prose; `deleteTestSettings()`, `deleteOrphanedUserAssignments()`, `findOrphanedUserAssignments()`, `validUserAssignments()`, `assertLinkedFilesAreRecoverable()`, `buildSpecialCleanupPlan()`, `findOrphanFiles()`, `fileExists()`, `safeAllFiles()` added; `buildEntityClassification()` → `buildPartnerCensus()`; `buildAccountBalances()` → `buildAccountCensus()`; per-row attachment disk honoured; `verify()` rewritten; stale `projects_costs.account_id` claim removed.
+- Modified: `app/Services/Maintenance/OperationalCleanupReport.php` — `entityClassification`/`accountBalances` renamed to `partnerCensus`/`accountCensus`; `specialCleanupPlan` and `specialCleanupResult` added.
+- Modified: `app/Console/Commands/CleanOperationalData.php` — `--force` added; interactive warning + confirmation added (TTY-only); rendering updated for the new report shape, including the special-cleanup and multi-disk attachment sections. Still contains no decision logic.
+- Modified: `tests/Feature/Commands/CleanOperationalDataCommandTest.php` — 20 tests → 31. The six preserve-accounts/preserve-donors tests were replaced by their inverses; new tests for Muwakha, FK-enforced deletion order, settings/lookup preservation, `audit_events`, `backup_operations`, `notifications`, `migrations`, marker-setting removal and near-miss protection, soft-deleted markers, orphan `model_has_roles`/`model_has_permissions`, soft-deleted-user assignment retention, the backup-coverage refusal, `--skip-files`, and a whole-contract sweep.
+- **Not** modified: no migration, no schema, no model, no seeder, no lookup data, no user, no permission. No table dropped. No data deleted.
+- **Not** regenerated: `graphify-out/` — the `graphify` CLI is not installed on this machine (`command not found`), so the project's post-change `graphify update .` step could not be run.
+
+### Verification
+1. `php -l` clean on all four changed files.
+2. `php artisan oms:clean-operational-data --help` renders all six options; the no-flag path prints usage and states "No changes were made."
+3. **Read-only structural verification against the live `oms` database — 9 checks, all PASS** (`scratchpad/verify_live.php`): no table is in both lists; every operational table appears in `DELETION_ORDER`; every `DELETION_ORDER` entry is operational; no duplicates; **all 46 live tables classified, all 46 classified tables exist live**; **no RESTRICT/NO ACTION child is scheduled after its parent**; `audit()` reports no unexpected tables; and `audit()` issued **zero** write statements, proven by a `DB::listen` hook matching `insert|update|delete|truncate|drop|alter|create`.
+4. **Live `audit()` produced the real pre-execution numbers**: 1,409 operational rows to delete; the 3 expected marker settings; exactly 2 orphan `model_has_roles` rows (`role_id=6 model_id=4`, `role_id=1 model_id=6`) and 0 orphan `model_has_permissions`; 0 attachment rows and 0 linked files. Nothing was created or modified by that call.
+5. **The targeted test file could NOT be executed on this machine, and is therefore unproven.** Two independent blockers: `phpunit` is not installed (this is a `composer install --no-dev` deployment — `vendor/bin/` has no phpunit and `vendor/phpunit/` does not exist), and **`pdo_sqlite` is not installed** (`PDO::getAvailableDrivers()` returns `mysql` only) while `phpunit.xml` pins the whole suite to `sqlite :memory:`. A scratch MySQL database is also impossible: `oms_user` holds `ALL PRIVILEGES` on `oms` alone. Clearing these needs `composer install` plus a root-level `php-sqlite3` install, neither of which was performed.
+6. **Not run:** the real cleanup, the full suite, the full Feature suite, any migration, and any write of any kind against `oms`.
+
+### Commit Hash
+Not committed, not pushed — awaiting review and the separate go-ahead for the controlled production execution.
+
+---
+
+### Date
+2026-09-26 (execution)
+
+### Task
+Execute the approved OMS operational reset against the live PRODUCTION `oms` database, after adding a narrow one-time production approval gate. Global production safeguard must stay intact.
+
+### Result
+**Executed successfully. Post-apply verification PASSED. 1,409 operational rows removed; every preserved table intact; no table dropped; schema unchanged (46 tables before and after).**
+
+**The global guard was not weakened.** `ALLOWED_ENVIRONMENTS` is still `['local','development','testing']` — nothing was removed from it and `APP_ENV` was not touched. The new escape hatch is a single per-invocation boolean, `$allowProduction`, reachable only through `--allow-production` on this one command. It unlocks exactly one environment name (`PRODUCTION_ENVIRONMENT = 'production'`); a `staging` database is still refused even with the flag set. It is not read from config, not an env var, and not cached.
+
+**In production the flag is worthless alone — all four conditions are enforced, and each was proven to refuse on its own before the backup was taken.** `--dry-run` without the flag refused with the original message plus a hint. The production path additionally demands, via `assertProductionBackupIsFreshAndVerified()`, that the `--backup-file` maps to a real `backup_operations` row with `status=completed`, non-null `verified_at`, `scope=full`, `size_bytes>0`, and a completion no older than `PRODUCTION_BACKUP_MAX_AGE_MINUTES` (120) — so a production reset cannot ride on last week's scheduled archive.
+
+**The interactive prompt did its job on the first attempt, which is worth recording.** The first `--apply` run reached a TTY, the confirmation defaulted to `no`, and the command aborted with "No changes were made" — zero rows touched. The run was then repeated with `--force`, which by design skips only the prompt and bypasses none of the four gates.
+
+**Backup taken first and fully verified:** `manual_20260926_132617_413cc189.omsbak.enc`, 204,869 bytes, `manual/full`, `status=completed`, `verified_at=2026-09-26 13:26:17`, on-disk size equals the recorded size, sha256 recorded.
+
+**Special cleanup matched the audit exactly:** the 3 `restore_e2e_20260727_7c9a_*` markers removed and the 5 legitimate settings untouched; **2** orphan `model_has_roles` rows removed (the `model_id=4` and `model_id=6` rows) and **0** orphan `model_has_permissions`; all 3 valid assignments survive, verified by joining each remaining row back to a real user.
+
+**`audit_events` grew from 1,540 to 1,542, and that is correct, not a leak.** The two new rows are `backup_requested` and `backup_completed` for the backup created for this operation. A read-only check confirms exactly 1,540 rows predate the reset and the oldest event (`id=11`, 2026-08-01) is still present, so audit history was appended to and never truncated.
+
+**Physical files: nothing was deleted, and nothing could have been.** 0 operational attachment rows, 0 linked files, 0 orphan files. The backup-coverage guard was therefore never triggered.
+
+### Changed Files
+- Modified: `app/Services/Maintenance/OperationalDataCleanupService.php` — `PRODUCTION_ENVIRONMENT` and `PRODUCTION_BACKUP_MAX_AGE_MINUTES` constants; `audit()` and `apply()` take `$allowProduction`; `assertEnvironmentAllowed()` gained the narrow single-environment override; `assertProductionBackupIsFreshAndVerified()` added.
+- Modified: `app/Console/Commands/CleanOperationalData.php` — `--allow-production` option, passed to both `audit()` and `apply()`; the interactive warning now names the production database when the flag is in play.
+- **Not** modified: `.env`, `APP_ENV`, `ALLOWED_ENVIRONMENTS`, any migration, any schema object, any lookup row, any user, any permission.
+
+### Verification
+1. **Gate proven to refuse before any data was touched:** `--dry-run` without `--allow-production` refused with `environment 'production' is not one of [local, development, testing]`.
+2. **Backup gate — 5/5 PASS** on the fresh archive (status, `verified_at`, scope=full, file exists, size>0, plus on-disk size == recorded size).
+3. **Command reported `Post-apply verification: PASSED`** — the service's own before/after comparison, which checks preserved-table counts against expected deltas and every operational table at 0 active / 0 trashed.
+4. **Independent read-only re-verification, separate from the service:** all 18 emptied targets at raw `SELECT COUNT(*) = 0`; 21 preserved tables at their exact expected counts; `backup_operations` 80 → 81; 0 remaining markers; 0 remaining orphans; all 3 role assignments resolve to real users; **table count 46 before and after**.
+5. **Not run:** full suite, full Feature suite, any migration, `migrate:fresh`, `db:wipe`, any `DROP`, any global FK disable, and no post-cleanup report refresh (snapshot/alert tables remain empty by design).
+
+### Commit Hash
+Not committed, not pushed — awaiting review.

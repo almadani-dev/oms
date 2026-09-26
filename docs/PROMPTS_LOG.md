@@ -1,6 +1,27 @@
 # Prompts Log
 
 ### Date
+2026-09-26 ("If anything differs from the audit below, STOP and ASK — do not guess." / "Do not disable foreign-key safety globally as a shortcut unless the existing trusted cleanup implementation already has a justified safe mechanism." / "do not pretend filesystem deletion can be rolled back by a DB transaction")
+
+### Prompt
+A brief in eleven labelled sections for a destructive data reset, structured so that **Phase 1 was audit-only and deletion was explicitly forbidden until a later message**. It named the service and command to extend rather than letting a second cleanup system be invented, listed the tables to preserve and the tables to empty as two explicit inventories, restated the known foreign-key dependencies, demanded a verified backup before anything destructive, enumerated sixteen specific things the targeted tests must assert, and closed with a required PRE-EXECUTION REPORT of eight named parts followed by "Then STOP and wait for my explicit confirmation."
+
+### Purpose
+**Splitting audit from execution is what surfaced the contract inversion, and nothing else would have.** The brief listed `accounts` and `partners` under "OPERATIONAL DATA TO DELETE COMPLETELY". The service listed both under `PRESERVED_TABLES`, with six tests asserting donors and accounts survive and a `current_balance = 0` update standing in for the deletion. Both readings are internally coherent; the code cannot adjudicate between them. Because Phase 1 forbade deletion, that collision was reported and decided instead of being silently resolved in whichever direction the implementation happened to run.
+
+**"If anything differs from the audit below" paid off four separate times, and three of them were omissions rather than contradictions.** The brief's own dependency list said `accounts` are RESTRICTed by three tables — correct — but also implied `partners` were restricted, when every edge into `partners` is `nullOnDelete`. Three tables appeared in neither of the brief's two inventories: `notifications` (66 rows), and — more consequentially — the service knew nothing of `muwakha_families`, `muwakha_family_accounts` or `muwakha_family_projects` even though the brief *did* list them, which meant the old code would have left 256 rows behind and then failed on the RESTRICT edges into `accounts`. An instruction to report divergence is only useful if it covers *absence*, and here the absences mattered more than the contradictions.
+
+**"Do not disable foreign-key safety globally as a shortcut" reframed the deletion order from a comment into a checkable invariant.** Forbidding the shortcut means the order is the mechanism, so it has to be right for a reason that outlives the person who wrote it. That is what motivated a check that walks every RESTRICT/NO ACTION edge in `information_schema` and fails if a child is scheduled after its parent, rather than a docblock asserting the order was "verified against the migrations" — which is what the previous revision said, and which was already wrong: it cited a `projects_costs.account_id` foreign key on a column that does not exist.
+
+**"Do not pretend filesystem deletion can be rolled back by a DB transaction" was the prompt's sharpest line, and following it exposed a real gap.** Taking it seriously means asking what the backup actually contains, and `AttachmentCollector` turned out to archive only the private `attachments` disk while the service hardcoded the `public` disk — so the one disk it operated on was the one disk the backup excluded, and it also ignored the per-row `disk` column entirely. The brief's own instruction ("first determine whether the current backup includes them; if not, STOP and report before deleting physical files") became a fail-closed guard in code rather than a one-off check, which is the difference between being right once and staying right.
+
+**Enumerating sixteen test assertions was more useful than asking for "good coverage", because six of them were impossible under the old contract.** Items 3, 4 and 5 — partners deleted, accounts deleted, Muwakha deleted — directly contradicted existing passing tests. A numbered list makes that visible as a conflict to raise; "test the cleanup thoroughly" would have produced a suite that passed while asserting the opposite of what was wanted.
+
+**The instruction not to run the full suite interacted with an environment problem the brief could not have anticipated.** Targeted-only was satisfiable in intent but not in fact: `phpunit` is absent from this `--no-dev` deployment and `pdo_sqlite` is absent while `phpunit.xml` pins the suite to `sqlite :memory:`. The honest result is written tests plus nine read-only structural checks against the live schema, reported as unproven rather than as passing — and the brief's "STOP and ASK" posture is what made reporting that preferable to installing packages on a live server unasked.
+
+---
+
+### Date
 2026-09-22 ("If you discover any ambiguity about whether debit/credit should be based on debit_base/credit_base or another canonical field, STOP AND ASK before implementing. Do not guess.")
 
 ### Prompt

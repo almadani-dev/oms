@@ -2639,3 +2639,41 @@ On the Transaction Lines list, global search is declared once at table level via
 
 ### Impact
 Search and filter UX only. Every predicate is database-side — correlated `EXISTS` subqueries, no joins — so pagination, `defaultSort('id','desc')`, SoftDeletes scoping on the line and on all six related tables, the resource's eager loads and all column visibility (including the always-visible currency and bank type columns) are unchanged. A searched page still renders with zero per-row queries. No migration, no accounting logic, no report, no export, no data.
+
+---
+
+### Date
+2026-09-26 (operational reset: `accounts` and `partners` are operational data; the production safeguard stays; `notifications` is backup history)
+
+### Decision
+`OperationalDataCleanupService` is THE single definition of an OMS operational reset. Four decisions were taken, three of them by the user after being asked.
+
+**1. `accounts` and `partners` are operational data and are deleted.** Previously both were preserved and `apply()` only zeroed `accounts.current_balance`. Donors are deleted too. The lookup tables behind them — `accounts_type`, `bank_types`, `currencies`, `partners_types` — are preserved.
+
+**2. The production environment guard is unchanged and no bypass exists.** `ALLOWED_ENVIRONMENTS` remains `['local','development','testing']`. Because the live app runs `APP_ENV=production`, both `apply()` and `audit()` refuse against the live database. Controlled production execution is a separate decision, to be taken after the PRE-EXECUTION REPORT is reviewed.
+
+**3. `notifications` is preserved.** It is not in either of the user's original lists.
+
+**4. A linked attachment file on a disk the backup does not cover is never deleted.** `apply()` fails closed; `--skip-files` performs database-only cleanup.
+
+### Reason
+**1.** The reset exists to hand over a clean OMS for fresh real data. An account carries a balance and a partner carries a business relationship; both are transactional history, not configuration. Keeping them while deleting every transaction that produced their balances would leave the ledger internally inconsistent — 245 accounts whose 98 non-zero balances no longer have a single supporting `transaction_line`. The previous contract's `current_balance = 0` update was a workaround for exactly that inconsistency, and deleting the rows removes the need for it. The code could not reveal which contract was intended, so it was asked rather than guessed.
+
+**2.** Weakening a guard and performing a destructive operation in the same change removes the ability to review either one on its own. The guard is also the only thing standing between a mistyped command and 1,409 live rows. Keeping it means the reset cannot run yet — which is the correct state while the report is unreviewed.
+
+**3.** All 66 rows are `BackupOperationNotification` addressed to users. That is the same category as `backup_operations`, which the user explicitly preserves. Deleting them would discard backup history while claiming to preserve it. Any notification found to be tied to an operational record is to be reported, not deleted.
+
+**4.** `AttachmentCollector` archives only the private `attachments` disk and explicitly excludes `storage/app/public`. A file on the public disk is therefore not recoverable from any backup, so "take a backup, then delete" does not hold for it. Silent deletion of an unrecoverable file is worse than refusing, and `--skip-files` leaves a usable path forward.
+
+### Impact
+**Deletes 1,409 live rows across 17 tables** once approved and run in a permitted environment: 245 accounts, 63 partners (23 of them donors), 256 Muwakha rows, 205 transactions + 418 lines, 195 general expenses, 7 projects and their cost tree, 6 generated report rows. Plus 3 marker settings and 2 orphan `model_has_roles` rows.
+
+**Preserves** every settings/lookup table, 3 users, 7 roles, 192 permissions, 619 role-permission links, 77 migrations, 1,540 audit events, 80 backup operations and 66 notifications.
+
+**The deletion order became load-bearing.** `accounts` is the target of three RESTRICT foreign keys, so `transaction_lines`, `muwakha_families` and `muwakha_family_accounts` must be emptied before it. Reordering those steps breaks the reset outright rather than degrading quietly. A check against `information_schema` now enforces this, so a future edit to `DELETION_ORDER` that violates a real foreign key fails a check instead of failing in production.
+
+**`verify()` no longer guarantees what it used to.** Its account and donor fingerprints asserted the survival of rows the new contract destroys, so they were removed. The replacement checks preserved-table counts against an expected delta, which keeps `settings` / `model_has_roles` / `model_has_permissions` verifiable even though the reset legitimately removes specific rows from them.
+
+**One latent bug was fixed in passing:** the service hardcoded the `public` disk and ignored the `attachments.disk` column added in migration `2026_07_21_000001`, so a row stored on the private disk would have had its file looked up on the wrong disk. It now honours the per-row value. No live row is affected — `attachments` is empty.
+
+**Not decided here:** whether and how the reset runs against production, AUTO_INCREMENT resets (still deliberately not implemented), and whether backup coverage should be extended to the public disk.
