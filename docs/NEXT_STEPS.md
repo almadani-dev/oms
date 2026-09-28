@@ -1,6 +1,30 @@
 # Next Steps
 
-## Recommended Next Step (2026-09-28, Batch E done — review and commit, then Batch F: remaining search consistency)
+## Recommended Next Step (2026-09-28, Batch F done — review and commit, then the final read-only search audit)
+
+**First, review and commit Batch F.** Not yet committed. The commit covers:
+- the new `app/Filament/Concerns/SearchesGloballyWithArabicSearch.php`;
+- 18 resource files (global search keys or disable);
+- 7 table files (Transactions, Attachments, AuditEvents, Users, Roles, Permissions, Settings);
+- the new `tests/Feature/Search/RemainingSearchConsistencyTest.php` (17/17);
+- the regenerated `graphify-out/` files.
+
+**Then the final read-only search audit. Audit only; no edits.** It re-checks every search surface against the search project's rules:
+- ArabicSearch semantics per field;
+- literal `%` and `_`;
+- EXISTS rather than joins;
+- SoftDeletes;
+- authorization;
+- placeholders;
+- global-search keys.
+
+**Still open, separately:**
+- the default sort convention (`id asc` fallback on the Batch B master/lookup pages vs `id desc` elsewhere);
+- the tiny lookup lists still use Filament's default search placeholder.
+
+---
+
+## Previously Recommended Next Step (2026-09-28, Batch E done — review and commit, then Batch F: remaining search consistency)
 
 **First, review and commit Batch E.**
 - 3 report pages, 3 financial form schemas, `FinancialLookupFilters`, and the new `tests/Feature/Search/LookupSelectSearchTest.php` (18/18). The six directly affected existing test files are green. Not yet committed.

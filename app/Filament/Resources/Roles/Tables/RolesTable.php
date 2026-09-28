@@ -30,8 +30,13 @@ class RolesTable
 
         return $table
             ->modifyQueryUsing(fn (Builder $query) => $query->withCount(['users', 'permissions']))
+            ->searchPlaceholder('ابحث في الأدوار...')
             ->columns([
-                TextColumn::make('name')->label('اسم الدور')->searchable()->sortable(),
+                // Role names are free text (custom roles can be Arabic):
+                // ArabicSearch text semantics, as in the topbar search.
+                TextColumn::make('name')->label('اسم الدور')
+                    ->searchable(query: fn (Builder $query, string $search): Builder => \App\Support\Search\ArabicSearch::whereContainsText($query, 'name', $search))
+                    ->sortable(),
                 TextColumn::make('is_system')
                     ->label('النوع')
                     ->state(fn (Role $record): string => $service->isSystemRole($record) ? 'دور نظام' : 'دور مخصص')

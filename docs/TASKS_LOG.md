@@ -3961,3 +3961,107 @@ Search Batch E: large lookup Selects on three reports and three financial forms 
 
 ### Commit Hash
 Not committed, not pushed — awaiting review.
+
+---
+
+### Date
+2026-09-28
+
+### Task
+Search Batch F: final search consistency cleanup. It covers:
+- the المعاملات المالية list;
+- noisy topbar global-search keys;
+- Arabic-aware search on the remaining admin lists (attachments, audit log, users, roles, permissions);
+- search placeholders.
+
+### Result
+**Implemented and verified; NOT committed.**
+
+**Transactions list (`TransactionsTable`):**
+- Before: per-column search on `transaction_number` and the partner name only (plain LIKE).
+- Now: one table-level ArabicSearch search, each word matching any of:
+  - `transaction_number` and `reference`: identifiers;
+  - `description` and `notes`: Arabic text (alef-folded);
+  - transaction type name and partner name: Arabic text, via `whereHas` (EXISTS).
+- Placeholder: "ابحث في المعاملات المالية...".
+- Unchanged: filters, TrashedFilter, and `defaultSort('id', 'desc')`.
+- The classification (super type) is not displayed on this list, so it is not searched.
+- **Notes are included:** they are user-entered ملاحظات from the financial create flows (the same field the سطور المعاملات search already covers), and system-written notes are readable Arabic.
+
+**Global search:**
+- New trait `App\Filament\Concerns\SearchesGloballyWithArabicSearch`: each resource declares `globalSearchFields()` as `column => text|identifier`, and every word must match one of those fields through ArabicSearch.
+
+| Resource | Decision | Keys |
+|---|---|---|
+| Transactions | Improve | `transaction_number`, `reference` (identifiers). Description and notes stay list-only. |
+| Users | Improve | `name` (text), `email` (identifier) |
+| Attachments | Improve | `file_name` (identifier). The Batch 0 `scopeViewableBy` override is kept. |
+| Partners, Roles, AccountTypes, BankTypes, FiscalYears, PartnerTypes, ProjectStatuses, TransactionSuperTypes, TransactionTypes | Improve | `name` (text) |
+| Currencies | Improve | `name` (text), `code` (identifier) |
+| ProjectSupers | Improve | `code` (identifier), `name` (text) |
+| ExchangeRateHistories | Disable | A date searched as text |
+| AuditEvents | Disable | UUID |
+| Permissions | Disable | English machine key |
+| Settings | Disable | Internal keys |
+| Accounts, Projects, MuwakhaFamilies | Keep | Their earlier explicit overrides (Batches B and D) |
+
+**Lists:**
+
+| List | Search changes | Placeholder |
+|---|---|---|
+| Attachments | `file_name` and file type as identifiers. Operation number as an identifier through the attachable's transaction. Project name and uploader name as text through `whereHas`/`orWhereHasMorph`. `scopeViewableBy` untouched. | "ابحث في سجل المرفقات..." |
+| Audit log | `actor_name` and `subject_label` as text; `subject_key` and `actor_email` as identifiers | "ابحث في سجل التدقيق..." |
+| Users | name as text, email as identifier, role names as text via `whereHas` | "ابحث في المستخدمين..." |
+| Roles | name as text | "ابحث في الأدوار..." |
+| Permissions | The Arabic label filter uses `ArabicSearch::containsNormalized()`; the technical name keeps its plain search | "ابحث في الصلاحيات..." |
+| Settings | Search unchanged: internal keys, groups and values | "ابحث في الإعدادات العامة..." |
+
+The tiny lookup lists keep the default placeholder.
+
+**Sorting: inventory only, not changed.**
+- `id desc`: Transactions, سطور المعاملات, the financial lists and 9 other resources.
+- AuditEvents: `created_at desc`. Muwakha: `martyr_name`.
+- The Batch B master/lookup pages have no default sort, so they fall back to `id asc`.
+
+### Changed Files
+- New `app/Filament/Concerns/SearchesGloballyWithArabicSearch.php`.
+- Modified resources (global search only), 18 files:
+  - `AccountTypes`, `Attachments`, `AuditEvents`, `BankTypes`, `Currencies`, `ExchangeRateHistories`, `FiscalYears`, `PartnerTypes`, `Partners`;
+  - `Permissions`, `ProjectStatuses`, `ProjectSupers`, `Roles`, `Settings`, `TransactionSuperTypes`, `TransactionTypes`, `Transactions`, `Users`.
+- Modified tables: `Transactions/Tables/TransactionsTable.php`, `Attachments/Tables/AttachmentsTable.php`, `AuditEvents/Tables/AuditEventsTable.php`, `Users/Tables/UsersTable.php`, `Roles/Tables/RolesTable.php`, `Permissions/Tables/PermissionsTable.php`, `Settings/Tables/SettingsTable.php` (placeholder only).
+- New `tests/Feature/Search/RemainingSearchConsistencyTest.php` (17 tests).
+- `graphify-out/` regenerated from the final tree.
+- **Not** modified: transaction creation, lines, `buildLines()`, debit/credit, posting, balances, FX, deductions, financial guards, report calculations, sorting, schema, data, `ArabicSearch`.
+
+### Verification
+1. `ArabicSearchTest` → 84/84 passed (124 assertions). `RemainingSearchConsistencyTest` → 17/17 passed (79 assertions).
+2. Directly affected existing tests, all green:
+   - `MasterDataTableSearchTest` 34/34
+   - `MuwakhaFamilySearchTest` 23/23
+   - `FinancialListsSearchTest` 27/27
+   - `AttachmentGlobalSearchScopeTest` 6/6
+   - `AttachmentRegistryTest` 41/41
+   - `tests/Feature/Audit/Ui` 70/70
+   - `PermissionSyncAuditTest` 9/9
+   - `PermissionResourceLivewireTest` 11/11
+   - `PermissionSyncActionTest` 8/8
+   - `RoleResourceLivewireTest` 8/8
+   - `RoleOperationAndTargetSafetyTest` 8/8
+   - `SystemRoleProtectionTest` 23/23
+   - `UserFormBehaviorTest` 14/14
+   - `CrudRedirectStandardTest` 13/13
+   - `MuwakhaFamilyResourceTest` 21/21
+3. Before-fix proof, without `git stash`: the 25 modified app files were overwritten with `git show HEAD:`, tested, restored, and `sha1sum -c` was OK.
+   - 15 of 17 fail on the old code.
+   - The 2 that pass are preservation guards: pagination/SoftDeletes and global-search authorization.
+4. Read-only MySQL on this machine's local database:
+   - Transactions search: 0 joins, 2 EXISTS (type, partner), `ESCAPE` on every LIKE, alef fold on the text fields, `deleted_at is null` on all three tables, `order by id desc`, COUNT plus `LIMIT 10 OFFSET 0`. The term appears only in bindings; `REF_1` binds as `%REF!_1%`.
+   - Attachments, users and audit log: 0 main-query joins. The users role search is an EXISTS over the Spatie pivot. Terms only in bindings.
+   - Transactions render: 5 queries for 8 rows both unsearched and with a broad Arabic search (no per-row queries).
+   - Global search: `LIMIT 50` and 0 joins. The four disabled resources report `canGloballySearch() = false` for Super Admin.
+5. `php -l` clean on every changed PHP file. Line endings unchanged from HEAD (`SettingsTable` was already mixed).
+6. `PYTHONHASHSEED=0 graphify update .` → 958 files, 15360 nodes, 38694 edges, with 0 sensitive-path hits.
+7. Not run: the full suite or the full Feature suite.
+
+### Commit Hash
+Not committed, not pushed — awaiting review.

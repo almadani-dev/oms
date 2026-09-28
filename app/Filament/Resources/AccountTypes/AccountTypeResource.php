@@ -28,6 +28,16 @@ class AccountTypeResource extends Resource
     protected static ?string $pluralModelLabel = 'أنواع الحسابات';
     protected static ?string $recordTitleAttribute = 'name';
 
+    use \App\Filament\Concerns\SearchesGloballyWithArabicSearch;
+
+    /** Topbar search keys and their ArabicSearch semantics. */
+    protected static function globalSearchFields(): array
+    {
+        return [
+            'name' => 'text',
+        ];
+    }
+
     public static function form(Schema $schema): Schema
     {
         return AccountTypeForm::configure($schema);

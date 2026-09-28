@@ -2918,3 +2918,32 @@ Muwakha family list/export search and topbar global search only. No schema, data
 
 ### Impact
 Option loading and search on three reports and three financial forms. No accounting, posting, transaction, hydration, report-calculation, export, schema or data change.
+
+---
+
+### Date
+2026-09-28 (search Batch F: final search consistency; global search keyed by field semantics)
+
+### Decision
+1. **Topbar global search goes through one trait,** `SearchesGloballyWithArabicSearch`. Each resource declares its keys with semantics (`text` = alef-folded Arabic, `identifier` = cleaned and literal).
+2. **Global search is disabled** (`$isGloballySearchable = false`) where the only keys are noise:
+   - ExchangeRateHistories: a date searched as text;
+   - AuditEvents: UUID;
+   - Permissions: English machine keys;
+   - Settings: internal keys.
+   Their list pages keep their own search.
+3. **Transactions in the topbar are found by number and reference only.** Description and notes are searched on the list page, not globally.
+4. **The Transactions list searches notes:** they are user-entered ملاحظات, the same field سطور المعاملات already searches.
+5. **Machine keys keep plain search** (permission technical names, setting keys, groups and values). Only Arabic labels and free text get ArabicSearch.
+6. **Sorting is not changed** in this batch (inventory only).
+
+### Reason
+1. The same semantics as the list pages, without repeating the closure in 14 resources.
+2. Those results cluttered every topbar search without helping anyone find a record; the admin list pages remain the place to search them.
+3. Free text in the topbar would flood results with every transaction mentioning a common word.
+4. Users search by what they typed, and this is the field they typed into.
+5. Alef folding is meaningless for English keys, and those lists are admin-only.
+6. The sort convention is a separate product decision that remains open.
+
+### Impact
+List and global search on the admin, master-data and Transactions resources. No accounting, posting, transaction, report, sorting, schema or data change.

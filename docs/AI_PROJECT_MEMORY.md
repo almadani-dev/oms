@@ -4,6 +4,41 @@
 
 ## Recent Changes
 
+- **2026-09-28 — Search Batch F: final search consistency cleanup (Transactions list, global search keys, remaining admin lists, placeholders). 25 modified production files, 1 new trait, 1 new test file. Implemented and verified, NOT committed.**
+
+  **المعاملات المالية list:** one table-level ArabicSearch search.
+  - Before: per-column search on number and partner only.
+  - Now: `transaction_number` and `reference` as identifiers; `description` and `notes` as alef-folded text; transaction type and partner names through `whereHas` (EXISTS, no joins).
+  - Notes are searched because they are user-entered ملاحظات, the same field سطور المعاملات searches.
+  - Filters, TrashedFilter and `id desc` are unchanged.
+
+  **Topbar global search:** the new trait `App\Filament\Concerns\SearchesGloballyWithArabicSearch` lets each resource declare its keys with semantics (`text` / `identifier`).
+  - Re-keyed:
+    - Transactions: number and reference only;
+    - Users: name and email;
+    - Attachments: file name (Batch 0 `scopeViewableBy` kept);
+    - Currencies: name and code;
+    - ProjectSupers: code and name;
+    - Partners, Roles and 7 small lookups: name.
+  - **Disabled** (`$isGloballySearchable = false`): ExchangeRateHistories (date), AuditEvents (UUID), Permissions (machine key), Settings (internal key). Their list pages still search.
+  - Accounts, Projects and Muwakha keep their earlier overrides.
+
+  **Lists:**
+  - Attachments: project and uploader names as text, operation number and file name/type as literal identifiers.
+  - Audit log: actor name and subject label as text; subject key and email as identifiers.
+  - Users: name as text, email as identifier, role names as text.
+  - Roles: name as text.
+  - Permissions: the Arabic label is normalized; the technical name keeps its plain search.
+  - Arabic placeholders on Transactions, Attachments, Audit log, Users, Roles, Permissions and Settings. The Settings search itself is unchanged.
+
+  **Sorting:** inventory only, unchanged. `id desc` on the financial and transaction lists; `id asc` fallback on the Batch B master pages.
+
+  **Tests:**
+  - `RemainingSearchConsistencyTest` 17/17 (15 fail on the old code) and `ArabicSearchTest` 84/84.
+  - 15 directly affected existing test files green.
+
+  **Not touched:** transaction creation, lines, `buildLines()`, posting, balances, FX, deductions, guards, reports, sorting, schema, data, `ArabicSearch`.
+
 - **2026-09-28 — Search Batch E: the large report and form lookup Selects search on the server. 7 production files, 1 new test file. Implemented and verified, NOT committed.**
 
   **Converted** (previously every one loaded all rows into the page and filtered with a plain browser `includes()`):

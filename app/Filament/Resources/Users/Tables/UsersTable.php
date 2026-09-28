@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Users\Tables;
 
 use App\Models\User;
 use App\Services\Users\UserManagementService;
+use App\Support\Search\ArabicSearch;
 use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
@@ -13,6 +14,7 @@ use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 /**
  * Single-record delete/restore only — no DeleteBulkAction/RestoreBulkAction
@@ -29,10 +31,21 @@ class UsersTable
         $service = app(UserManagementService::class);
 
         return $table
+            ->searchPlaceholder('ابحث في المستخدمين...')
             ->columns([
-                TextColumn::make('name')->label('الاسم')->searchable()->sortable(),
-                TextColumn::make('email')->label('البريد الإلكتروني')->searchable()->sortable()->copyable(),
-                TextColumn::make('roles.name')->label('الأدوار')->badge()->searchable(),
+                // Search semantics (ArabicSearch): the name and role names are
+                // Arabic text (custom roles can be Arabic), the email is an
+                // identifier.
+                TextColumn::make('name')->label('الاسم')
+                    ->searchable(query: fn (Builder $query, string $search): Builder => ArabicSearch::whereContainsText($query, 'name', $search))
+                    ->sortable(),
+                TextColumn::make('email')->label('البريد الإلكتروني')
+                    ->searchable(query: fn (Builder $query, string $search): Builder => ArabicSearch::whereContainsIdentifier($query, 'email', $search))
+                    ->sortable()->copyable(),
+                TextColumn::make('roles.name')->label('الأدوار')->badge()
+                    ->searchable(query: fn (Builder $query, string $search): Builder => ArabicSearch::clean($search) === ''
+                        ? $query
+                        : $query->whereHas('roles', fn (Builder $role): Builder => ArabicSearch::whereContainsText($role, 'name', $search))),
                 IconColumn::make('is_active')->label('نشط')->boolean(),
                 TextColumn::make('created_at')->label('تاريخ الإنشاء')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),
             ])

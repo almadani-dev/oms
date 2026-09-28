@@ -64,6 +64,9 @@ class AuditEventResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'uuid';
 
+    // No topbar global search: UUIDs are not something anyone types; the audit log has its own filters and search. The resource itself is unchanged.
+    protected static bool $isGloballySearchable = false;
+
     protected static ?string $slug = 'audit-events';
 
     public static function table(Table $table): Table

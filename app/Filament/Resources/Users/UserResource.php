@@ -28,6 +28,17 @@ class UserResource extends Resource
     protected static ?string $pluralModelLabel = 'المستخدمون';
     protected static ?string $recordTitleAttribute = 'name';
 
+    use \App\Filament\Concerns\SearchesGloballyWithArabicSearch;
+
+    /** Topbar search keys and their ArabicSearch semantics. */
+    protected static function globalSearchFields(): array
+    {
+        return [
+            'name' => 'text',
+            'email' => 'identifier',
+        ];
+    }
+
     public static function form(Schema $schema): Schema
     {
         return UserForm::configure($schema);

@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Permissions\Tables;
 
 use App\Support\Permissions\PermissionRegistry;
+use App\Support\Search\ArabicSearch;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
@@ -29,6 +30,7 @@ class PermissionsTable
     {
         return $table
             ->modifyQueryUsing(fn (Builder $query) => $query->withCount('roles')->with('roles'))
+            ->searchPlaceholder('ابحث في الصلاحيات...')
             ->columns([
                 TextColumn::make('name')
                     ->label('الاسم التقني')
@@ -40,7 +42,10 @@ class PermissionsTable
                     ->state(fn (Permission $record): string => PermissionRegistry::all()[$record->name] ?? $record->name)
                     ->searchable(query: function (Builder $query, string $search): Builder {
                         $matchingNames = collect(PermissionRegistry::all())
-                            ->filter(fn (string $label): bool => str_contains($label, $search))
+                            // The Arabic label, normalized on both sides (alef,
+                            // harakat, digits); the technical name above keeps
+                            // its plain search — it is an English machine key.
+                            ->filter(fn (string $label): bool => ArabicSearch::containsNormalized($label, $search))
                             ->keys()
                             ->all();
 

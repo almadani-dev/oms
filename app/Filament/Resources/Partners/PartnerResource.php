@@ -28,6 +28,16 @@ class PartnerResource extends Resource
     protected static ?string $pluralModelLabel = 'الشركاء';
     protected static ?string $recordTitleAttribute = 'name';
 
+    use \App\Filament\Concerns\SearchesGloballyWithArabicSearch;
+
+    /** Topbar search keys and their ArabicSearch semantics. */
+    protected static function globalSearchFields(): array
+    {
+        return [
+            'name' => 'text',
+        ];
+    }
+
     public static function form(Schema $schema): Schema
     {
         return PartnerForm::configure($schema);

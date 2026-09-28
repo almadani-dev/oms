@@ -58,6 +58,16 @@ class AttachmentResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'file_name';
 
+    use \App\Filament\Concerns\SearchesGloballyWithArabicSearch;
+
+    /** Topbar search keys and their ArabicSearch semantics. */
+    protected static function globalSearchFields(): array
+    {
+        return [
+            'file_name' => 'identifier',
+        ];
+    }
+
     public static function table(Table $table): Table
     {
         return AttachmentsTable::configure($table);

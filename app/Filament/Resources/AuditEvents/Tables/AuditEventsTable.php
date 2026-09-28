@@ -5,6 +5,7 @@ namespace App\Filament\Resources\AuditEvents\Tables;
 use App\Models\AuditEvent;
 use App\Support\Audit\AuditLabels;
 use App\Support\Audit\AuditRawValue;
+use App\Support\Search\ArabicSearch;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\TextInput;
@@ -87,15 +88,18 @@ class AuditEventsTable
             // present (see CanSortRecords::applyDefaultSortToTableQuery), so
             // this yields exactly `created_at desc, id desc` — both indexed.
             ->defaultSort('created_at', 'desc')
+            ->searchPlaceholder('ابحث في سجل التدقيق...')
             ->columns([
                 TextColumn::make('created_at')
                     ->label('وقت الحدث')
                     ->dateTime('Y-m-d H:i:s')
                     ->sortable(),
 
+                // Search semantics (ArabicSearch): the actor and subject labels
+                // are Arabic text; the record key and email are identifiers.
                 TextColumn::make('actor_name')
                     ->label('المنفذ')
-                    ->searchable()
+                    ->searchable(query: fn (Builder $query, string $search): Builder => ArabicSearch::whereContainsText($query, 'actor_name', $search))
                     // The stored snapshot, never $record->actor->name — a
                     // deleted user must still read as who they were.
                     ->state(fn (AuditEvent $record): string => $record->actor_name ?? 'غير محدد')
@@ -152,19 +156,19 @@ class AuditEventsTable
 
                 TextColumn::make('subject_label')
                     ->label('السجل المتأثر')
-                    ->searchable()
+                    ->searchable(query: fn (Builder $query, string $search): Builder => ArabicSearch::whereContainsText($query, 'subject_label', $search))
                     ->wrap()
                     ->placeholder('—'),
 
                 TextColumn::make('subject_key')
                     ->label('معرّف السجل')
-                    ->searchable()
+                    ->searchable(query: fn (Builder $query, string $search): Builder => ArabicSearch::whereContainsIdentifier($query, 'subject_key', $search))
                     ->placeholder('—')
                     ->toggleable(isToggledHiddenByDefault: true),
 
                 TextColumn::make('actor_email')
                     ->label('بريد المنفذ')
-                    ->searchable()
+                    ->searchable(query: fn (Builder $query, string $search): Builder => ArabicSearch::whereContainsIdentifier($query, 'actor_email', $search))
                     ->placeholder('—')
                     ->toggleable(isToggledHiddenByDefault: true),
 

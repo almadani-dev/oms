@@ -1653,3 +1653,38 @@ See the 2026-09-28 Batch E entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_L
 - Plus 6 directly affected existing test files, all green.
 
 Not committed.
+
+---
+
+### Date
+2026-09-28 (search Batch F: "Do NOT mechanically make every field searchable")
+
+### Prompt
+Approved **Batch F only**, the final implementation batch of the search project. It covered:
+- the Transactions list search;
+- noisy topbar global search;
+- Arabic-aware search on the remaining Arabic free-text fields;
+- consistent placeholders.
+
+Rules it set:
+- *"Do NOT mechanically make every field searchable"*;
+- decide Keep/Improve/Disable per global-search resource with a reason;
+- prove the intended key finds the record, unauthorized users get nothing, and SoftDeletes stay excluded;
+- report the sorting inventory without changing it;
+- no change to transaction creation, lines, posting, balances, FX, deductions, guards or reports;
+- no `git stash`.
+
+### Purpose
+**The per-resource decision table, not a blanket change, drove the result.**
+- Four resources lost topbar search entirely, because their keys were dates, UUIDs or machine names.
+- Fourteen were re-keyed through one trait with explicit text/identifier semantics.
+- Accounts, Projects and Muwakha were left alone.
+
+**The notes decision was made from the data flow**, not assumed: user-entered ملاحظات, already searched on سطور المعاملات.
+
+### Result
+See the 2026-09-28 Batch F entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md`.
+- 25 modified production files and 1 new trait.
+- 1 new test file (17 tests; 15 fail on the old code).
+
+Not committed. A separate final read-only search audit follows.

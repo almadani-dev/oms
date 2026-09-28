@@ -10,6 +10,7 @@ use App\Models\Project;
 use App\Models\User;
 use App\Services\Attachments\AttachmentStorageService;
 use App\Services\Attachments\FinancialAttachmentRegistry;
+use App\Support\Search\ArabicSearch;
 use Filament\Actions\Action;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
@@ -39,10 +40,15 @@ class AttachmentsTable
         return $table
             ->modifyQueryUsing(fn (Builder $query): Builder => FinancialAttachmentRegistry::scopeViewableBy($query, auth()->user()))
             ->defaultSort('id', 'desc')
+            ->searchPlaceholder('ابحث في سجل المرفقات...')
             ->columns([
+                // Search semantics (ArabicSearch): file name, file type and the
+                // operation number are identifiers; the project and uploader
+                // names are Arabic text. `%` / `_` match literally everywhere.
+                // The per-user visibility scope above is untouched.
                 TextColumn::make('file_name')
                     ->label('اسم الملف')
-                    ->searchable()
+                    ->searchable(query: fn (Builder $query, string $search): Builder => ArabicSearch::whereContainsIdentifier($query, 'file_name', $search))
                     ->sortable()
                     ->copyable()
                     ->wrap(),
@@ -56,16 +62,16 @@ class AttachmentsTable
                     ->label('رقم المعاملة')
                     ->state(fn (Attachment $record): ?string => FinancialAttachmentRegistry::operationNumber($record))
                     ->placeholder('—')
-                    ->searchable(query: fn (Builder $query, string $search): Builder => $query->orWhereHasMorph(
+                    ->searchable(query: fn (Builder $query, string $search): Builder => ArabicSearch::clean($search) === '' ? $query : $query->orWhereHasMorph(
                         'attachable',
                         FinancialAttachmentRegistry::supportedTypes(),
-                        fn (Builder $q): Builder => $q->whereHas('transaction', fn (Builder $t): Builder => $t->where('transaction_number', 'like', "%{$search}%")),
+                        fn (Builder $q): Builder => $q->whereHas('transaction', fn (Builder $t): Builder => ArabicSearch::whereContainsIdentifier($t, 'transaction_number', $search)),
                     )),
 
                 TextColumn::make('project')
                     ->label('المشروع')
                     ->state(fn (Attachment $record): string => FinancialAttachmentRegistry::projectName($record) ?? '—')
-                    ->searchable(query: fn (Builder $query, string $search): Builder => $query->orWhereHasMorph(
+                    ->searchable(query: fn (Builder $query, string $search): Builder => ArabicSearch::clean($search) === '' ? $query : $query->orWhereHasMorph(
                         'attachable',
                         [ProjectCostReceipt::class, ProjectCostBudget::class, ProjectCostBudgetsPayment::class],
                         function (Builder $q, string $type) use ($search): void {
@@ -73,7 +79,7 @@ class AttachmentsTable
                                 ? 'projectCostBudget.projectCost.project'
                                 : 'projectCost.project';
 
-                            $q->whereHas($relation, fn (Builder $p): Builder => $p->where('name', 'like', "%{$search}%"));
+                            $q->whereHas($relation, fn (Builder $p): Builder => ArabicSearch::whereContainsText($p, 'name', $search));
                         },
                     )),
 
@@ -89,7 +95,7 @@ class AttachmentsTable
                 TextColumn::make('file_type')
                     ->label('نوع الملف')
                     ->badge()
-                    ->searchable()
+                    ->searchable(query: fn (Builder $query, string $search): Builder => ArabicSearch::whereContainsIdentifier($query, 'file_type', $search))
                     ->toggleable(),
 
                 TextColumn::make('file_size')
@@ -110,7 +116,9 @@ class AttachmentsTable
                 TextColumn::make('createdBy.name')
                     ->label('رفع بواسطة')
                     ->placeholder('—')
-                    ->searchable()
+                    ->searchable(query: fn (Builder $query, string $search): Builder => ArabicSearch::clean($search) === ''
+                        ? $query
+                        : $query->whereHas('createdBy', fn (Builder $user): Builder => ArabicSearch::whereContainsText($user, 'name', $search)))
                     ->toggleable(),
 
                 TextColumn::make('created_at')

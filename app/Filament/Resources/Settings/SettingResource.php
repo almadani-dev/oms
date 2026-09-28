@@ -26,6 +26,9 @@ class SettingResource extends Resource
     protected static ?string $pluralModelLabel = 'الإعدادات';
     protected static ?string $recordTitleAttribute = 'key';
 
+    // No topbar global search: internal configuration keys; the short settings list is the way in. The resource itself is unchanged.
+    protected static bool $isGloballySearchable = false;
+
     public static function form(Schema $schema): Schema
     {
         return SettingForm::configure($schema);

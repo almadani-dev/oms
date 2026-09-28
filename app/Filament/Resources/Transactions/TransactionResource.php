@@ -28,6 +28,17 @@ class TransactionResource extends Resource
     protected static ?string $pluralModelLabel = 'المعاملات المالية';
     protected static ?string $recordTitleAttribute = 'transaction_number';
 
+    use \App\Filament\Concerns\SearchesGloballyWithArabicSearch;
+
+    /** Topbar search keys and their ArabicSearch semantics. */
+    protected static function globalSearchFields(): array
+    {
+        return [
+            'transaction_number' => 'identifier',
+            'reference' => 'identifier',
+        ];
+    }
+
     public static function form(Schema $schema): Schema
     {
         return TransactionForm::configure($schema);

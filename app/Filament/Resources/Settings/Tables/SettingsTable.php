@@ -15,6 +15,7 @@ class SettingsTable
     public static function configure(Table $table): Table
     {
         return $table
+            ->searchPlaceholder('ابحث في الإعدادات العامة...')
             ->columns([
                 TextColumn::make('key')
                     ->label('المفتاح')

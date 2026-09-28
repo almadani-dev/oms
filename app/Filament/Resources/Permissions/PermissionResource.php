@@ -44,6 +44,9 @@ class PermissionResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'name';
 
+    // No topbar global search: the title is an English machine key (e.g. accounts.view_any); the list searches the Arabic label. The resource itself is unchanged.
+    protected static bool $isGloballySearchable = false;
+
     public static function infolist(Schema $schema): Schema
     {
         return PermissionInfolist::configure($schema);

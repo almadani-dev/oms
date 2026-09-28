@@ -33,6 +33,17 @@ class ProjectSuperResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'name';
 
+    use \App\Filament\Concerns\SearchesGloballyWithArabicSearch;
+
+    /** Topbar search keys and their ArabicSearch semantics. */
+    protected static function globalSearchFields(): array
+    {
+        return [
+            'code' => 'identifier',
+            'name' => 'text',
+        ];
+    }
+
     public static function form(Schema $schema): Schema
     {
         return ProjectSuperForm::configure($schema);

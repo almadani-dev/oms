@@ -30,6 +30,9 @@ class ExchangeRateHistoryResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'date';
 
+    // No topbar global search: a date searched as text is not a way to find a rate; the list and its currency filter are. The resource itself is unchanged.
+    protected static bool $isGloballySearchable = false;
+
     public static function form(Schema $schema): Schema
     {
         return ExchangeRateHistoryForm::configure($schema);
