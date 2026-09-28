@@ -1434,3 +1434,30 @@ Two prompts, deliberately separated. The first opened with *"We are considering 
 
 ### Result
 See `docs/AI_PROJECT_MEMORY.md` / `docs/TASKS_LOG.md` / `docs/DECISIONS_LOG.md` (2026-09-22 entries). Audit delivered across all twelve requested sections, then implemented across 5 production files and 2 test files with 10 new tests. Targeted runs: 10/10 new, 4/4 `GeneralExpenseAuditTest`, 28/28 `tests/Feature/GeneralExpenses`, 11/11 `FinancialAuditRegressionTest`, plus 53 more across the three other suites that exercise the changed pages — 96 tests, all green. No migration, no accounting change, no report change, no partner data created. One pre-existing test asserted the removed behavior and was inverted to prove the new guarantee rather than deleted. Not committed, per instructions.
+
+---
+
+### Date
+2026-09-28 (whole-application search audit → Batch 0, with "confirm the audit still matches the code" before editing)
+
+### Prompt
+Two prompts.
+
+The first asked for an **audit/study only**. It set 13 audit areas: search surfaces, per-page state, field classification, a real-collation Arabic test, a normalization design, SQL and performance, indexes, filters, form selects, abstraction choice and multi-word behaviour. It named a 13-section report. It forbade any file, data, migration, commit or Graphify change, and required database work to be read-only.
+
+The second approved **Batch 0 only**. It said: *"Before editing, re-open the REAL current files and confirm the audit still matches the code. If anything materially differs, STOP AND ASK."* It also required the wildcard question to be audited first, and said a temporary escaping implementation must not be duplicated if it belongs in the future shared helper.
+
+### Purpose
+**The re-verification instruction caught a wrong audit finding.** Re-reading `HasGlobalSearch` before editing showed that Filament already drops results the user cannot `canView()`, so the audit's headline security gap did not exist. Stopping to ask, instead of shipping a "security fix" for a non-issue, led to a correctly described change. The two real, smaller gaps (trashed parents, and the result limit being used up by unviewable rows) were found and tested. A test was written that fails on the old code for the right reason.
+
+**Requiring the real collation, not an assumed one, produced the audit's most useful facts:**
+- diacritics compare equal with `=` but not with `LIKE`;
+- Arabic digits already match ASCII digits in MySQL;
+- alef variants are distinct in every candidate collation.
+
+A normalizer designed from assumptions would have got all three wrong.
+
+**"Audit the wildcard question first"** prevented a stop-gap implementation that Batch A would have replaced.
+
+### Result
+See the 2026-09-28 entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md`. The audit changed nothing. Batch 0 touched 3 production files and added 2 test files (16 tests), plus the 49 existing attachment tests as regression, all green. Not committed.

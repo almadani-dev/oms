@@ -1,6 +1,36 @@
 # Next Steps
 
-## Recommended Next Step (2026-09-26, Muwakha import EXECUTED — 72/72 families created and verified; review, then commit)
+## Recommended Next Step (2026-09-28, search Batch 0 done — review and commit, then Batch A: shared Arabic search behaviour)
+
+**First, review and commit Batch 0.** It is 3 production files and 2 new test files, all green, not yet committed.
+
+**Then Batch A. Plan only; do not implement until approved.** Create one small helper, `app/Support/Search/ArabicSearch.php`, and apply it first to `سطور المعاملات`, the only page with a full search test suite.
+
+What the helper covers:
+- **Search-term normalization:** trim; collapse whitespace; Arabic-Indic and Persian digits → ASCII; strip harakat, tatweel and zero-width characters; fold `أ إ آ ٱ` → `ا`; escape `%`, `_` and `\`.
+- **Column-side alef folding** via `REPLACE(REPLACE(REPLACE(col,'أ','ا'),'إ','ا'),'آ','ا')`. It works on both MySQL and the SQLite test database. It costs nothing in index terms, because a leading-wildcard `LIKE` never uses an index.
+- **Numeric parsing** so the amount search accepts Arabic digits.
+- **Normalized Arabic label matching** for enum labels such as `line_role`.
+
+Targeted tests: a new `tests/Unit/Support/Search/ArabicSearchTest.php`, plus the existing `tests/Feature/TransactionLines/TransactionLinesTableSearchTest.php`. The test suite runs on SQLite, so it must assert the app-level normalization. MySQL collation claims are checked only by read-only scripts.
+
+**Decisions still open (from the audit):**
+- whether to fold ى → ي and ة → ه (risk: `علي` matching `على`);
+- whether stored harakat, tatweel and stray spaces should ever be cleaned at write time;
+- whether display N+1 cleanup on the financial lists (Batch C2) belongs in this effort.
+
+**Remaining batches, in order:**
+- B: accounts, projects and master data;
+- C1: financial lists, which today search only `transaction_number`;
+- D: Muwakha (`card_code` is not searchable from the list);
+- E: report and form pickers that search in the browser;
+- F: placeholders and global-search cleanup.
+
+**Also outstanding:** `graphify-out/` is stale (it predates the last two commits and this batch).
+
+---
+
+## Previously Recommended Next Step (2026-09-26, Muwakha import EXECUTED — 72/72 families created and verified; review, then commit)
 
 **The data work is finished. What is left is review and a commit.** The 72 families are live in production: `muwakha_families` 0 → 72, `accounts` 37 → 109, `muwakha_family_accounts` 0 → 72, `muwakha_family_projects` 0 → 72, `audit_events` 1608 → 1896 (+288 = 4 × 72). All 72 links are in project #10 `MUWAKHA_20260926_001`, attributed to user #2 (Super Admin). `oms:check-financial-integrity` → **OK, exit 0**. **Do not run the importer with `--execute` again** — a second dry run already proves it refuses (0 READY / 72 ERROR).
 

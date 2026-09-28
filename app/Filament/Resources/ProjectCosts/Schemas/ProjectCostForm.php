@@ -19,7 +19,8 @@ class ProjectCostForm
                     ->label('المشروع')
                     ->relationship('project', 'name')
                     ->getOptionLabelFromRecordUsing(fn ($record) => $record->code ?: $record->name)
-                    ->searchable()
+                    // The label shows the code, so the code must be searchable too.
+                    ->searchable(['code', 'name'])
                     ->preload(false)
                     ->optionsLimit(50)
                     ->required()

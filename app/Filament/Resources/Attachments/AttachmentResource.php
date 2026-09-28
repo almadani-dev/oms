@@ -92,6 +92,19 @@ class AttachmentResource extends Resource
         );
     }
 
+    /**
+     * Topbar global search starts from the same per-user scope as the list
+     * table (AttachmentsTable), so it offers exactly the rows the list shows:
+     * allowed attachable types only, with a live (not soft-deleted) parent.
+     * Filament's per-result canView() check still runs afterwards, but on its
+     * own it neither hid rows whose parent is gone nor kept unviewable rows
+     * from consuming the global search result limit.
+     */
+    public static function getGlobalSearchEloquentQuery(): Builder
+    {
+        return FinancialAttachmentRegistry::scopeViewableBy(parent::getGlobalSearchEloquentQuery(), auth()->user());
+    }
+
     public static function getRecordRouteBindingEloquentQuery(): Builder
     {
         return parent::getRecordRouteBindingEloquentQuery()

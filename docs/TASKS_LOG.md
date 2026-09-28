@@ -3477,3 +3477,41 @@ Execute the approved OMS operational reset against the live PRODUCTION `oms` dat
 
 ### Commit Hash
 Not committed, not pushed — awaiting review.
+
+---
+
+### Date
+2026-09-28
+
+### Task
+Search Batch 0 (correctness + consistency): scope Attachments global search to the list's visibility rules, and make both project pickers search the code they display. Preceded by a read-only, whole-application search audit that changed no files.
+
+### Result
+**Implemented and verified; NOT committed.**
+
+**The audit's Attachments security finding was wrong, and this was caught before editing.** Filament's `getGlobalSearchResults()` drops results whose URL is blank, and the URL requires `canView()`. Unauthorized users therefore never saw file names. The real gaps were:
+- attachments of soft-deleted or missing parents showed in global search although the list hides them;
+- unviewable rows used up the 50-result limit before the per-result PHP filtering.
+
+The user was asked and chose to apply the scope anyway, framed as consistency and correctness.
+
+**Project pickers:** typing the displayed code now finds the option; name search still works. The labels, `preload()`, `preload(false)`, `optionsLimit(50)` and SoftDeletes scoping are unchanged. Search remains one server-side query with `limit 50`.
+
+### Changed Files
+- Modified: `app/Filament/Resources/Attachments/AttachmentResource.php` — adds `getGlobalSearchEloquentQuery()`, which reuses `FinancialAttachmentRegistry::scopeViewableBy()`.
+- Modified: `app/Filament/Resources/Projects/Schemas/ProjectForm.php` — `project_super_id` changed to `->searchable(['code', 'name'])`.
+- Modified: `app/Filament/Resources/ProjectCosts/Schemas/ProjectCostForm.php` — `project_id` changed to `->searchable(['code', 'name'])`.
+- New: `tests/Feature/Attachments/AttachmentGlobalSearchScopeTest.php` (6 tests).
+- New: `tests/Feature/Projects/ProjectSelectCodeSearchTest.php` (10 tests).
+- **Not** modified: any migration, schema, data, accounting or financial logic, the ArabicSearch helper (not created), financial list search, Muwakha search, or N+1 code.
+
+### Verification
+1. `php artisan test tests/Feature/Attachments/AttachmentGlobalSearchScopeTest.php` → 6/6 passed, 17 assertions.
+2. `php artisan test tests/Feature/Projects/ProjectSelectCodeSearchTest.php` → 10/10 passed, 30 assertions.
+3. Checked that the tests actually test the fix: with only the production change stashed, the attachment test fails 3/6 (B, B2, E) and the select test fails 5/10. The code was restored afterwards.
+4. Regression on the only existing tests touching `AttachmentResource`: `AttachmentRegistryTest` 41/41 (101 assertions) and `AttachmentResourceHardeningTest` 8/8 (17 assertions). No existing test uses `ProjectForm` or `ProjectCostForm`.
+5. `php -l` clean on all 5 changed and new files.
+6. Not run: the full suite, the full Feature suite, and `graphify update .`.
+
+### Commit Hash
+Not committed, not pushed — awaiting review.

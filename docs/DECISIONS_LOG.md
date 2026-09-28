@@ -2727,3 +2727,30 @@ Search and filter UX only. Every predicate is database-side — correlated `EXIS
 **One latent bug was fixed in passing:** the service hardcoded the `public` disk and ignored the `attachments.disk` column added in migration `2026_07_21_000001`, so a row stored on the private disk would have had its file looked up on the wrong disk. It now honours the per-row value. No live row is affected — `attachments` is empty.
 
 **Not decided here:** whether and how the reset runs against production, AUTO_INCREMENT resets (still deliberately not implemented), and whether backup coverage should be extended to the public disk.
+
+---
+
+### Date
+2026-09-28 (search Batch 0: Attachments global search uses the list's scope; picker search columns follow the displayed label; wildcard escaping deferred)
+
+### Decision
+1. **Attachments topbar global search starts from `FinancialAttachmentRegistry::scopeViewableBy()`**, the same scope as the registry list, through `AttachmentResource::getGlobalSearchEloquentQuery()`. Filament's per-result `canView()` stays in place as a second layer.
+2. **A relationship Select's search columns must cover whatever its label displays.** Both project pickers label as `code ?: name`, so both search `['code', 'name']`, using Filament's native `searchable(array)`.
+3. **LIKE wildcard escaping (`%`, `_`, `\`) is deferred to Batch A.** It will live in the shared search helper.
+4. **No migration, index, collation or generated-column change for search.** This holds until measured latency says otherwise.
+
+### Reason
+1. The pre-edit re-check showed Filament already hides results the user cannot `canView()`, so this is not a leak fix. It is still correct:
+   - the list and global search should offer the same rows, and today they don't for trashed or missing parents;
+   - filtering in SQL means unviewable rows no longer use up the 50-result limit or get loaded into PHP.
+
+   Reusing the existing scope avoids a second copy of the permission rules. The user chose this option explicitly.
+2. Before the fix, typing the visible code returned nothing, because Filament's default search column is the relationship title attribute (`name`).
+3. None of the Batch 0 fixes writes its own `LIKE`; each goes through Filament's own search code. A temporary per-resource escape would mean overriding Filament internals and would be replaced by Batch A anyway.
+4. The measured facts rule it out:
+   - no available MySQL collation folds alef variants;
+   - a leading-wildcard `LIKE` inside an OR group cannot use B-tree indexes;
+   - current tables hold at most a few hundred rows.
+
+### Impact
+Search behaviour only. Global search for attachments now matches the list exactly. Both pickers now find options by code. No accounting, data, schema or report change.

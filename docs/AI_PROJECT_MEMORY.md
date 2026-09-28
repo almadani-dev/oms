@@ -4,6 +4,37 @@
 
 ## Recent Changes
 
+- **2026-09-28 — Search Batch 0 (correctness + consistency): Attachments global search now uses the list's own visibility scope, and both project pickers search the code they display. 3 production files, 2 new test files. Implemented and verified, NOT committed.**
+
+  **This batch follows a read-only, whole-application search audit (same day).** The audit's measured facts, which later batches depend on:
+  - Every text column is `utf8mb4_unicode_ci`; the database default `utf8mb4_0900_ai_ci` is not used by any column.
+  - Under that collation `ا/أ/إ/آ/ٱ` are different letters for both `=` and `LIKE`. This is proven on data: `أفراد` finds 2 account types and `افراد` finds 0. `0900_ai_ci` and `unicode_520_ci` behave the same, so no collation change would fix it.
+  - Harakat compare equal with `=` but not with `LIKE`. Tatweel, ي/ى, ة/ه, ؤ/و and ئ/ي all differ.
+  - Arabic-Indic and Persian digits equal ASCII digits for `=` and `LIKE`, but not for PHP's `is_numeric()`, the browser-side select filter, or SQLite.
+  - Filament splits search terms by default. Quoted text acts as a phrase, and `%` and `_` are not escaped, so a bare `_` matches every row.
+  - Every `->options(closure)->searchable()` Select loads every option and filters in the browser with a plain `toLowerCase().includes()`. `optionsLimit` only caps how many are rendered; `preload(false)` does nothing without a relationship.
+  - In Filament 5.6.7, table search skips only `hidden()`/`visible()` columns, **not** columns the user toggled off. The comment in `TransactionLinesTable` claiming otherwise is inaccurate; the table-level design stays.
+  - The data counts came from the local `oms` database on this machine (for example 4 Muwakha families and 11 accounts). They do not match the production counts recorded on 2026-09-26.
+
+  **Correction to the audit, found while re-verifying before editing:** the audit reported that unauthorized users could see attachment file names in topbar search. That is false. Filament's `getGlobalSearchResults()` drops any result whose URL is blank, and `getGlobalSearchResultUrl()` requires `canView()` → `FinancialAttachmentRegistry::userCanView()` (`attachments.view` plus the parent-module permission). The real gaps were smaller:
+  1. Attachments whose parent is soft-deleted or missing still appeared to a user holding that module permission, although the list hides them.
+  2. The 50-result limit was applied in SQL before the per-result filtering in PHP, so unviewable rows used up the limit.
+
+  The user chose to apply the scope anyway, framed as consistency and correctness rather than as a security fix.
+
+  **Changes:**
+  - `AttachmentResource::getGlobalSearchEloquentQuery()` wraps the parent query in the existing `FinancialAttachmentRegistry::scopeViewableBy($query, auth()->user())`, the same scope `AttachmentsTable` applies. No permission logic is duplicated, and Super Admin passes through `Gate::before` as before. `canView()` still runs on each result.
+  - `ProjectForm.project_super_id` and `ProjectCostForm.project_id` changed from `->searchable()` to `->searchable(['code', 'name'])`. The label callback, `preload()`, `preload(false)` and `optionsLimit(50)` are unchanged. Search stays Filament's server-side relationship query with SoftDeletes and `limit 50`.
+
+  **Wildcard escaping was deferred to Batch A.** None of the three fixes writes its own `LIKE`; all go through Filament's own search code, so escaping here would mean overriding Filament internals per resource.
+
+  **Verification:**
+  - New tests: `AttachmentGlobalSearchScopeTest` 6/6 (17 assertions) and `ProjectSelectCodeSearchTest` 10/10 (30 assertions).
+  - Both files were also run against the original code with only the production files stashed: 3 of 6 and 5 of 10 fail, as expected.
+  - Regression: `AttachmentRegistryTest` 41/41 (101 assertions) and `AttachmentResourceHardeningTest` 8/8 (17 assertions).
+  - `php -l` is clean on all 5 files.
+  - Not run: the full suite, the full Feature suite, and Graphify.
+
 - **2026-09-26 — the 72 Muwakha families were IMPORTED for real against the production `oms` database, in one transaction, through `MuwakhaFamilyService::create()`. 72 families + 72 Accounts + 72 mappings + 72 project links + 288 AuditEvents. Verified read-only afterwards; NOT committed.**
 
   **Exact command, run exactly once, exit 0:** `php artisan muwakha:import-families storage/app/imports/muwakha-families-20260926.json --project=MUWAKHA_20260926_001 --actor=2 --execute` → `IMPORT COMMITTED: 72 families created in one transaction.` The approved actor was user #2 (Super Admin), chosen by the user from a read-only list of the three eligible users; nothing was auto-selected.

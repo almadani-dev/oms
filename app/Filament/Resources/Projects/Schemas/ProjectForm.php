@@ -45,7 +45,8 @@ class ProjectForm
                     ->label('المشروع الرئيسي')
                     ->relationship('projectSuper', 'name')
                     ->getOptionLabelFromRecordUsing(fn ($record) => $record->code ?: $record->name)
-                    ->searchable()
+                    // The label shows the code, so the code must be searchable too.
+                    ->searchable(['code', 'name'])
                     ->preload(),
                 TextInput::make('donor_project_name')
                     ->label('اسم المشروع لدى الجهة المانحة')
