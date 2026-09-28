@@ -1589,3 +1589,36 @@ See the 2026-09-28 Batch C2 entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_
 - 6 query-count and correctness tests, plus regression runs of `FinancialListsSearchTest` and `RelationManagerAuthorizationTest`, all green.
 
 Not committed.
+
+---
+
+### Date
+2026-09-28 (search Batch D: Muwakha families, "Do NOT assume card_code is directly on the family model")
+
+### Prompt
+Approved **Batch D only**: Muwakha family list search and topbar global search.
+
+Rules it set:
+- audit where every value really lives, with two explicit warnings: *"Do NOT assume card_code is directly on the family model"* and *"Do NOT assume every family has only one project/account relation"*;
+- add a small explicit person-name ى/ي fold *"Do NOT change ArabicSearch::normalize() default semantics"* and prove it does not leak into non-person fields;
+- *"Do not make a family appear in ordinary list search solely because of an old soft-deleted historical account"*;
+- IDs and phones as identifiers, never amounts;
+- a card code-aware global search that preserves authorization.
+
+### Purpose
+**The two "do not assume" warnings matched the real model exactly.**
+- `card_code` lives on the `muwakha_family_projects` link, one per project, with several links possible per family.
+- The family has both a CURRENT account (`account_id`, withTrashed) and an account-history table.
+
+Searching the history would have been the easy mistake. The audit showed the list renders only the current account, and a test now proves an old account code no longer finds the family after a re-point.
+
+**Requiring the fold to be explicit and field-scoped kept `normalize()` stable for every earlier batch.** The leak test (bank `الهدى`, project `الرضى`) proves the ى/ي fold stays on person names. The MySQL check shows both bindings side by side (`%علي%` for names, `%على%` for other text).
+
+**"Measure, don't assume" also exposed a test-design error in my own work:** quoted grouping is a table-search feature, not a global-search feature. The global test now reflects real topbar behaviour.
+
+### Result
+See the 2026-09-28 Batch D entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md`.
+- 3 production files, 2 test files (1 new).
+- 83 unit + 22 feature + 21 existing Muwakha resource tests green; 15 of the 22 fail on the old code.
+
+Not committed.

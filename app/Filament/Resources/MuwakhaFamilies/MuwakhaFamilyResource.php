@@ -12,12 +12,14 @@ use App\Filament\Resources\MuwakhaFamilies\Schemas\MuwakhaFamilyForm;
 use App\Filament\Resources\MuwakhaFamilies\Schemas\MuwakhaFamilyInfolist;
 use App\Filament\Resources\MuwakhaFamilies\Tables\MuwakhaFamiliesTable;
 use App\Models\MuwakhaFamily;
+use App\Support\Search\ArabicSearch;
 use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 /**
@@ -100,5 +102,44 @@ class MuwakhaFamilyResource extends Resource
     {
         return parent::getRecordRouteBindingEloquentQuery()
             ->withoutGlobalScopes([SoftDeletingScope::class]);
+    }
+
+    /** @return list<string> */
+    public static function getGloballySearchableAttributes(): array
+    {
+        return ['martyr_name', 'martyr_national_id', 'familyProjects.card_code'];
+    }
+
+    /**
+     * Topbar search by martyr name (person-name semantics, ى → ي included),
+     * martyr national ID or any project link's card code — every word required,
+     * as in the list. The query still starts from getEloquentQuery(), so
+     * SoftDeletes apply, and canGloballySearch()/canView() are untouched.
+     */
+    protected static function applyGlobalSearchAttributeConstraints(Builder $query, string $search): void
+    {
+        foreach (ArabicSearch::words($search) as $word) {
+            $query->where(function (Builder $query) use ($word): void {
+                ArabicSearch::whereContainsPersonName($query, 'martyr_name', $word);
+                ArabicSearch::whereContainsIdentifier($query, 'martyr_national_id', $word, 'or');
+                $query->orWhereHas('familyProjects', fn (Builder $link): Builder => ArabicSearch::whereContainsIdentifier($link, 'card_code', $word));
+            });
+        }
+    }
+
+    /**
+     * The card code(s) as the disambiguating detail — already eager-loaded by
+     * getEloquentQuery(). The national ID and phone are deliberately not shown.
+     *
+     * @return array<string, string>
+     */
+    public static function getGlobalSearchResultDetails(Model $record): array
+    {
+        $cards = $record->familyProjects
+            ->pluck('card_code')
+            ->filter(fn (?string $code): bool => filled($code))
+            ->implode('، ');
+
+        return $cards === '' ? [] : ['رقم البطاقة' => $cards];
     }
 }

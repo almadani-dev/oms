@@ -15,6 +15,8 @@ use Illuminate\Database\Eloquent\Builder;
  *
  * Deliberately NOT folded, because each pair distinguishes real words:
  * ى/ي (على ≠ علي), ة/ه (حسابة ≠ حسابه), ؤ/و, ئ/ي, and the Persian ی/ک.
+ * The one exception is explicit and field-specific: the *PersonName methods
+ * also fold ى → ي, for confirmed person-name columns only.
  *
  * Two term shapes are offered:
  *  - clean():     safe cleanup only — for structured identifiers (transaction
@@ -41,6 +43,11 @@ final class ArabicSearch
     private const ALEF_VARIANTS = ['أ', 'إ', 'آ', 'ٱ'];
 
     private const PLAIN_ALEF = 'ا';
+
+    /** Person-name fold only: alef maksura U+0649 → yeh U+064A. */
+    private const ALEF_MAKSURA = "\u{0649}";
+
+    private const YEH = "\u{064A}";
 
     /** Harakat U+064B..U+0652 and superscript alef U+0670, plus tatweel U+0640. */
     private const MARKS_PATTERN = '/[\x{064B}-\x{0652}\x{0670}\x{0640}]/u';
@@ -103,6 +110,27 @@ final class ArabicSearch
     }
 
     /**
+     * normalize() plus alef maksura folding (U+0649 ى → U+064A ي), for PERSON
+     * NAMES ONLY. Names are routinely typed either way (علي / على), whereas in
+     * general text the two spell different words (على is a preposition), so
+     * this fold is never part of normalize(). ة/ه is not folded here either.
+     */
+    public static function normalizePersonName(string $term): string
+    {
+        return str_replace(self::ALEF_MAKSURA, self::YEH, self::normalize($term));
+    }
+
+    /**
+     * The person-name column expression: foldAlefSql() plus the same ى → ي
+     * REPLACE, so both sides of the comparison share normalizePersonName()'s
+     * canonical form.
+     */
+    public static function foldPersonNameSql(string $wrappedColumn): string
+    {
+        return 'REPLACE('.self::foldAlefSql($wrappedColumn).", '".self::ALEF_MAKSURA."', '".self::YEH."')";
+    }
+
+    /**
      * Escape a term for use inside a LIKE pattern with ESCAPE '!': the escape
      * character itself first, then the two wildcards, so `%` and `_` match
      * literally.
@@ -147,6 +175,25 @@ final class ArabicSearch
 
         return $query->whereRaw(
             self::foldAlefSql(self::wrap($query, $column)).' LIKE ? ESCAPE \''.self::LIKE_ESCAPE.'\'',
+            ['%'.self::escapeLike($term).'%'],
+            $boolean,
+        );
+    }
+
+    /**
+     * `<person-name-folded column> LIKE %term% ESCAPE '!'` — whereContainsText()
+     * with the person-name fold, for confirmed person-name fields only.
+     */
+    public static function whereContainsPersonName(Builder $query, string $column, string $term, string $boolean = 'and'): Builder
+    {
+        $term = self::normalizePersonName($term);
+
+        if ($term === '') {
+            return $query;
+        }
+
+        return $query->whereRaw(
+            self::foldPersonNameSql(self::wrap($query, $column)).' LIKE ? ESCAPE \''.self::LIKE_ESCAPE.'\'',
             ['%'.self::escapeLike($term).'%'],
             $boolean,
         );

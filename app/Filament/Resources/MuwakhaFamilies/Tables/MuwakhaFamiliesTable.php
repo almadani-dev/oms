@@ -6,6 +6,7 @@ use App\Models\BankType;
 use App\Models\MuwakhaFamily;
 use App\Services\Muwakha\MuwakhaFamilyService;
 use App\Support\Muwakha\MuwakhaReference;
+use App\Support\Search\ArabicSearch;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
@@ -24,19 +25,15 @@ class MuwakhaFamiliesTable
     {
         return $table
             ->columns([
-                TextColumn::make('martyr_name')->label('اسم الشهيد')->searchable()->sortable(),
-                TextColumn::make('martyr_national_id')->label('رقم هوية الشهيد')->searchable()->sortable(),
-                TextColumn::make('guardian_name')->label('اسم الوصي')->searchable()->sortable(),
-                TextColumn::make('guardian_phone')->label('رقم الجوال')->searchable(),
+                TextColumn::make('martyr_name')->label('اسم الشهيد')->sortable(),
+                TextColumn::make('martyr_national_id')->label('رقم هوية الشهيد')->sortable(),
+                TextColumn::make('guardian_name')->label('اسم الوصي')->sortable(),
+                TextColumn::make('guardian_phone')->label('رقم الجوال'),
                 TextColumn::make('children_count')->label('عدد الأبناء')->sortable(),
-                TextColumn::make('account_holder_name')->label('اسم صاحب الحساب')->searchable(),
+                TextColumn::make('account_holder_name')->label('اسم صاحب الحساب'),
 
-                // Relation searches, so a duplicated account number matches
-                // every family that shares it — nothing here assumes the code
-                // is unique.
                 TextColumn::make('account.account_code')
                     ->label('رقم الحساب')
-                    ->searchable()
                     ->copyable(),
 
                 TextColumn::make('account.bankType.name')
@@ -68,7 +65,7 @@ class MuwakhaFamiliesTable
                     ->toggleable(isToggledHiddenByDefault: true),
 
                 TextColumn::make('guardian_national_id')
-                    ->label('رقم هوية الوصي')->searchable()
+                    ->label('رقم هوية الوصي')
                     ->toggleable(isToggledHiddenByDefault: true),
 
                 TextColumn::make('guardian_date_of_birth')
@@ -84,7 +81,7 @@ class MuwakhaFamiliesTable
                     ->toggleable(isToggledHiddenByDefault: true),
 
                 TextColumn::make('account.iban')
-                    ->label('IBAN')->searchable()
+                    ->label('IBAN')
                     ->toggleable(isToggledHiddenByDefault: true),
 
                 TextColumn::make('notes')
@@ -99,6 +96,26 @@ class MuwakhaFamiliesTable
                     ->label('تاريخ التعديل')->dateTime()->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
+            /*
+             * Table-level search through ArabicSearch, per field semantics:
+             *  - martyr / guardian / account-holder names: person-name search
+             *    (alef folding plus ى → ي, which only person names get);
+             *  - national IDs: identifiers (digits normalized, zeros kept);
+             *  - guardian phone: digits, formatting ignored on both sides;
+             *  - the CURRENT account the list shows (`account`, withTrashed,
+             *    exactly as the columns render it — never the family's
+             *    historical accounts): code, IBAN without spaces, bank type;
+             *  - project links: card code (identifier) or the linked project's
+             *    code / name. Several links per family are all searched.
+             * Relations are one correlated EXISTS each, so a duplicated
+             * account code still matches every family that shares it.
+             */
+            ->searchable([
+                fn (Builder $query, string $search): Builder => self::applyFamilySearch($query, $search),
+                fn (Builder $query, string $search): Builder => self::applyAccountSearch($query, $search),
+                fn (Builder $query, string $search): Builder => self::applyProjectLinkSearch($query, $search),
+            ])
+            ->searchPlaceholder('ابحث في أسر المؤاخاة...')
             ->filters([
                 // Options come from the eligible-project query, not from a
                 // DISTINCT over the growing link table.
@@ -129,6 +146,54 @@ class MuwakhaFamiliesTable
                 ]),
             ])
             ->defaultSort('martyr_name');
+    }
+
+    protected static function applyFamilySearch(Builder $query, string $search): Builder
+    {
+        ArabicSearch::whereContainsPersonName($query, 'martyr_name', $search);
+        ArabicSearch::whereContainsPersonName($query, 'guardian_name', $search, 'or');
+        ArabicSearch::whereContainsPersonName($query, 'account_holder_name', $search, 'or');
+        ArabicSearch::whereContainsIdentifier($query, 'martyr_national_id', $search, 'or');
+        ArabicSearch::whereContainsIdentifier($query, 'guardian_national_id', $search, 'or');
+
+        return ArabicSearch::whereContainsPhone($query, 'guardian_phone', $search, 'or');
+    }
+
+    protected static function applyAccountSearch(Builder $query, string $search): Builder
+    {
+        if (ArabicSearch::clean($search) === '') {
+            return $query;
+        }
+
+        return $query->whereHas('account', fn (Builder $account): Builder => $account->where(
+            function (Builder $account) use ($search): void {
+                ArabicSearch::whereContainsIdentifier($account, 'account_code', $search);
+                ArabicSearch::whereContainsCompactIdentifier($account, 'iban', $search, 'or');
+
+                // A bank name is not a person name: plain text semantics.
+                $account->orWhereHas('bankType', fn (Builder $bankType): Builder => ArabicSearch::whereContainsText($bankType, 'name', $search));
+            },
+        ));
+    }
+
+    protected static function applyProjectLinkSearch(Builder $query, string $search): Builder
+    {
+        if (ArabicSearch::clean($search) === '') {
+            return $query;
+        }
+
+        return $query->whereHas('familyProjects', fn (Builder $link): Builder => $link->where(
+            function (Builder $link) use ($search): void {
+                ArabicSearch::whereContainsIdentifier($link, 'card_code', $search);
+
+                $link->orWhereHas('project', fn (Builder $project): Builder => $project->where(
+                    function (Builder $project) use ($search): void {
+                        ArabicSearch::whereContainsIdentifier($project, 'code', $search);
+                        ArabicSearch::whereContainsText($project, 'name', $search, 'or');
+                    },
+                ));
+            },
+        ));
     }
 
     /**

@@ -211,6 +211,59 @@ class ArabicSearchTest extends TestCase
         $this->assertFalse(ArabicSearch::containsNormalized($a, $b));
     }
 
+    // ---- person names (explicit ى → ي fold) -----------------------------------
+
+    public function test_person_name_folds_alef_maksura_to_yeh(): void
+    {
+        $this->assertSame("\u{0639}\u{0644}\u{064A}", ArabicSearch::normalizePersonName("\u{0639}\u{0644}\u{0649}"));             // على → علي
+        $this->assertSame("\u{0645}\u{0635}\u{0637}\u{0641}\u{064A}", ArabicSearch::normalizePersonName("\u{0645}\u{0635}\u{0637}\u{0641}\u{0649}")); // مصطفى → مصطفي
+        $this->assertSame("\u{0639}\u{0644}\u{064A}", ArabicSearch::normalizePersonName("\u{0639}\u{0644}\u{064A}"));             // علي unchanged
+    }
+
+    /**
+     * The approved canonical direction, both sides as literal code points so a
+     * reversed mapping cannot hide: U+0649 (ى) becomes U+064A (ي), and U+064A
+     * stays U+064A.
+     */
+    public function test_person_name_direction_is_alef_maksura_to_yeh(): void
+    {
+        $withMaksura = "\u{0639}\u{0644}\u{0649}"; // على
+        $withYeh = "\u{0639}\u{0644}\u{064A}";     // علي
+
+        $this->assertSame($withYeh, ArabicSearch::normalizePersonName($withMaksura));
+        $this->assertSame($withYeh, ArabicSearch::normalizePersonName($withYeh));
+        $this->assertStringNotContainsString("\u{0649}", ArabicSearch::normalizePersonName($withMaksura));
+    }
+
+    public function test_person_name_keeps_every_normal_fold(): void
+    {
+        // Alef, harakat, tatweel, digits and whitespace, plus ى → ي.
+        $this->assertSame(
+            "\u{0627}\u{062D}\u{0645}\u{062F} \u{0639}\u{064A}\u{0633}\u{064A} 12",
+            ArabicSearch::normalizePersonName("  \u{0623}\u{064E}\u{062D}\u{0640}\u{0645}\u{062F}   \u{0639}\u{064A}\u{0633}\u{0649} \u{0661}\u{0662} "),
+        );
+    }
+
+    public function test_person_name_never_folds_teh_marbuta(): void
+    {
+        $this->assertSame("\u{0641}\u{0627}\u{0637}\u{0645}\u{0629}", ArabicSearch::normalizePersonName("\u{0641}\u{0627}\u{0637}\u{0645}\u{0629}"));
+        $this->assertNotSame(ArabicSearch::normalizePersonName('فاطمة'), ArabicSearch::normalizePersonName('فاطمه'));
+    }
+
+    public function test_default_normalize_still_keeps_alef_maksura(): void
+    {
+        $this->assertSame("\u{0639}\u{0644}\u{0649}", ArabicSearch::normalize("\u{0639}\u{0644}\u{0649}"));
+        $this->assertNotSame(ArabicSearch::normalize('على'), ArabicSearch::normalize('علي'));
+    }
+
+    public function test_person_name_sql_wraps_the_alef_fold_with_the_maksura_fold(): void
+    {
+        $this->assertSame(
+            'REPLACE('.ArabicSearch::foldAlefSql('"t"."c"').", '\u{0649}', '\u{064A}')",
+            ArabicSearch::foldPersonNameSql('"t"."c"'),
+        );
+    }
+
     // ---- LIKE escaping -------------------------------------------------------
 
     public function test_percent_is_escaped(): void

@@ -4,6 +4,35 @@
 
 ## Recent Changes
 
+- **2026-09-28 — Search Batch D: Muwakha family list and global search, with the first field-specific ى/ي fold (person names only). 3 production files, 1 new test file plus unit additions. Implemented and verified, NOT committed.**
+
+  **Where things live (audited):**
+  - Names, national IDs, guardian phone and `account_holder_name` are on `muwakha_families`.
+  - The list shows only the CURRENT account (`account()` via `account_id`, `withTrashed()`): `account_code` (= رقم الحساب; no separate account-number column), `iban`, `bankType.name`.
+  - `card_code` is on `muwakha_family_projects` (many per family, no SoftDeletes).
+  - `familyAccounts` is ownership history the list never shows, so it is not searched.
+
+  **Search:**
+  - martyr / guardian / account-holder names: person-name semantics (`ArabicSearch::whereContainsPersonName()`: alef folding plus U+0649 (ى) → U+064A (ي), on both the term and the column);
+  - national IDs: identifiers;
+  - guardian phone: phone semantics;
+  - one EXISTS on the current account: code, compact IBAN, bank type as text (no U+0649/U+064A fold);
+  - one EXISTS on the project links: card code, and the project's code or name as text.
+
+  Placeholder `ابحث في أسر المؤاخاة...`. The export follows the search, because it reuses the filtered table query.
+
+  **Global search:** martyr name (person-name), martyr national ID, card code. The result detail is the card code(s) only. Guardian name and phone are not global keys.
+
+  **Invariant:** `ArabicSearch::normalize()` still never folds ى/ي; only the three `*PersonName` methods do, on those three columns. ة/ه is never folded anywhere.
+
+  **Verification:**
+  - Unit 83/83; `MuwakhaFamilySearchTest` 22/22 (15 fail on the old code); `MuwakhaFamilyResourceTest` 21/21.
+  - MySQL: 0 joins, 4 EXISTS, 3 person-name folds (binding `%علي%` for names, `%على%` for other text), 0 per-row queries; search render = baseline (7 queries).
+
+  **Filters unchanged:** eligible Muwakha projects and bank types are small lists.
+
+  **Direction check (same day, before approval):** the report's arrows had looked reversed, but a code-point dump showed the code was always U+0649 (ى) → U+064A (ي); no production code changed. Independent literal-code-point tests were added (a unit test, and a database-evaluated SQL fold test). MySQL confirms the typed U+0649 term is bound as U+064A for the three name columns, and that stored U+0649 folds to U+064A while U+064A is unchanged.
+
 - **2026-09-28 — Batch C2: the five financial lists and the ProjectCosts receipts relation manager render in a constant number of queries. Display/query-count only. Implemented and verified, NOT committed.**
 
   **Two measured N+1 sources, both removed:**

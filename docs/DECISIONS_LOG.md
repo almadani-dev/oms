@@ -2871,3 +2871,28 @@ Search and filter UX on five financial lists only. No accounting, posting, balan
 
 ### Impact
 Display query count only. The five lists and the relation manager now render in a constant number of queries regardless of row count. No visible value, search, filter, sorting, accounting, schema or data change.
+
+---
+
+### Date
+2026-09-28 (search Batch D: person-name ى/ي fold, current-account-only list search, Muwakha global search)
+
+### Decision
+1. **U+0649 (ى) → U+064A (ي) is folded for person names only**, the canonical form being U+064A, through three explicit methods: `ArabicSearch::normalizePersonName()`, `foldPersonNameSql()` and `whereContainsPersonName()`.
+   - It applies to the martyr, guardian and account-holder names.
+   - `normalize()` and every other field (project, bank, general text, IDs, codes) are unchanged.
+   - ة/ه is never folded.
+2. **The families list searches only the family's CURRENT account** (the `account` relation, `withTrashed()` exactly as the list renders it), never the historical accounts in `familyAccounts`.
+3. **National IDs, account codes and card codes are identifiers:** digits normalized, leading zeros kept, partial match allowed. The guardian phone uses the Batch B phone semantics.
+4. **Muwakha global search covers the martyr name (person-name), martyr national ID and card code.** The result detail is the card code(s). Guardian name and phone are not global keys, and the national ID is not displayed.
+5. **The project and bank-type filters stay as they are** (small lookups).
+
+### Reason
+1. Person names are routinely typed either way (علي / على), but in general text the two spell different words, so the fold must be opt-in per field. Tests prove it does not reach a bank or project name containing ى.
+2. Search should match what the list shows. A family must not surface because of a code on an account it no longer uses. The dedicated account statement keeps its own historical-account rules.
+3. IDs and codes are not numbers: amount parsing would drop leading zeros.
+4. These keys uniquely identify a family. Guardian names repeat and would add noise. A card code disambiguates without exposing personal identifiers.
+5. The eligible-project list is scoped to one root, and bank types are a short list. Neither has the load-everything problem the financial filters had.
+
+### Impact
+Muwakha family list/export search and topbar global search only. No schema, data, payment, import, statement, report or accounting change.

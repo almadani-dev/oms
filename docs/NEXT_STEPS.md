@@ -1,6 +1,26 @@
 # Next Steps
 
-## Recommended Next Step (2026-09-28, Batch C2 done — review and commit, then Batch D: Muwakha search)
+## Recommended Next Step (2026-09-28, Batch D done — review and commit, then Batch E: report and form pickers)
+
+**First, review and commit Batch D.**
+- `ArabicSearch` (person-name methods), `MuwakhaFamiliesTable`, `MuwakhaFamilyResource`, the new `tests/Feature/Search/MuwakhaFamilySearchTest.php` and the `ArabicSearchTest` additions. Unit 84/84, feature 23/23 (including the code-point direction tests: person-name fold is U+0649 (ى) → U+064A (ي)), `MuwakhaFamilyResourceTest` 21/21. Not yet committed.
+- The regenerated `graphify-out/` files belong in the same commit.
+
+**Then Batch E. Plan only; do not implement until approved.** The pickers the original audit found loading every option into the browser and filtering with a plain `toLowerCase().includes()` (no Arabic normalization):
+- `ComprehensiveFinancialTransactionsPage`: `account_ids` (all accounts, which now grow with Muwakha family accounts) and `project_id`;
+- `DonorFinancialReportPage`: `donor_id` and `project_id` (the latter already scoped by donor);
+- `ProjectsGeneralFinancialPage`: its five snapshot filters;
+- financial create forms: the partner selects in the ExecutionPayment and GeneralExchange forms, and the unsearchable donor select in the ProjectCostReceipt form.
+
+Move the large ones to server-side `getSearchResultsUsing` + `getOptionLabelUsing` through `ArabicSearch` (as `FinancialLookupFilters` does), with `code - name` labels. Leave small cascading selects (types by classification, accounts by type + bank + currency) as they are unless measured large.
+
+Targeted tests per page; forms need care because those selects feed financial create flows. Posting logic must not change, only option loading.
+
+**Still open, separately:** the default sort convention (`id asc` on Batch B pages vs `id desc` elsewhere).
+
+---
+
+## Previously Recommended Next Step (2026-09-28, Batch C2 done — review and commit, then Batch D: Muwakha search)
 
 **First, review and commit Batch C2.**
 - 5 financial resources, 5 list tables, the receipts relation manager, and the new `tests/Feature/Performance/FinancialListsQueryCountTest.php` (6/6). Not yet committed.

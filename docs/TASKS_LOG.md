@@ -3800,3 +3800,84 @@ Fixes:
 
 ### Commit Hash
 Not committed, not pushed — awaiting review.
+
+---
+
+### Date
+2026-09-28
+
+### Task
+Search Batch D: Muwakha family list search and topbar global search, including the explicit person-name ى/ي fold.
+
+### Result
+**Implemented and verified; NOT committed.**
+
+**Pre-edit audit, where each value lives:**
+- `martyr_name`, `martyr_national_id`, `guardian_name`, `guardian_national_id`, `guardian_phone` and `account_holder_name` are all on `muwakha_families`.
+- The list's account data comes from the family's CURRENT account (`account()` via `account_id`, deliberately `withTrashed()`): `account_code` (the page's "رقم الحساب"; there is no separate account-number column), `iban`, and `bankType.name`.
+- `card_code` is on `muwakha_family_projects` (no SoftDeletes) next to `project_id`. A family can have many links.
+- `muwakha_family_accounts` keeps the family's account ownership history (with a historical `account_holder_name`). The list never shows it.
+- The table had per-column `->searchable()`, no TrashedFilter, and `defaultSort('martyr_name')`.
+- The page export (`ListMuwakhaFamilies::exportRows()`) builds on `getFilteredSortedTableQuery()`, so it follows search.
+
+Search fields:
+
+| Field | Storage path | Semantics | Relation |
+|---|---|---|---|
+| martyr name | `muwakha_families.martyr_name` | person name (alef + U+0649 ى → U+064A ي) | — |
+| guardian name | `muwakha_families.guardian_name` | person name | — |
+| account-holder name | `muwakha_families.account_holder_name` | person name | — |
+| martyr / guardian national ID | `muwakha_families.*_national_id` | identifier (digits normalized, zeros kept, partial allowed) | — |
+| guardian phone | `muwakha_families.guardian_phone` | phone (`whereContainsPhone`) | — |
+| account code | `accounts.account_code` | identifier | EXISTS `account` (current, withTrashed) |
+| IBAN | `accounts.iban` | compact identifier (spaces ignored) | same EXISTS |
+| bank type | `bank_types.name` | text (alef only, no U+0649/U+064A fold) | nested in the account EXISTS |
+| card code | `muwakha_family_projects.card_code` | identifier | EXISTS `familyProjects` |
+| project code / name | `projects.code` / `projects.name` | identifier / text (no U+0649/U+064A fold) | nested in the links EXISTS |
+
+- **`ArabicSearch`:** new `normalizePersonName()`, `foldPersonNameSql()` and `whereContainsPersonName()` add U+0649 ى → U+064A ي on top of `normalize()` / `foldAlefSql()`. `normalize()` is unchanged and ة/ه is never folded.
+- **Table:** search declared at table level in three closures (family fields; one EXISTS on the current account; one EXISTS on the project links), with the placeholder `ابحث في أسر المؤاخاة...`.
+- **Global search:** `MuwakhaFamilyResource` overrides `getGloballySearchableAttributes()` (`martyr_name`, `martyr_national_id`, `familyProjects.card_code`) and `applyGlobalSearchAttributeConstraints()`: person-name martyr, identifier ID, card code via EXISTS, every word required. Result detail: card code(s) only; national ID and phone are not shown. Guardian name was deliberately not added (noisy); guardian phone is excluded as instructed.
+- **Filters:** unchanged. `muwakha_project` loads only the eligible projects under the Muwakha root, and `bank_type` loads all bank types; both are small lookups, reported only.
+
+### Changed Files
+- Modified `app/Support/Search/ArabicSearch.php` (3 person-name methods plus 2 constants; the class docblock notes the explicit exception).
+- Modified `app/Filament/Resources/MuwakhaFamilies/Tables/MuwakhaFamiliesTable.php`.
+- Modified `app/Filament/Resources/MuwakhaFamilies/MuwakhaFamilyResource.php`.
+- Modified `tests/Unit/Support/Search/ArabicSearchTest.php` (+5 tests). New `tests/Feature/Search/MuwakhaFamilySearchTest.php` (22 tests).
+- `graphify-out/` regenerated from the final tree.
+- **Not** modified: schema, data, Muwakha payment/posting, family import, `MuwakhaFamilyService` / `MuwakhaFamilyProjectService`, card validation, `ProjectsRelationManager`, account statement, reports, financial lists, filters, eager loads, sorting.
+
+### Verification
+1. `php artisan test tests/Unit/Support/Search/ArabicSearchTest.php` → 83/83 passed, 121 assertions.
+2. `php artisan test tests/Feature/Search/MuwakhaFamilySearchTest.php` → 22/22 passed, 105 assertions.
+3. `php artisan test tests/Feature/Muwakha/MuwakhaFamilyResourceTest.php` (directly affected: list search, export) → 21/21 passed, 136 assertions.
+4. Before-fix proof, without `git stash` (`git show HEAD:` overwrite, test, restore, `sha1sum -c` OK):
+   - 15 of 22 fail on the old code.
+   - The 7 that pass are the expected guards: ة/ه not folded, non-phone text, historical account not searched, pagination, soft-deleted family, no per-row queries, global-search authorization.
+5. Read-only MySQL, this machine's local DB, 6 synthetic terms (martyr name with ى, Arabic-digit ID, card code, project name, holder name, bank type):
+   - every case: 0 joins, 4 EXISTS;
+   - 3 person-name folds (on the three name columns only), with `%علي%` bound for those while `%على%` stays for project/bank names;
+   - the phone predicate appears only for the digit term;
+   - `deleted_at is null` on families, bank types and projects (the account relation is deliberately withTrashed and the link table has no SoftDeletes);
+   - `order by martyr_name asc, id asc`; paging `COUNT` + `limit 10 offset 0`;
+   - search terms only in bindings;
+   - render: 7 list/eager queries and 0 per-row column queries, identical to the no-search baseline.
+6. `php -l` clean on all 5 changed PHP files. Line endings stay CRLF throughout the three production files, as in HEAD.
+7. `PYTHONHASHSEED=0 graphify update .` → 955 files, 15235 nodes, 38539 edges, with 0 sensitive-path hits.
+8. Not run: the full suite or the full Feature suite.
+
+### Direction check (same day, before approval)
+1. **The person-name fold direction was already the approved one; only the report's arrows looked reversed.** A code-point dump shows `ALEF_MAKSURA` = U+0649 and `YEH` = U+064A; `normalizePersonName()` maps U+0639 U+0644 U+0649 → U+0639 U+0644 U+064A and leaves U+064A unchanged; the outer `REPLACE` in `foldPersonNameSql()` goes from U+0649 to U+064A. No production code changed.
+2. **Independent tests added**, with literal code points on both sides:
+   - unit: `test_person_name_direction_is_alef_maksura_to_yeh`;
+   - feature: `test_sql_person_name_fold_direction_is_alef_maksura_to_yeh`, a database-evaluated `foldPersonNameSql()` where stored U+0649 → U+064A and stored U+064A stays.
+3. **Re-run:** `ArabicSearchTest` 84/84 (124 assertions), `MuwakhaFamilySearchTest` 23/23 (107 assertions), `MuwakhaFamilyResourceTest` 21/21 (136 assertions). `php -l` clean on both changed test files.
+4. **Read-only MySQL**, typed term U+0639 U+0644 U+0649:
+   - bound as U+0639 U+0644 U+064A for the three name columns, with U+0639 U+0644 U+0649 kept for project/bank names;
+   - column folds on `martyr_name`, `guardian_name` and `account_holder_name` all go from U+0649 to U+064A;
+   - MySQL folds stored U+0649 to U+064A and leaves U+064A unchanged.
+5. `PYTHONHASHSEED=0 graphify update .` → 955 files, 15252 nodes, 38559 edges, with 0 sensitive-path hits.
+
+### Commit Hash
+Not committed, not pushed — awaiting review.
