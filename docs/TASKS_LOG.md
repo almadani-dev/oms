@@ -3649,3 +3649,89 @@ What each page now searches:
 
 ### Commit Hash
 Not committed, not pushed — awaiting review.
+
+---
+
+### Date
+2026-09-28
+
+### Task
+Search Batch C1: real search and bounded project/partner filters for the five financial operation lists: صرف مبالغ التنفيذ, صرف مبالغ المشاريع, المبالغ المستلمة, التحويلات العامة, مصروفات عامة.
+
+### Result
+**Implemented and verified; NOT committed.** Before this batch, all five lists searched only `transaction_number`, and their project/partner filters loaded every row into the page with no search box.
+
+Every search goes through `ArabicSearch`, which is unchanged: alef folding for names, identifier semantics for numbers and codes, literal `%`/`_`, exact amounts through `numeric()`. Related data is reached through whereHas/EXISTS, never a join.
+
+Search fields per page (hidden-by-default toggleable columns count as "shown"):
+
+| Page | Identifiers | Human text | Relations (one EXISTS per group) | Amounts (exact) |
+|---|---|---|---|---|
+| صرف مبالغ التنفيذ (`ProjectCostBudgetsPayment`) | transaction number, line account codes | partner, type, account names, project, super | transaction{partner, type, lines.account}; `projectCostBudget.projectCost.project`{code, name, projectSuper} | `amount` |
+| صرف مبالغ المشاريع (`ProjectCostBudget`, with transaction) | transaction number | partner, project, super | transaction{partner}; `projectCost.project`{…} | `original_amount`, `final_amount` |
+| المبالغ المستلمة (`ProjectCostReceipt`) | transaction number, line account codes | donor, type, account names, project, super | transaction{partner, type, lines.account}; `projectCost.project`{…} | `amount` |
+| التحويلات العامة (`GeneralExchange`) | transaction number, line account codes | partner (own or transaction's), type, account names | transaction{partner, type, lines.account}; own `partner` | `original_amount`, `final_amount` |
+| مصروفات عامة (`GeneralExpense`) | transaction number, line account codes | partner (own or transaction's), type, account names | transaction{partner, type, lines.account}; own `partner` | `amount` |
+
+Page-specific details:
+- The budget list shows no type or account columns, so neither is searched there.
+- The general operations display `partner ?? transaction.partner`, so both are searched.
+- `reference` is not shown on any of these pages and is not searched.
+- Never searched: `fx_rate`, percentages, derived/net amounts, the budget/cost amounts on the execution list, dates, IDs.
+
+Placeholders use each page's navigation label (`ابحث في صرف مبالغ التنفيذ...` and so on).
+
+**Filters:** the project filter on the three project lists and the partner filter on all five became `FinancialLookupFilters` lookups:
+- search runs on the server through `ArabicSearch`: project by code or name, partner by name;
+- at most 50 options, `preload(false)`, and no static option list;
+- options are labelled `code - name` for projects;
+- soft-deleted rows are excluded by the default scope;
+- each page's own apply closure is passed through unchanged, so filter semantics are identical, including the receipt page's donors-only rule (`is_donor = true`) and the general operations' own `partner_id`;
+- a custom indicator keeps the active-filter chip readable.
+
+Left as is: the `project_super`, `fiscal_year` and `transaction_super_type` filters (small lookups) and the date filters.
+
+### Changed Files
+- New `app/Filament/Tables/FinancialListSearch.php` (`transaction()`, `project()`, `ownPartner()`, `amounts()`).
+- New `app/Filament/Tables/FinancialLookupFilters.php` (`project()`, `partner()`, `projectOptions()`, `partnerOptions()`, `OPTIONS_LIMIT = 50`).
+- Modified tables:
+  - `ExecutionPayments/Tables/ExecutionPaymentsTable.php`
+  - `ProjectCostBudgetsPayments/Tables/ProjectCostBudgetsPaymentsTable.php`
+  - `ProjectCostReceipts/Tables/ProjectCostReceiptsTable.php`
+  - `GeneralExchanges/Tables/GeneralExchangesTable.php`
+  - `GeneralExpenses/Tables/GeneralExpensesTable.php`
+
+  These changed only the search declaration, the placeholder and the project/partner filter definitions. Unused `Partner`/`Project` imports were dropped.
+- New `tests/Feature/Search/FinancialListsSearchTest.php` (27 tests).
+- `graphify-out/` regenerated from the final tree.
+- **Not** modified: `ArabicSearch.php`, forms, transaction creation, lines, debit/credit, balances, deductions, exchange rates, posting, reversals, delete actions, audit, financial guards, eager loads, columns, sorting, migrations, data, reports, Muwakha.
+
+### Verification
+1. `php artisan test tests/Unit/Support/Search/ArabicSearchTest.php` → 78/78 passed, 112 assertions.
+2. `php artisan test tests/Feature/Search/FinancialListsSearchTest.php` → 27/27 passed, 235 assertions.
+3. Before-fix proof without `git stash`: the 5 tables were overwritten with `git show HEAD:<file>`, tested, restored, and checked with `sha1sum -c` (OK).
+   - 17 of 27 fail on the old code.
+   - The 10 that pass are preservation and negative guards: transaction number, the budget list not searching hidden fields, exact-not-partial amounts, malformed numbers, `fx_rate`, EXISTS-not-join, soft-deleted rows, no per-row queries, unchanged filter semantics, and soft-deleted filter options (vacuous on the old code).
+4. Read-only MySQL on this machine's local DB (structure, bindings and counts only):
+
+   | Case | Joins | EXISTS | Amount predicates |
+   |---|---|---|---|
+   | project name (execution) | 0 | 9 | 0 |
+   | project code (budgets) | 0 | 6 | 0 |
+   | donor name (receipts) | 0 | 8 | 0 |
+   | Arabic-digit amount `١٥٠٠` (exchanges) | 0 | 6 | 2, bound `1500` |
+   | account name (expenses) | 0 | 6 | 0 |
+
+   - Terms appear only in the bindings; `fx_rate` never appears.
+   - `deleted_at is null` is on every relation; `order by id desc` is unchanged.
+   - Paging runs as `COUNT` + `limit 10 offset 0`. The budget list's extra EXISTS comes from its pre-existing date filter, which always wraps `whereHas('transaction')`.
+5. Render query counts, with every column state evaluated:
+   - Execution: 3 rows, 15 list/eager queries plus 3 column queries (1 per row), identical with and without a search.
+   - Budgets: 4 rows, 9 plus 4 (1 per row), identical.
+   - The one-per-row query is the pre-existing `has_attachment` N+1. Receipts also run 2 per row for the debit/credit account columns. Both are left for C2.
+6. `php -l` clean on all 8 PHP files.
+7. `PYTHONHASHSEED=0 graphify update .` → 953 files, 15140 nodes, 38312 edges, with 0 sensitive-path hits.
+8. Not run: the full suite or the full Feature suite.
+
+### Commit Hash
+Not committed, not pushed — awaiting review.

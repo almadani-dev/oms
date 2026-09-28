@@ -2,9 +2,9 @@
 
 namespace App\Filament\Resources\ProjectCostReceipts\Tables;
 
+use App\Filament\Tables\FinancialListSearch;
+use App\Filament\Tables\FinancialLookupFilters;
 use App\Models\FiscalYear;
-use App\Models\Partner;
-use App\Models\Project;
 use App\Models\ProjectSuper;
 use App\Models\TransactionSuperType;
 use App\Services\Audit\Attachments\AttachmentAuditRecorder;
@@ -32,7 +32,6 @@ class ProjectCostReceiptsTable
             ->columns([
                 TextColumn::make('transaction.transaction_number')
                     ->label('رقم المعاملة')
-                    ->searchable()
                     ->sortable(),
 
                 // المشروع الرئيسي (hidden by default)
@@ -102,6 +101,16 @@ class ProjectCostReceiptsTable
                     ->color(fn ($state) => $state === 'نعم' ? 'success' : 'gray'),
             ])
             ->defaultSort('id', 'desc')
+            // Table-level search (FinancialListSearch → ArabicSearch): the
+            // transaction number, donor, type and the accounts of its lines (the
+            // debit/credit account columns) in one EXISTS; the project (and its
+            // المشروع الرئيسي) by code or name; and المبلغ by exact value.
+            ->searchable([
+                fn (Builder $query, string $search): Builder => FinancialListSearch::transaction($query, $search, partner: true, type: true, accounts: true),
+                fn (Builder $query, string $search): Builder => FinancialListSearch::project($query, 'projectCost.project', $search),
+                fn (Builder $query, string $search): Builder => FinancialListSearch::amounts($query, ['amount'], $search),
+            ])
+            ->searchPlaceholder('ابحث في المبالغ المستلمة...')
             ->filters([
                 SelectFilter::make('project_super')
                     ->label('المشروع الرئيسي')
@@ -110,19 +119,19 @@ class ProjectCostReceiptsTable
                         ? $query->whereHas('projectCost.project', fn ($q) => $q->where('project_super_id', $data['value']))
                         : $query),
 
-                SelectFilter::make('project')
-                    ->label('المشروع')
-                    ->options(fn () => Project::orderBy('name')->pluck('name', 'id'))
-                    ->query(fn (Builder $query, array $data) => filled($data['value'])
-                        ? $query->whereHas('projectCost', fn ($q) => $q->where('project_id', $data['value']))
-                        : $query),
+                FinancialLookupFilters::project(
+                    'project',
+                    'المشروع',
+                    fn (Builder $query, $projectId): Builder => $query->whereHas('projectCost', fn ($q) => $q->where('project_id', $projectId)),
+                ),
 
-                SelectFilter::make('partner')
-                    ->label('الجهة المانحة')
-                    ->options(fn () => Partner::where('is_donor', true)->orderBy('name')->pluck('name', 'id'))
-                    ->query(fn (Builder $query, array $data) => filled($data['value'])
-                        ? $query->whereHas('transaction', fn ($q) => $q->where('partner_id', $data['value']))
-                        : $query),
+                // Donors only — the page's existing eligibility rule.
+                FinancialLookupFilters::partner(
+                    'partner',
+                    'الجهة المانحة',
+                    fn (Builder $query, $partnerId): Builder => $query->whereHas('transaction', fn ($q) => $q->where('partner_id', $partnerId)),
+                    fn (Builder $partners): Builder => $partners->where('is_donor', true),
+                ),
 
                 SelectFilter::make('transaction_super_type')
                     ->label('تصنيف المعاملة')

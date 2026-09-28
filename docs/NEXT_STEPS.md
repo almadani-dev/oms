@@ -1,6 +1,23 @@
 # Next Steps
 
-## Recommended Next Step (2026-09-28, search Batch B done — review and commit, then Batch C1: financial lists)
+## Recommended Next Step (2026-09-28, search Batch C1 done — review and commit, then Batch C2: display N+1 on the financial lists)
+
+**First, review and commit Batch C1.**
+- 5 modified tables, 2 new classes in `app/Filament/Tables/`, and the new `tests/Feature/Search/FinancialListsSearchTest.php`. Feature 27/27 and unit 78/78. Not yet committed.
+- The regenerated `graphify-out/` files belong in the same commit.
+
+**Then Batch C2. Plan only; do not implement until approved.** Remove the pre-existing per-row queries on the five financial lists, measured in C1:
+- **`has_attachment` on all five lists:** `$record->attachments()->exists()` runs one query per row. Candidate fix: `withExists('attachments')` in each resource's `getEloquentQuery()`, reading the `*_exists` attribute in the column.
+- **Receipt debit/credit account columns**, in `ProjectCostReceiptsTable` and in `ProjectCosts/RelationManagers/ReceiptsRelationManager`: `lines()->with('account')->…->first()` runs two queries per row. Candidate fix: eager-load `transaction.lines.account` and pick from the loaded collection, as the other four lists already do.
+- **Tests:** a render-query-count test per list asserting a constant count independent of row count.
+
+Display only; no accounting, posting or search change.
+
+**Still open, separately:** the default sort convention (`id asc` on Batch B pages vs `id desc` elsewhere).
+
+---
+
+## Previously Recommended Next Step (2026-09-28, search Batch B done — review and commit, then Batch C1: financial lists)
 
 **First, review and commit Batch B.**
 - 16 production files (including the consistency correction's 4 lookup tables), `tests/Feature/Search/MasterDataTableSearchTest.php` (new) and the `ArabicSearchTest` additions. Unit 78/78 and feature 34/34. Not yet committed.

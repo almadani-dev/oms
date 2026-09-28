@@ -4,6 +4,29 @@
 
 ## Recent Changes
 
+- **2026-09-28 — Search Batch C1: the five financial operation lists search what they show, and their project/partner filters became bounded server-side lookups. 7 production files (2 new), 1 new test file. Implemented and verified, NOT committed.**
+
+  **Search.** صرف مبالغ التنفيذ, صرف مبالغ المشاريع, المبالغ المستلمة, التحويلات العامة and مصروفات عامة previously searched only `transaction_number`. They now search, through the new `app/Filament/Tables/FinancialListSearch.php` (all predicates via the unchanged `ArabicSearch`):
+  - one EXISTS on the transaction: number, partner, and, where the page shows them, type and line account code/name;
+  - on the three project lists, one EXISTS on the project: code, name, and المشروع الرئيسي code/name;
+  - on the general operations, the row's own partner too, since they display `partner ?? transaction.partner`;
+  - the page's own visible amounts, by exact equality through `numeric()`: `amount` (execution, receipts, expenses) or `original_amount` + `final_amount` (budget list, exchanges).
+
+  Never searched: `fx_rate`, percentages, derived amounts, `reference` (not shown), dates. The budget list shows no type or accounts, so it doesn't search them. Placeholders use each page's navigation label.
+
+  **Filters.** `app/Filament/Tables/FinancialLookupFilters.php` replaces the load-everything project filter (3 pages) and partner filter (5 pages):
+  - server-side ArabicSearch: project by code or name with `code - name` labels, partner by name;
+  - at most 50 options, never preloaded, no static list, soft-deleted rows excluded;
+  - each page's own apply closure passed through unchanged, including the receipts' donors-only scope;
+  - a custom indicator label.
+
+  **Verification:**
+  - Unit 78/78; feature 27/27 (235 assertions). 17/27 fail on the old tables, proven with a `git show HEAD:` overwrite plus SHA-1-verified restore.
+  - Read-only MySQL: 0 joins; 6–9 EXISTS depending on the page; amount predicates only for the numeric term; terms only in bindings; SoftDeletes on every relation; `id desc` unchanged.
+  - Render query counts are identical with and without a search (1 per row on execution and budgets: the pre-existing `has_attachment` N+1). Receipts' debit/credit account columns add 2 per row. Both are left for C2.
+
+  **Not touched:** accounting, posting, balances, forms, delete actions, eager loads, columns, sorting, reports, Muwakha, schema, data.
+
 - **2026-09-28 — Search Batch B: master-data search now goes through `ArabicSearch`. 16 production files, 1 new feature test file plus unit additions. Implemented and verified, NOT committed.**
 
   **Surfaces:**

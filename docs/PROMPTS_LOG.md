@@ -1525,3 +1525,35 @@ Rules it set:
 
 ### Result
 See the 2026-09-28 Batch B entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md`. 16 production files, 2 test files (1 new). 78 unit and 34 feature tests green. Not committed.
+
+---
+
+### Date
+2026-09-28 (search Batch C1: "useful search, not maximal field count")
+
+### Prompt
+Approved **Batch C1 only**: search and the project/partner lookup filters on the five financial lists.
+
+Rules it set:
+- audit each page separately (*"Do not assume all five pages have identical semantics"*);
+- reuse `ArabicSearch`;
+- search only user-visible data, with an explicit do-not-search list (`fx_rate`, percentages, derived balances, IDs, dates by LIKE, mechanically every debit/credit column);
+- exact amounts from `numeric()`, never `CAST … LIKE`;
+- donor, partner and beneficiary must keep their page meaning;
+- no C2/N+1 work, and no financial logic (*"If a search implementation appears to require touching financial business logic: STOP AND ASK"*).
+
+### Purpose
+**"Do not assume identical semantics" paid off concretely.**
+- The budget list has no type or account columns.
+- The general operations display `partner ?? transaction.partner`, so both must be searched.
+- The receipts' partner filter is donors-only.
+- Each page reaches its project through a different path.
+
+A single generic pattern would have missed or misapplied each of these.
+
+**The do-not-search list gave the amount choice a clear rule:** only the page's own visible figures. That excluded the execution list's budget/cost amounts, which belong to another record.
+
+**Requiring filter semantics to stay page-specific led to passing each page's existing apply closure through unchanged.** Only option loading moved to the server. A side effect was caught: Filament's default indicator reads a static option list, so it needed its own label resolver.
+
+### Result
+See the 2026-09-28 Batch C1 entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md`. 7 production files (2 new), 1 new test file: 27 feature + 78 unit tests green, 17 of the 27 failing on the old code. No financial logic touched. Not committed.

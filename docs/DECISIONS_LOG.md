@@ -2820,3 +2820,34 @@ Only `سطور المعاملات` search changes. There is no schema, data, col
 
 ### Impact
 Search behaviour on 13 tables and 2 resources' global search. No schema, data, accounting, report, Muwakha or financial-list change. Sorting was deliberately not touched: the `id asc` (no `defaultSort`) vs `id desc` split across pages is recorded for a separate decision.
+
+---
+
+### Date
+2026-09-28 (search Batch C1: financial list search scope, amount columns, lookup filters)
+
+### Decision
+1. **Each financial list searches only what it shows**, hidden-by-default toggleable columns included:
+   - the transaction number;
+   - the project and its المشروع الرئيسي, on the three project lists;
+   - the partner/donor as the page labels it;
+   - the transaction type and line accounts, where those columns exist (not on the budget list);
+   - the page's own visible amounts, by exact value.
+2. **Amount columns:**
+   - execution list and receipts and expenses: `amount`;
+   - budget list and general exchanges: `original_amount` and `final_amount`.
+
+   Never searched: `fx_rate`, percentages, derived/net amounts, and the budget/cost amounts shown on the execution list (another record's figures).
+3. **Line accounts are searched across all lines of the operation's transaction**, not by line tag. Each operation's transaction holds exactly the lines whose accounts the page displays.
+4. **Project and partner filters become bounded server-side lookups** (`FinancialLookupFilters`). Each page's existing apply closure is passed through unchanged, and page eligibility rules are passed as scopes (receipts: donors only). Small lookups (project super, fiscal year, classification) keep their static lists.
+5. **Two small shared classes, `FinancialListSearch` and `FinancialLookupFilters`**, instead of repeating the same predicates five times. The normalizer stays the single `ArabicSearch`.
+
+### Reason
+1. The task asked for useful search, not maximal field count. Page-specific flags keep, for example, the budget list from matching a type it never shows.
+2. Exact equality on the numbers the user reads. `fx_rate` and percentages would only create noise. The execution list's budget/cost amounts belong to the parent budget, not the payment.
+3. Matching by line tag would require duplicating each page's display tagging rules (notes tags on two pages, debit/credit sign on the other two) inside search, for no difference in results.
+4. The filters reach projects and partners through different paths (payment → budget → cost → project, and so on), which `SelectFilter::relationship()` cannot express. Keeping the apply closures means only option loading changed, never filter meaning. Without a static option list, Filament's default indicator would go blank, so the indicator resolves its own label.
+5. Explicit named-flag methods keep each page's semantics visible at the call site.
+
+### Impact
+Search and filter UX on five financial lists only. No accounting, posting, balance, form, report, schema or data change.

@@ -2,9 +2,10 @@
 
 namespace App\Filament\Resources\GeneralExchanges\Tables;
 
+use App\Filament\Tables\FinancialListSearch;
+use App\Filament\Tables\FinancialLookupFilters;
 use App\Models\FiscalYear;
 use App\Models\GeneralExchange;
-use App\Models\Partner;
 use App\Services\Audit\Attachments\AttachmentAuditRecorder;
 use App\Services\Audit\Financial\FinancialAccountRole;
 use App\Services\Audit\Financial\FinancialAuditRecorder;
@@ -30,7 +31,6 @@ class GeneralExchangesTable
             ->columns([
                 TextColumn::make('transaction.transaction_number')
                     ->label('رقم المعاملة')
-                    ->searchable()
                     ->sortable(),
 
                 TextColumn::make('partner.name')
@@ -152,13 +152,24 @@ class GeneralExchangesTable
                     ->color(fn ($state) => $state === 'نعم' ? 'success' : 'gray'),
             ])
             ->defaultSort('id', 'desc')
+            // Table-level search (FinancialListSearch → ArabicSearch). الجهة shows
+            // the row's own partner, falling back to the transaction's, so both are
+            // searched: the transaction number, its partner, type and the four
+            // exchange accounts in one EXISTS, the own partner in another; and
+            // المبلغ الأصلي / المبلغ النهائي by exact value. No project on this page;
+            // fx_rate, percentages and derived amounts are not searched.
+            ->searchable([
+                fn (Builder $query, string $search): Builder => FinancialListSearch::transaction($query, $search, partner: true, type: true, accounts: true),
+                fn (Builder $query, string $search): Builder => FinancialListSearch::ownPartner($query, $search),
+                fn (Builder $query, string $search): Builder => FinancialListSearch::amounts($query, ['original_amount', 'final_amount'], $search),
+            ])
+            ->searchPlaceholder('ابحث في التحويلات العامة...')
             ->filters([
-                SelectFilter::make('partner')
-                    ->label('الجهة')
-                    ->options(fn () => Partner::orderBy('name')->pluck('name', 'id'))
-                    ->query(fn (Builder $query, array $data) => filled($data['value'])
-                        ? $query->where('partner_id', $data['value'])
-                        : $query),
+                FinancialLookupFilters::partner(
+                    'partner',
+                    'الجهة',
+                    fn (Builder $query, $partnerId): Builder => $query->where('partner_id', $partnerId),
+                ),
 
                 SelectFilter::make('fiscal_year')
                     ->label('السنة المالية')

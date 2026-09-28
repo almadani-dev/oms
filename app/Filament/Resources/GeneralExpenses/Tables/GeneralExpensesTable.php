@@ -2,8 +2,9 @@
 
 namespace App\Filament\Resources\GeneralExpenses\Tables;
 
+use App\Filament\Tables\FinancialListSearch;
+use App\Filament\Tables\FinancialLookupFilters;
 use App\Models\FiscalYear;
-use App\Models\Partner;
 use App\Services\Audit\Attachments\AttachmentAuditRecorder;
 use App\Services\Audit\Financial\FinancialAccountRole;
 use App\Services\Audit\Financial\FinancialAuditRecorder;
@@ -29,7 +30,6 @@ class GeneralExpensesTable
             ->columns([
                 TextColumn::make('transaction.transaction_number')
                     ->label('رقم المعاملة')
-                    ->searchable()
                     ->sortable(),
 
                 // المصروفات العامة الجديدة بلا جهة مستفيدة (NULL). العمود يبقى
@@ -84,13 +84,23 @@ class GeneralExpensesTable
                     ->color(fn ($state) => $state === 'نعم' ? 'success' : 'gray'),
             ])
             ->defaultSort('id', 'desc')
+            // Table-level search (FinancialListSearch → ArabicSearch). The partner
+            // column (historical rows only) shows the row's own partner, falling
+            // back to the transaction's, so both are searched: the transaction
+            // number, its partner, type and the debit/credit accounts in one
+            // EXISTS, the own partner in another; and المبلغ by exact value.
+            ->searchable([
+                fn (Builder $query, string $search): Builder => FinancialListSearch::transaction($query, $search, partner: true, type: true, accounts: true),
+                fn (Builder $query, string $search): Builder => FinancialListSearch::ownPartner($query, $search),
+                fn (Builder $query, string $search): Builder => FinancialListSearch::amounts($query, ['amount'], $search),
+            ])
+            ->searchPlaceholder('ابحث في المصروفات العامة...')
             ->filters([
-                SelectFilter::make('partner')
-                    ->label('الجهة / المستفيد')
-                    ->options(fn () => Partner::orderBy('name')->pluck('name', 'id'))
-                    ->query(fn (Builder $query, array $data) => filled($data['value'])
-                        ? $query->where('partner_id', $data['value'])
-                        : $query),
+                FinancialLookupFilters::partner(
+                    'partner',
+                    'الجهة / المستفيد',
+                    fn (Builder $query, $partnerId): Builder => $query->where('partner_id', $partnerId),
+                ),
 
                 SelectFilter::make('fiscal_year')
                     ->label('السنة المالية')

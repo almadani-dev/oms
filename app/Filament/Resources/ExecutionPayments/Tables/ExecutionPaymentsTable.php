@@ -2,9 +2,9 @@
 
 namespace App\Filament\Resources\ExecutionPayments\Tables;
 
+use App\Filament\Tables\FinancialListSearch;
+use App\Filament\Tables\FinancialLookupFilters;
 use App\Models\FiscalYear;
-use App\Models\Partner;
-use App\Models\Project;
 use App\Models\ProjectCostBudgetsPayment;
 use App\Models\ProjectSuper;
 use App\Services\Audit\Attachments\AttachmentAuditRecorder;
@@ -32,7 +32,6 @@ class ExecutionPaymentsTable
             ->columns([
                 TextColumn::make('transaction.transaction_number')
                     ->label('رقم المعاملة')
-                    ->searchable()
                     ->sortable(),
 
                 // --- Detailed: project super (hidden by default) ---
@@ -118,6 +117,17 @@ class ExecutionPaymentsTable
                     ->color(fn ($state) => $state === 'نعم' ? 'success' : 'gray'),
             ])
             ->defaultSort('id', 'desc')
+            // Table-level search (FinancialListSearch → ArabicSearch): the
+            // transaction number, partner, type and line accounts in one EXISTS;
+            // the project (and its المشروع الرئيسي) by code or name in another; and
+            // مبلغ التنفيذ by exact value. fx-related and budget/cost amounts are
+            // deliberately not searched.
+            ->searchable([
+                fn (Builder $query, string $search): Builder => FinancialListSearch::transaction($query, $search, partner: true, type: true, accounts: true),
+                fn (Builder $query, string $search): Builder => FinancialListSearch::project($query, 'projectCostBudget.projectCost.project', $search),
+                fn (Builder $query, string $search): Builder => FinancialListSearch::amounts($query, ['amount'], $search),
+            ])
+            ->searchPlaceholder('ابحث في صرف مبالغ التنفيذ...')
             ->filters([
                 SelectFilter::make('project_super')
                     ->label('المشروع الرئيسي')
@@ -126,19 +136,17 @@ class ExecutionPaymentsTable
                         ? $query->whereHas('projectCostBudget.projectCost.project', fn ($q) => $q->where('project_super_id', $data['value']))
                         : $query),
 
-                SelectFilter::make('project')
-                    ->label('المشروع')
-                    ->options(fn () => Project::orderBy('name')->pluck('name', 'id'))
-                    ->query(fn (Builder $query, array $data) => filled($data['value'])
-                        ? $query->whereHas('projectCostBudget.projectCost', fn ($q) => $q->where('project_id', $data['value']))
-                        : $query),
+                FinancialLookupFilters::project(
+                    'project',
+                    'المشروع',
+                    fn (Builder $query, $projectId): Builder => $query->whereHas('projectCostBudget.projectCost', fn ($q) => $q->where('project_id', $projectId)),
+                ),
 
-                SelectFilter::make('partner')
-                    ->label('الجهة / المستفيد')
-                    ->options(fn () => Partner::orderBy('name')->pluck('name', 'id'))
-                    ->query(fn (Builder $query, array $data) => filled($data['value'])
-                        ? $query->whereHas('transaction', fn ($q) => $q->where('partner_id', $data['value']))
-                        : $query),
+                FinancialLookupFilters::partner(
+                    'partner',
+                    'الجهة / المستفيد',
+                    fn (Builder $query, $partnerId): Builder => $query->whereHas('transaction', fn ($q) => $q->where('partner_id', $partnerId)),
+                ),
 
                 SelectFilter::make('fiscal_year')
                     ->label('السنة المالية')
