@@ -118,32 +118,36 @@ class ProjectsGeneralFinancialPage extends Page implements HasTable
                 ->orderByDesc('has_critical_alerts')
                 ->orderByDesc('has_warning_alerts')
                 ->orderByDesc('calculated_at'))
+            // One table-level search over the snapshot's own denormalized columns
+            // (no relation, no join): the project code is an identifier, the
+            // project, super-project and donor names are Arabic text. ArabicSearch
+            // escapes `%`/`_`, so both match literally.
+            ->searchable([
+                fn (Builder $query, string $search): Builder => self::applySnapshotSearch($query, $search),
+            ])
+            ->searchPlaceholder('ابحث في الصفحة العامة للمشاريع...')
             ->columns([
                 TextColumn::make('project_code')
                     ->label('كود المشروع')
                     ->badge()
                     ->color('primary')
-                    ->searchable()
                     ->sortable()
                     ->toggleable(),
 
                 TextColumn::make('project_name')
                     ->label('اسم المشروع')
-                    ->searchable()
                     ->sortable()
                     ->wrap()
                     ->toggleable(),
 
                 TextColumn::make('project_super_name')
                     ->label('المشروع الرئيسي')
-                    ->searchable()
                     ->sortable()
                     ->placeholder('غير محدد')
                     ->toggleable(),
 
                 TextColumn::make('donor_name')
                     ->label('المانح')
-                    ->searchable()
                     ->sortable()
                     ->placeholder('غير محدد')
                     ->toggleable(),
@@ -494,6 +498,20 @@ class ProjectsGeneralFinancialPage extends Page implements HasTable
     private function dateText(mixed $value): string
     {
         return $value ? Carbon::parse($value)->format('Y-m-d') : '';
+    }
+
+    /**
+     * The table search for one word: project code (identifier) or project,
+     * super-project or donor name (Arabic text). A word that cleans to nothing
+     * adds no predicate.
+     */
+    private static function applySnapshotSearch(Builder $query, string $search): Builder
+    {
+        ArabicSearch::whereContainsIdentifier($query, 'project_code', $search);
+        ArabicSearch::whereContainsText($query, 'project_name', $search, 'or');
+        ArabicSearch::whereContainsText($query, 'project_super_name', $search, 'or');
+
+        return ArabicSearch::whereContainsText($query, 'donor_name', $search, 'or');
     }
 
     /**

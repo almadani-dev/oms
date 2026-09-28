@@ -1688,3 +1688,33 @@ See the 2026-09-28 Batch F entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_L
 - 1 new test file (17 tests; 15 fail on the old code).
 
 Not committed. A separate final read-only search audit follows.
+
+---
+
+### Date
+2026-09-28 (search Batch G: "CLOSE THE FOUR REMAINING SEARCH GAPS ONLY")
+
+### Prompt
+After the final read-only search audit, approved **Batch G only**, *"NOT a new broad redesign"*: fix exactly the four audit findings.
+- the general projects report table search;
+- the budget-payment `partner_id` Select;
+- the attachments project filter;
+- the permissions `roles.name` search.
+
+Rules it set:
+- re-audit the committed source first and *"STOP AND REPORT"* if a target differs;
+- reuse `FinancialLookupFilters`;
+- keep scopes, validation, filter conditions, sorting and report calculations;
+- give each change a test that fails on the old code;
+- no `git stash`;
+- explicitly leave the sorting convention, the beneficiary-account cascade, small-lookup placeholders, relation managers and backup search alone.
+
+### Purpose
+To finish the search project with the smallest possible diff. The pre-edit check confirmed all four findings against the committed tree (`20ac78f`) before any edit.
+
+### Result
+See the 2026-09-28 Batch G entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md`.
+- 4 production files.
+- 1 new test file (12 tests).
+
+Not committed.

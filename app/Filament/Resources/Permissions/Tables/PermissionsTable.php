@@ -65,10 +65,15 @@ class PermissionsTable
                 TextColumn::make('roles_count')
                     ->label('عدد الأدوار')
                     ->sortable(),
+                // Role names are free text (custom roles can be Arabic): the same
+                // ArabicSearch text semantics as the Roles and Users lists, through
+                // one EXISTS over the role relation.
                 TextColumn::make('roles.name')
                     ->label('الأدوار')
                     ->badge()
-                    ->searchable()
+                    ->searchable(query: fn (Builder $query, string $search): Builder => ArabicSearch::clean($search) === ''
+                        ? $query
+                        : $query->whereHas('roles', fn (Builder $role): Builder => ArabicSearch::whereContainsText($role, 'name', $search)))
                     ->limitList(3)
                     ->expandableLimitedList(),
                 TextColumn::make('status')

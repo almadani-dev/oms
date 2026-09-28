@@ -1,6 +1,26 @@
 # Next Steps
 
-## Recommended Next Step (2026-09-28, Batch F done — review and commit, then the final read-only search audit)
+## Recommended Next Step (2026-09-28, Batch G done — review and commit; the search project is complete)
+
+**Review and commit Batch G.** Not yet committed. The commit covers:
+- `ProjectsGeneralFinancialPage`, `ProjectCostBudgetsPaymentForm`, `AttachmentsTable`, `PermissionsTable`;
+- the new `tests/Feature/Search/FinalSearchGapsTest.php` (12/12);
+- the regenerated `graphify-out/` files.
+
+Batch F and the final read-only search audit are done (`20ac78f`). With Batch G, every search defect that audit found is closed. No further search batch is planned.
+
+**Separate, non-search items (each needs its own decision; not started):**
+- **Default sort convention:** `id asc` fallback on the master, lookup and admin lists vs `id desc` on the transaction and financial lists.
+- **Beneficiary account cascade in the financial forms:** it loads every account of one type/bank/currency combination. Measure the production size of the family-account combination before deciding whether it needs server-side search.
+
+**Accepted by design (no action):**
+- small lookups loaded in full and their default placeholders;
+- plain LIKE in relation managers and on the backup page;
+- Filament's own relationship Select search: bounded and server-side, without alef folding.
+
+---
+
+## Previously Recommended Next Step (2026-09-28, Batch F done — review and commit, then the final read-only search audit)
 
 **First, review and commit Batch F.** Not yet committed. The commit covers:
 - the new `app/Filament/Concerns/SearchesGloballyWithArabicSearch.php`;

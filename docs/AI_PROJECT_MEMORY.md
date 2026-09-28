@@ -4,6 +4,14 @@
 
 ## Recent Changes
 
+- **2026-09-28 — Search Batch G: the four gaps left by the final read-only search audit are closed. 4 production files, 1 new test file. Implemented and verified, NOT committed.**
+  - **الصفحة العامة للمشاريع table:** one table-level ArabicSearch search over the snapshot's own columns: `project_code` as an identifier; `project_name`, `project_super_name` and `donor_name` as alef-folded text (no join, no EXISTS). Placeholder "ابحث في الصفحة العامة للمشاريع...". Snapshot query, calculations, filters, custom sort and exports unchanged.
+  - **صرف مبلغ form `partner_id`:** now `FinancialLookupFilters::partnerOptions()` / `partnerLabel()` (Batch E pattern): all non-deleted partners as before, server-side, at most 50, nothing preloaded, the saved partner still restored on edit.
+  - **Attachments `project` filter:** now `FinancialLookupFilters::project()`: code or Arabic name, at most 50, label `code - name`, the same `whereHasMorph` condition. `scopeViewableBy` and global search untouched.
+  - **Permissions `roles.name`:** `whereHas('roles')` with ArabicSearch text semantics. The technical-name and label searches are unchanged, and global search stays disabled.
+  - **Tests:** `FinalSearchGapsTest` 12/12 (9 fail on the old code, covering all four fixes); 16 directly affected existing test files are green.
+  - **Not touched:** ArabicSearch, `FinancialLookupFilters`, sorting, accounting, posting, report calculations, Muwakha, global-search decisions, schema, data, relation managers, the beneficiary-account cascade.
+
 - **2026-09-28 — Search Batch F: final search consistency cleanup (Transactions list, global search keys, remaining admin lists, placeholders). 25 modified production files, 1 new trait, 1 new test file. Implemented and verified, NOT committed.**
 
   **المعاملات المالية list:** one table-level ArabicSearch search.

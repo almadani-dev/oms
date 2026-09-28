@@ -2947,3 +2947,23 @@ Option loading and search on three reports and three financial forms. No account
 
 ### Impact
 List and global search on the admin, master-data and Transactions resources. No accounting, posting, transaction, report, sorting, schema or data change.
+
+---
+
+### Date
+2026-09-28 (search Batch G: closing the final-audit search gaps)
+
+### Decision
+1. **The general projects report searches its snapshot table's own denormalized columns** (`project_code`, `project_name`, `project_super_name`, `donor_name`) through one table-level ArabicSearch closure, not the live project/partner tables.
+2. **The budget-payment partner Select and the attachments project filter reuse `FinancialLookupFilters`**, the same lookups as the Batch E forms and the Batch C1 financial-list filters, with their scopes unchanged: all non-deleted partners; all non-deleted projects.
+3. **The attachments project filter's label becomes `code - name`** (was name only), matching every other project lookup in OMS.
+4. **Permissions `roles.name` gets ArabicSearch text semantics.** The permission technical name keeps its plain search, and Permissions global search stays disabled.
+
+### Reason
+1. The report rows are snapshots: searching their stored names finds exactly what the row shows, with no join or EXISTS.
+2. One tested lookup per kind; no new abstraction.
+3. It disambiguates projects with similar names.
+4. Role names are user-entered and can be Arabic, as on the Roles and Users lists.
+
+### Impact
+Search and option loading on one report table, one financial form Select, one attachments filter and one permissions column. No accounting, posting, report-calculation, sorting, schema or data change.

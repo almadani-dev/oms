@@ -4065,3 +4065,78 @@ The tiny lookup lists keep the default placeholder.
 
 ### Commit Hash
 Not committed, not pushed — awaiting review.
+
+---
+
+### Date
+2026-09-28
+
+### Task
+Search Batch G: close the four search gaps left by the final read-only search audit, and nothing else.
+
+### Result
+**Implemented and verified; NOT committed.**
+
+Pre-edit check against the source after the Batch F commit (`20ac78f`): all four audit findings still matched.
+
+1. **الصفحة العامة للمشاريع report table**
+   - Before: plain per-column Filament LIKE on `project_code`, `project_name`, `project_super_name` and `donor_name`, with the default placeholder.
+   - Now: one table-level ArabicSearch search over the snapshot's own denormalized columns: `project_code` as an identifier; project, super-project and donor names as Arabic text (alef-folded).
+     - No relation, join or EXISTS.
+     - `%` and `_` are literal.
+   - Placeholder: "ابحث في الصفحة العامة للمشاريع...".
+   - Unchanged: snapshot query, calculations, filters, the custom alert/`calculated_at` sort, pagination and exports.
+2. **صرف مبلغ form (`ProjectCostBudgetsPaymentForm`), `partner_id`**
+   - Before: `Partner::orderBy('name')->pluck()` over every partner, filtered in the browser.
+   - Now: the Batch E pattern, `FinancialLookupFilters::partnerOptions()` / `partnerLabel()`: server-side, ArabicSearch, at most 50, nothing preloaded.
+   - Kept: the all-partners scope (non-deleted, as before), required, label, stored id and edit hydration from `transaction.partner_id`.
+3. **Attachments `project` filter**
+   - Before: every project was loaded and the filter had no search box.
+   - Now: `FinancialLookupFilters::project()`: code (identifier) or name (Arabic text), at most 50, labelled `code - name`, deleted projects excluded as before.
+   - Kept: the same filter name and the same `whereHasMorph` condition, with the indicator "المشروع: code - name".
+   - `scopeViewableBy`, global search and storage untouched.
+4. **Permissions `roles.name`**: plain relationship search replaced by `whereHas('roles')` with ArabicSearch text semantics. The technical-name and Arabic-label searches are unchanged, and global search stays disabled.
+
+### Changed Files
+- Modified `app/Filament/Pages/ProjectsGeneralFinancialPage.php` (table search, placeholder, `applySnapshotSearch()`).
+- Modified `app/Filament/Resources/ProjectCostBudgetsPayments/Schemas/ProjectCostBudgetsPaymentForm.php` (the `partner_id` Select and its imports only).
+- Modified `app/Filament/Resources/Attachments/Tables/AttachmentsTable.php` (the `project` filter and imports only).
+- Modified `app/Filament/Resources/Permissions/Tables/PermissionsTable.php` (the `roles.name` search only).
+- New `tests/Feature/Search/FinalSearchGapsTest.php` (12 tests).
+- `graphify-out/` regenerated from the final tree.
+- **Not** modified: ArabicSearch, `FinancialLookupFilters`, sorting, accounting, posting, `buildLines()`, report calculations, Muwakha, global-search decisions, schema, data, relation managers, the beneficiary-account cascade.
+
+### Verification
+1. `ArabicSearchTest` → 84/84 passed (124 assertions). `FinalSearchGapsTest` → 12/12 passed (64 assertions).
+2. Directly affected existing tests, all green:
+   - `LookupSelectSearchTest` 18/18
+   - `RemainingSearchConsistencyTest` 17/17
+   - `ProjectCostBudgetsPaymentAccountValidationTest` 6/6
+   - `ZeroPercentageDeductionFormTest` 6/6
+   - `ZeroPercentageDeductionTest` 21/21
+   - `BalanceGuardIntegrationTest` 4/4
+   - `ProjectDisbursementAuditTest` 5/5
+   - `ExecutionPaymentAuditTest` 4/4
+   - `FinancialAttachmentCutoverTest` 30/30
+   - `AttachmentRegistryTest` 41/41
+   - `AttachmentGlobalSearchScopeTest` 6/6
+   - `PermissionResourceLivewireTest` 11/11
+   - `PermissionSyncActionTest` 8/8
+   - `PermissionSyncAuditTest` 9/9
+   - `ReportExportAuthorizationTest` 28/28
+   - `ReportExportAuditTest` 22/22
+3. Before-fix proof, without `git stash`: the 4 files were overwritten with `git show HEAD:`, tested, restored, and `sha1sum -c` was OK.
+   - 9 of 12 fail on the old code, covering all four fixes.
+   - The 3 that pass are preservation guards: the project-code search (plain LIKE already found codes), edit-page partner label restoration, and the unchanged permission technical-name/label search with global search off.
+4. Read-only MySQL on this machine's local database:
+   - Report search: 0 joins and 0 EXISTS (snapshot columns only), 4 LIKEs each with `ESCAPE`, alef fold on the three name columns, the custom `has_critical_alerts`/`has_warning_alerts`/`calculated_at` sort, COUNT plus `LIMIT 25 OFFSET 0`, and the term only in bindings.
+   - Budget-payment partner Select and attachments project filter: 0 options shipped, 0 queries before typing, one search query with `LIMIT 50`, `ESCAPE`, alef fold and `deleted_at is null`. No donor scope on the partner search (all partners, as before).
+   - Attachments with the project filter applied: the same `whereHasMorph` EXISTS as before.
+   - Permissions role search: one EXISTS over the roles pivot. The joins are inside that EXISTS and inside the existing `withCount('roles')`.
+   - Query counts are flat across page sizes: report 2, attachments 1, permissions 3.
+5. `php -l` clean on all 4 changed files and the new test. Line endings stay CRLF, as in HEAD.
+6. `PYTHONHASHSEED=0 graphify update .` → 959 files, 15402 nodes, 38807 edges, with 0 sensitive-path hits.
+7. Not run: the full suite or the full Feature suite.
+
+### Commit Hash
+Not committed, not pushed — awaiting review.

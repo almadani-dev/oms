@@ -2,11 +2,11 @@
 
 namespace App\Filament\Resources\Attachments\Tables;
 
+use App\Filament\Tables\FinancialLookupFilters;
 use App\Models\Attachment;
 use App\Models\ProjectCostBudget;
 use App\Models\ProjectCostBudgetsPayment;
 use App\Models\ProjectCostReceipt;
-use App\Models\Project;
 use App\Models\User;
 use App\Services\Attachments\AttachmentStorageService;
 use App\Services\Attachments\FinancialAttachmentRegistry;
@@ -142,28 +142,22 @@ class AttachmentsTable
                     ->label('نوع العملية')
                     ->options(FinancialAttachmentRegistry::typeOptions()),
 
-                SelectFilter::make('project')
-                    ->label('المشروع')
-                    ->options(fn (): array => Project::query()->orderBy('name')->pluck('name', 'id')->all())
-                    ->query(function (Builder $query, array $data): Builder {
-                        if (blank($data['value'] ?? null)) {
-                            return $query;
-                        }
+                // Server-side project lookup (code or Arabic name, at most 50,
+                // labelled "code - name"), shared with the financial lists; the
+                // chosen project narrows the attachments exactly as before.
+                FinancialLookupFilters::project('project', 'المشروع', function (Builder $query, mixed $projectId): Builder {
+                    return $query->whereHasMorph(
+                        'attachable',
+                        [ProjectCostReceipt::class, ProjectCostBudget::class, ProjectCostBudgetsPayment::class],
+                        function (Builder $q, string $type) use ($projectId): void {
+                            $relation = $type === ProjectCostBudgetsPayment::class
+                                ? 'projectCostBudget.projectCost'
+                                : 'projectCost';
 
-                        $projectId = $data['value'];
-
-                        return $query->whereHasMorph(
-                            'attachable',
-                            [ProjectCostReceipt::class, ProjectCostBudget::class, ProjectCostBudgetsPayment::class],
-                            function (Builder $q, string $type) use ($projectId): void {
-                                $relation = $type === ProjectCostBudgetsPayment::class
-                                    ? 'projectCostBudget.projectCost'
-                                    : 'projectCost';
-
-                                $q->whereHas($relation, fn (Builder $c): Builder => $c->where('project_id', $projectId));
-                            },
-                        );
-                    }),
+                            $q->whereHas($relation, fn (Builder $c): Builder => $c->where('project_id', $projectId));
+                        },
+                    );
+                }),
 
                 SelectFilter::make('disk')
                     ->label('نوع التخزين')
