@@ -13,6 +13,7 @@ use App\Models\TransactionSuperType;
 use App\Models\TransactionType;
 use App\Models\User;
 use App\Support\Permissions\PermissionRegistry;
+use App\Support\Search\ArabicSearch;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\URL;
@@ -237,9 +238,8 @@ class TransactionLinesTableSearchTest extends TestCase
     }
 
     /**
-     * `notes` is hidden by default, which is exactly why global search is
-     * declared on the table rather than on the column: a hidden column is
-     * skipped when Filament builds the search constraint.
+     * `notes` is hidden by default. Global search is declared on the table, not
+     * on columns, so column visibility plays no part in what is searched.
      */
     public function test_search_matches_line_notes_even_though_the_column_is_hidden_by_default(): void
     {
@@ -431,5 +431,214 @@ class TransactionLinesTableSearchTest extends TestCase
         $this->cashLine->delete();
 
         $this->assertSearchFinds('الصندوق', [], [$this->cashLine]);
+    }
+
+    // =====================================================================
+    // ARABIC NORMALIZATION (ArabicSearch)
+    // =====================================================================
+
+    /**
+     * An extra line on the aid transaction / bank account, whose only
+     * distinguishing text is what the calling test passes in.
+     */
+    private function extraLine(array $overrides = [], ?Account $account = null): TransactionLine
+    {
+        $transaction = Transaction::where('transaction_number', 'GEN-2026-0001')->firstOrFail();
+        $account ??= Account::where('account_code', 'ACC-408008')->firstOrFail();
+
+        return $this->makeLine($transaction, $account, $account->currency, array_merge([
+            'amount_currency' => 77,
+            'description' => 'سطر اضافي',
+        ], $overrides));
+    }
+
+    public function test_alef_variants_in_the_term_find_hamza_text_stored_on_the_line(): void
+    {
+        $line = $this->extraLine(['description' => "تسوية \u{0623}رصدة"]);
+
+        foreach (['ارصدة', "\u{0623}رصدة", "\u{0625}رصدة", "\u{0622}رصدة", "\u{0671}رصدة"] as $term) {
+            $this->assertSearchFinds($term, [$line], [$this->bankLine, $this->cashLine]);
+        }
+    }
+
+    public function test_a_hamza_term_finds_plain_alef_text_stored_on_a_related_record(): void
+    {
+        // Fixture classification is stored as 'مصاريف ادارية' (no hamza).
+        $this->assertSearchFinds("\u{0625}دارية", [$this->cashLine], [$this->bankLine]);
+    }
+
+    public function test_alef_folding_reaches_a_nested_relationship(): void
+    {
+        $housingBank = BankType::create(['name' => "بنك ال\u{0625}سكان"]);
+        $account = $this->makeAccount(Currency::where('code', 'USD')->firstOrFail(), [
+            'account_code' => 'ACC-HSG',
+            'name' => 'حساب ثالث',
+            'bank_type_id' => $housingBank->id,
+        ]);
+        $line = $this->extraLine([], $account);
+
+        $this->assertSearchFinds('الاسكان', [$line], [$this->bankLine, $this->cashLine]);
+    }
+
+    public function test_diacritics_and_tatweel_in_the_term_are_ignored(): void
+    {
+        // 'الصندوق' with a fatha and a tatweel typed into it.
+        $this->assertSearchFinds("الص\u{064E}ند\u{0640}وق", [$this->cashLine], [$this->bankLine]);
+    }
+
+    public function test_arabic_digit_amount_finds_the_same_row_as_ascii_digits(): void
+    {
+        $this->assertSearchFinds('١٥٠٠', [$this->bankLine], [$this->cashLine]);
+        $this->assertSearchFinds('۱۵۰۰', [$this->bankLine], [$this->cashLine]);
+    }
+
+    public function test_arabic_digit_amount_with_display_separators(): void
+    {
+        $this->assertSearchFinds('٢,٧٠٠.٠٠', [$this->cashLine], [$this->bankLine]);
+    }
+
+    public function test_arabic_digits_find_a_structured_identifier(): void
+    {
+        $this->assertSearchFinds('٤٠٨٠٠٨', [$this->bankLine], [$this->cashLine]);
+    }
+
+    /**
+     * 'خصم إداري' is a real TransactionLineRole label carrying a hamza. The line
+     * sits on the aid transaction, whose classification ('مساعدات') cannot match,
+     * so the role label is the only path to it.
+     */
+    public function test_line_role_label_matches_across_alef_variants(): void
+    {
+        $line = $this->extraLine(['line_role' => 'administrative_deduction']);
+
+        $this->assertSearchFinds('اداري', [$line], [$this->bankLine]);
+        $this->assertSearchFinds("\u{0625}داري", [$line], [$this->bankLine]);
+    }
+
+    public function test_a_literal_percent_does_not_match_every_row(): void
+    {
+        $line = $this->extraLine(['description' => 'رسوم 10% تحويل']);
+
+        $this->assertSearchFinds('%', [$line], [$this->bankLine, $this->cashLine]);
+        $this->assertSearchFinds('10%', [$line], [$this->bankLine, $this->cashLine]);
+    }
+
+    public function test_a_literal_underscore_does_not_match_any_single_character(): void
+    {
+        $account = $this->makeAccount(Currency::where('code', 'USD')->firstOrFail(), [
+            'account_code' => 'ACC_777',
+            'name' => 'حساب رابع',
+        ]);
+        $line = $this->extraLine([], $account);
+
+        // As a wildcard, 'ACC_001' would also match the cash line's 'ACC-001'.
+        $this->assertSearchFinds('ACC_001', [], [$this->cashLine, $line]);
+        $this->assertSearchFinds('ACC_777', [$line], [$this->bankLine, $this->cashLine]);
+    }
+
+    /**
+     * 'transfer_fee' contains an underscore only in its hidden machine value.
+     * A bare `_` must not reach it through the machine-value convenience path,
+     * while a Latin word from that value still does.
+     */
+    public function test_a_bare_underscore_does_not_match_line_role_machine_values(): void
+    {
+        $line = $this->extraLine(['line_role' => 'transfer_fee', 'description' => 'رسوم']);
+
+        $this->assertSearchFinds('_', [], [$line, $this->bankLine, $this->cashLine]);
+        $this->assertSearchFinds('transfer', [$line], [$this->bankLine, $this->cashLine]);
+        $this->assertSearchFinds('transfer_fee', [$line], [$this->bankLine, $this->cashLine]);
+    }
+
+    public function test_a_literal_underscore_still_matches_real_text(): void
+    {
+        $line = $this->extraLine(['description' => 'مرجع INV_2026']);
+
+        $this->assertSearchFinds('_', [$line], [$this->bankLine, $this->cashLine]);
+    }
+
+    /**
+     * Independent of the term side: the column expression alone must turn every
+     * stored alef variant into the same plain-alef string (U+0627).
+     */
+    public function test_sql_alef_fold_converges_every_stored_variant_to_plain_alef(): void
+    {
+        $expected = "\u{0627}\u{062D}\u{0645}\u{062F}"; // احمد
+
+        foreach (["\u{0623}", "\u{0625}", "\u{0622}", "\u{0671}", "\u{0627}"] as $alef) {
+            $row = DB::selectOne('select '.ArabicSearch::foldAlefSql('?').' as folded', [$alef."\u{062D}\u{0645}\u{062F}"]);
+
+            $this->assertSame($expected, $row->folded);
+        }
+    }
+
+    public function test_a_term_that_cleans_to_nothing_neither_matches_nor_excludes(): void
+    {
+        $this->assertSearchFinds("\u{0640}", [$this->bankLine, $this->cashLine], []);
+    }
+
+    public function test_normalized_search_still_counts_across_every_page(): void
+    {
+        $component = Livewire::test(ListTransactionLines::class)
+            ->set('tableRecordsPerPage', 1)
+            ->searchTable("\u{0623}مريكي"); // stored: 'دولار امريكي' on the USD lines
+
+        $records = $component->instance()->getTableRecords();
+
+        $this->assertCount(1, $records->items());
+        $this->assertSame(2, $records->total());
+    }
+
+    public function test_soft_deleted_line_stays_out_of_normalized_search(): void
+    {
+        $line = $this->extraLine(['description' => "تسوية \u{0623}رصدة"]);
+        $line->delete();
+
+        $this->assertSearchFinds('ارصدة', [], [$line]);
+    }
+
+    /**
+     * Structure guard: no joins; the term is bound, never inlined; alef folding
+     * only on human-text columns; amount predicates only for a numeric term.
+     */
+    public function test_generated_search_sql_keeps_its_shape(): void
+    {
+        $textSql = $this->searchSql('ارصدة');
+
+        $this->assertStringNotContainsStringIgnoringCase(' join ', $textSql['sql']);
+        $this->assertStringNotContainsString('ارصدة', $textSql['sql']);
+        $this->assertContains('%ارصدة%', $textSql['bindings']);
+        $this->assertStringContainsString("REPLACE(REPLACE(REPLACE(REPLACE(\"transaction_lines\".\"description\"", $textSql['sql']);
+        $this->assertStringContainsString('"transactions"."transaction_number" LIKE ? ESCAPE', $textSql['sql']);
+        $this->assertStringContainsString('"accounts"."account_code" LIKE ? ESCAPE', $textSql['sql']);
+        $this->assertStringContainsString('"currencies"."code" LIKE ? ESCAPE', $textSql['sql']);
+        $this->assertStringNotContainsString('amount_currency', $textSql['sql']);
+        // One EXISTS per relation: transaction, its type, the super type, account,
+        // bank type, currency.
+        $this->assertSame(6, substr_count(strtolower($textSql['sql']), 'exists ('));
+
+        $amountSql = $this->searchSql('١٥٠٠');
+
+        $this->assertStringContainsString('"transaction_lines"."amount_currency" = ?', $amountSql['sql']);
+        $this->assertContains('1500', $amountSql['bindings']);
+        $this->assertStringOrderByIdDesc($amountSql['sql']);
+    }
+
+    /**
+     * @return array{sql: string, bindings: list<mixed>}
+     */
+    private function searchSql(string $term): array
+    {
+        $query = Livewire::test(ListTransactionLines::class)
+            ->searchTable($term)
+            ->instance()
+            ->getFilteredSortedTableQuery();
+
+        return ['sql' => $query->toSql(), 'bindings' => $query->getBindings()];
+    }
+
+    private function assertStringOrderByIdDesc(string $sql): void
+    {
+        $this->assertMatchesRegularExpression('/order by "(transaction_lines"\.")?id" desc$/i', $sql);
     }
 }

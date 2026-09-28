@@ -2754,3 +2754,42 @@ Search and filter UX only. Every predicate is database-side — correlated `EXIS
 
 ### Impact
 Search behaviour only. Global search for attachments now matches the list exactly. Both pickers now find options by code. No accounting, data, schema or report change.
+
+---
+
+### Date
+2026-09-28 (search Batch A: Arabic search normalization rules, LIKE escape character, grouped relation EXISTS)
+
+### Decision
+1. **Default normalization is a fixed, safe set:**
+   - strip harakat U+064B–U+0652 and U+0670, tatweel U+0640, and zero-width/bidi marks;
+   - Arabic-Indic and Persian digits → ASCII;
+   - collapse all whitespace, NBSP included; trim;
+   - for human text only, fold alef variants to the one canonical form, plain alef: U+0623 (أ), U+0625 (إ), U+0622 (آ) and U+0671 (ٱ) each become U+0627 (ا), and U+0627 stays U+0627.
+2. **Explicitly not normalized:** ى/ي, ة/ه, ؤ/و, ئ/ي, ک/ك, ی/ي. ى/ي may be reconsidered later **only for person-name fields** (Batches B/D). ة/ه is rejected for now.
+3. **Combining hamza U+0654/U+0655 and madda U+0653 are not stripped**, and no NFC normalization is applied.
+4. **Human text gets column-side alef folding; structured identifiers get neither column nor term alef folding.** Identifiers: transaction numbers, references, account codes and currency codes.
+5. **LIKE escaping uses `!` with an explicit `ESCAPE '!'` on every predicate.** The escape character is escaped first.
+6. **Amount search is strict:**
+   - plain digits with an optional decimal, or well-formed groups of three using `,`, `٬` or a space;
+   - `٫` reads as a decimal point;
+   - signs, exponents, hex and malformed grouping are rejected.
+7. **Fields on the same relation are grouped into one `whereHas`.**
+
+### Reason
+1. The read-only audit showed MySQL `utf8mb4_unicode_ci` does not fold alef variants, harakat or tatweel under `LIKE`. Arabic digits are folded by MySQL, but not by PHP `is_numeric()` or SQLite.
+2. Each pair distinguishes real words: `علي`/`على`, `حسابه`/`حسابة`, `مسؤول`, `رئيس`.
+3. Stripping U+0654 would turn a decomposed ؤ into و, which is a forbidden fold. NFC composition would be the principled way to handle decomposed input, but it was not requested, so it is reported rather than added.
+4. Folding an identifier's term without folding its column would make an Arabic identifier containing a hamza unfindable. Identifiers are compared as stored.
+5. SQLite has no default LIKE escape, and MySQL's default (backslash) is disabled by `NO_BACKSLASH_ESCAPES`, so neither default can be relied on. `!` avoids backslash double-escaping in MySQL string literals.
+6. The old parser accepted `1e3` (which `is_numeric` treats as 1000) and malformed input like `1,50,0` as amounts.
+7. EXISTS(A) OR EXISTS(B) over the same correlated relation is logically identical to EXISTS(A OR B). This was proven on MySQL data: every term that normalization does not affect returns an identical ID set. It is needed here because normalized relation search uses custom closures.
+
+### Impact
+Only `سطور المعاملات` search changes. There is no schema, data, collation, accounting or eager-loading change, and no other page is affected. `ArabicSearch` is ready for Batches B–F.
+
+### Amendments (Batch A correction pass, same day)
+- **NFC is now applied at the start of `clean()`**, which supersedes decision 3's "no NFC". This is canonical equivalence only. `Normalizer`/intl is present in both the CLI/test runtime and the Apache `mod_php` runtime, which share one PHP directory and `php.ini`; `filament/support` requires `ext-intl`. A `class_exists` guard falls back to the previous behaviour. Combining marks are still never *stripped*: NFC composes them into ؤ/ئ/أ/إ/آ, and only the alef forms are then folded.
+- **The `line_role` machine-value convenience match requires at least one Latin letter**, so a bare `_` cannot reach values like `transfer_fee` that the user never sees.
+- **ي/ى and ة/ه stay out of the shared default normalizer.** ي/ى may be reconsidered only for explicit person-name fields, most likely in the Muwakha batch. ة/ه remains rejected.
+- **Documentation states alef folding by code point** (U+0623/U+0625/U+0622/U+0671 → U+0627). Bidi reordering can visually reverse an arrow placed between Arabic letters.

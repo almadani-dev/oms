@@ -1,13 +1,36 @@
 # Next Steps
 
-## Recommended Next Step (2026-09-28, search Batch 0 done — review and commit, then Batch A: shared Arabic search behaviour)
+## Recommended Next Step (2026-09-28, search Batch A done — review and commit, then Batch B: master data)
+
+**First, review and commit Batch A, including its correction pass.**
+- 2 production files (1 new) and 2 test files (1 new): `ArabicSearchTest` 63/63 and `TransactionLinesTableSearchTest` 47/47. Not yet committed.
+- The 4 `graphify-out/` files were regenerated from the final tree (`graphify update .`) and belong in the same commit.
+- **Avoid `git stash` for before/after proofs in this repo:** the Graphify `post-checkout` hook fires on it. Run new tests before implementing the fix instead.
+
+**Then Batch B. Plan only; do not implement until approved.** Apply `ArabicSearch` to the master-data lists:
+- `AccountsTable`: `account_code`, `name`, `iban`, plus the visible `accountType.name` and `bankType.name`;
+- `ProjectsTable`: `code`, `name`, `donor.name`;
+- `PartnersTable`: `name`, `city`, `country`, email as an identifier, mobile with a digits-only term;
+- `ProjectSupersTable`, `ProjectCostsTable` (plus `project.code`), and the small lookup tables (`name`);
+- global search attributes for accounts (`account_code`) and projects (`code`).
+
+Use table-level `searchable([...closures])` in the Batch A pattern. Targeted tests: a new `tests/Feature/Search/MasterDataTableSearchTest.php` plus `tests/Unit/Support/Search/ArabicSearchTest.php`.
+
+**Decided in the Batch A correction pass:**
+- NFC is applied in `clean()`.
+- The `line_role` machine-value match requires a Latin letter.
+- ى/ي and ة/ه stay out of the shared default normalizer, and must not be added in Batch B. ى/ي may be reconsidered only for explicit person-name fields, most likely in Batch D (Muwakha). ة/ه remains rejected.
+
+---
+
+## Previously Recommended Next Step (2026-09-28, search Batch 0 done — review and commit, then Batch A: shared Arabic search behaviour)
 
 **First, review and commit Batch 0.** It is 3 production files and 2 new test files, all green, not yet committed.
 
 **Then Batch A. Plan only; do not implement until approved.** Create one small helper, `app/Support/Search/ArabicSearch.php`, and apply it first to `سطور المعاملات`, the only page with a full search test suite.
 
 What the helper covers:
-- **Search-term normalization:** trim; collapse whitespace; Arabic-Indic and Persian digits → ASCII; strip harakat, tatweel and zero-width characters; fold `أ إ آ ٱ` → `ا`; escape `%`, `_` and `\`.
+- **Search-term normalization:** trim; collapse whitespace; Arabic-Indic and Persian digits → ASCII; strip harakat, tatweel and zero-width characters; fold U+0623 (أ), U+0625 (إ), U+0622 (آ) and U+0671 (ٱ) to plain alef U+0627 (ا); escape `%`, `_` and `\`.
 - **Column-side alef folding** via `REPLACE(REPLACE(REPLACE(col,'أ','ا'),'إ','ا'),'آ','ا')`. It works on both MySQL and the SQLite test database. It costs nothing in index terms, because a leading-wildcard `LIKE` never uses an index.
 - **Numeric parsing** so the amount search accepts Arabic digits.
 - **Normalized Arabic label matching** for enum labels such as `line_role`.

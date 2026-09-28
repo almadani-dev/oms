@@ -3515,3 +3515,68 @@ The user was asked and chose to apply the scope anyway, framed as consistency an
 
 ### Commit Hash
 Not committed, not pushed — awaiting review.
+
+---
+
+### Date
+2026-09-28
+
+### Task
+Search Batch A: Arabic search core. Create one small `ArabicSearch` helper and prove it on `سطور المعاملات` only.
+
+### Result
+**Implemented and verified; NOT committed.** Every search word now goes through `ArabicSearch`, which does five things:
+- **Cleans the word:** strips harakat U+064B–U+0652 and U+0670, tatweel, and zero-width/bidi marks; converts Arabic-Indic and Persian digits to ASCII; collapses whitespace including NBSP; trims.
+- **Folds alef variants** for human text, on both the term and the column (nested `REPLACE`): U+0623 (أ), U+0625 (إ), U+0622 (آ) and U+0671 (ٱ) each become plain alef U+0627 (ا), and U+0627 stays U+0627.
+- **Escapes LIKE wildcards** with an explicit `ESCAPE '!'`.
+- **Matches Arabic `line_role` labels** after normalizing both the label and the term.
+- **Parses amounts strictly**, so `١٥٠٠` equals `1500` while exponents, signs and malformed grouping are rejected.
+
+Structured identifiers (`transaction_number`, `reference`, `account_code`, `currencies.code`) are cleaned but never alef-folded. Fields on the same relation now share one EXISTS: 6 per word instead of 13, still no joins. Filament's word-splitting, the placeholder, `defaultSort('id','desc')`, pagination and SoftDeletes are unchanged.
+
+Not normalized, by decision: ى/ي, ة/ه, ؤ/و, ئ/ي, ک/ك, ی/ي.
+
+**Behaviour change on this machine's local MySQL data** (42-term before/after snapshot, row IDs only): 38 terms return byte-identical ID sets. The 4 that changed are the intended ones:
+- `اداري` 0 → 3 and `ادارية` 0 → 3 (the same rows `إداري` found);
+- `%` 22 → 0;
+- `_` 22 → 9. The remaining 9 are genuine literal matches on `line_role` machine values that contain an underscore (`administrative_deduction`, `transfer_fee`, `execution_source`), through the pre-existing machine-value convenience match. No text column contains `_`.
+
+### Changed Files
+- New: `app/Support/Search/ArabicSearch.php` — `clean()`, `normalize()`, `escapeLike()`, `foldAlefSql()`, `whereContainsText()`, `whereContainsIdentifier()`, `containsNormalized()`, `numeric()`, and the `LIKE_ESCAPE = '!'` constant.
+- Modified: `app/Filament/Resources/TransactionLines/Tables/TransactionLinesTable.php` — 14 string search entries replaced by 4 grouped closures (line text, transaction, account, currency); the `line_role` and amount closures now use `ArabicSearch`; the incorrect toggled-column comment was corrected.
+- New: `tests/Unit/Support/Search/ArabicSearchTest.php`.
+- Modified: `tests/Feature/TransactionLines/TransactionLinesTableSearchTest.php` — 14 new tests, and one comment corrected.
+- **Not** modified: any other page, migration, schema, collation, stored data, accounting logic, or eager loading.
+- **Side effect to review:** the repo's Graphify `post-checkout` hook ran during the `git stash` used for the before-fix proof, modifying 4 `graphify-out/` files. Graphify was not run on purpose.
+
+### Verification
+1. `php artisan test tests/Unit/Support/Search/ArabicSearchTest.php` → 51/51 passed, 74 assertions.
+2. `php artisan test tests/Feature/TransactionLines/TransactionLinesTableSearchTest.php` → 44/44 passed, 137 assertions (30 existing + 14 new).
+3. Before-fix proof: with only the table file stashed, exactly the 13 new behaviour tests fail and all 30 original tests still pass.
+4. Read-only MySQL verification (synthetic `SELECT`s and counts only):
+   - each alef variant matches only through the folded expression;
+   - `REPLACE` leaves ؤ/ئ/ى/ة untouched;
+   - raw Arabic digits bound against a DECIMAL fail, so PHP conversion is required;
+   - 10/10 escape cases correct with `ESCAPE '!'`, plus an unescaped control that over-matches;
+   - generated SQL: 0 joins, 6 EXISTS per word, `deleted_at` on every relation, the term only in bindings, amount predicates only for a numeric term, `order by id desc`.
+5. `php -l` clean on all 4 files.
+6. Not run: the full suite, the full Feature suite, and an intentional Graphify update.
+
+### Correction / verification pass (same day, before commit approval)
+1. **Alef direction: the code was correct; the report's wording was not.** A code-point dump shows `ALEF_VARIANTS` = U+0623 U+0625 U+0622 U+0671 and `PLAIN_ALEF` = U+0627. Every `normalize()` mapping and every `foldAlefSql()` `REPLACE` step goes from a variant to U+0627. On MySQL, `U+0623|U+0625|U+0622|U+0671 U+062D U+0645 U+062F` all fold to `U+0627 U+062D U+0645 U+062F`, and plain U+0627 is unchanged. The reversed appearance came from bidi reordering of Arabic letters next to an arrow in left-to-right text. The same effect likely made the SQL-count table look swapped. No code changed for this; the docs and docblock now state the mapping by code point.
+2. **SQL counts re-measured on MySQL:**
+   - Arabic text `ارصدة`: joins 0, EXISTS 6, amount predicates 0, bindings `["%ارصدة%"]`, `deleted_at is null` ×7, `order by id desc`.
+   - Arabic-digit amount `١٥٠٠`: joins 0, EXISTS 6, amount predicates 1, bindings `["%1500%","1500"]`, `deleted_at` ×7, `order by id desc`.
+   - Literal wildcard `10%`: joins 0, EXISTS 6, amount predicates 0, bindings `["%10!%%"]`, `deleted_at` ×7, `order by id desc`.
+3. **`line_role` machine-value path tightened:** it now opens only when the cleaned term contains a Latin letter. Local MySQL `_` results: 22 before Batch A → 9 after Batch A → 0 now. The other 41 of 42 snapshot terms are unchanged. `transfer` and `transfer_fee` still match; a literal `_` in real text is still found.
+4. **NFC applied at the start of `clean()`.** `Normalizer`/intl is present in both runtimes: the CLI/test environment (PHP 8.3.28), and Apache `mod_php`, which loads from the same PHP directory with `extension=intl` in that `php.ini`. `filament/support` hard-requires `ext-intl`. A `class_exists` guard keeps prior behaviour if intl were ever absent. Decomposed alef + U+0654/U+0655/U+0653 now folds like the precomposed letter. Decomposed ؤ/ئ compose to ؤ/ئ (never و/ي), and ة/ى are untouched.
+5. **ي/ى and ة/ه remain disabled.**
+6. **Tests:**
+   - `ArabicSearchTest` 63/63 (93 assertions): 12 new, 1 updated for NFC (decomposed `و`+U+0654 now becomes `ؤ`, still never `و`).
+   - `TransactionLinesTableSearchTest` 47/47 (154 assertions): 3 new.
+   - Before the fixes, exactly the 7 NFC unit tests and the bare-underscore feature test failed. The new independent alef-direction and SQL-convergence tests passed even before, confirming the original direction.
+   - `php -l` clean.
+7. **Graphify:** `PYTHONHASHSEED=0 graphify update .` was run on the final tree (949 files, 14991 nodes, 37909 edges), replacing the output the `post-checkout` hook produced during the stash. The graph contains the correction-pass tests, which did not exist in the stashed state. The dated backup `graphify-out/2026-09-28/` is git-ignored, and there are 0 hits for `storage/app`, `livewire-tmp` or `.claude/`.
+
+### Commit Hash
+Not committed, not pushed — awaiting review.

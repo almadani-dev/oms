@@ -9,6 +9,7 @@ use App\Models\Currency;
 use App\Models\FiscalYear;
 use App\Models\TransactionSuperType;
 use App\Models\TransactionType;
+use App\Support\Search\ArabicSearch;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
@@ -46,48 +47,35 @@ class TransactionLinesTable
                 TextColumn::make('created_at')->label('تاريخ الإنشاء')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),
             ])
             /*
-             * Global search is declared here rather than with per-column searchable()
-             * on purpose. Filament skips a hidden column when building the search
-             * constraint (Tables\Concerns\CanSearchRecords::applyGlobalSearchToTableQuery),
-             * so anything attached to `description` (toggleable) or `notes` (hidden by
-             * default) would silently stop being searched the moment a user toggled the
-             * column off. Declared at table level, the whole set is always active and
-             * lives in one place.
+             * Global search is declared at table level, not with per-column
+             * searchable(), so the whole field set lives in one place and includes
+             * fields no column shows. (In Filament 5.6.7 a column the user toggles
+             * off is still searched — CanSearchRecords only skips hidden()/visible()
+             * columns — so this is about one explicit list, not about toggling.)
              *
-             * Every string entry compiles to a database-side LIKE — a plain WHERE for a
-             * column on transaction_lines, and an `orWhereRelation` (a correlated EXISTS,
-             * not a join) for a dot path, including the nested account.bankType and
-             * transaction.transactionType.transactionSuperType hops. Nothing is loaded
-             * into PHP and no per-row query is issued. All of these columns are
-             * utf8mb4_unicode_ci, so LIKE matching is accent/case-insensitive and works
-             * for Arabic text.
+             * Filament still splits the input into words; each closure below runs
+             * once per word and goes through ArabicSearch, which cleans the word,
+             * folds alef variants for human text on both the term and the column,
+             * and escapes LIKE wildcards so `%` and `_` match literally. Structured
+             * identifiers (numbers, references, codes) are cleaned but never
+             * alef-folded. Fields on the same relation share one correlated EXISTS
+             * (whereHas), never a join; nothing is loaded into PHP and no per-row
+             * query is issued.
              */
             ->searchable([
                 // Transaction line's own text
-                'description',
-                'notes',
+                fn (Builder $query, string $search): Builder => static::applyLineTextSearch($query, $search),
 
-                // Transaction
-                'transaction.transaction_number',
-                'transaction.reference',
-                'transaction.description',
-                // User-entered ملاحظات from the financial create flows, also surfaced in
-                // the comprehensive report as "ملاحظات المعاملة" — real content, unlike
-                // transaction_lines.notes which some flows fill with LINE_* machine tags.
-                'transaction.notes',
+                // Transaction: number/reference, user-entered description and ملاحظات
+                // (real content, unlike transaction_lines.notes which some flows fill
+                // with LINE_* machine tags), نوع المعاملة and تصنيف المعاملة.
+                fn (Builder $query, string $search): Builder => static::applyTransactionSearch($query, $search),
 
-                // نوع المعاملة + تصنيف المعاملة
-                'transaction.transactionType.name',
-                'transaction.transactionType.transactionSuperType.name',
+                // Account code/name + bank type
+                fn (Builder $query, string $search): Builder => static::applyAccountSearch($query, $search),
 
-                // Account + bank type
-                'account.account_code',
-                'account.name',
-                'account.bankType.name',
-
-                // Currency
-                'currency.code',
-                'currency.name',
+                // Currency code/name
+                fn (Builder $query, string $search): Builder => static::applyCurrencySearch($query, $search),
 
                 // line_role stores the stable English machine value ('funding_source')
                 // but the table renders the Arabic label ('مصدر التمويل'). A LIKE on the
@@ -224,18 +212,98 @@ class TransactionLinesTable
             ->defaultSort('id', 'desc');
     }
 
+    /*
+     * Each group below returns the builder untouched when the word cleans down to
+     * nothing (e.g. a lone tatweel): Laravel drops an empty nested where group, so
+     * such a word neither matches nor excludes anything — and no whereHas() is
+     * emitted, which would otherwise be an always-true EXISTS.
+     */
+
+    protected static function applyLineTextSearch(Builder $query, string $search): Builder
+    {
+        ArabicSearch::whereContainsText($query, 'description', $search);
+
+        return ArabicSearch::whereContainsText($query, 'notes', $search, 'or');
+    }
+
+    protected static function applyTransactionSearch(Builder $query, string $search): Builder
+    {
+        if (ArabicSearch::clean($search) === '') {
+            return $query;
+        }
+
+        return $query->whereHas('transaction', fn (Builder $transaction): Builder => $transaction->where(
+            function (Builder $transaction) use ($search): void {
+                ArabicSearch::whereContainsIdentifier($transaction, 'transaction_number', $search);
+                ArabicSearch::whereContainsIdentifier($transaction, 'reference', $search, 'or');
+                ArabicSearch::whereContainsText($transaction, 'description', $search, 'or');
+                ArabicSearch::whereContainsText($transaction, 'notes', $search, 'or');
+
+                $transaction->orWhereHas('transactionType', fn (Builder $type): Builder => $type->where(
+                    function (Builder $type) use ($search): void {
+                        ArabicSearch::whereContainsText($type, 'name', $search);
+
+                        $type->orWhereHas(
+                            'transactionSuperType',
+                            fn (Builder $superType): Builder => ArabicSearch::whereContainsText($superType, 'name', $search),
+                        );
+                    },
+                ));
+            },
+        ));
+    }
+
+    protected static function applyAccountSearch(Builder $query, string $search): Builder
+    {
+        if (ArabicSearch::clean($search) === '') {
+            return $query;
+        }
+
+        return $query->whereHas('account', fn (Builder $account): Builder => $account->where(
+            function (Builder $account) use ($search): void {
+                ArabicSearch::whereContainsIdentifier($account, 'account_code', $search);
+                ArabicSearch::whereContainsText($account, 'name', $search, 'or');
+
+                $account->orWhereHas(
+                    'bankType',
+                    fn (Builder $bankType): Builder => ArabicSearch::whereContainsText($bankType, 'name', $search),
+                );
+            },
+        ));
+    }
+
+    protected static function applyCurrencySearch(Builder $query, string $search): Builder
+    {
+        if (ArabicSearch::clean($search) === '') {
+            return $query;
+        }
+
+        return $query->whereHas('currency', fn (Builder $currency): Builder => $currency->where(
+            function (Builder $currency) use ($search): void {
+                ArabicSearch::whereContainsIdentifier($currency, 'code', $search);
+                ArabicSearch::whereContainsText($currency, 'name', $search, 'or');
+            },
+        ));
+    }
+
     /**
      * Matches the search term against the Arabic label the table actually renders
      * (and, for convenience, the stored machine value), then constrains line_role to
-     * the values that matched. When nothing matches, the builder is left untouched
-     * rather than emitting a `0 = 1` branch: Laravel drops an empty nested where
-     * group, so the term simply contributes nothing to the OR.
+     * the values that matched. Both the term and every label are normalized first,
+     * so `اداري` finds `خصم إداري`. The machine-value path only opens for a term
+     * with at least one Latin letter, so a bare `_` cannot reach 'transfer_fee' — an
+     * underscore the user never sees. When nothing matches, the builder is left
+     * untouched rather than emitting a `0 = 1` branch: Laravel drops an empty nested
+     * where group, so the term simply contributes nothing to the OR.
      */
     protected static function applyLineRoleSearch(Builder $query, string $search): Builder
     {
+        $machineTerm = mb_strtolower(ArabicSearch::clean($search));
+        $matchesMachineValues = preg_match('/[a-z]/', $machineTerm) === 1;
+
         $values = collect(TransactionLineRole::cases())
-            ->filter(fn (TransactionLineRole $role): bool => str_contains($role->arabicLabel(), $search)
-                || str_contains($role->value, mb_strtolower($search)))
+            ->filter(fn (TransactionLineRole $role): bool => ArabicSearch::containsNormalized($role->arabicLabel(), $search)
+                || ($matchesMachineValues && str_contains($role->value, $machineTerm)))
             ->map(fn (TransactionLineRole $role): string => $role->value)
             ->values()
             ->all();
@@ -249,21 +317,22 @@ class TransactionLinesTable
 
     /**
      * Exact-value matching for the three amount columns, applied only when the term
-     * parses as a number once display separators are stripped ("1,500.00" → 1500.00).
-     * A non-numeric term leaves the builder untouched, and Laravel discards an empty
-     * nested where group, so text searches pay nothing for this.
+     * is a plain number once Arabic digits are converted and well-formed grouping is
+     * stripped ("1,500.00", "١٥٠٠" → 1500). A non-numeric term leaves the builder
+     * untouched, and Laravel discards an empty nested where group, so text searches
+     * pay nothing for this.
      */
     protected static function applyAmountSearch(Builder $query, string $search): Builder
     {
-        $normalized = str_replace([',', ' ', "\u{00A0}"], '', $search);
+        $amount = ArabicSearch::numeric($search);
 
-        if (! is_numeric($normalized)) {
+        if ($amount === null) {
             return $query;
         }
 
         return $query
-            ->where($query->qualifyColumn('amount_currency'), $normalized)
-            ->orWhere($query->qualifyColumn('debit_base'), $normalized)
-            ->orWhere($query->qualifyColumn('credit_base'), $normalized);
+            ->where($query->qualifyColumn('amount_currency'), $amount)
+            ->orWhere($query->qualifyColumn('debit_base'), $amount)
+            ->orWhere($query->qualifyColumn('credit_base'), $amount);
     }
 }

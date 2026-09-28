@@ -1461,3 +1461,38 @@ A normalizer designed from assumptions would have got all three wrong.
 
 ### Result
 See the 2026-09-28 entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md`. The audit changed nothing. Batch 0 touched 3 production files and added 2 test files (16 tests), plus the 49 existing attachment tests as regression, all green. Not committed.
+
+---
+
+### Date
+2026-09-28 (search Batch A: "prove it first on one page", with an explicit do-not-normalize list)
+
+### Prompt
+Approved **Batch A only**. It required:
+- create one small helper, `app/Support/Search/ArabicSearch.php`, and prove it on `/admin/transaction-lines` before any rollout;
+- an exact safe-normalization list, with plain `ا` as the canonical alef (*"Do NOT implement the audit report's accidentally reversed REPLACE direction"*);
+- an explicit **do-not-normalize** list: ى/ي, ة/ه, ؤ/و, ئ/ي, ک/ك, ی/ي;
+- *"report [another mark] before expanding the range"*;
+- column-side folding only for human text, never for identifiers;
+- literal `%`/`_` *"on both SQLite … and MySQL read-only"*, being *"explicit about Laravel/MySQL ESCAPE semantics"*;
+- keeping word-splitting;
+- grouping same-relation EXISTS only if result equivalence is proven;
+- a read-only MySQL check, because the suite runs on SQLite.
+
+### Purpose
+**The do-not-normalize list, with its reasons, removed the riskiest guesswork.** Without it, a "helpful" helper could have folded ى/ي and made `علي` (a name) match `على` (a preposition) in every description.
+
+**"Report before expanding the range" mattered in practice.** The obvious extension, combining hamza U+0654, would have silently folded a decomposed ؤ into و. That violates the do-not-normalize list even though it looks like "just another mark".
+
+**Demanding explicit ESCAPE semantics on both engines found a real portability gap.** SQLite has no default LIKE escape at all, so an approach that relied on MySQL's backslash default would have passed on MySQL and failed in the test suite, or the other way round.
+
+**The equivalence requirement turned a refactor into a provable one.** A 42-term before/after MySQL snapshot showed identical row-ID sets for every term normalization does not touch. The only four differences are the intended ones, and each is explained down to the row.
+
+### Result
+See the 2026-09-28 Batch A entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md`. 2 production files (1 new), 2 test files (1 new): 51 + 44 targeted tests green, and the 13 new behaviour tests fail on the old code. Not committed.
+
+**Follow-up correction prompt (same day):** *"Before Batch A can be approved for commit, perform a focused CORRECTION / VERIFICATION PASS"*. It flagged an apparent reversed alef direction and swapped SQL counts in the report, and demanded:
+- *"FIRST inspect the actual current code … If the REPORT was wrong but the CODE is correct … correct the documentation"*;
+- *"Do not accept a test that merely applies the same flawed transform to both the expected and actual values"*.
+
+**Why it mattered:** the contradiction turned out to be a rendering artifact. Arabic letters next to an arrow get bidi-reordered in left-to-right text. The code-point dump settled it in one step, and independent literal-code-point assertions now prove the direction regardless of how text renders. The same prompt converted two open Batch A questions into decisions: NFC (applied, after checking both runtimes for intl) and the `line_role` Latin-letter guard. It also required regenerating Graphify from the final tree rather than keeping hook output from a stashed state.

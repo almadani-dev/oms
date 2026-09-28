@@ -4,6 +4,50 @@
 
 ## Recent Changes
 
+- **2026-09-28 — Search Batch A: the `ArabicSearch` helper exists and is live on `سطور المعاملات` only. Implemented and verified, NOT committed.**
+
+  **The helper:** `app/Support/Search/ArabicSearch.php`, a small final class with static methods only.
+  - `clean()`:
+    - strips harakat U+064B–U+0652 and U+0670, tatweel, and zero-width/bidi marks;
+    - converts Arabic-Indic and Persian digits to ASCII;
+    - collapses all whitespace (NBSP included) and trims.
+  - `normalize()` = `clean()` + alef folding: U+0623 (أ), U+0625 (إ), U+0622 (آ) and U+0671 (ٱ) each become plain alef U+0627 (ا); U+0627 stays U+0627. The column fold `foldAlefSql()` maps in the same direction: each `REPLACE` step replaces a variant with U+0627.
+  - `escapeLike()` escapes `!`, `%` and `_`.
+  - `foldAlefSql()` builds the column-side nested `REPLACE`.
+  - `whereContainsText()` folds the column and normalizes the term, for human text. `whereContainsIdentifier()` cleans the term only, for identifiers. Both always emit `LIKE ? ESCAPE '!'` with the term bound.
+  - `containsNormalized()` matches enum labels in PHP; an empty needle never matches.
+  - `numeric()` parses amounts strictly (Arabic digits, `٫` decimal, well-formed grouping only).
+
+  **Deliberately never folded:** ى/ي, ة/ه, ؤ/و, ئ/ي, ک/ك, ی/ي. Combining hamza U+0654/U+0655 and madda U+0653 are not stripped (stripping U+0654 would turn a decomposed ؤ into و). NFC composition was added in the correction pass below.
+
+  **On `TransactionLinesTable`:**
+  - The 14 string search entries became 4 grouped closures (line text, transaction, account, currency), each routed through `ArabicSearch`.
+  - Human text is alef-folded on both sides; `transaction_number`, `reference`, `account_code` and `currencies.code` are cleaned only.
+  - Same-relation fields share one EXISTS: 6 per word instead of 13, with no joins.
+  - The `line_role` label match and the amount search now use the helper.
+  - Filament's word-splitting, the placeholder, `defaultSort('id','desc')`, pagination, SoftDeletes and eager loads are unchanged.
+  - The incorrect "toggled columns stop being searched" comment was corrected.
+
+  **Proof:**
+  - 51 unit tests and 44 feature tests (30 existing + 14 new), all green. The 13 new behaviour tests fail on the old table code.
+  - A 42-term before/after snapshot on this machine's local MySQL: 38 terms return identical ID sets. The 4 changes are the intended ones:
+    - `اداري` 0→3 and `ادارية` 0→3;
+    - `%` 22→0;
+    - `_` 22→9, all genuine literal matches on `line_role` machine values containing `_`, through the pre-existing machine-value convenience match.
+  - A read-only MySQL `SELECT` suite confirmed the folding, the escape semantics (10/10) and the SQL shape.
+
+  **Side effect:** the repo's Graphify `post-checkout` hook fired during the `git stash` used for the before-fix proof and modified 4 tracked `graphify-out/` files. This was not an intentional Graphify run. It was resolved in the correction pass below.
+
+  **Correction / verification pass (same day, before commit approval):**
+  - **Alef:** the code was always correct; the report's wording looked reversed because of bidi reordering. Verified by code point in PHP and on MySQL: U+0623/U+0625/U+0622/U+0671 → U+0627, and U+0627 is unchanged.
+  - **SQL (re-measured):** for each of `ارصدة`, `١٥٠٠` and `10%`: 0 joins, 6 EXISTS, `deleted_at is null` ×7, `order by id desc`. Only `١٥٠٠` adds an amount predicate.
+  - **`line_role`:** the machine-value path now needs a Latin letter. Local MySQL `_` results went 22 → 9 → 0.
+  - **NFC:** added at the start of `clean()`, with intl confirmed in both the CLI and Apache `mod_php` runtimes and a `class_exists` fallback.
+  - **Tests:** 63/63 unit and 47/47 feature.
+  - **Graphify:** `graphify update .` was re-run on the final tree (949 files, 14991 nodes).
+  - **Still disabled:** ي/ى and ة/ه.
+  - **Lesson for docs and reports:** state Arabic character mappings by code point. An arrow between Arabic letters can render reversed.
+
 - **2026-09-28 — Search Batch 0 (correctness + consistency): Attachments global search now uses the list's own visibility scope, and both project pickers search the code they display. 3 production files, 2 new test files. Implemented and verified, NOT committed.**
 
   **This batch follows a read-only, whole-application search audit (same day).** The audit's measured facts, which later batches depend on:
