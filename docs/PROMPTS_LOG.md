@@ -1496,3 +1496,32 @@ See the 2026-09-28 Batch A entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_L
 - *"Do not accept a test that merely applies the same flawed transform to both the expected and actual values"*.
 
 **Why it mattered:** the contradiction turned out to be a rendering artifact. Arabic letters next to an arrow get bidi-reordered in left-to-right text. The code-point dump settled it in one step, and independent literal-code-point assertions now prove the direction regardless of how text renders. The same prompt converted two open Batch A questions into decisions: NFC (applied, after checking both runtimes for intl) and the `line_role` Latin-letter guard. It also required regenerating Graphify from the final tree rather than keeping hook output from a stashed state.
+
+---
+
+### Date
+2026-09-28 (search Batch B: master data, "do not mechanically rewrite every tiny table")
+
+### Prompt
+Approved **Batch B only**: accounts, projects, partners, project supers, project costs, lookups where search already exists, and account/project global search.
+
+Rules it set:
+- reuse `ArabicSearch` without changing Batch A semantics;
+- IBAN space-insensitivity only *"as a reusable, conservative identifier behavior"*;
+- phone search that accepts Arabic/Persian digits and ignores harmless formatting, *"Do NOT use numeric() for phone numbers"* and *"Do not parse or reinterpret country codes"*;
+- lookups changed only where alef folding *"materially improves its existing behavior"*;
+- global search through *"Filament's supported global-search extension points"*;
+- no ي/ى folding even for person names;
+- *"Avoid git stash because this repo's Graphify hook reacts to checkout/stash operations"*.
+
+### Purpose
+**"Do not use numeric() for phone numbers" drew a type boundary into the helper.** Phones became their own identifier kind, with a strict shape check. That check is what stops a code like `X-562` from quietly turning into a digits-only phone match.
+
+**"Materially improves" was first read as an evidence question about current data.** Four lookups were changed, each with a named stored or typed hamza miss, and four were left alone. The follow-up below corrected that reading.
+
+**Follow-up consistency prompt (same day):** *"Search behavior must be based on FIELD SEMANTICS, not whether today's small dataset happens to expose the bug."* The first cut had skipped four lookups because their current rows showed no miss, which is exactly the data-dependence a standard must avoid. The prompt also required auditing FiscalYears' real field rather than assuming it was a year code, and kept sorting out of scope: *"Search work and sorting work must stay separate."* The form showed a free-text Arabic label, so all eight name lookups now share one behaviour.
+
+**Banning `git stash` forced a better before/after technique.** The files were backed up, overwritten with `git show HEAD:<file>`, tested, restored, and verified by SHA-1. It proves the tests discriminate (23/30 fail or error on the old code) without firing the Graphify hook.
+
+### Result
+See the 2026-09-28 Batch B entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md`. 16 production files, 2 test files (1 new). 78 unit and 34 feature tests green. Not committed.

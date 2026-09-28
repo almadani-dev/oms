@@ -3580,3 +3580,72 @@ Not normalized, by decision: ى/ي, ة/ه, ؤ/و, ئ/ي, ک/ك, ی/ي.
 
 ### Commit Hash
 Not committed, not pushed — awaiting review.
+
+---
+
+### Date
+2026-09-28
+
+### Task
+Search Batch B: master-data search. Apply the Batch A `ArabicSearch` core to Accounts, Projects, Partners, ProjectSupers, ProjectCosts, the eight lookup tables with an Arabic name search, and topbar global search for accounts and projects.
+
+### Result
+**Implemented and verified; NOT committed.** Every changed surface uses table-level `searchable([...closures])` in the Batch A pattern. Human text is alef-folded on both sides; codes, emails and IBANs are identifiers; relation fields go through one correlated EXISTS per relation, never a join.
+
+What each page now searches:
+- **الحسابات:** `account_code` (identifier), `name` (text), IBAN (identifier, spaces ignored on both sides), plus the visible `accountType.name` and `bankType.name` (text, via EXISTS). Placeholder `ابحث في الحسابات...`.
+- **المشاريع:** `code` (identifier), `name` (text), donor name (text, via EXISTS). Placeholder `ابحث في المشاريع...`.
+- **الشركاء:** `name`/`city`/`country` (text), `email` (identifier), `mobile_number` (phone: Arabic/Persian digits accepted; spaces, `-`, `+`, `(`, `)` ignored on both sides; country codes not interpreted; a term with any other character never becomes a phone predicate). Placeholder `ابحث في الشركاء...`.
+- **المشاريع الرئيسية:** `code` (identifier), `name` (text). Placeholder added.
+- **تكاليف المشاريع:** project `code` (newly searchable) and `name` in one EXISTS, and account type name. Placeholder added.
+- **Lookups, decided by field semantics, not by today's rows:** every lookup that already searched a free Arabic name now uses `ArabicSearch` text semantics. That is alef folding plus literal wildcards, on AccountTypes, BankTypes, Currencies, TransactionSuperTypes, TransactionTypes, ProjectStatuses, PartnerTypes and FiscalYears.
+  - Currencies: code and symbol are searched as identifiers.
+  - FiscalYears: `name` counts as human text. The form field is a free-text `TextInput` labelled `اسم السنة المالية` (`required`, `maxLength(255)`, no year/code format, no uniqueness); the structured year lives in `start_date`/`end_date`, which are not searched.
+  - No search box was added anywhere that did not already have one.
+- **Global search:** `AccountResource` and `ProjectResource` override `getGloballySearchableAttributes()` (`account_code`/`code` + `name`) and `applyGlobalSearchAttributeConstraints()`. Every word must match either the code or the name, the same as the tables. Results show the code as a detail. The query still starts from `getEloquentQuery()`, so SoftDeletes apply and `canGloballySearch()`/`canView()` are untouched.
+
+`ArabicSearch` gained 4 small methods: `whereContainsCompactIdentifier()`, `phoneDigits()`, `whereContainsPhone()`, `words()`. No Batch A semantics changed. ي/ى and ة/ه are still not folded.
+
+### Changed Files
+- Modified `app/Support/Search/ArabicSearch.php`.
+- Modified tables:
+  - `Accounts/Tables/AccountsTable.php`
+  - `Projects/Tables/ProjectsTable.php`
+  - `Partners/Tables/PartnersTable.php`
+  - `ProjectSupers/Tables/ProjectSupersTable.php`
+  - `ProjectCosts/Tables/ProjectCostsTable.php`
+  - `AccountTypes/Tables/AccountTypesTable.php`
+  - `BankTypes/Tables/BankTypesTable.php`
+  - `Currencies/Tables/CurrenciesTable.php`
+  - `TransactionSuperTypes/Tables/TransactionSuperTypesTable.php`
+  - `TransactionTypes/Tables/TransactionTypesTable.php`
+  - `ProjectStatuses/Tables/ProjectStatusesTable.php`
+  - `PartnerTypes/Tables/PartnerTypesTable.php`
+  - `FiscalYears/Tables/FiscalYearsTable.php`
+- Modified resources: `Accounts/AccountResource.php`, `Projects/ProjectResource.php`.
+- Modified `tests/Unit/Support/Search/ArabicSearchTest.php` (+15 tests). New `tests/Feature/Search/MasterDataTableSearchTest.php` (34 tests).
+- `graphify-out/` regenerated from the final tree.
+- **Not** modified: migrations, schema, stored data, accounting logic, financial lists, Muwakha, reports, form Selects, N+1 code, eager loads, sorting, or column visibility (columns only lost their per-column `->searchable()`).
+
+### Verification
+1. `php artisan test tests/Unit/Support/Search/ArabicSearchTest.php` → 78/78 passed, 112 assertions.
+2. `php artisan test tests/Feature/Search/MasterDataTableSearchTest.php` → 34/34 passed, 140 assertions.
+3. Before-fix proof **without `git stash`**: the production files were backed up to the scratchpad, overwritten with `git show HEAD:<file>`, tested, restored, and checked with `sha1sum -c` (all OK).
+   - First 12 files: 23 of the first 30 feature tests fail or error (PHPUnit reported 22 failures + 1 error). The 7 that pass are the expected ones: 4 soft-delete exclusions, project-code search, email search, and the non-phone-term guard.
+   - Consistency correction (4 lookup files): all 4 new lookup tests fail on the old code.
+4. Read-only MySQL verification (structure, bindings and counts only), on this machine's local DB:
+   - Accounts Arabic name and Accounts bank type: 0 joins, 2 EXISTS, 3 alef-folded + 1 compact-IBAN predicate.
+   - Projects code and donor: 0 joins, 1 EXISTS.
+   - Partners Arabic-digit phone `٠٥٩٩`: 0 joins, 0 EXISTS; bound as `%0599%` against the formatting-stripped column.
+   - Every term is only in the bindings; `deleted_at is null` is on the base and every relation.
+   - ORDER BY is the unchanged default key sort (`id asc`); paging runs as `COUNT` + `SELECT … limit 10 offset 0`.
+5. `php -l` clean on all 18 PHP files.
+6. `PYTHONHASHSEED=0 graphify update .` → 950 files, 15082 nodes, 38156 edges. It contains the Batch B symbols, with 0 sensitive-path hits.
+7. Not run: the full suite or the full Feature suite.
+8. **Sorting, reported only and not changed:**
+   - `TransactionLines` uses `defaultSort('id','desc')`, as do 9 resource tables in total.
+   - Every master and lookup page touched in Batch B (Accounts, Projects, Partners, ProjectSupers, ProjectCosts and the 8 lookups) has no `defaultSort`, so it falls back to Filament's key sort, `id asc`. That was measured on MySQL for Accounts, Projects and Partners.
+   - This is a possible convention drift, left for a separate decision.
+
+### Commit Hash
+Not committed, not pushed — awaiting review.

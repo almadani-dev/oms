@@ -2793,3 +2793,30 @@ Only `سطور المعاملات` search changes. There is no schema, data, col
 - **The `line_role` machine-value convenience match requires at least one Latin letter**, so a bare `_` cannot reach values like `transfer_fee` that the user never sees.
 - **ي/ى and ة/ه stay out of the shared default normalizer.** ي/ى may be reconsidered only for explicit person-name fields, most likely in the Muwakha batch. ة/ه remains rejected.
 - **Documentation states alef folding by code point** (U+0623/U+0625/U+0622/U+0671 → U+0627). Bidi reordering can visually reverse an arrow placed between Arabic letters.
+
+---
+
+### Date
+2026-09-28 (search Batch B: identifier kinds, phone matching, lookup selection, global search override)
+
+### Decision
+1. **Three identifier behaviours, all built from `ArabicSearch.clean()`:**
+   - **plain identifier:** codes, email, currency code/symbol;
+   - **compact identifier:** IBAN, with spaces ignored on both sides;
+   - **phone:** the term's digits against the column with ` `, `-`, `+`, `(`, `)` stripped.
+2. **Phone matching never uses `numeric()`.** A term becomes a phone predicate only if it contains nothing but digits and those formatting characters. Country codes are not interpreted.
+3. **Lookup search follows field semantics, not current data.** Every lookup that already searches a free Arabic name uses `ArabicSearch` text semantics: AccountTypes, BankTypes, Currencies (code and symbol as identifiers), TransactionSuperTypes, TransactionTypes, ProjectStatuses, PartnerTypes and FiscalYears. No search box is added where none existed.
+4. **Global search for accounts and projects overrides Filament's `applyGlobalSearchAttributeConstraints()`.** That is the smallest supported extension point that can route through `ArabicSearch`. Every word must match the code or the name. The code is shown as a result detail. The donor is not a global-search key.
+5. **No ي/ى folding in Batch B, not even for partner names.** Reconsider it only in the Muwakha batch. ة/ه stays rejected.
+
+### Reason
+1. Codes and emails are compared as stored. IBANs are commonly shown in 4-character groups, so grouping must not decide a match. Phone numbers are stored and typed in many formats.
+2. `numeric()` exists for amounts. It would reject `+970…`, and a phone number is an identifier, not an amount. The strict shape check stops a term like `X-562` from turning into a digits-only phone match.
+3. **Amended in the Batch B consistency correction.** The first cut changed only the four lookups whose current rows showed a miss. That made search behaviour depend on today's small dataset, which is not a valid basis for a standard: any future name typed with or without hamza hits the same bug.
+   - The rule is now semantic: a free Arabic name gets text semantics; a structured code/year/identifier does not.
+   - `FiscalYears.name` was checked against the real form: a free-text `TextInput` (`اسم السنة المالية`, `required`, `maxLength(255)`, no format, no uniqueness). It is therefore human text. The structured year lives in `start_date`/`end_date`, which are not searched.
+4. Filament's default global search runs a plain `LIKE` on the title attribute only, so it could neither find a code nor fold alef. Overriding the query-constraint hook keeps Filament's own authorization (`canGloballySearch`, per-result `canView`), result limit and base query.
+5. This is conservative shared behaviour, as instructed.
+
+### Impact
+Search behaviour on 13 tables and 2 resources' global search. No schema, data, accounting, report, Muwakha or financial-list change. Sorting was deliberately not touched: the `id asc` (no `defaultSort`) vs `id desc` split across pages is recorded for a separate decision.

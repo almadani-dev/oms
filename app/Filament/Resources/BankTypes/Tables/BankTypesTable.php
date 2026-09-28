@@ -3,12 +3,14 @@
 namespace App\Filament\Resources\BankTypes\Tables;
 
 use App\Filament\Concerns\AuditedActions;
+use App\Support\Search\ArabicSearch;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class BankTypesTable
 {
@@ -16,9 +18,14 @@ class BankTypesTable
     {
         return $table
             ->columns([
-                TextColumn::make('name')->label('اسم نوع البنك')->searchable()->sortable(),
+                TextColumn::make('name')->label('اسم نوع البنك')->sortable(),
                 TextColumn::make('notes')->label('ملاحظات')->limit(50)->wrap(),
                 TextColumn::make('created_at')->label('تاريخ الإنشاء')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),
+            ])
+            // Bank names are written both ways ('البنك الاسلامي', 'بنك الإسكان'), so
+            // the name is alef-folded on both sides.
+            ->searchable([
+                fn (Builder $query, string $search): Builder => ArabicSearch::whereContainsText($query, 'name', $search),
             ])
             ->filters([
                 TrashedFilter::make(),

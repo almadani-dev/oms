@@ -4,6 +4,31 @@
 
 ## Recent Changes
 
+- **2026-09-28 — Search Batch B: master-data search now goes through `ArabicSearch`. 16 production files, 1 new feature test file plus unit additions. Implemented and verified, NOT committed.**
+
+  **Surfaces:**
+  - **Accounts:** code, name, space-insensitive IBAN, plus account-type and bank-type names via EXISTS.
+  - **Projects:** code, name, donor name via EXISTS.
+  - **Partners:** name, city, country, email; mobile matched digit-for-digit with Arabic/Persian digits and ` - + ( )` formatting ignored.
+  - **ProjectSupers:** code, name.
+  - **ProjectCosts:** project code and name in one EXISTS, plus account type.
+  - **All eight lookups that already searched a free Arabic name:** AccountTypes, BankTypes, Currencies (code and symbol as identifiers), TransactionSuperTypes, TransactionTypes, ProjectStatuses, PartnerTypes, FiscalYears. The choice follows field semantics, not today's rows. A first cut changed only the four with a visible miss in current data; the consistency correction replaced that. `FiscalYears.name` is a free-text label per its form, so it counts as human text.
+  - **Placeholders** on the 5 master pages.
+
+  **Global search:** `AccountResource` and `ProjectResource` override `getGloballySearchableAttributes()` and `applyGlobalSearchAttributeConstraints()`. They find records by code or name, with every word required, and show the code as a result detail. Filament's own `canGloballySearch()`/`canView()` checks and the SoftDeletes base query are untouched.
+
+  **`ArabicSearch` additions:** `whereContainsCompactIdentifier()`, `phoneDigits()` (strict shape check; not `numeric()`; country codes not interpreted), `whereContainsPhone()` and `words()`. Batch A semantics are unchanged: ي/ى and ة/ه are still not folded.
+
+  **Verification:**
+  - Unit 78/78 (112 assertions); feature 34/34 (140 assertions).
+  - On the pre-Batch-B code, 23 of the first 30 feature tests fail or error, and all 4 new lookup tests fail. Both were proven with a `git show HEAD:` overwrite plus SHA-1-verified restore, not `git stash`.
+  - Read-only MySQL: 0 joins everywhere; 2 EXISTS on accounts, 1 on projects, 0 on partners; terms only in bindings; SoftDeletes on every relation; default `id asc` order; `COUNT` + `limit 10 offset 0` paging.
+  - `graphify update .` re-run on the final tree.
+
+  **Not touched:** financial lists, Muwakha, reports, form Selects, N+1 code. No new display N+1 was found on the changed pages.
+
+  **Sorting (reported, not changed):** every Batch B page has no `defaultSort`, so it uses Filament's key sort `id asc`. `TransactionLines` and 8 other resources use `defaultSort('id','desc')`. Search and sorting stay separate; the convention question is open.
+
 - **2026-09-28 — Search Batch A: the `ArabicSearch` helper exists and is live on `سطور المعاملات` only. Implemented and verified, NOT committed.**
 
   **The helper:** `app/Support/Search/ArabicSearch.php`, a small final class with static methods only.

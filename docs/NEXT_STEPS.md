@@ -1,6 +1,23 @@
 # Next Steps
 
-## Recommended Next Step (2026-09-28, search Batch A done — review and commit, then Batch B: master data)
+## Recommended Next Step (2026-09-28, search Batch B done — review and commit, then Batch C1: financial lists)
+
+**First, review and commit Batch B.**
+- 16 production files (including the consistency correction's 4 lookup tables), `tests/Feature/Search/MasterDataTableSearchTest.php` (new) and the `ArabicSearchTest` additions. Unit 78/78 and feature 34/34. Not yet committed.
+- The regenerated `graphify-out/` files belong in the same commit.
+
+**Separate open decision: default sort convention.** Every Batch B page falls back to Filament's `id asc` (no `defaultSort`), while `TransactionLines` and 8 other resources use `defaultSort('id','desc')`. Decide the convention on its own, not inside a search batch.
+
+**Then Batch C1. Plan only; do not implement until approved.** Give the five financial lists real search; today they search only `transaction_number`:
+- `ExecutionPaymentsTable`, `ProjectCostBudgetsPaymentsTable`, `ProjectCostReceiptsTable`, `GeneralExchangesTable`, `GeneralExpensesTable`.
+- Add the visible project name/code and project super (via `projectCost.project` or `projectCostBudget.projectCost.project`), the partner/beneficiary name, and the transaction type.
+- Add exact amounts via `ArabicSearch::numeric()` on the visible amount columns only. Never `fx_rate`, and never percentages.
+- Turn their project and partner `SelectFilter`s from load-everything, non-searchable option lists into server-side searchable filters with bounded options.
+- Targeted test: a new `tests/Feature/Search/FinancialListsSearchTest.php` plus `ArabicSearchTest`. Keep the display N+1 fixes (`has_attachment`, receipt account columns) for Batch C2.
+
+---
+
+## Previously Recommended Next Step (2026-09-28, search Batch A done — review and commit, then Batch B: master data)
 
 **First, review and commit Batch A, including its correction pass.**
 - 2 production files (1 new) and 2 test files (1 new): `ArabicSearchTest` 63/63 and `TransactionLinesTableSearchTest` 47/47. Not yet committed.

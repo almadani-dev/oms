@@ -3,12 +3,14 @@
 namespace App\Filament\Resources\TransactionTypes\Tables;
 
 use App\Filament\Concerns\AuditedActions;
+use App\Support\Search\ArabicSearch;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class TransactionTypesTable
 {
@@ -22,7 +24,6 @@ class TransactionTypesTable
                     ->sortable(),
                 TextColumn::make('name')
                     ->label('الاسم')
-                    ->searchable()
                     ->sortable(),
                 TextColumn::make('transactions_count')
                     ->label('عدد المعاملات')
@@ -32,6 +33,10 @@ class TransactionTypesTable
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
+            ])
+            // The name is Arabic human text, so it is alef-folded on both sides.
+            ->searchable([
+                fn (Builder $query, string $search): Builder => ArabicSearch::whereContainsText($query, 'name', $search),
             ])
             ->filters([TrashedFilter::make()])
             ->recordActions([ViewAction::make(), EditAction::make()])

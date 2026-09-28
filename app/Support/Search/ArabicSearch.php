@@ -55,6 +55,9 @@ final class ArabicSearch
     /** Any run of whitespace, including NBSP and the other Unicode space separators. */
     private const WHITESPACE_PATTERN = '/[\s\x{00A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}]+/u';
 
+    /** Formatting characters ignored inside phone numbers, on the term and on the column. */
+    private const PHONE_FORMATTING = [' ', '-', '+', '(', ')'];
+
     private const DIGITS = [
         '٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4',
         '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9',
@@ -166,6 +169,79 @@ final class ArabicSearch
             ['%'.self::escapeLike($term).'%'],
             $boolean,
         );
+    }
+
+    /**
+     * `REPLACE(<column>, ' ', '') LIKE %term% ESCAPE '!'` for identifiers that are
+     * commonly written in space-separated groups (IBAN "PS92 PALS 0000 ..."):
+     * spaces are ignored on both sides, so grouping never decides the match.
+     * Stored values are never changed.
+     */
+    public static function whereContainsCompactIdentifier(Builder $query, string $column, string $term, string $boolean = 'and'): Builder
+    {
+        $term = str_replace(' ', '', self::clean($term));
+
+        if ($term === '') {
+            return $query;
+        }
+
+        return $query->whereRaw(
+            'REPLACE('.self::wrap($query, $column).', \' \', \'\') LIKE ? ESCAPE \''.self::LIKE_ESCAPE.'\'',
+            ['%'.self::escapeLike($term).'%'],
+            $boolean,
+        );
+    }
+
+    /**
+     * The digits of a phone-number term, or null when the term is not one: after
+     * clean() (so Arabic/Persian digits are ASCII) it must hold at least one digit
+     * and nothing but digits and the formatting characters PHONE_FORMATTING.
+     * Country codes are not interpreted — a leading + is formatting like any
+     * other. Not numeric(): a phone number is an identifier, not an amount.
+     */
+    public static function phoneDigits(string $term): ?string
+    {
+        $term = self::clean($term);
+
+        if (preg_match('/^[\d \-+()]*\d[\d \-+()]*$/', $term) !== 1) {
+            return null;
+        }
+
+        return str_replace(self::PHONE_FORMATTING, '', $term);
+    }
+
+    /**
+     * Phone contains-search: the term's digits against the column with the same
+     * formatting characters stripped, so "0599-123 456", "+970599123456" and
+     * "٠٥٩٩١٢٣٤٥٦" all compare as plain digits. A non-phone term adds nothing.
+     */
+    public static function whereContainsPhone(Builder $query, string $column, string $term, string $boolean = 'and'): Builder
+    {
+        $digits = self::phoneDigits($term);
+
+        if ($digits === null) {
+            return $query;
+        }
+
+        $sql = self::wrap($query, $column);
+
+        foreach (self::PHONE_FORMATTING as $character) {
+            $sql = "REPLACE({$sql}, '{$character}', '')";
+        }
+
+        return $query->whereRaw($sql.' LIKE ? ESCAPE \''.self::LIKE_ESCAPE.'\'', ['%'.$digits.'%'], $boolean);
+    }
+
+    /**
+     * The words of a search input, cleaned — for search surfaces that do their
+     * own word splitting (topbar global search), matching the table behaviour
+     * where Filament splits the input and every word must match.
+     *
+     * @return list<string>
+     */
+    public static function words(string $search): array
+    {
+        return array_values(array_filter(explode(' ', self::clean($search)), fn (string $word): bool => $word !== ''));
     }
 
     /**

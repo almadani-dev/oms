@@ -3,12 +3,14 @@
 namespace App\Filament\Resources\TransactionSuperTypes\Tables;
 
 use App\Filament\Concerns\AuditedActions;
+use App\Support\Search\ArabicSearch;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class TransactionSuperTypesTable
 {
@@ -18,7 +20,6 @@ class TransactionSuperTypesTable
             ->columns([
                 TextColumn::make('name')
                     ->label('الاسم')
-                    ->searchable()
                     ->sortable(),
                 TextColumn::make('transaction_types_count')
                     ->label('عدد الأنواع')
@@ -28,6 +29,11 @@ class TransactionSuperTypesTable
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
+            ])
+            // Stored 'مصاريف ادارية' must be found by the hamza spelling 'إدارية' too,
+            // so the name is alef-folded on both sides.
+            ->searchable([
+                fn (Builder $query, string $search): Builder => ArabicSearch::whereContainsText($query, 'name', $search),
             ])
             ->filters([TrashedFilter::make()])
             ->recordActions([ViewAction::make(), EditAction::make()])

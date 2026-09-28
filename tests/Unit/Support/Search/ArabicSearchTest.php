@@ -264,6 +264,58 @@ class ArabicSearchTest extends TestCase
         $this->assertFalse(ArabicSearch::containsNormalized('مستفيد', "\u{0640}"));
     }
 
+    // ---- phone numbers (identifiers, never amounts) ---------------------------
+
+    /**
+     * @return array<string, array{string, ?string}>
+     */
+    public static function phoneCases(): array
+    {
+        return [
+            'western digits' => ['0599123456', '0599123456'],
+            'arabic-indic digits' => ['٠٥٩٩١٢٣٤٥٦', '0599123456'],
+            'persian digits' => ['۰۵۹۹۱۲۳۴۵۶', '0599123456'],
+            'hyphens and spaces' => ['0599-123 456', '0599123456'],
+            'leading plus kept as formatting only' => ['+970 599-123-456', '970599123456'],
+            'parentheses' => ['(059) 912', '059912'],
+            'arabic digits with formatting' => ['+٩٧٠-٥٩٩', '970599'],
+            'letters make it not a phone' => ['X-562', null],
+            'arabic text' => ['محمد', null],
+            'comma is not phone formatting' => ['1,500', null],
+            'formatting only' => ['+-()', null],
+            'empty' => ['', null],
+        ];
+    }
+
+    #[DataProvider('phoneCases')]
+    public function test_phone_digits(string $input, ?string $expected): void
+    {
+        $this->assertSame($expected, ArabicSearch::phoneDigits($input));
+    }
+
+    public function test_phone_digits_do_not_go_through_amount_parsing(): void
+    {
+        // A leading zero is significant in a phone number and survives, and a
+        // leading + is phone formatting, which the amount parser rejects.
+        $this->assertSame('0599', ArabicSearch::phoneDigits('0599'));
+        $this->assertSame('0599', ArabicSearch::phoneDigits('+0599'));
+        $this->assertNull(ArabicSearch::numeric('+0599'));
+    }
+
+    // ---- word splitting -------------------------------------------------------
+
+    public function test_words_splits_cleaned_input_on_whitespace(): void
+    {
+        $this->assertSame(['بنك', 'فلسطين'], ArabicSearch::words("  بنك\u{00A0}\u{00A0} فلسطين "));
+        $this->assertSame(['BNK-7788'], ArabicSearch::words('BNK-7788'));
+    }
+
+    public function test_words_drops_words_that_clean_to_nothing(): void
+    {
+        $this->assertSame([], ArabicSearch::words("\u{0640} \u{064E}"));
+        $this->assertSame(['حساب'], ArabicSearch::words("حساب \u{0640}"));
+    }
+
     // ---- numbers -------------------------------------------------------------
 
     /**

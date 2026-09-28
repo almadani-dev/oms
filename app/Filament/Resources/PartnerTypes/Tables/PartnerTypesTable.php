@@ -3,12 +3,14 @@
 namespace App\Filament\Resources\PartnerTypes\Tables;
 
 use App\Filament\Concerns\AuditedActions;
+use App\Support\Search\ArabicSearch;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class PartnerTypesTable
 {
@@ -18,7 +20,6 @@ class PartnerTypesTable
             ->columns([
                 TextColumn::make('name')
                     ->label('الاسم')
-                    ->searchable()
                     ->sortable(),
                 TextColumn::make('partners_count')
                     ->label('عدد الشركاء')
@@ -28,6 +29,10 @@ class PartnerTypesTable
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
+            ])
+            // The name is Arabic human text, so it is alef-folded on both sides.
+            ->searchable([
+                fn (Builder $query, string $search): Builder => ArabicSearch::whereContainsText($query, 'name', $search),
             ])
             ->filters([TrashedFilter::make()])
             ->recordActions([ViewAction::make(), EditAction::make()])

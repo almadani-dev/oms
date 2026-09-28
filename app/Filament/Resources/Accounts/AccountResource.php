@@ -9,12 +9,14 @@ use App\Filament\Resources\Accounts\Pages\ViewAccount;
 use App\Filament\Resources\Accounts\Schemas\AccountForm;
 use App\Filament\Resources\Accounts\Tables\AccountsTable;
 use App\Models\Account;
+use App\Support\Search\ArabicSearch;
 use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class AccountResource extends Resource
@@ -63,5 +65,33 @@ class AccountResource extends Resource
     {
         return parent::getRecordRouteBindingEloquentQuery()
             ->withoutGlobalScopes([SoftDeletingScope::class]);
+    }
+
+    /** @return list<string> */
+    public static function getGloballySearchableAttributes(): array
+    {
+        return ['account_code', 'name'];
+    }
+
+    /**
+     * Topbar search by account code (identifier) or name (alef-folded Arabic
+     * text), every word required — the same semantics as the accounts table.
+     * The query still starts from getEloquentQuery(), so SoftDeletes apply, and
+     * Filament's canGloballySearch()/canView() checks are untouched.
+     */
+    protected static function applyGlobalSearchAttributeConstraints(Builder $query, string $search): void
+    {
+        foreach (ArabicSearch::words($search) as $word) {
+            $query->where(function (Builder $query) use ($word): void {
+                ArabicSearch::whereContainsIdentifier($query, 'account_code', $word);
+                ArabicSearch::whereContainsText($query, 'name', $word, 'or');
+            });
+        }
+    }
+
+    /** @return array<string, string> */
+    public static function getGlobalSearchResultDetails(Model $record): array
+    {
+        return filled($record->account_code) ? ['رقم الحساب' => $record->account_code] : [];
     }
 }

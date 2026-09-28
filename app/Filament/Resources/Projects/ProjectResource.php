@@ -11,12 +11,14 @@ use App\Filament\Resources\Projects\Schemas\ProjectForm;
 use App\Filament\Resources\Projects\Schemas\ProjectInfolist;
 use App\Filament\Resources\Projects\Tables\ProjectsTable;
 use App\Models\Project;
+use App\Support\Search\ArabicSearch;
 use BackedEnum;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class ProjectResource extends Resource
@@ -72,5 +74,33 @@ class ProjectResource extends Resource
     {
         return parent::getRecordRouteBindingEloquentQuery()
             ->withoutGlobalScopes([SoftDeletingScope::class]);
+    }
+
+    /** @return list<string> */
+    public static function getGloballySearchableAttributes(): array
+    {
+        return ['code', 'name'];
+    }
+
+    /**
+     * Topbar search by project code (identifier) or name (alef-folded Arabic
+     * text), every word required — the same semantics as the projects table.
+     * The query still starts from getEloquentQuery(), so SoftDeletes apply, and
+     * Filament's canGloballySearch()/canView() checks are untouched.
+     */
+    protected static function applyGlobalSearchAttributeConstraints(Builder $query, string $search): void
+    {
+        foreach (ArabicSearch::words($search) as $word) {
+            $query->where(function (Builder $query) use ($word): void {
+                ArabicSearch::whereContainsIdentifier($query, 'code', $word);
+                ArabicSearch::whereContainsText($query, 'name', $word, 'or');
+            });
+        }
+    }
+
+    /** @return array<string, string> */
+    public static function getGlobalSearchResultDetails(Model $record): array
+    {
+        return filled($record->code) ? ['الكود' => $record->code] : [];
     }
 }
