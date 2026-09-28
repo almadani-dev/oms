@@ -3735,3 +3735,68 @@ Left as is: the `project_super`, `fiscal_year` and `transaction_super_type` filt
 
 ### Commit Hash
 Not committed, not pushed — awaiting review.
+
+---
+
+### Date
+2026-09-28
+
+### Task
+Batch C2: remove the display N+1 on the five financial operation lists and the ProjectCosts receipts relation manager. Performance / query-count only.
+
+### Result
+**Implemented and verified; NOT committed.**
+
+The audit confirmed two per-row query sources:
+- **إشعار مرفق:** `$record->attachments()->exists()` ran once per row. It is in all 5 list tables and, verbatim, in `ProjectCosts/RelationManagers/ReceiptsRelationManager`.
+- **Receipt debit/credit account columns:** `$record->transaction?->lines()->with('account')->where(<side>_base, '>', 0)->first()` ran 4 queries per row (lines + account, per column; the earlier estimate said 2). It is in `ProjectCostReceiptsTable` and, verbatim, in the same relation manager, which had no eager loading at all.
+
+Fixes:
+- `withExists('attachments')` in each financial resource's `getEloquentQuery()` and in the relation manager's `modifyQueryUsing()`. The badge reads `$record->attachments_exists`, with the same `نعم` / `لا` and colours. The subquery applies the attachment soft-delete scope, as before.
+- The receipt resource eager-loads `transaction.lines.account`. The columns call the new `ProjectCostReceiptsTable::debitAccountName()` / `creditAccountName()`, which pick from the loaded lines with the unchanged rule: first live line with a positive base, in id order, account through its default scope. The relation manager reuses both methods and loads `transaction.lines.account` + `withExists('attachments')` itself.
+
+### Changed Files
+- Modified resources (query source):
+  - `ExecutionPayments/ExecutionPaymentResource.php`
+  - `ProjectCostBudgetsPayments/ProjectCostBudgetsPaymentResource.php`
+  - `ProjectCostReceipts/ProjectCostReceiptResource.php` (also `transaction.lines.account`)
+  - `GeneralExchanges/GeneralExchangeResource.php`
+  - `GeneralExpenses/GeneralExpenseResource.php`
+- Modified tables: the badge `state()` in all five; `ProjectCostReceiptsTable` also gets the two account helpers.
+- Modified `ProjectCosts/RelationManagers/ReceiptsRelationManager.php`.
+- New `tests/Feature/Performance/FinancialListsQueryCountTest.php` (6 tests).
+- `graphify-out/` regenerated from the final tree.
+- **Not** modified: `FinancialListSearch`, `FinancialLookupFilters`, `ArabicSearch`, search fields, filters, placeholders, visible values, sorting, accounting, posting, balances, forms, delete actions, schema, data, reports, Muwakha.
+
+### Verification
+1. `php artisan test tests/Feature/Performance/FinancialListsQueryCountTest.php` → 6/6 passed, 96 assertions.
+   - Before the fix, both scaling tests failed; the 4 correctness tests passed, pinning the current values.
+2. Regressions: `tests/Feature/Search/FinancialListsSearchTest.php` 27/27 (235 assertions) and `tests/Feature/Permissions/RelationManagerAuthorizationTest.php` 8/8 (24 assertions). The latter is the only existing test touching the changed relation manager.
+3. Queries per render for 1 / 5 / 10 rows (SQLite test DB). "Before" was measured on the unmodified committed code, so no file swap or checkout was needed.
+
+   | List | Before | After |
+   |---|---|---|
+   | execution | 19 / 21 / 26 | 18 / 16 / 16 |
+   | budgets | 11 / 15 / 20 | 10 / 10 / 10 |
+   | receipts | 17 / 37 / 62 | 14 / 14 / 14 |
+   | exchanges | 11 / 15 / 20 | 10 / 10 / 10 |
+   | expenses | 10 / 14 / 19 | 9 / 9 / 9 |
+   | receipts relation manager | 10 / 28 / 53 | 7 / 5 / 5 |
+
+   The 1-row render is 1–2 queries higher than larger renders on two lists because of a first-render warm-up; there is no per-row growth.
+4. Read-only MySQL, this machine's local DB, rendering every column's state per row:
+   - Execution: 3 rows, 15 list/eager queries, **0** column queries (was 3, i.e. 1 per row, in C1).
+   - Budgets: 4 rows, 9 list/eager, **0** column queries (was 4).
+   - Expenses: 1 row, 8 list/eager, 0 column queries.
+   - Receipts and exchanges have 0 local rows.
+   - `exists (select * from attachments …) as attachments_exists` is present in all five resource queries, with `attachments.deleted_at is null`. The receipt resource eager-loads `transaction.lines.account`.
+5. `php -l` clean on all 12 PHP files.
+6. `PYTHONHASHSEED=0 graphify update .` → 954 files, 15183 nodes, 38410 edges, with 0 sensitive-path hits.
+7. Not run: the full suite or the full Feature suite.
+
+**Deferred, reported only:**
+- Single-record `lines()` queries on Edit/View pages and in the delete actions are not per-row, so they were left alone.
+- A suspicion that the relation manager's `transaction.partner` column lazy-loads per row was **disproved by measurement**: the relation manager renders in 5 queries at both 5 and 10 rows. Filament eager-loads the `transaction.partner.name` column relationship itself.
+
+### Commit Hash
+Not committed, not pushed — awaiting review.

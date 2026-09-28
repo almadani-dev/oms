@@ -1557,3 +1557,35 @@ A single generic pattern would have missed or misapplied each of these.
 
 ### Result
 See the 2026-09-28 Batch C1 entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md`. 7 production files (2 new), 1 new test file: 27 feature + 78 unit tests green, 17 of the 27 failing on the old code. No financial logic touched. Not committed.
+
+---
+
+### Date
+2026-09-28 (search Batch C2: "performance / query-count only", with before/after proof)
+
+### Prompt
+Approved **Batch C2 only**: remove the display N+1 on the five financial lists (`has_attachment`) and on the receipt debit/credit account columns, plus the receipts relation manager if it repeats the pattern.
+
+Rules it set:
+- *"Measure the current query count first"* and stop if the code differs;
+- `withExists` at the query source; *"never call a relationship query from inside the table column closure"*;
+- *"Do NOT guess which line represents debit or credit"*;
+- keep every visible value, including fallbacks and soft-deleted historical accounts;
+- robust scaling assertions (*"queries(N rows) - queries(1 row) does not scale linearly"*) instead of fragile totals;
+- report, don't fix, any other N+1.
+
+### Purpose
+**"Measure first" corrected the earlier estimate.**
+- The C1 report had said the receipt account columns cost 2 queries per row. The real figure is 4: a lines query plus an account query, per column. Together with the badge, receipts grew by 5 per row.
+- The same pattern turned out to exist verbatim in the ProjectCosts receipts relation manager, which had no eager loading at all.
+
+**Asking for scaling rather than totals made the tests stable.** Framework queries (auth, permissions, filters) are identical on the 1-row and 10-row renders, so the difference isolates exactly the per-row cost.
+
+**Keeping the old selection rule explicit avoided a silent behaviour change.** The old SQL had no ORDER BY. The loaded-collection version sorts by `id` to match its effective order, and correctness tests pin the missing-line and soft-deleted-account fallbacks.
+
+### Result
+See the 2026-09-28 Batch C2 entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md`.
+- Every list and the relation manager now render in a constant query count (for example receipts 17/37/62 → 14/14/14 for 1/5/10 rows).
+- 6 query-count and correctness tests, plus regression runs of `FinancialListsSearchTest` and `RelationManagerAuthorizationTest`, all green.
+
+Not committed.

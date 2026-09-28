@@ -1,6 +1,27 @@
 # Next Steps
 
-## Recommended Next Step (2026-09-28, search Batch C1 done — review and commit, then Batch C2: display N+1 on the financial lists)
+## Recommended Next Step (2026-09-28, Batch C2 done — review and commit, then Batch D: Muwakha search)
+
+**First, review and commit Batch C2.**
+- 5 financial resources, 5 list tables, the receipts relation manager, and the new `tests/Feature/Performance/FinancialListsQueryCountTest.php` (6/6). Not yet committed.
+- The regenerated `graphify-out/` files belong in the same commit.
+
+**Then Batch D. Plan only; do not implement until approved.** Muwakha families search, using the same `ArabicSearch` pattern:
+- `MuwakhaFamiliesTable` today uses per-column `->searchable()` on the names, IDs, phone and holder, plus account code/IBAN via EXISTS. Move to table-level ArabicSearch closures:
+  - martyr, guardian and account-holder names as text;
+  - national IDs as identifiers;
+  - `guardian_phone` through `whereContainsPhone()`;
+  - account code and IBAN (the latter via `whereContainsCompactIdentifier()`).
+- Add the missing **card number** (`familyProjects.card_code`) and the Muwakha **project name** via EXISTS, plus the bank type name shown in the list.
+- Global search: currently `martyr_name` only. Consider national ID and card code.
+- **Decision to take first:** whether ى/ي folding should apply to these person-name fields only (it is explicitly out of the shared normalizer).
+- Targeted test: a new `tests/Feature/Search/MuwakhaFamilySearchTest.php` plus `ArabicSearchTest`.
+
+**Still open, separately:** the default sort convention (`id asc` on Batch B pages vs `id desc` elsewhere).
+
+---
+
+## Previously Recommended Next Step (2026-09-28, search Batch C1 done — review and commit, then Batch C2: display N+1 on the financial lists)
 
 **First, review and commit Batch C1.**
 - 5 modified tables, 2 new classes in `app/Filament/Tables/`, and the new `tests/Feature/Search/FinancialListsSearchTest.php`. Feature 27/27 and unit 78/78. Not yet committed.

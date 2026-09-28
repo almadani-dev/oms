@@ -68,9 +68,14 @@ class ProjectCostReceiptResource extends Resource
             'transaction.partner',
             'transaction.transactionType',
             'transaction.fiscalYear',
+            // Lines + accounts for the debit/credit account columns, read from
+            // the loaded collection (ProjectCostReceiptsTable::debitAccountName()).
+            'transaction.lines.account',
             'projectCost.project.projectSuper',
             'currency',
-        ]);
+        ])
+            // إشعار مرفق: attachment existence as one subquery, not a query per row.
+            ->withExists('attachments');
     }
 
     public static function getRecordRouteBindingEloquentQuery(): Builder

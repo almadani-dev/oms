@@ -2851,3 +2851,23 @@ Search behaviour on 13 tables and 2 resources' global search. No schema, data, a
 
 ### Impact
 Search and filter UX on five financial lists only. No accounting, posting, balance, form, report, schema or data change.
+
+---
+
+### Date
+2026-09-28 (search Batch C2: financial list display N+1 — where the loading lives, and how accounts are picked)
+
+### Decision
+1. **إشعار مرفق uses `withExists('attachments')` at each resource's query source** (`getEloquentQuery()` of the five financial resources) and in the receipts relation manager's `modifyQueryUsing()`. The badge reads `$record->attachments_exists`. The labels (`نعم` / `لا`) and colours are unchanged.
+2. **The receipt debit/credit account columns read the eager-loaded `transaction.lines.account`** through `ProjectCostReceiptsTable::debitAccountName()` / `creditAccountName()`. The receipts relation manager reuses the same two methods.
+3. **The account selection rule is kept exactly:** the first live line with a positive `debit_base` / `credit_base`, taken in primary-key order, whose account resolves through its default scope.
+4. **Nothing else was optimized.** Single-record `lines()` queries on Edit/View pages and in the delete actions stay, since they are not per-row.
+
+### Reason
+1. The resources' `getEloquentQuery()` is already the documented single place for "relationships shown in the table", and the ExecutionPayments resource already loads `transaction.lines.account` there. Record-route binding also uses this query, so View/Edit records carry one extra EXISTS column. That is harmless: financial and CRUD audit snapshots are closed allowlists, and an unchanged original attribute is never saved. `withExists` applies the relation's default scopes, so a soft-deleted attachment still does not count, exactly as `attachments()->exists()` behaved.
+2. The other three account-showing lists already use this load-once pattern. One shared implementation keeps the table and the relation manager from drifting apart.
+3. The old query had no ORDER BY, so in practice the first matching row came back in primary-key order. Sorting the loaded collection by `id` makes that explicit and deterministic. A soft-deleted line or account is filtered by the same default scopes as before, so it still renders empty.
+4. The batch was scoped to the two measured list N+1 sources; everything else is reported, not changed.
+
+### Impact
+Display query count only. The five lists and the relation manager now render in a constant number of queries regardless of row count. No visible value, search, filter, sorting, accounting, schema or data change.

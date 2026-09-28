@@ -148,7 +148,7 @@ class GeneralExchangesTable
                 TextColumn::make('has_attachment')
                     ->label('إشعار مرفق')
                     ->badge()
-                    ->state(fn ($record) => $record->attachments()->exists() ? 'نعم' : 'لا')
+                    ->state(fn ($record) => $record->attachments_exists ? 'نعم' : 'لا')
                     ->color(fn ($state) => $state === 'نعم' ? 'success' : 'gray'),
             ])
             ->defaultSort('id', 'desc')

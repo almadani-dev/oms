@@ -69,15 +69,11 @@ class ProjectCostReceiptsTable
 
                 TextColumn::make('debit_account')
                     ->label('الحساب المدين')
-                    ->state(fn ($record) => $record->transaction
-                        ?->lines()->with('account')->where('debit_base', '>', 0)->first()
-                        ?->account?->name),
+                    ->state(fn ($record) => self::debitAccountName($record)),
 
                 TextColumn::make('credit_account')
                     ->label('الحساب الدائن')
-                    ->state(fn ($record) => $record->transaction
-                        ?->lines()->with('account')->where('credit_base', '>', 0)->first()
-                        ?->account?->name),
+                    ->state(fn ($record) => self::creditAccountName($record)),
 
                 TextColumn::make('amount')
                     ->label('المبلغ')
@@ -97,7 +93,7 @@ class ProjectCostReceiptsTable
                 TextColumn::make('has_attachment')
                     ->label('إشعار مرفق')
                     ->badge()
-                    ->state(fn ($record) => $record->attachments()->exists() ? 'نعم' : 'لا')
+                    ->state(fn ($record) => $record->attachments_exists ? 'نعم' : 'لا')
                     ->color(fn ($state) => $state === 'نعم' ? 'success' : 'gray'),
             ])
             ->defaultSort('id', 'desc')
@@ -179,6 +175,30 @@ class ProjectCostReceiptsTable
                         ->successNotificationTitle('تم حذف الاستلامات المحددة بنجاح'),
                 ]),
             ]);
+    }
+
+    /**
+     * الحساب المدين / الحساب الدائن, read from the eager-loaded
+     * transaction.lines.account (ProjectCostReceiptResource, and the receipts
+     * relation manager under a project cost) — never a query per row. Same
+     * selection as before: the first live line with a positive debit_base /
+     * credit_base, in primary-key order, whose account resolves through its
+     * default scope (a soft-deleted account shows empty, as it did).
+     */
+    public static function debitAccountName($record): ?string
+    {
+        return $record->transaction?->lines
+            ->sortBy('id')
+            ->first(fn ($line) => (float) $line->debit_base > 0)
+            ?->account?->name;
+    }
+
+    public static function creditAccountName($record): ?string
+    {
+        return $record->transaction?->lines
+            ->sortBy('id')
+            ->first(fn ($line) => (float) $line->credit_base > 0)
+            ?->account?->name;
     }
 
     /**

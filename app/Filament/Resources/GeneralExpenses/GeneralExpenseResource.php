@@ -71,7 +71,9 @@ class GeneralExpenseResource extends Resource
                 // Expense currency is denormalized; no line walk needed for display.
                 'currency',
                 'partner',
-            ]);
+            ])
+            // إشعار مرفق: attachment existence as one subquery, not a query per row.
+            ->withExists('attachments');
     }
 
     public static function getRecordRouteBindingEloquentQuery(): Builder

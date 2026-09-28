@@ -4,6 +4,24 @@
 
 ## Recent Changes
 
+- **2026-09-28 — Batch C2: the five financial lists and the ProjectCosts receipts relation manager render in a constant number of queries. Display/query-count only. Implemented and verified, NOT committed.**
+
+  **Two measured N+1 sources, both removed:**
+  - **إشعار مرفق** (all five lists and the relation manager): `$record->attachments()->exists()` ran one query per row. It is now `withExists('attachments')` in each financial resource's `getEloquentQuery()` (and in the relation manager's `modifyQueryUsing()`), with the badge reading `$record->attachments_exists`. The soft-delete scope is identical.
+  - **Receipt debit/credit account columns** (`ProjectCostReceiptsTable` and, verbatim, `ProjectCosts/RelationManagers/ReceiptsRelationManager`): `lines()->with('account')->where(…)->first()` ran 4 queries per row (the earlier estimate said 2). The receipt resource now eager-loads `transaction.lines.account`. The shared `ProjectCostReceiptsTable::debitAccountName()` / `creditAccountName()` pick from the loaded lines with the same rule: first live line with a positive base, in id order, account through its default scope.
+
+  **Measured queries for 1 / 5 / 10 rows, before → after:**
+  - execution 19/21/26 → 18/16/16
+  - budgets 11/15/20 → 10/10/10
+  - receipts 17/37/62 → 14/14/14
+  - exchanges 11/15/20 → 10/10/10
+  - expenses 10/14/19 → 9/9/9
+  - receipts relation manager 10/28/53 → 7/5/5
+
+  **Tests:** the new `tests/Feature/Performance/FinancialListsQueryCountTest.php` 6/6 (96 assertions). Two scaling tests failed on the old code; four correctness tests pin نعم/لا, the account names, the missing-line and soft-deleted-account/line fallbacks, and a soft-deleted attachment. Regressions: `FinancialListsSearchTest` 27/27 and `RelationManagerAuthorizationTest` 8/8.
+
+  **Not touched:** search, filters, `FinancialListSearch`, `FinancialLookupFilters`, `ArabicSearch`, placeholders, visible values, sorting, accounting, schema, data. Single-record `lines()` queries on Edit/View pages and in delete actions are not per-row and were left as they are.
+
 - **2026-09-28 — Search Batch C1: the five financial operation lists search what they show, and their project/partner filters became bounded server-side lookups. 7 production files (2 new), 1 new test file. Implemented and verified, NOT committed.**
 
   **Search.** صرف مبالغ التنفيذ, صرف مبالغ المشاريع, المبالغ المستلمة, التحويلات العامة and مصروفات عامة previously searched only `transaction_number`. They now search, through the new `app/Filament/Tables/FinancialListSearch.php` (all predicates via the unchanged `ArabicSearch`):

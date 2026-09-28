@@ -70,7 +70,9 @@ class GeneralExchangeResource extends Resource
                 'transaction.fiscalYear',
                 'transaction.lines.account',
                 'partner',
-            ]);
+            ])
+            // إشعار مرفق: attachment existence as one subquery, not a query per row.
+            ->withExists('attachments');
     }
 
     public static function getRecordRouteBindingEloquentQuery(): Builder

@@ -69,7 +69,9 @@ class ProjectCostBudgetsPaymentResource extends Resource
                 // Currency is now denormalized; no line walk needed for display.
                 'sourceCurrency',
                 'disbursementCurrency',
-            ]);
+            ])
+            // إشعار مرفق: attachment existence as one subquery, not a query per row.
+            ->withExists('attachments');
     }
 
     public static function getRecordRouteBindingEloquentQuery(): Builder

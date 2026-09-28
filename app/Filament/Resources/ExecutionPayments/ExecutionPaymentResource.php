@@ -74,7 +74,9 @@ class ExecutionPaymentResource extends Resource
                 'transaction.lines.account',
                 // Execution payment currency is denormalized.
                 'currency',
-            ]);
+            ])
+            // إشعار مرفق: attachment existence as one subquery, not a query per row.
+            ->withExists('attachments');
     }
 
     public static function getRecordRouteBindingEloquentQuery(): Builder
