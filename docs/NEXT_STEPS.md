@@ -1,6 +1,28 @@
 # Next Steps
 
-## Recommended Next Step (2026-09-28, Batch D done — review and commit, then Batch E: report and form pickers)
+## Recommended Next Step (2026-09-28, Batch E done — review and commit, then Batch F: remaining search consistency)
+
+**First, review and commit Batch E.**
+- 3 report pages, 3 financial form schemas, `FinancialLookupFilters`, and the new `tests/Feature/Search/LookupSelectSearchTest.php` (18/18). The six directly affected existing test files are green. Not yet committed.
+- The regenerated `graphify-out/` files belong in the same commit.
+
+**Then Batch F. Plan only; do not implement until approved.** The remaining items from the original search audit:
+- **المعاملات المالية list** (`TransactionsTable`): today it searches only `transaction_number` and partner name, per column. Move to the ArabicSearch table-level pattern and add the visible transaction type, plus the `reference` / `description` identifiers.
+- **Global search keys that add noise rather than findability:**
+  - `ExchangeRateHistoryResource` (`date` via LIKE);
+  - `AuditEventResource` (UUID);
+  - `PermissionResource` (English machine names);
+  - `SettingResource` (`key`).
+
+  Decide per resource whether to disable or re-key them.
+- **Placeholder consistency** for any list still using the default search placeholder.
+- **The remaining per-column `->searchable()` lists** (users, roles, permissions, settings, attachments, audit events): apply `ArabicSearch` only where an Arabic free-text field is searched.
+
+**Still open, separately:** the default sort convention (`id asc` on Batch B pages vs `id desc` elsewhere).
+
+---
+
+## Previously Recommended Next Step (2026-09-28, Batch D done — review and commit, then Batch E: report and form pickers)
 
 **First, review and commit Batch D.**
 - `ArabicSearch` (person-name methods), `MuwakhaFamiliesTable`, `MuwakhaFamilyResource`, the new `tests/Feature/Search/MuwakhaFamilySearchTest.php` and the `ArabicSearchTest` additions. Unit 84/84, feature 23/23 (including the code-point direction tests: person-name fold is U+0649 (ى) → U+064A (ي)), `MuwakhaFamilyResourceTest` 21/21. Not yet committed.

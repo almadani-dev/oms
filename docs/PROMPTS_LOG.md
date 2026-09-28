@@ -1622,3 +1622,34 @@ See the 2026-09-28 Batch D entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_L
 - 83 unit + 22 feature + 21 existing Muwakha resource tests green; 15 of the 22 fail on the old code.
 
 Not committed.
+
+---
+
+### Date
+2026-09-28 (search Batch E: "the current selected value must always display")
+
+### Prompt
+Approved **Batch E only**: large lookup Selects on three reports and three financial forms.
+
+Rules it set:
+- audit each Select's source, scope, dependency and hydration *"Do NOT assume these selects are interchangeable"*;
+- server-side search, at most 50 results, no preload;
+- *"CURRENT SELECTED VALUE MUST ALWAYS DISPLAY … This is mandatory"*;
+- cascading pickers must use the *"CURRENT live parent state"*;
+- no `withTrashed()` added globally;
+- only option retrieval changes on the financial forms, never `buildLines()`, posting or persistence;
+- old-versus-new proof without `git stash`.
+
+### Purpose
+**Auditing validation, not just display, found the real risk.** A Select with static `->options()` gets Filament's automatic `in` rule for free. Moving to dynamic search replaces that with *"is there a label for this value?"*, so an unscoped label resolver would have let a forged non-donor id through the receipt form. Scoping every resolver exactly like the old option list kept validation equivalent. Tests assert the `in` values directly (null = valid, [] = rejected).
+
+**The "must always display" rule and bounded search were solved by the same resolver.** It also covers multi-select restoration (`getOptionLabelsUsing`) for the comprehensive report's accounts, tested with a selection outside the first 50 results.
+
+**"Live parent state" was checked explicitly on the donor report.** The project search reads `$get('donor_id')` at search time, the donor change still clears the project, and a stale project of the previous donor fails validation.
+
+### Result
+See the 2026-09-28 Batch E entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md`.
+- 7 production files and 1 new test file (18 tests, 15 failing on the old code).
+- Plus 6 directly affected existing test files, all green.
+
+Not committed.

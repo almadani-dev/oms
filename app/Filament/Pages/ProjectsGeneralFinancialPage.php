@@ -8,6 +8,7 @@ use App\Models\Reports\ProjectFinancialSnapshot;
 use App\Services\Audit\Reports\ReportExportAuditRecorder;
 use App\Services\Audit\Reports\ReportExportFormat;
 use App\Services\Audit\Reports\ReportExportSubject;
+use App\Support\Search\ArabicSearch;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;
 use Filament\Notifications\Notification;
@@ -31,6 +32,9 @@ class ProjectsGeneralFinancialPage extends Page implements HasTable
 {
     use AuthorizesReportAccess;
     use InteractsWithTable;
+
+    /** Most results a server-searched lookup filter returns. */
+    private const LOOKUP_LIMIT = 50;
 
     protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-chart-pie';
 
@@ -238,22 +242,31 @@ class ProjectsGeneralFinancialPage extends Page implements HasTable
                     ->query(fn (Builder $query, array $data): Builder => $query
                         ->when($data['value'] ?? null, fn (Builder $q, $value) => $q->where('project_super_id', $value))),
 
+                // The two large lookups (one snapshot per project; one donor per
+                // donor) search the snapshot table on the server — the same rows
+                // the filter narrows — at most 50 results, never the whole list
+                // in the page. The chosen value resolves its own label, both for
+                // the field and for the active-filter indicator. Super, status
+                // and currency stay static: they are a handful of values.
                 SelectFilter::make('project_id')
                     ->label('المشروع')
-                    ->options(fn () => ProjectFinancialSnapshot::query()
-                        ->orderBy('project_code')
-                        ->get(['project_id', 'project_code', 'project_name'])
-                        ->mapWithKeys(fn (ProjectFinancialSnapshot $snapshot) => [
-                            $snapshot->project_id => trim(($snapshot->project_code ? $snapshot->project_code.' - ' : '').$snapshot->project_name),
-                        ]))
                     ->searchable()
+                    ->preload(false)
+                    ->optionsLimit(self::LOOKUP_LIMIT)
+                    ->getSearchResultsUsing(fn (?string $search): array => self::snapshotProjectOptions($search ?? ''))
+                    ->getOptionLabelUsing(fn (mixed $value): ?string => blank($value) ? null : self::snapshotProjectLabel($value))
+                    ->indicateUsing(fn (array $state): array => self::lookupIndicator('المشروع', self::snapshotProjectLabel(...), $state))
                     ->query(fn (Builder $query, array $data): Builder => $query
                         ->when($data['value'] ?? null, fn (Builder $q, $value) => $q->where('project_id', $value))),
 
                 SelectFilter::make('donor_id')
                     ->label('المانح')
-                    ->options(fn () => $this->snapshotOptions('donor_id', 'donor_name'))
                     ->searchable()
+                    ->preload(false)
+                    ->optionsLimit(self::LOOKUP_LIMIT)
+                    ->getSearchResultsUsing(fn (?string $search): array => self::snapshotDonorOptions($search ?? ''))
+                    ->getOptionLabelUsing(fn (mixed $value): ?string => blank($value) ? null : self::snapshotDonorLabel($value))
+                    ->indicateUsing(fn (array $state): array => self::lookupIndicator('المانح', self::snapshotDonorLabel(...), $state))
                     ->query(fn (Builder $query, array $data): Builder => $query
                         ->when($data['value'] ?? null, fn (Builder $q, $value) => $q->where('donor_id', $value))),
 
@@ -486,6 +499,82 @@ class ProjectsGeneralFinancialPage extends Page implements HasTable
     /**
      * @return array<int, string>
      */
+    /**
+     * Snapshot projects matching $search by code (identifier) or name (Arabic
+     * text), labelled "code - name" as before, in project-code order.
+     *
+     * @return array<int, string>
+     */
+    private static function snapshotProjectOptions(string $search): array
+    {
+        return ProjectFinancialSnapshot::query()
+            ->where(function (Builder $query) use ($search): void {
+                ArabicSearch::whereContainsIdentifier($query, 'project_code', $search);
+                ArabicSearch::whereContainsText($query, 'project_name', $search, 'or');
+            })
+            ->orderBy('project_code')
+            ->limit(self::LOOKUP_LIMIT)
+            ->get(['project_id', 'project_code', 'project_name'])
+            ->mapWithKeys(fn (ProjectFinancialSnapshot $snapshot): array => [$snapshot->project_id => self::snapshotProjectLabelFor($snapshot)])
+            ->all();
+    }
+
+    private static function snapshotProjectLabel(mixed $projectId): ?string
+    {
+        $snapshot = ProjectFinancialSnapshot::query()
+            ->where('project_id', $projectId)
+            ->first(['project_id', 'project_code', 'project_name']);
+
+        return $snapshot ? self::snapshotProjectLabelFor($snapshot) : null;
+    }
+
+    private static function snapshotProjectLabelFor(ProjectFinancialSnapshot $snapshot): string
+    {
+        return trim(($snapshot->project_code ? $snapshot->project_code.' - ' : '').$snapshot->project_name);
+    }
+
+    /**
+     * Distinct snapshot donors whose name matches $search (Arabic text), by
+     * name, as the previous static list was.
+     *
+     * @return array<int, string>
+     */
+    private static function snapshotDonorOptions(string $search): array
+    {
+        return ProjectFinancialSnapshot::query()
+            ->whereNotNull('donor_id')
+            ->whereNotNull('donor_name')
+            ->where(fn (Builder $query): Builder => ArabicSearch::whereContainsText($query, 'donor_name', $search))
+            ->distinct()
+            ->orderBy('donor_name')
+            ->limit(self::LOOKUP_LIMIT)
+            ->pluck('donor_name', 'donor_id')
+            ->all();
+    }
+
+    private static function snapshotDonorLabel(mixed $donorId): ?string
+    {
+        return ProjectFinancialSnapshot::query()
+            ->where('donor_id', $donorId)
+            ->whereNotNull('donor_name')
+            ->value('donor_name');
+    }
+
+    /**
+     * The active-filter chip for a server-searched filter, which has no static
+     * option list for Filament's default indicator to read its label from.
+     *
+     * @param  callable(mixed): ?string  $label
+     * @return list<\Filament\Tables\Filters\Indicator>
+     */
+    private static function lookupIndicator(string $name, callable $label, array $state): array
+    {
+        $value = $state['value'] ?? null;
+        $text = blank($value) ? null : $label($value);
+
+        return blank($text) ? [] : [\Filament\Tables\Filters\Indicator::make("{$name}: {$text}")];
+    }
+
     private function snapshotOptions(string $idColumn, string $nameColumn): array
     {
         return ProjectFinancialSnapshot::query()

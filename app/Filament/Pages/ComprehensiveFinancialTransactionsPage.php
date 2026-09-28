@@ -3,10 +3,10 @@
 namespace App\Filament\Pages;
 
 use App\Filament\Pages\Concerns\AuthorizesReportAccess;
+use App\Filament\Tables\FinancialLookupFilters;
 use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\Currency;
-use App\Models\Project;
 use App\Models\TransactionSuperType;
 use App\Models\TransactionType;
 use App\Services\Audit\Reports\ReportExportAuditRecorder;
@@ -15,6 +15,7 @@ use App\Services\Audit\Reports\ReportExportSubject;
 use App\Services\Reports\ComprehensiveFinancialTransactionsExcelExportService;
 use App\Services\Reports\ComprehensiveFinancialTransactionsReportService;
 use App\Services\Reports\ComprehensiveFinancialTransactionsWordExportService;
+use App\Support\Search\ArabicSearch;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
@@ -254,19 +255,24 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
                     ->live()
                     ->afterStateUpdated(fn () => $this->clearResults()),
 
+                // Searched on the server (Muwakha family accounts make this a
+                // large table): code, name or IBAN, at most 50 results, never
+                // the whole table in the page. The labels of the selected
+                // accounts are resolved on their own, so a choice outside the
+                // current result window still reads "code - name" — and an id
+                // with no label fails Filament's `in` validation, as before.
                 Select::make('account_ids')
                     ->label('الحساب')
                     ->multiple()
-                    ->options(fn () => Account::query()
-                        ->orderBy('account_code')
-                        ->orderBy('name')
-                        ->get(['id', 'account_code', 'name'])
-                        ->mapWithKeys(fn ($account) => [
-                            $account->id => trim(($account->account_code ? $account->account_code . ' - ' : '') . $account->name),
-                        ])
-                        ->all())
-                    ->placeholder('كل الحسابات')
                     ->searchable()
+                    ->getSearchResultsUsing(fn (?string $search): array => self::accountLabels(
+                        self::accountSearchQuery($search ?? '')->limit(FinancialLookupFilters::OPTIONS_LIMIT)->get(['id', 'account_code', 'name']),
+                    ))
+                    ->getOptionLabelsUsing(fn (array $values): array => self::accountLabels(
+                        Account::query()->whereKey($values)->get(['id', 'account_code', 'name']),
+                    ))
+                    ->optionsLimit(FinancialLookupFilters::OPTIONS_LIMIT)
+                    ->placeholder('كل الحسابات')
                     ->live()
                     ->afterStateUpdated(function (Set $set, mixed $state): void {
                         // Clearing every account removes the only thing the
@@ -299,11 +305,16 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
                     ->live()
                     ->afterStateUpdated(fn () => $this->clearResults()),
 
+                // Searched on the server by code or name, "code - name" labels,
+                // at most 50 results; the selected project's label resolves on
+                // its own.
                 Select::make('project_id')
                     ->label('المشروع')
-                    ->options(fn () => Project::query()->orderBy('name')->pluck('name', 'id'))
-                    ->placeholder('كل المشاريع')
                     ->searchable()
+                    ->getSearchResultsUsing(fn (?string $search): array => FinancialLookupFilters::projectOptions($search ?? ''))
+                    ->getOptionLabelUsing(fn (mixed $value): ?string => blank($value) ? null : FinancialLookupFilters::projectLabel($value))
+                    ->optionsLimit(FinancialLookupFilters::OPTIONS_LIMIT)
+                    ->placeholder('كل المشاريع')
                     ->live()
                     ->afterStateUpdated(fn () => $this->clearResults()),
             ]);
@@ -534,5 +545,39 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
         $this->appliedFilterLabels = [];
         $this->openCategoryKey = null;
         $this->openTypeKey = null;
+    }
+
+    /**
+     * The account picker's search: code (identifier), name (Arabic text) or
+     * IBAN (spaces ignored), over the same non-deleted accounts the picker has
+     * always offered, in its existing code-then-name order.
+     */
+    protected static function accountSearchQuery(string $search): \Illuminate\Database\Eloquent\Builder
+    {
+        return Account::query()
+            ->where(function (\Illuminate\Database\Eloquent\Builder $query) use ($search): void {
+                ArabicSearch::whereContainsIdentifier($query, 'account_code', $search);
+                ArabicSearch::whereContainsText($query, 'name', $search, 'or');
+                ArabicSearch::whereContainsCompactIdentifier($query, 'iban', $search, 'or');
+            })
+            ->orderBy('account_code')
+            ->orderBy('name');
+    }
+
+    /**
+     * "code - name" (or the name alone), the picker's existing label.
+     *
+     * @param  iterable<Account>  $accounts
+     * @return array<int, string>
+     */
+    protected static function accountLabels(iterable $accounts): array
+    {
+        $labels = [];
+
+        foreach ($accounts as $account) {
+            $labels[$account->id] = trim(($account->account_code ? $account->account_code.' - ' : '').$account->name);
+        }
+
+        return $labels;
     }
 }

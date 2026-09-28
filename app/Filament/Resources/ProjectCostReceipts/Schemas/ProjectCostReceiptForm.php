@@ -2,11 +2,11 @@
 
 namespace App\Filament\Resources\ProjectCostReceipts\Schemas;
 
+use App\Filament\Tables\FinancialLookupFilters;
 use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\BankType;
 use App\Models\FiscalYear;
-use App\Models\Partner;
 use App\Models\Project;
 use App\Models\ProjectCost;
 use App\Models\ProjectSuper;
@@ -116,9 +116,17 @@ class ProjectCostReceiptForm
                     ->options(fn () => FiscalYear::where('is_active', true)->orderBy('name')->pluck('name', 'id'))
                     ->required(),
 
+                // Donors only (is_donor), as before, now searchable on the server
+                // by name — at most 50 results. The saved value is the partner
+                // id; its label resolves through the same donors-only scope,
+                // which Filament's `in` validation checks, so a non-donor id is
+                // still rejected.
                 Select::make('partner_id')
                     ->label('الجهة المانحة')
-                    ->options(fn () => Partner::where('is_donor', true)->orderBy('name')->pluck('name', 'id'))
+                    ->searchable()
+                    ->getSearchResultsUsing(fn (?string $search): array => FinancialLookupFilters::partnerOptions($search ?? '', self::donorsOnly(...)))
+                    ->getOptionLabelUsing(fn (mixed $value): ?string => blank($value) ? null : FinancialLookupFilters::partnerLabel($value, self::donorsOnly(...)))
+                    ->optionsLimit(FinancialLookupFilters::OPTIONS_LIMIT)
                     ->required(),
 
                 DatePicker::make('date')
@@ -296,5 +304,11 @@ class ProjectCostReceiptForm
             ->get(['id', 'account_code', 'name'])
             ->mapWithKeys(fn ($a) => [$a->id => trim(($a->account_code ? $a->account_code . ' - ' : '') . $a->name)])
             ->toArray();
+    }
+
+    /** The donor picker's eligibility: partners flagged as donors. */
+    protected static function donorsOnly(\Illuminate\Database\Eloquent\Builder $partners): \Illuminate\Database\Eloquent\Builder
+    {
+        return $partners->where('is_donor', true);
     }
 }

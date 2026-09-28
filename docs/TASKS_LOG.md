@@ -3881,3 +3881,83 @@ Search fields:
 
 ### Commit Hash
 Not committed, not pushed — awaiting review.
+
+---
+
+### Date
+2026-09-28
+
+### Task
+Search Batch E: large lookup Selects on three reports and three financial forms move from "load every row, filter in the browser" to bounded, database-side, Arabic-aware search.
+
+### Result
+**Implemented and verified; NOT committed.**
+
+**Pre-edit inventory** (every converted Select previously loaded every row with `->options(fn …pluck…)` and was filtered in the browser, with no Arabic normalization):
+
+| Page / form | Field | Old source | Old mode | Dependency / scope |
+|---|---|---|---|---|
+| التقرير الشامل | `account_ids` (multi) | all non-deleted accounts, `code - name` | full list, browser search | none; clearing it resets `account_side` to الكل |
+| التقرير الشامل | `project_id` | all projects, name only | full list, browser search | none |
+| تقرير المانح | `donor_id` (required) | donors (`is_donor`), name | full list (`optionsLimit` only capped rendering) | changing it sets `project_id` to null |
+| تقرير المانح | `project_id` | the live donor's projects, `code - name` | full donor list | live `$get('donor_id')`; disabled without a donor |
+| الصفحة العامة للمشاريع | `project_id` filter | every snapshot, `code - name` | full list | none |
+| الصفحة العامة للمشاريع | `donor_id` filter | distinct snapshot donors | full list | none |
+| صرف مبلغ تنفيذ form | `partner_id` (required) | all partners | full list, browser search | none |
+| تحويل عام form | `partner_id` (optional) | all partners | full list | none |
+| استلام مبلغ form | `partner_id` (required) | donors (`is_donor`) | full list, **not searchable** | none |
+
+**Converted** (all use `getSearchResultsUsing` + `getOptionLabelUsing`/`getOptionLabelsUsing`, nothing preloaded, at most 50 results):
+
+| Page / form | Field | Search fields | Label | Scope kept |
+|---|---|---|---|---|
+| التقرير الشامل | `account_ids` | code (identifier), name (text), IBAN (compact) | `code - name` | non-deleted accounts |
+| التقرير الشامل | `project_id` | code, name | `code - name` (was name only) | non-deleted projects |
+| تقرير المانح | `donor_id` | name | name | donors only |
+| تقرير المانح | `project_id` | code, name | `code - name` | projects of the LIVE donor |
+| الصفحة العامة للمشاريع | `project_id` | `project_code`, `project_name` | `code - name` | snapshot rows |
+| الصفحة العامة للمشاريع | `donor_id` | `donor_name` | name | snapshot rows |
+| three financial forms | `partner_id` | name | name | all partners / all partners / donors only |
+
+**How labels and validation work:** each label resolver applies the same eligibility scope as the old option list. Filament's `in` validation rejects a value whose label is null, so eligibility is enforced exactly as before: a non-donor on the receipt form or donor report, a deleted partner/account/project, or a stale project of another donor are all invalid. A saved partner whose record is no longer eligible was already unlisted before; that is unchanged and no `withTrashed()` was added.
+
+**Left unchanged, and why:**
+- currencies, classification, transaction types and account types on the comprehensive report: static short lists;
+- status, super and currency on the donor report: short;
+- super, status and currency on the general report: a handful each;
+- risk level: a static enum.
+
+**Shared code:** `FinancialLookupFilters` (C1) gained an optional project `$scope` and public `projectLabel()` / `partnerLabel()`; the C1 filters behave identically. The account and snapshot lookups stay page-local. `ArabicSearch` is unchanged. The general report's two filters get their own indicator, since Filament's default indicator reads a static option list.
+
+### Changed Files
+- Modified `app/Filament/Tables/FinancialLookupFilters.php`.
+- Modified pages: `app/Filament/Pages/ComprehensiveFinancialTransactionsPage.php`, `DonorFinancialReportPage.php`, `ProjectsGeneralFinancialPage.php`.
+- Modified forms: `app/Filament/Resources/ExecutionPayments/Schemas/ExecutionPaymentForm.php`, `GeneralExchanges/Schemas/GeneralExchangeForm.php`, `ProjectCostReceipts/Schemas/ProjectCostReceiptForm.php` (only the `partner_id` Select, the now-unused `Partner` import, and the receipt form's `donorsOnly()` scope).
+- New `tests/Feature/Search/LookupSelectSearchTest.php` (18 tests).
+- `graphify-out/` regenerated from the final tree.
+- **Not** modified: `buildLines()`, transaction creation/persistence, lines, balance guards, deductions, FX, posting, audit, Create/Edit page hydration, report services and calculations, `appliedFilterLabels()`/exports (they resolve labels independently), schema, data, Muwakha, global search, `ArabicSearch`.
+
+### Verification
+1. `php artisan test tests/Unit/Support/Search/ArabicSearchTest.php` → 84/84 passed, 124 assertions.
+2. `php artisan test tests/Feature/Search/LookupSelectSearchTest.php` → 18/18 passed, 128 assertions.
+3. Directly affected existing tests (they fill the converted fields, submit through the new label-based validation, or both):
+   - `ComprehensiveFinancialTransactionsPageTest` 33/33 (177 assertions);
+   - `ReportExportAuthorizationTest` 28/28 (77);
+   - `ReportExportAuditTest` 22/22 (139);
+   - `ExecutionPaymentCreditAccountTest` 11/11 (40);
+   - `GeneralExchangeAccountValidationTest` 6/6 (18);
+   - `ProjectCostReceiptAccountValidationTest` 6/6 (14).
+4. Before-fix proof, without `git stash` (7 files overwritten with `git show HEAD:`, tested, restored, `sha1sum -c` OK):
+   - 15 of 18 fail on the old code.
+   - The 3 that pass are preservation guards: the account-side reset and deleted-account rejection, the soft-deleted partner, and edit-page label restoration.
+5. Read-only MySQL on this machine's local DB, 6 representative Selects (comprehensive account, comprehensive project, donor, donor project, execution-payment partner, receipt donor):
+   - every one ships 0 options with the page and makes 0 queries on its table before typing;
+   - each search is one query, 0 joins, `LIMIT 50`, `ESCAPE` on every LIKE, alef fold on names, `deleted_at is null`;
+   - the donor searches bind `is_donor = true`; the donor project search binds `donor_id = <live donor>`; the account search includes `REPLACE(iban, ' ', '')`;
+   - terms only in bindings.
+6. `php -l` clean on all 8 changed PHP files. Line endings stay CRLF throughout, as in HEAD.
+7. `PYTHONHASHSEED=0 graphify update .` → 956 files, 15295 nodes, 38675 edges, with 0 sensitive-path hits.
+8. Not run: the full suite or the full Feature suite.
+
+### Commit Hash
+Not committed, not pushed — awaiting review.

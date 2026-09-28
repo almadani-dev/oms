@@ -51,17 +51,23 @@ final class FinancialLookupFilters
             $name,
             $label,
             fn (string $search): array => self::partnerOptions($search, $scope),
-            fn (mixed $value): ?string => self::partnerQuery($scope)->whereKey($value)->value('name'),
+            fn (mixed $value): ?string => self::partnerLabel($value, $scope),
             $apply,
         );
     }
 
     /**
+     * Up to OPTIONS_LIMIT projects matching $search by code (identifier) or
+     * name (text), labelled "code - name". Also used by the report and form
+     * Selects (Batch E), which pass their own eligibility as $scope (e.g. the
+     * donor report's "projects of the chosen donor").
+     *
+     * @param  (Closure(Builder): Builder)|null  $scope
      * @return array<int, string>
      */
-    public static function projectOptions(string $search): array
+    public static function projectOptions(string $search, ?Closure $scope = null): array
     {
-        return Project::query()
+        return self::projectQuery($scope)
             ->where(function (Builder $query) use ($search): void {
                 ArabicSearch::whereContainsIdentifier($query, 'code', $search);
                 ArabicSearch::whereContainsText($query, 'name', $search, 'or');
@@ -107,11 +113,38 @@ final class FinancialLookupFilters
                 : $query);
     }
 
-    private static function projectLabel(mixed $value): ?string
+    /**
+     * The "code - name" label of one project within $scope, or null when it is
+     * not eligible. A Select that searches on the server resolves its selected
+     * value through this, and Filament's `in` validation rejects a value whose
+     * label is null — so the scope here is also the Select's eligibility rule.
+     *
+     * @param  (Closure(Builder): Builder)|null  $scope
+     */
+    public static function projectLabel(mixed $value, ?Closure $scope = null): ?string
     {
-        $project = Project::query()->whereKey($value)->first(['id', 'code', 'name']);
+        $project = self::projectQuery($scope)->whereKey($value)->first(['id', 'code', 'name']);
 
         return $project ? self::projectLabelFor($project) : null;
+    }
+
+    /**
+     * The name of one partner within $scope (e.g. donors only), or null when it
+     * is not eligible — the Select's label and, through Filament's `in` rule,
+     * its validation.
+     *
+     * @param  (Closure(Builder): Builder)|null  $scope
+     */
+    public static function partnerLabel(mixed $value, ?Closure $scope = null): ?string
+    {
+        return self::partnerQuery($scope)->whereKey($value)->value('name');
+    }
+
+    private static function projectQuery(?Closure $scope): Builder
+    {
+        $query = Project::query();
+
+        return $scope ? $scope($query) : $query;
     }
 
     /** "code - name", or whichever of the two exists. */

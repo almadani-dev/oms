@@ -2,12 +2,12 @@
 
 namespace App\Filament\Resources\GeneralExchanges\Schemas;
 
+use App\Filament\Tables\FinancialLookupFilters;
 use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\BankType;
 use App\Models\Currency;
 use App\Models\FiscalYear;
-use App\Models\Partner;
 use App\Models\TransactionSuperType;
 use App\Models\TransactionType;
 use Filament\Actions\Action;
@@ -63,12 +63,17 @@ class GeneralExchangeForm
                         ->preload()
                         ->required(),
 
+                    // Every (non-deleted) partner, as before, searched on the
+                    // server by name — at most 50 results. Still optional; the
+                    // saved value is the partner id, and its label (and `in`
+                    // validation) resolves through the same lookup.
                     Select::make('partner_id')
                         ->label('الجهة')
-                        ->options(fn () => Partner::orderBy('name')->pluck('name', 'id'))
                         ->searchable()
+                        ->getSearchResultsUsing(fn (?string $search): array => FinancialLookupFilters::partnerOptions($search ?? ''))
+                        ->getOptionLabelUsing(fn (mixed $value): ?string => blank($value) ? null : FinancialLookupFilters::partnerLabel($value))
                         ->preload(false)
-                        ->optionsLimit(50),
+                        ->optionsLimit(FinancialLookupFilters::OPTIONS_LIMIT),
 
                     DatePicker::make('date')
                         ->label('تاريخ التحويل')

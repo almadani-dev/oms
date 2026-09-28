@@ -4,6 +4,28 @@
 
 ## Recent Changes
 
+- **2026-09-28 — Search Batch E: the large report and form lookup Selects search on the server. 7 production files, 1 new test file. Implemented and verified, NOT committed.**
+
+  **Converted** (previously every one loaded all rows into the page and filtered with a plain browser `includes()`):
+  - التقرير الشامل: `account_ids` (multi; code, name, compact IBAN) and `project_id` (code, name; label now `code - name`);
+  - تقرير المانح: `donor_id` (donors only) and `project_id` (the LIVE donor's projects; the donor change still clears it);
+  - الصفحة العامة للمشاريع: the `project_id` and `donor_id` snapshot filters;
+  - the `partner_id` Select on صرف مبلغ تنفيذ (all partners), تحويل عام (all partners, optional) and استلام مبلغ (donors only, now searchable).
+
+  All use `getSearchResultsUsing` + `getOptionLabelUsing`/`getOptionLabelsUsing` through `ArabicSearch`: at most 50 results, 0 options shipped, 0 queries before typing.
+
+  **Key invariant:** each label resolver carries the old option list's exact eligibility scope. Filament's `in` validation rejects a value with no label, so eligibility is still enforced server-side (a non-donor, deleted row, or stale project of another donor is invalid). Selected values outside the first 50 results still show their labels.
+
+  **Left static:** small lookups and enums (currencies, types, classifications, statuses, supers, risk level).
+
+  **Shared:** `FinancialLookupFilters` gained an optional project scope and public `projectLabel()`/`partnerLabel()`.
+
+  **Tests:**
+  - `LookupSelectSearchTest` 18/18 (15 fail on the old code) and `ArabicSearchTest` 84/84.
+  - Six directly affected existing test files green: the comprehensive page, the two report-export suites, and the three account-validation form tests (which submit the converted fields).
+
+  **Not touched:** `buildLines()`, transaction creation, posting, hydration, report calculations, exports, schema, data, Muwakha, global search.
+
 - **2026-09-28 — Search Batch D: Muwakha family list and global search, with the first field-specific ى/ي fold (person names only). 3 production files, 1 new test file plus unit additions. Implemented and verified, NOT committed.**
 
   **Where things live (audited):**

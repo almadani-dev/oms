@@ -3,8 +3,8 @@
 namespace App\Filament\Pages;
 
 use App\Filament\Pages\Concerns\AuthorizesReportAccess;
+use App\Filament\Tables\FinancialLookupFilters;
 use App\Models\Currency;
-use App\Models\Partner;
 use App\Models\Project;
 use App\Models\ProjectStatus;
 use App\Models\ProjectSuper;
@@ -23,6 +23,8 @@ use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Concerns\InteractsWithSchemas;
 use Filament\Schemas\Contracts\HasSchemas;
 use Filament\Schemas\Schema;
+use Closure;
+use Illuminate\Database\Eloquent\Builder;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -132,12 +134,17 @@ class DonorFinancialReportPage extends Page implements HasSchemas
             ->statePath('data')
             ->columns(3)
             ->components([
+                // Donors only (is_donor), searched on the server by name, at most
+                // 50 results. The selected donor's label resolves through the
+                // same donors-only scope, which is also what Filament's `in`
+                // validation checks — a non-donor id stays invalid.
                 Select::make('donor_id')
                     ->label('الجهة المانحة')
-                    ->options(fn () => Partner::where('is_donor', true)->orderBy('name')->pluck('name', 'id'))
                     ->searchable()
+                    ->getSearchResultsUsing(fn (?string $search): array => FinancialLookupFilters::partnerOptions($search ?? '', self::donorsOnly(...)))
+                    ->getOptionLabelUsing(fn (mixed $value): ?string => blank($value) ? null : FinancialLookupFilters::partnerLabel($value, self::donorsOnly(...)))
                     ->preload(false)
-                    ->optionsLimit(50)
+                    ->optionsLimit(FinancialLookupFilters::OPTIONS_LIMIT)
                     ->required()
                     ->live()
                     ->afterStateUpdated(function (): void {
@@ -177,10 +184,21 @@ class DonorFinancialReportPage extends Page implements HasSchemas
                     ->live()
                     ->afterStateUpdated(fn () => $this->clearResults()),
 
+                // Projects of the CURRENTLY chosen donor only (live form state),
+                // searched on the server by code or name, at most 50 results.
+                // The label resolves through the same donor scope, so a stale
+                // project of another donor has no label and fails validation;
+                // changing the donor still clears this field (donor_id above).
                 Select::make('project_id')
                     ->label('المشروع')
-                    ->options(fn (Get $get) => $this->projectOptions($get('donor_id')))
                     ->searchable()
+                    ->getSearchResultsUsing(fn (Get $get, ?string $search): array => blank($get('donor_id'))
+                        ? []
+                        : FinancialLookupFilters::projectOptions($search ?? '', self::projectsOfDonor($get('donor_id'))))
+                    ->getOptionLabelUsing(fn (Get $get, mixed $value): ?string => blank($value) || blank($get('donor_id'))
+                        ? null
+                        : FinancialLookupFilters::projectLabel($value, self::projectsOfDonor($get('donor_id'))))
+                    ->optionsLimit(FinancialLookupFilters::OPTIONS_LIMIT)
                     ->preload(false)
                     ->live()
                     ->disabled(fn (Get $get) => blank($get('donor_id')))
@@ -311,24 +329,21 @@ class DonorFinancialReportPage extends Page implements HasSchemas
         return false;
     }
 
-    /**
-     * Projects of the selected donor only, labeled "code - name" so the
-     * dropdown never offers another donor's project.
-     */
-    protected function projectOptions(mixed $donorId): array
+    /** The donor picker's eligibility: partners flagged as donors. */
+    protected static function donorsOnly(Builder $partners): Builder
     {
-        if (blank($donorId)) {
-            return [];
-        }
+        return $partners->where('is_donor', true);
+    }
 
-        return Project::query()
-            ->where('donor_id', $donorId)
-            ->orderBy('id', 'desc')
-            ->get(['id', 'code', 'name'])
-            ->mapWithKeys(fn ($project) => [
-                $project->id => trim(($project->code ? $project->code . ' - ' : '') . $project->name),
-            ])
-            ->all();
+    /**
+     * The project picker's eligibility: projects of the given donor only, so
+     * the dropdown never offers another donor's project.
+     *
+     * @return Closure(Builder): Builder
+     */
+    protected static function projectsOfDonor(mixed $donorId): Closure
+    {
+        return fn (Builder $projects): Builder => $projects->where('donor_id', $donorId);
     }
 
     /**

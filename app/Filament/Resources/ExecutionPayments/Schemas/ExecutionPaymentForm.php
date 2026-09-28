@@ -2,11 +2,11 @@
 
 namespace App\Filament\Resources\ExecutionPayments\Schemas;
 
+use App\Filament\Tables\FinancialLookupFilters;
 use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\BankType;
 use App\Models\FiscalYear;
-use App\Models\Partner;
 use App\Models\Project;
 use App\Models\ProjectCost;
 use App\Models\ProjectCostBudget;
@@ -153,10 +153,16 @@ class ExecutionPaymentForm
                     ->options(fn () => FiscalYear::where('is_active', true)->orderBy('name')->pluck('name', 'id'))
                     ->required(),
 
+                // Every (non-deleted) partner, as before, searched on the server
+                // by name — at most 50 results, never the whole table. The saved
+                // value is still the partner id; its label (and Filament's `in`
+                // validation) resolves through the same lookup.
                 Select::make('partner_id')
                     ->label('الجهة / المستفيد')
-                    ->options(fn () => Partner::orderBy('name')->pluck('name', 'id'))
                     ->searchable()
+                    ->getSearchResultsUsing(fn (?string $search): array => FinancialLookupFilters::partnerOptions($search ?? ''))
+                    ->getOptionLabelUsing(fn (mixed $value): ?string => blank($value) ? null : FinancialLookupFilters::partnerLabel($value))
+                    ->optionsLimit(FinancialLookupFilters::OPTIONS_LIMIT)
                     ->required(),
 
                 DatePicker::make('date')

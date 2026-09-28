@@ -2896,3 +2896,25 @@ Display query count only. The five lists and the relation manager now render in 
 
 ### Impact
 Muwakha family list/export search and topbar global search only. No schema, data, payment, import, statement, report or accounting change.
+
+---
+
+### Date
+2026-09-28 (search Batch E: server-side lookup Selects; the label resolver is the eligibility rule)
+
+### Decision
+1. **Large lookup Selects search on the server** through `getSearchResultsUsing` + `getOptionLabelUsing`/`getOptionLabelsUsing`, at most 50 results, with nothing preloaded or shipped to the page. Converted: the comprehensive report's account and project, the donor report's donor and project, the general report's project and donor filters, and the three financial forms' partner/donor Select.
+2. **Each label resolver applies exactly the old option list's eligibility scope** (donors only; the live donor's projects; non-deleted rows). Filament's `in` validation rejects a value whose label is null, so the resolver is also the validation rule.
+3. **Small lookups and static enums keep their static lists.**
+4. **The shared queries live in `FinancialLookupFilters`** (optional project scope, public `projectLabel()` / `partnerLabel()`). The account and snapshot lookups stay page-local.
+5. **The comprehensive report's project picker is labelled `code - name`** (was name only), matching the rest of OMS.
+
+### Reason
+1. The account table grows with every Muwakha family account; shipping it whole to the browser does not scale and cannot fold Arabic.
+2. Without the scoped resolver, moving to dynamic search would have silently dropped the server-side check that, for example, a receipt donor is really a donor. Keeping the scope in the resolver preserves validation byte-for-byte in meaning, and also covers selected values outside the first 50 results.
+3. A search box and a server round-trip add nothing to lists of a few rows.
+4. Several Selects need the identical project/partner query and label. A universal Select service was explicitly not wanted, so only the query/label pair is shared.
+5. It disambiguates projects with similar names.
+
+### Impact
+Option loading and search on three reports and three financial forms. No accounting, posting, transaction, hydration, report-calculation, export, schema or data change.
