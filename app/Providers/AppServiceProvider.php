@@ -24,6 +24,8 @@ use App\Services\Backup\Contracts\SymlinkDetector;
 use App\Services\Backup\NativeSymlinkDetector;
 use App\Services\Backup\SecretstreamEnvelope;
 use App\Services\Backup\SymfonyProcessRunner;
+use App\Services\Reports\ComprehensiveFinancialTransactions\Contracts\ComprehensiveFinancialTransactionsSnapshotRepository;
+use App\Services\Reports\ComprehensiveFinancialTransactions\FilesystemComprehensiveFinancialTransactionsSnapshotRepository;
 use App\Services\Restore\Attachments\NativeAttachmentMoveRunner;
 use App\Services\Restore\Attachments\RestoreAttachmentActivationService;
 use App\Services\Restore\Attachments\RestoreAttachmentLifecycle;
@@ -65,6 +67,14 @@ class AppServiceProvider extends ServiceProvider
         // this binding — it binds a fake ProcessRunner directly in each
         // test instead, so a real mysqldump is never invoked.
         $this->app->bind(ProcessRunner::class, SymfonyProcessRunner::class);
+
+        // Immutable report snapshots for "تقرير الحركات المالية الشامل". The
+        // filesystem implementation reads its disk from config on every call,
+        // so moving snapshots to shared/object storage is a config change.
+        $this->app->bind(
+            ComprehensiveFinancialTransactionsSnapshotRepository::class,
+            FilesystemComprehensiveFinancialTransactionsSnapshotRepository::class,
+        );
 
         // Reads config('oms.backup.chunk_size') fresh on every resolution
         // (not a singleton) so tests that override the config per-test —

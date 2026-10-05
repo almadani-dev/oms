@@ -95,6 +95,22 @@ return [
             'report' => false,
         ],
 
+        // Immutable, per-user report snapshots (today: "تقرير الحركات المالية
+        // الشامل"). Same private shape as 'attachments'/'backups' — never
+        // symlinked, no built-in signed-URL route. Only ever touched through
+        // a snapshot repository, never by a page or exporter directly, so the
+        // whole thing can move to shared/object storage by changing this
+        // disk alone. 'throw' => true on purpose: a snapshot write that
+        // silently returned false would publish a report with missing rows.
+        'report_snapshots' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/report-snapshots'),
+            'visibility' => 'private',
+            'serve' => false,
+            'throw' => true,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

@@ -78,4 +78,11 @@ return Application::configure(basePath: dirname(__DIR__))
             ->everyMinute()
             ->withoutOverlapping()
             ->onOneServer();
+
+        // Expired report snapshots / abandoned partial builds. Synchronous
+        // and file-only, so it needs no queue worker.
+        $schedule->command('oms:purge-report-snapshots')
+            ->hourly()
+            ->withoutOverlapping()
+            ->onOneServer();
     })->create();

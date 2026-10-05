@@ -1,6 +1,63 @@
 # Next Steps
 
-## Recommended Next Step (2026-09-28, Batch G done — review and commit; the search project is complete)
+## Recommended Next Step (2026-10-04, phase 2 done — review, browser-check, then deploy with the checklist)
+
+**1. Review and commit** both phases together (snapshot architecture + background build / large Excel / Word limit). Nothing is committed yet.
+
+**2. Manual browser check on dev, logged in** (not done; no session was available):
+- "جاري إعداد التقرير..." then the report;
+- main pager, classification/type expansion, spinners, horizontal scroll, notes, dark mode;
+- styled Excel on a small report;
+- "جاري تجهيز ملف Excel..." then the download on a large one;
+- the Word limit message.
+
+On dev this needs a worker for the `reports` queue: `php artisan queue:work --queue=reports --tries=1 --timeout=1800`. Lower `OMS_CFT_STYLED_EXCEL_MAX_LINES` / `OMS_CFT_WORD_MAX_LINES` temporarily to see the large paths with dev data.
+
+**3. Open the two workbooks in Excel side by side** (Excel automation hung in this session) to confirm the column-width difference is acceptable.
+
+**4. Production, following `docs/COMPREHENSIVE_REPORT_DEPLOYMENT_CHECKLIST.md`:**
+- read-only EXPLAIN first;
+- then the supervised `reports` and `backups` workers and `DB_QUEUE_RETRY_AFTER=3900`;
+- scheduler, storage ownership, verification, rollback.
+
+---
+
+
+## Previously Recommended Next Step (2026-10-04, comprehensive report snapshot architecture done — review, browser-check, then decide the queue and the large-export path)
+
+**1. Review and commit** the snapshot architecture (not yet committed; file list in TASKS_LOG 2026-10-04).
+
+**2. Manual browser check before committing**, logged in on this dev machine (not done in this session):
+- RTL, dark mode, both horizontal scroll bars on the main table and on an open classification/type;
+- the pager only on multi-page tables;
+- spinners scoped per table;
+- notes panels;
+- Excel/Word downloads.
+
+**3. Production-size plan check, read-only:** `EXPLAIN` the lines-slice query (`tl.transaction_id IN (…)` + keyset) on production-sized MySQL data. It should read `transaction_lines` through `transaction_lines_transaction_id_foreign`, not start from `accounts`. On the 22-line dev DB the optimizer's choice is meaningless.
+
+**4. Deployment items for production (need approval/ops):**
+- `schedule:run` must be running for the hourly `oms:purge-report-snapshots` (the backups already depend on it).
+- Size `storage/app/private/report-snapshots` for ≈ 785 B per report line per open snapshot (TTL 240 min).
+- Check PHP `max_execution_time` against the in-request build (~35 s for 150k synthetic lines here, timing noisy).
+
+**5. Decisions awaiting approval:**
+- **Background build.** Queue driver is `database`, but no supervised worker is documented. Required change: a supervised `php artisan queue:work` (systemd/supervisor) on the VPS, then a job wrapping `ComprehensiveFinancialTransactionsSnapshotBuilder::build()`, a building/failed status, and small polling with "جاري إعداد التقرير...".
+- **Very large Excel via OpenSpout (installed: v4.32.0, which supports merged cells, autofilter, column widths and an RTL sheet view).** Streams rows to a temp file in O(1) memory. Visible differences to approve:
+  - columns A–L get fixed widths instead of autosize (autosize needs every cell in memory);
+  - styles are set per row/cell instead of per range, so fonts/fills/borders/number formats must be re-specified and compared visually;
+  - delivered through a normal authenticated download route instead of Livewire's base64-in-JSON response.
+  - Everything else (title, banners, filter block, summaries, 16 columns, notes cell, RTL, autofilter) can be reproduced; this needs a side-by-side visual comparison before approval.
+- **Word for very large reports.** Not appropriate (≈ 60 KB memory per line; 902 MB at 15k lines). Consider a row limit with an Arabic message, or Excel-only above a threshold.
+
+**Measured export limits today (unchanged contract):**
+- Excel ≈ 12 KB/line → ~35–40k lines at 512 MB, but ~9 ms/line (15k = 130 s).
+- Word ≈ 60 KB/line → ~7–8k lines at 512 MB (15k = 902 MB / 483 s).
+
+---
+
+
+## Previously Recommended Next Step (2026-09-28, Batch G done — review and commit; the search project is complete)
 
 **Review and commit Batch G.** Not yet committed. The commit covers:
 - `ProjectsGeneralFinancialPage`, `ProjectCostBudgetsPaymentForm`, `AttachmentsTable`, `PermissionsTable`;

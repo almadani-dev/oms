@@ -471,6 +471,76 @@
             outline-offset: 2px;
         }
 
+        /* ---- pagination (one pager per detail table) ----
+
+           Only rendered when a table has more than one page, so a report that
+           fits on one page looks exactly as it always did. Built from the same
+           tokens as everything else here, so dark mode needs no extra rule. */
+
+        .cft-pager {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+
+        .cft-pager-button {
+            border: 1px solid var(--cft-table-border);
+            border-radius: 0.5rem;
+            background: var(--cft-soft-bg);
+            color: var(--cft-td-text);
+            padding: 0.3rem 0.75rem;
+            font: inherit;
+            font-size: 0.8rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .cft-pager-button:hover:not([disabled]) {
+            background: var(--cft-th-bg);
+            color: var(--cft-heading);
+        }
+
+        .cft-pager-button:focus-visible {
+            outline: 2px solid var(--cft-success);
+            outline-offset: 2px;
+        }
+
+        .cft-pager-button[disabled] {
+            opacity: 0.45;
+            cursor: default;
+        }
+
+        /* ---- background build (after "عرض") ---- */
+
+        .cft-building {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.6rem;
+        }
+
+        .cft-building-title {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--cft-heading);
+        }
+
+        .cft-build-error {
+            border-color: var(--cft-badge-danger-border);
+            background: var(--cft-badge-danger-bg);
+            color: var(--cft-danger);
+        }
+
+        .cft-pager-status {
+            color: var(--cft-muted);
+            font-size: 0.8rem;
+            font-weight: 650;
+            font-variant-numeric: tabular-nums;
+        }
+
         @media (max-width: 1100px) {
             .cft-summary-grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -500,11 +570,55 @@
                 </div>
             </section>
 
-            @if (! $hasSubmitted)
+            @if ($buildErrorNotice)
                 <section class="cft-card">
-                    <div class="cft-empty">يرجى اختيار الفترة لعرض تقرير الحركات المالية الشامل</div>
+                    <div class="cft-empty cft-build-error" role="alert">{{ $buildErrorNotice }}</div>
                 </section>
-            @elseif (count($rows) === 0)
+            @endif
+
+            @if ($excelExportId !== null)
+                {{-- Large-report workbook being prepared by a queued job; polls one small status file
+                     and starts the download as soon as the workbook is ready. --}}
+                <section class="cft-card" wire:key="cft-excel-export-{{ $excelExportId }}" wire:poll.2s="refreshExcelExport">
+                    <div class="cft-empty cft-building" role="status" aria-live="polite">
+                        <span class="cft-building-title">
+                            <span class="cft-spinner" aria-hidden="true"></span>
+                            <span>{{ \App\Filament\Pages\ComprehensiveFinancialTransactionsPage::PREPARING_EXCEL_NOTICE }}</span>
+                        </span>
+                    </div>
+                </section>
+            @endif
+
+            @if ($buildId !== null)
+                {{-- Background build in progress. Polls one small status file (never the ledger);
+                     the report appears only once its snapshot is completed and published. Progress is
+                     the exact share of the period's transactions already processed, shown only once
+                     the worker has counted them. --}}
+                <section class="cft-card" wire:key="cft-build-{{ $buildId }}" wire:poll.2s="refreshBuild">
+                    <div class="cft-empty cft-building" role="status" aria-live="polite">
+                        <span class="cft-building-title">
+                            <span class="cft-spinner" aria-hidden="true"></span>
+                            <span>{{ \App\Filament\Pages\ComprehensiveFinancialTransactionsPage::BUILDING_NOTICE }}</span>
+                        </span>
+
+                        @if ($buildStatus?->percent() !== null)
+                            <span class="cft-muted">
+                                تمت معالجة {{ number_format($buildStatus->processedTransactions) }} من {{ number_format($buildStatus->totalTransactions) }} معاملة ({{ $buildStatus->percent() }}%) — {{ number_format($buildStatus->processedRows) }} بند حتى الآن
+                            </span>
+                        @endif
+                    </div>
+                </section>
+            @elseif (! $hasSubmitted)
+                @if (! $buildErrorNotice)
+                    <section class="cft-card">
+                        <div class="cft-empty">يرجى اختيار الفترة لعرض تقرير الحركات المالية الشامل</div>
+                    </section>
+                @endif
+            @elseif ($snapshotExpired)
+                <section class="cft-card">
+                    <div class="cft-empty">{{ \App\Filament\Pages\ComprehensiveFinancialTransactionsPage::EXPIRED_NOTICE }}</div>
+                </section>
+            @elseif ($lineCount === 0)
                 <section class="cft-card">
                     <div class="cft-empty">لا توجد حركات مالية ضمن الفترة المحددة</div>
                 </section>
@@ -576,9 +690,9 @@
                 </section>
 
                 {{-- C) Statistics by transaction category (تصنيف المعاملة) — distinct transactions, line-based totals per currency.
-                     Each classification expands to show only its own movement lines, filtered in PHP from the
-                     already-loaded $rows: no query runs when a classification is opened, and only the single
-                     open classification's rows are ever rendered into the DOM. --}}
+                     Each classification expands to show only its own movement lines, one page at a time, read from
+                     the report snapshot's ordinal index for that classification: no query runs when a classification
+                     is opened or paged, and only the single open classification's current page is ever rendered. --}}
                 <section class="cft-card">
                     <div class="cft-card-title">إحصائيات حسب تصنيف المعاملة</div>
                     <div class="cft-table-wrap">
@@ -652,21 +766,16 @@
                                     </tr>
 
                                     @if ($isOpen)
-                                        @php
-                                            // Filtered by the bucket's stable lookup ID — the exact key the
-                                            // service aggregates by — so the rows shown are precisely the
-                                            // rows behind the totals on the row above, even when two
-                                            // classifications happen to share a display name.
-                                            $categoryRows = array_values(array_filter(
-                                                $rows,
-                                                fn ($row) => $row['category_key'] === $summary['key'],
-                                            ));
-                                        @endphp
+                                        {{-- $categoryRows is this classification's CURRENT PAGE, read through the
+                                             index built from the bucket's stable lookup ID — the exact key the
+                                             service aggregates by — so the rows shown are precisely rows behind
+                                             the totals on the row above, even when two classifications happen to
+                                             share a display name. The count is the bucket's full line count. --}}
                                         <tr class="cft-detail-row" wire:key="cft-category-detail-{{ $summary['key'] }}">
                                             <td class="cft-detail-cell" colspan="4">
                                                 <div class="cft-detail-inner">
                                                     <div class="cft-detail-title">
-                                                        تفاصيل حركات التصنيف: {{ $summary['name'] }} ({{ count($categoryRows) }} بند)
+                                                        تفاصيل حركات التصنيف: {{ $summary['name'] }} ({{ $summary['line_count'] }} بند)
                                                     </div>
                                                     {{-- Pins the nested detail table to the width the
                                                          classification table's own scroll container can
@@ -678,6 +787,13 @@
                                                             'rows' => $categoryRows,
                                                             'regionLabel' => 'تفاصيل حركات التصنيف: ' . $summary['name'] . ' — جدول قابل للتمرير أفقيًا',
                                                             'blockKey' => 'cft-detail-table-category-' . $summary['key'],
+                                                        ])
+
+                                                        @include('filament.pages.partials.comprehensive-financial-transactions-pager', [
+                                                            'pager' => $categoryPager,
+                                                            'method' => 'goToCategoryPage',
+                                                            'pagerKey' => 'cft-pager-category-' . $summary['key'],
+                                                            'pagerLabel' => 'صفحات حركات التصنيف: ' . $summary['name'],
                                                         ])
                                                     </div>
                                                 </div>
@@ -693,8 +809,8 @@
                 {{-- D) Statistics by transaction type (نوع المعاملة) — distinct transactions, line-based totals per currency.
                      Expands exactly like the classification section above and from the very same partial, but off its
                      own $openTypeKey: a type and a classification can therefore be open at the same time. Detail rows
-                     are filtered in PHP from the already-loaded $rows by the stable type key, so opening a type runs
-                     no query and recomputes no total. --}}
+                     are read one page at a time from the report snapshot's index for the stable type key, so opening
+                     or paging a type runs no query and recomputes no total. --}}
                 <section class="cft-card">
                     <div class="cft-card-title">إحصائيات حسب نوع المعاملة</div>
                     <div class="cft-table-wrap">
@@ -769,21 +885,16 @@
                                     </tr>
 
                                     @if ($isTypeOpen)
-                                        @php
-                                            // Filtered by the bucket's stable lookup ID — the exact key the
-                                            // service aggregates by — so the rows shown are precisely the
-                                            // rows behind the totals on the row above, even when two
-                                            // transaction types happen to share a display name.
-                                            $typeRows = array_values(array_filter(
-                                                $rows,
-                                                fn ($row) => $row['type_key'] === $summary['key'],
-                                            ));
-                                        @endphp
+                                        {{-- $typeRows is this type's CURRENT PAGE, read through the index built
+                                             from the bucket's stable lookup ID, so the rows shown are precisely
+                                             rows behind the totals on the row above, even when two transaction
+                                             types happen to share a display name. The count is the bucket's
+                                             full line count. --}}
                                         <tr class="cft-detail-row" wire:key="cft-type-detail-{{ $summary['key'] }}">
                                             <td class="cft-detail-cell" colspan="4">
                                                 <div class="cft-detail-inner">
                                                     <div class="cft-detail-title">
-                                                        تفاصيل حركات النوع: {{ $summary['name'] }} ({{ count($typeRows) }} بند)
+                                                        تفاصيل حركات النوع: {{ $summary['name'] }} ({{ $summary['line_count'] }} بند)
                                                     </div>
                                                     {{-- Pins the nested detail table to the width the type
                                                          table's own scroll container can actually show, so it
@@ -796,6 +907,13 @@
                                                             'regionLabel' => 'تفاصيل حركات النوع: ' . $summary['name'] . ' — جدول قابل للتمرير أفقيًا',
                                                             'blockKey' => 'cft-detail-table-type-' . $summary['key'],
                                                         ])
+
+                                                        @include('filament.pages.partials.comprehensive-financial-transactions-pager', [
+                                                            'pager' => $typePager,
+                                                            'method' => 'goToTypePage',
+                                                            'pagerKey' => 'cft-pager-type-' . $summary['key'],
+                                                            'pagerLabel' => 'صفحات حركات النوع: ' . $summary['name'],
+                                                        ])
                                                     </div>
                                                 </div>
                                             </td>
@@ -807,7 +925,7 @@
                     </div>
                 </section>
 
-                {{-- Detail table: one row per transaction line.
+                {{-- Detail table: one row per transaction line, one page at a time (read from the report snapshot).
                      Rendered from the shared detail-table partial — the very same partial
                      an expanded classification row renders — so the two tables cannot
                      drift apart in columns, sizing, typography or scroll behaviour. --}}
@@ -815,9 +933,16 @@
                     <div class="cft-card-title">تفاصيل الحركات المالية</div>
 
                     @include('filament.pages.partials.comprehensive-financial-transactions-detail-table', [
-                        'rows' => $rows,
+                        'rows' => $detailRows,
                         'regionLabel' => 'تفاصيل الحركات المالية — جدول قابل للتمرير أفقيًا',
                         'blockKey' => 'cft-detail-table-main',
+                    ])
+
+                    @include('filament.pages.partials.comprehensive-financial-transactions-pager', [
+                        'pager' => $detailPager,
+                        'method' => 'goToDetailPage',
+                        'pagerKey' => 'cft-pager-main',
+                        'pagerLabel' => 'صفحات تفاصيل الحركات المالية',
                     ])
                 </section>
             @endif

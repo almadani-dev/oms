@@ -17,6 +17,166 @@
 
 
 ### Date
+2026-10-04 (تقرير الحركات المالية الشامل phase 2 — background build, large Excel, Word policy, deployment checklist; implemented and verified on TEST/DEV, NOT committed)
+
+### Task
+Move snapshot generation to a queued job with honest status/progress polling; add a scalable large-report Excel path on OpenSpout with proper download delivery, owner re-check and audit; add a measured Word limit; prepare (not execute) the production deployment checklist. Keep the visible report, calculations, audit and snapshot architecture unchanged.
+
+### Result
+**Done; 187/187 targeted tests green; not committed.**
+
+Queue audit:
+- `database` driver, `retry_after` 90 s.
+- Backup jobs: `backups` queue, timeout 3600 s.
+- No worker or scheduler is supervised here.
+- Report jobs use a new `reports` queue.
+- No worker was started or installed anywhere.
+
+Measured (synthetic, SQLite, FK index emulated):
+
+| | 2,000 lines | 15,000 | 60,000 | 150,000 |
+|---|---|---|---|---|
+| "عرض" request (background) | 65 ms / 4.3 MB | 71 ms / 4.3 MB | 323 ms / 4.3 MB | 285 ms / 4.3 MB |
+| Poll | 44 ms, 0 ledger queries | 45 ms, 0 | 195 ms, 0 | 197 ms, 0 |
+| Worker build | 0.1 s / 7.0 MB | 0.7 s / 7.3 MB | 3.7 s / 7.3 MB | 31.6 s / 7.3 MB |
+| Streaming XLSX (worker) | 2.0 s / 1.2 MB | 39 s / 1.2 MB | 99 s / 1.2 MB | (220 s before the row-style optimization) / 1.2 MB |
+
+- Styled PhpSpreadsheet for comparison: 44.6 MB at 2k, 92 MB at 6k, 191 MB / 130 s at 15k.
+- Two writer optimizations were measured:
+  - Inline strings are ~4× faster than shared strings.
+  - Putting the border as the row style, with own styles only on the 10 differing cells, halves the per-row cost.
+
+Browser verification: **not performed.** The local app redirected to the login page, and the browser's saved credentials (the user's own) were deliberately not used.
+
+Excel visual comparison: Excel COM rendering hung (an invisible first-run/licence dialog), so the Excel process this session started was stopped. The comparison was instead done cell by cell through PhpSpreadsheet: values, types, fonts, fills, borders, alignment, wrap, number formats, merges, autofilter, RTL and row heights.
+
+### Changed Files
+New:
+- `app/Jobs/BuildComprehensiveFinancialTransactionsSnapshotJob.php`
+- `app/Jobs/BuildComprehensiveFinancialTransactionsExcelExportJob.php`
+- `app/Services/Reports/ComprehensiveFinancialTransactionsStreamingExcelExportService.php`
+- `app/Services/Reports/ComprehensiveFinancialTransactions/ComprehensiveFinancialTransactionsBuildStatus.php`
+- `app/Services/Reports/ComprehensiveFinancialTransactions/ComprehensiveFinancialTransactionsExcelExports.php`
+- `app/Services/Reports/ComprehensiveFinancialTransactions/ExportTemporaryFiles.php`
+- `app/Http/Controllers/Reports/ComprehensiveFinancialTransactionsExcelDownloadController.php`
+- `tests/Feature/Reports/ComprehensiveFinancialTransactionsBackgroundBuildTest.php` (12)
+- `tests/Feature/Reports/ComprehensiveFinancialTransactionsLargeExportTest.php` (15)
+- `docs/COMPREHENSIVE_REPORT_DEPLOYMENT_CHECKLIST.md`
+
+Modified in this phase:
+- `ComprehensiveFinancialTransactionsPage.php`
+- the page blade
+- `ComprehensiveFinancialTransactionsReportService.php` (progress hook + candidate count)
+- `ComprehensiveFinancialTransactionsSnapshotBuilder.php`
+- the repository contract and filesystem repository (status/progress/failed)
+- `PurgeReportSnapshotsCommand.php`
+- `config/oms.php`
+- `routes/web.php`
+- `tests/Feature/Reports/ComprehensiveFinancialTransactionsSnapshotTest.php` and `...SnapshotPageTest.php` (new contract methods; failed-build semantics)
+- `graphify-out/*`
+
+### Verification
+Targeted only:
+- BackgroundBuild 12/12
+- LargeExport 15/15
+- Snapshot 17/17
+- SnapshotPage 15/15
+- Page 33/33
+- ReportService 38/38
+- ReportExportAudit 22/22
+- ReportExportAuthorization 28/28
+- LookupSelectSearch (filtered) 7/7
+
+`schedule:list` shows the hourly purge. `graphify update .` ran. No file was left in `storage/app/private`.
+
+Commit: none (not requested).
+
+---
+
+
+### Date
+2026-10-04 (تقرير الحركات المالية الشامل — scalable snapshot architecture; implemented and verified on TEST/DEV, NOT committed)
+
+### Task
+Replace the report's report-wide materialization and full-`$rows` Livewire state with bounded keyset reading, an immutable owner-bound report snapshot behind a storage abstraction, O(1) Livewire state, snapshot-backed pagination/expansion/exports, and TTL cleanup. Do not change the report concept, filters, labels, calculations or export contracts. Do not introduce a queue dependency without approval.
+
+### Result
+**Done; all targeted tests green; not committed.**
+
+Pre-edit safety checks:
+- The checkout matched the audited code (`->get()`, report-wide notes, public `$rows`, canonical ORDER BY).
+- App DB is local MySQL `127.0.0.1/oms`, `APP_ENV=local`; this machine is 172.16.0.36, a different host from `APP_URL` (172.16.0.100); docs describe production as a VPS.
+- PHPUnit resolves to `testing` / SQLite `:memory:` / sync queue (verified by a probe test before any suite ran).
+- Queue driver `database`; no `queue:work`/`schedule:run` process or Windows scheduled task on this machine; no worker deployment documented in the repo.
+
+Measured (synthetic, SQLite; FK index emulated as InnoDB creates it), before → after:
+
+| | 614 lines | 6,000 lines | 100,000 lines |
+|---|---|---|---|
+| Livewire state after "عرض" | 927,538 B → 1,532 B | 9,036,376 B → 1,534 B | n/a → 1,537 B |
+| HTML after "عرض" | 2,493,673 → 542,615 B | 22,966,112 → 542,784 B | n/a → 544,477 B |
+| "عرض" request peak memory | 20.5 → 5.6 MB | 122.9 → 8.5 MB | n/a → 8.6 MB |
+| `transaction_lines` queries: open classification / type, main page 2, classification page 2, type page 2 | 0 / 0 / – / – / – → 0 / 0 / 0 / 0 / 0 | same | 0 / 0 / 0 / 0 / 0 |
+
+- Build peak memory (builder alone): 2.8 MB (614), 7.2 MB (6k), 7.3 MB (20k/60k), 7.4 MB (150k). Legacy `generate()`: 2.9 / 26 / 86.8 / 257.4 MB.
+- At 150k lines the legacy report could not run on SQLite: its report-wide note `whereIn()` exceeded the bound-variable limit.
+- Wall-clock times on this laptop varied 2–6× between identical runs (legacy too), so they are reported as indicative only: 60k-line build 2.8–14 s, 150k ≈ 35 s.
+- Snapshot size ≈ 785 B/line on disk (150k lines = 118 MB, 1,809 files).
+- Exports, unchanged by design and still O(rows): Excel 30.9 MB (614) / 92 MB (6k) / 191 MB, 130 s (15k); Word 41.7 MB / 362 MB / 902 MB, 483 s.
+- Read-only check on the local dev MySQL DB: SELECT/EXPLAIN only, guarded by a listener that aborts on any other statement, printing no row content. The new `generate()` was identical to the frozen legacy report at batch sizes 1000/37/3. The transaction-page query plans as `range` on `transactions_transaction_time_index` with no filesort.
+
+### Changed Files
+New:
+- `app/Services/Reports/ComprehensiveFinancialTransactions/ComprehensiveFinancialTransactionsFilters.php`
+- `app/Services/Reports/ComprehensiveFinancialTransactions/ComprehensiveFinancialTransactionsTotals.php`
+- `app/Services/Reports/ComprehensiveFinancialTransactions/ComprehensiveFinancialTransactionsSnapshot.php`
+- `app/Services/Reports/ComprehensiveFinancialTransactions/ComprehensiveFinancialTransactionsSnapshotBuilder.php`
+- `app/Services/Reports/ComprehensiveFinancialTransactions/SnapshotIndexWriter.php`
+- `app/Services/Reports/ComprehensiveFinancialTransactions/Contracts/ComprehensiveFinancialTransactionsSnapshotRepository.php`
+- `app/Services/Reports/ComprehensiveFinancialTransactions/FilesystemComprehensiveFinancialTransactionsSnapshotRepository.php`
+- `app/Console/Commands/PurgeReportSnapshotsCommand.php`
+- `resources/views/filament/pages/partials/comprehensive-financial-transactions-pager.blade.php`
+- `tests/Feature/Reports/ComprehensiveFinancialTransactionsSnapshotTest.php` (17 tests)
+- `tests/Feature/Reports/ComprehensiveFinancialTransactionsSnapshotPageTest.php` (15 tests)
+- `tests/Support/Reports/ComprehensiveFinancialTransactionsFixtures.php`
+- `tests/Support/Reports/LegacyComprehensiveFinancialTransactionsReportService.php` (frozen copy of the HEAD `3207e67` service, test oracle only)
+
+Modified:
+- `app/Services/Reports/ComprehensiveFinancialTransactionsReportService.php`
+- `app/Services/Reports/ComprehensiveFinancialTransactionsExcelExportService.php`
+- `app/Services/Reports/ComprehensiveFinancialTransactionsWordExportService.php`
+- `app/Filament/Pages/ComprehensiveFinancialTransactionsPage.php`
+- `resources/views/filament/pages/comprehensive-financial-transactions-page.blade.php`
+- `resources/views/filament/pages/partials/comprehensive-financial-transactions-detail-table.blade.php` (one docblock line)
+- `app/Providers/AppServiceProvider.php` (binding)
+- `bootstrap/app.php` (hourly purge)
+- `config/filesystems.php` (`report_snapshots` disk)
+- `config/oms.php` (`reports.comprehensive_financial_transactions`)
+- `tests/Feature/Reports/ComprehensiveFinancialTransactionsPageTest.php` (disk fake; `rows` → `detailRows`)
+- `tests/Feature/Reports/ComprehensiveFinancialTransactionsReportServiceTest.php` (one-batch query budget 6 → 7)
+- `tests/Feature/Audit/Reports/ReportExportAuditTest.php` and `tests/Feature/Reports/ReportExportAuthorizationTest.php` (disk fake only)
+- `graphify-out/*` (regenerated)
+
+### Verification
+Targeted only (no full suite, no full Feature suite):
+- `ComprehensiveFinancialTransactionsSnapshotTest` 17/17 (580 assertions)
+- `ComprehensiveFinancialTransactionsSnapshotPageTest` 15/15
+- `ComprehensiveFinancialTransactionsPageTest` 33/33
+- `ComprehensiveFinancialTransactionsReportServiceTest` 38/38
+- `ReportExportAuditTest` 22/22
+- `ReportExportAuthorizationTest` 28/28
+- `LookupSelectSearchTest --filter "Comprehensive|comprehensive|account|project"` 7/7
+
+Mutation checks: changing either keyset cursor from `>` to `>=` makes the legacy-equivalence tests fail; restored code passes.
+
+`php artisan schedule:list` shows `oms:purge-report-snapshots` hourly. `graphify update .` ran (15,615 nodes). No test wrote to `storage/app/private`. One early run of the audit/authorization suites did, before their disk fake was added; that debris (3 files in a directory created by that run) was removed.
+
+Commit: none (not requested).
+
+---
+
+
+### Date
 2026-09-26 (Muwakha families — REAL IMPORT EXECUTED ONCE: 72/72 families created and verified; NOT committed)
 
 ### Task

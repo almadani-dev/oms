@@ -18,6 +18,11 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * and displayed on screen after "عرض" — no recalculation, no independent
  * data access. Purely a workbook renderer, read-only.
  *
+ * $rows is any iterable in canonical order — the page passes the immutable
+ * report snapshot's chunk-by-chunk generator, so no report-wide PHP row
+ * array is built for the export. PhpSpreadsheet itself still keeps every
+ * written cell in memory until save(), so the workbook remains O(rows).
+ *
  * All totals stay separated per currency — no blended multi-currency total
  * is ever written. No freeze panes (explicitly unwanted); the detail table
  * keeps an autofilter.
@@ -52,7 +57,7 @@ class ComprehensiveFinancialTransactionsExcelExportService
 
     /**
      * @param  array<string, string>  $filterLabels
-     * @param  array<int, array<string, mixed>>  $rows
+     * @param  iterable<int, array<string, mixed>>  $rows
      * @param  array<int, array<string, mixed>>  $currencySummaries
      * @param  array<int, array<string, mixed>>  $categorySummaries
      * @param  array<int, array<string, mixed>>  $typeSummaries
@@ -61,7 +66,7 @@ class ComprehensiveFinancialTransactionsExcelExportService
         string $dateFrom,
         string $dateTo,
         array $filterLabels,
-        array $rows,
+        iterable $rows,
         array $currencySummaries,
         array $categorySummaries,
         array $typeSummaries,
@@ -93,7 +98,7 @@ class ComprehensiveFinancialTransactionsExcelExportService
 
     /**
      * @param  array<string, string>  $filterLabels
-     * @param  array<int, array<string, mixed>>  $rows
+     * @param  iterable<int, array<string, mixed>>  $rows
      * @param  array<int, array<string, mixed>>  $currencySummaries
      * @param  array<int, array<string, mixed>>  $categorySummaries
      * @param  array<int, array<string, mixed>>  $typeSummaries
@@ -102,7 +107,7 @@ class ComprehensiveFinancialTransactionsExcelExportService
         string $dateFrom,
         string $dateTo,
         array $filterLabels,
-        array $rows,
+        iterable $rows,
         array $currencySummaries,
         array $categorySummaries,
         array $typeSummaries,
@@ -270,9 +275,12 @@ class ComprehensiveFinancialTransactionsExcelExportService
     }
 
     /**
-     * @param  array<int, array<string, mixed>>  $rows
+     * Rows are consumed in one forward pass (they may be a generator), so
+     * "is the report empty?" is decided after the pass instead of before it.
+     *
+     * @param  iterable<int, array<string, mixed>>  $rows
      */
-    private function writeDetailTable(Worksheet $sheet, int $headerRow, array $rows): void
+    private function writeDetailTable(Worksheet $sheet, int $headerRow, iterable $rows): void
     {
         $bannerRow = $headerRow;
         $headerRow = $this->writeSectionBanner($sheet, $bannerRow, 'تفاصيل الحركات المالية');
@@ -287,7 +295,32 @@ class ComprehensiveFinancialTransactionsExcelExportService
 
         $this->writeTableHeader($sheet, $headerRow, $headers, self::LAST_COLUMN);
 
-        if (empty($rows)) {
+        $dataRow = $headerRow + 1;
+
+        foreach ($rows as $row) {
+            $sheet->setCellValueExplicit("A{$dataRow}", (string) $row['date'], DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit("B{$dataRow}", (string) $row['reference'], DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit("C{$dataRow}", (string) $row['category'], DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit("D{$dataRow}", (string) $row['type'], DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit("E{$dataRow}", (string) $row['account'], DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit("F{$dataRow}", (string) $row['bank_type'], DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit("G{$dataRow}", (string) $row['account_type'], DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit("H{$dataRow}", (string) $row['project'], DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit("I{$dataRow}", (string) $row['currency'], DataType::TYPE_STRING);
+            $sheet->setCellValue("J{$dataRow}", (float) $row['debit']);
+            $sheet->setCellValue("K{$dataRow}", (float) $row['credit']);
+            $sheet->setCellValueExplicit("L{$dataRow}", (string) ($row['created_by'] ?? '-'), DataType::TYPE_STRING);
+            // Approved audit metadata — repeated per line so each row filters/analyzes independently.
+            $sheet->setCellValueExplicit("M{$dataRow}", (string) $row['transaction_description'], DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit("N{$dataRow}", (string) $row['line_role_label'], DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit("O{$dataRow}", (string) $row['line_description'], DataType::TYPE_STRING);
+            // Full, untruncated notes — one labelled block per source, newline
+            // separated inside a single wrapped cell (see the M:P wrap range).
+            $sheet->setCellValueExplicit("P{$dataRow}", $this->notesText($row['notes'] ?? []), DataType::TYPE_STRING);
+            $dataRow++;
+        }
+
+        if ($dataRow === $headerRow + 1) {
             $messageRow = $headerRow + 1;
             $sheet->mergeCells("A{$messageRow}:" . self::LAST_COLUMN . $messageRow);
             $sheet->setCellValue("A{$messageRow}", self::EMPTY_NOTICE);
@@ -295,31 +328,6 @@ class ComprehensiveFinancialTransactionsExcelExportService
             $sheet->getStyle("A{$messageRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             $lastRow = $messageRow;
         } else {
-            $dataRow = $headerRow + 1;
-
-            foreach ($rows as $row) {
-                $sheet->setCellValueExplicit("A{$dataRow}", (string) $row['date'], DataType::TYPE_STRING);
-                $sheet->setCellValueExplicit("B{$dataRow}", (string) $row['reference'], DataType::TYPE_STRING);
-                $sheet->setCellValueExplicit("C{$dataRow}", (string) $row['category'], DataType::TYPE_STRING);
-                $sheet->setCellValueExplicit("D{$dataRow}", (string) $row['type'], DataType::TYPE_STRING);
-                $sheet->setCellValueExplicit("E{$dataRow}", (string) $row['account'], DataType::TYPE_STRING);
-                $sheet->setCellValueExplicit("F{$dataRow}", (string) $row['bank_type'], DataType::TYPE_STRING);
-                $sheet->setCellValueExplicit("G{$dataRow}", (string) $row['account_type'], DataType::TYPE_STRING);
-                $sheet->setCellValueExplicit("H{$dataRow}", (string) $row['project'], DataType::TYPE_STRING);
-                $sheet->setCellValueExplicit("I{$dataRow}", (string) $row['currency'], DataType::TYPE_STRING);
-                $sheet->setCellValue("J{$dataRow}", (float) $row['debit']);
-                $sheet->setCellValue("K{$dataRow}", (float) $row['credit']);
-                $sheet->setCellValueExplicit("L{$dataRow}", (string) ($row['created_by'] ?? '-'), DataType::TYPE_STRING);
-                // Approved audit metadata — repeated per line so each row filters/analyzes independently.
-                $sheet->setCellValueExplicit("M{$dataRow}", (string) $row['transaction_description'], DataType::TYPE_STRING);
-                $sheet->setCellValueExplicit("N{$dataRow}", (string) $row['line_role_label'], DataType::TYPE_STRING);
-                $sheet->setCellValueExplicit("O{$dataRow}", (string) $row['line_description'], DataType::TYPE_STRING);
-                // Full, untruncated notes — one labelled block per source, newline
-                // separated inside a single wrapped cell (see the M:P wrap range).
-                $sheet->setCellValueExplicit("P{$dataRow}", $this->notesText($row['notes'] ?? []), DataType::TYPE_STRING);
-                $dataRow++;
-            }
-
             $lastRow = $dataRow - 1;
 
             $sheet->getStyle("J" . ($headerRow + 1) . ":K{$lastRow}")->getNumberFormat()->setFormatCode(self::NUMBER_FORMAT);

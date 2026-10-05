@@ -12,6 +12,7 @@ use App\Services\Reports\ComprehensiveFinancialTransactionsReportService;
 use App\Support\Permissions\PermissionRegistry;
 use Filament\Facades\Filament;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Js;
 use Illuminate\Support\Facades\URL;
 use Livewire\Livewire;
@@ -41,6 +42,9 @@ class ComprehensiveFinancialTransactionsPageTest extends TestCase
         // current panel the page component cannot render.
         URL::forceRootUrl('http://localhost');
         Filament::setCurrentPanel(Filament::getPanel('admin'));
+
+        // Report snapshots are written to a throwaway disk, never to storage/app/private.
+        Storage::fake('report_snapshots');
     }
 
     private function actingAsSuperAdmin(): User
@@ -148,7 +152,8 @@ class ComprehensiveFinancialTransactionsPageTest extends TestCase
             ->assertSet('hasSubmitted', true)
             ->set('data.account_ids', [$debit->id])
             ->assertSet('hasSubmitted', false)
-            ->assertSet('rows', [])
+            ->assertSet('detailRows', [])
+            ->assertSet('snapshotId', null)
             ->assertSet('appliedAccountIds', []);
     }
 
@@ -299,7 +304,8 @@ class ComprehensiveFinancialTransactionsPageTest extends TestCase
         $test = $this->page();
 
         // Every row carries the stable type key the summaries are bucketed by.
-        $rows = $test->get('rows');
+        // detailRows is the current page; this fixture fits on one page.
+        $rows = $test->get('detailRows');
         $this->assertSame($keys, array_values(array_unique(array_column($rows, 'type_key'))));
 
         // The main detail table always lists every line, so "is this row in the
@@ -607,8 +613,8 @@ class ComprehensiveFinancialTransactionsPageTest extends TestCase
         $test->assertSet('appliedAccountSide', 'debit')
             ->assertSet('lineCount', 1);
 
-        $this->assertSame(300.0, $test->get('rows')[0]['debit']);
-        $this->assertSame(0.0, $test->get('rows')[0]['credit']);
+        $this->assertSame(300.0, $test->get('detailRows')[0]['debit']);
+        $this->assertSame(0.0, $test->get('detailRows')[0]['credit']);
 
         // A one-sided view is expected to look unbalanced on screen.
         $this->assertSame(300.0, $test->get('currencySummaries')[0]['total_debit']);
@@ -631,8 +637,8 @@ class ComprehensiveFinancialTransactionsPageTest extends TestCase
         $test->assertSet('appliedAccountSide', 'credit')
             ->assertSet('lineCount', 1);
 
-        $this->assertSame(0.0, $test->get('rows')[0]['debit']);
-        $this->assertSame(100.0, $test->get('rows')[0]['credit']);
+        $this->assertSame(0.0, $test->get('detailRows')[0]['debit']);
+        $this->assertSame(100.0, $test->get('detailRows')[0]['credit']);
         $this->assertSame('دائن', $test->get('appliedFilterLabels')['طرف الحساب']);
     }
 

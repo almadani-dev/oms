@@ -19,6 +19,12 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * All totals stay separated per currency — no blended multi-currency total
  * is ever written. A4 portrait; the wide detail table uses a small font and
  * short headers to stay printable.
+ *
+ * $rows is any iterable in canonical order — the page passes the immutable
+ * report snapshot's chunk-by-chunk generator, and transactions are grouped
+ * in one streaming pass, so no report-wide PHP row array is built here.
+ * PhpWord itself still keeps the whole document in memory until save(), so
+ * the document remains O(rows).
  */
 class ComprehensiveFinancialTransactionsWordExportService
 {
@@ -46,7 +52,7 @@ class ComprehensiveFinancialTransactionsWordExportService
 
     /**
      * @param  array<string, string>  $filterLabels
-     * @param  array<int, array<string, mixed>>  $rows
+     * @param  iterable<int, array<string, mixed>>  $rows
      * @param  array<int, array<string, mixed>>  $currencySummaries
      * @param  array<int, array<string, mixed>>  $categorySummaries
      * @param  array<int, array<string, mixed>>  $typeSummaries
@@ -55,7 +61,7 @@ class ComprehensiveFinancialTransactionsWordExportService
         string $dateFrom,
         string $dateTo,
         array $filterLabels,
-        array $rows,
+        iterable $rows,
         array $currencySummaries,
         array $categorySummaries,
         array $typeSummaries,
@@ -87,7 +93,7 @@ class ComprehensiveFinancialTransactionsWordExportService
 
     /**
      * @param  array<string, string>  $filterLabels
-     * @param  array<int, array<string, mixed>>  $rows
+     * @param  iterable<int, array<string, mixed>>  $rows
      * @param  array<int, array<string, mixed>>  $currencySummaries
      * @param  array<int, array<string, mixed>>  $categorySummaries
      * @param  array<int, array<string, mixed>>  $typeSummaries
@@ -96,7 +102,7 @@ class ComprehensiveFinancialTransactionsWordExportService
         string $dateFrom,
         string $dateTo,
         array $filterLabels,
-        array $rows,
+        iterable $rows,
         array $currencySummaries,
         array $categorySummaries,
         array $typeSummaries,
@@ -258,48 +264,59 @@ class ComprehensiveFinancialTransactionsWordExportService
      * table — avoids an unreadably wide single table and keeps the parent
      * description from being repeated once per column.
      *
-     * @param  array<int, array<string, mixed>>  $rows
+     * @param  iterable<int, array<string, mixed>>  $rows
      */
-    private function addDetailTableSection(Section $section, array $rows): void
+    private function addDetailTableSection(Section $section, iterable $rows): void
     {
         $this->addSectionTitle($section, 'تفاصيل الحركات المالية');
 
-        if (empty($rows)) {
-            $this->addEmptyNotice($section);
-
-            return;
-        }
+        $hasRows = false;
 
         foreach ($this->groupRowsByTransaction($rows) as $group) {
+            $hasRows = true;
             $this->addTransactionGroup($section, $group);
+        }
+
+        // Nothing has been written after the title when there were no rows,
+        // so the notice lands exactly where it always did.
+        if (! $hasRows) {
+            $this->addEmptyNotice($section);
         }
     }
 
     /**
      * Rows arrive already ordered chronologically by transaction (per
      * ComprehensiveFinancialTransactionsReportService), so a single linear
-     * pass groups each transaction's consecutive line rows together.
+     * pass groups each transaction's consecutive line rows together. Each
+     * group is yielded as soon as the next transaction starts, so only one
+     * transaction's lines are held here at a time.
      *
-     * @param  array<int, array<string, mixed>>  $rows
-     * @return array<int, array{header: array<string, mixed>, lines: array<int, array<string, mixed>>}>
+     * @param  iterable<int, array<string, mixed>>  $rows
+     * @return \Generator<int, array{header: array<string, mixed>, lines: array<int, array<string, mixed>>}>
      */
-    private function groupRowsByTransaction(array $rows): array
+    private function groupRowsByTransaction(iterable $rows): \Generator
     {
-        $groups = [];
+        $group = null;
         $currentKey = null;
 
         foreach ($rows as $row) {
             $key = $row['transaction_id'] ?? $row['reference'];
 
-            if ($key !== $currentKey) {
-                $groups[] = ['header' => $row, 'lines' => []];
+            if ($group === null || $key !== $currentKey) {
+                if ($group !== null) {
+                    yield $group;
+                }
+
+                $group = ['header' => $row, 'lines' => []];
                 $currentKey = $key;
             }
 
-            $groups[count($groups) - 1]['lines'][] = $row;
+            $group['lines'][] = $row;
         }
 
-        return $groups;
+        if ($group !== null) {
+            yield $group;
+        }
     }
 
     /**

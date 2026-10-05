@@ -37,6 +37,68 @@ return [
     |
     */
 
+    /*
+    |--------------------------------------------------------------------------
+    | Comprehensive Financial Transactions report snapshots
+    |--------------------------------------------------------------------------
+    |
+    | "تقرير الحركات المالية الشامل" is built once per "عرض" into an immutable
+    | per-user snapshot (bounded row chunks + bounded group indexes) and every
+    | page / expansion / export afterwards reads from it — never from the
+    | ledger again, and never through Livewire state.
+    |
+    */
+
+    'reports' => [
+        'comprehensive_financial_transactions' => [
+            'snapshot_disk' => env('OMS_CFT_SNAPSHOT_DISK', 'report_snapshots'),
+
+            // How long a built snapshot stays readable. Fixed from build
+            // time (a snapshot is immutable, so it is never "touched").
+            'snapshot_ttl_minutes' => (int) env('OMS_CFT_SNAPSHOT_TTL_MINUTES', 240),
+
+            // An unpublished build older than this is treated as abandoned
+            // (a crashed request) and removed by the purge.
+            'stale_build_minutes' => (int) env('OMS_CFT_STALE_BUILD_MINUTES', 60),
+
+            // transaction_lines read per keyset batch (and the bound on each
+            // batch's source-note whereIn()).
+            'batch_size' => (int) env('OMS_CFT_BATCH_SIZE', 1000),
+
+            // Rows per stored chunk, ordinals per stored group-index chunk,
+            // and rows per rendered page.
+            'row_chunk_size' => 100,
+            'index_chunk_size' => 1000,
+            'page_size' => 100,
+
+            // Background build. A dedicated queue, so a report build never
+            // waits behind (or blocks) a backup on the 'backups' queue, and
+            // restore's backups-queue cleanup never touches it. The job's
+            // timeout must stay below the worker's --timeout, which must stay
+            // below the connection's retry_after.
+            'queue' => env('OMS_CFT_QUEUE', 'reports'),
+            'job_timeout' => (int) env('OMS_CFT_JOB_TIMEOUT', 1800),
+
+            // A build whose status has not moved for this long is reported
+            // as expired (a dead worker, or no worker at all).
+            'pending_stale_minutes' => (int) env('OMS_CFT_PENDING_STALE_MINUTES', 30),
+            'processing_stale_minutes' => (int) env('OMS_CFT_PROCESSING_STALE_MINUTES', 10),
+
+            // Measured (TASKS_LOG 2026-10-04): the styled PhpSpreadsheet
+            // workbook took 8–19 s / 45 MB at 2,000 lines and 58–64 s /
+            // 92 MB at 6,000; PhpWord took 15–20 s / 123 MB at 2,000 and
+            // 99–109 s / 362 MB at 6,000. Above these line counts Excel
+            // switches to the streaming export and Word is refused.
+            'styled_excel_max_lines' => (int) env('OMS_CFT_STYLED_EXCEL_MAX_LINES', 2000),
+            'word_max_lines' => (int) env('OMS_CFT_WORD_MAX_LINES', 2000),
+
+            // Streaming XLSX: private, short-lived temporary files.
+            'export_temp_dir' => storage_path('app/private/report-exports'),
+            'export_temp_max_age_minutes' => 60,
+            'export_url_ttl_minutes' => 10,
+        ],
+    ],
+
     'backup' => [
 
         // The private, never-symlinked filesystem disk backups are written

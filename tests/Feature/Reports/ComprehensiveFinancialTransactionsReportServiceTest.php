@@ -295,10 +295,11 @@ class ComprehensiveFinancialTransactionsReportServiceTest extends TestCase
         $log = DB::getQueryLog();
         DB::disableQueryLog();
 
-        // accounts is already joined, so account notes cost nothing: the run
-        // stays at the documented bound of 1 main query + 5 source-note
-        // pre-fetches, and none of those 5 touches `accounts`.
-        $this->assertCount(6, $log);
+        // accounts is already joined, so account notes cost nothing: a
+        // one-batch run stays at the documented bound of 1 transaction-page
+        // query + 1 lines query + 5 source-note lookups, and none of those 5
+        // touches `accounts`.
+        $this->assertCount(7, $log);
 
         $accountQueries = collect($log)
             ->filter(fn (array $entry) => str_contains($entry['query'], 'from "accounts"'))
@@ -452,8 +453,9 @@ class ComprehensiveFinancialTransactionsReportServiceTest extends TestCase
         DB::disableQueryLog();
 
         $this->assertCount(6, $result['rows']);
-        // 1 main lines query + at most 5 bounded source-note prefetches.
-        $this->assertLessThanOrEqual(6, $queryCount);
+        // One batch: 1 transaction-page query + 1 lines query + at most 5
+        // bounded source-note lookups — the same for 6 transactions as for 1.
+        $this->assertLessThanOrEqual(7, $queryCount);
     }
 
     public function test_no_source_note_queries_run_when_the_period_is_empty(): void

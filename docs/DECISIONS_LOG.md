@@ -14,6 +14,99 @@
 
 
 ### Date
+2026-10-04 (تقرير الحركات المالية الشامل — report work on its own `reports` queue; build status in files; one try)
+
+### Decision
+- Snapshot builds and large-workbook exports run as queued jobs on a dedicated `reports` queue, `tries=1`, timeout 1800 s.
+- Status and progress live in small private files next to the snapshot (no table).
+- The page polls every 2 s and activates a snapshot only once it is published.
+
+### Reason
+- A dedicated queue keeps a multi-minute backup from delaying reports (and vice versa), and keeps restore's backups-queue cleanup away from report jobs.
+- Files keep the "no snapshot table" rule and stay O(1) to poll.
+- One try: a half-written build must never be silently re-run; the user presses "عرض" again.
+
+### Impact
+Production needs a supervised worker for `reports` (and keeps one for `backups`), and `DB_QUEUE_RETRY_AFTER` should exceed the longest job timeout. See `docs/COMPREHENSIVE_REPORT_DEPLOYMENT_CHECKLIST.md`.
+
+---
+
+
+### Date
+2026-10-04 (تقرير الحركات المالية الشامل — large Excel is prepared in the background, then downloaded; thresholds from measurements)
+
+### Decision
+- Reports above 2,000 lines export Excel through OpenSpout, written by a queued job, stored privately, and downloaded once through a signed route that re-checks owner and permission and audits at delivery.
+- At or below 2,000 lines the existing styled export is unchanged.
+- Word is refused above 2,000 lines.
+
+### Reason
+- **Thresholds:**
+  - 2,000 is the largest measured size at which the styled workbook finished in 8–19 s / 45 MB, and Word in 15–20 s / 123 MB.
+  - At 6,000 lines they took 58–64 s and 99–109 s / 362 MB.
+- **Why streaming still runs in a worker:** even with flat memory (1.2 MB), streaming takes ~1.6 ms/line on the dev laptop, about 99 s at 60k lines. A synchronous download would hit PHP/web-server timeouts, so it runs in a worker.
+
+### Impact
+- Large exports become a short "جاري تجهيز ملف Excel..." wait, then a normal download.
+- The streaming workbook differs from the styled one only in fixed A–L column widths and in invisible storage details. Those details are inline strings, whole numbers stored as `500` rather than `500.0`, and an exact 17th float digit. All are listed in TASKS_LOG.
+
+---
+
+
+### Date
+2026-10-04 (تقرير الحركات المالية الشامل — two-level keyset, not a single line-tuple keyset)
+
+### Decision
+Rows are read as (1) a single-table page of transactions keyed on `(transaction_time, id)` and (2) those transactions' lines keyed on `(transaction_time, transaction id, line id)`, both LIMITed, neither using OFFSET. The transaction page deliberately carries no join or subquery; line-level filters apply only in the lines query, and the classification filter is resolved to type ids once per run.
+
+### Reason
+A single keyset over the line tuple was implemented first and measured. Its ORDER BY spans two tables, so no index can supply it and every batch re-sorts every remaining line of the period. That cost grows quadratically, and it does so on MySQL as well. The transaction order, by contrast, is exactly the existing `transactions(transaction_time)` index (InnoDB appends the primary key). An EXISTS pre-filter on the transaction page was also tried; MySQL rewrote it into a semi-join, which could cost the index walk on large data, so it was removed. Correctness does not depend on it: a transaction with no reportable line just yields nothing.
+
+### Impact
+Every query's work is bounded by one batch. One extra small query per batch compared with the old single query, so the service tests' one-batch query budget became 1 transaction page + 1 lines query + 5 note lookups. Verified identical to the frozen legacy report at batch sizes 1–1000 (SQLite) and 3/37/1000 (read-only, local MySQL dev DB). The lines-slice plan has not yet been EXPLAINed on production-sized MySQL data.
+
+---
+
+
+### Date
+2026-10-04 (تقرير الحركات المالية الشامل — immutable file snapshot behind a repository contract; synchronous build; no queue)
+
+### Decision
+"عرض" builds one immutable, owner-bound snapshot on a private Storage disk (`report_snapshots`), accessed only through `ComprehensiveFinancialTransactionsSnapshotRepository`. Livewire keeps only the snapshot id (locked) and page/open-key state. The build runs synchronously in the request; no job, no queue worker. Snapshots expire after 240 minutes and are purged hourly by a synchronous command and opportunistically per owner on each build.
+
+### Reason
+- **Constraints:** Redis is not available, the row snapshot must not go into the database cache or a table, and production is single-node, so a private local disk is the natural home today.
+- **Portability:** keeping disk paths out of the page, pagination and exports means object storage later is a binding/config change only.
+- **Commit marker:** `manifest.json` is written last as one object, which every backend treats atomically for readers, so an incomplete build is never visible.
+- **No queue:** a supervised worker is not documented anywhere in the repo, and none runs here. The task forbids introducing that dependency silently, so the builder takes only an owner id and plain filters, ready to be wrapped in a job once a worker is approved.
+
+### Impact
+Request state is O(1) in rows; paging/expanding never touches `transaction_lines`.
+
+Costs that remain:
+- a very large report still builds inside one request (≈ 35 s for 150k synthetic lines on this laptop, timing noisy);
+- each snapshot costs ≈ 785 B/line of private disk until it expires;
+- cleanup of other users' snapshots relies on `schedule:run` being configured in production.
+
+---
+
+
+### Date
+2026-10-04 (تقرير الحركات المالية الشامل — export contract kept; no OpenSpout switch)
+
+### Decision
+Excel and Word keep their exact current output. They now consume the snapshot's chunk generator instead of a PHP rows array, but remain PhpSpreadsheet/PhpWord. No streaming OpenSpout export was introduced.
+
+### Reason
+The visible export contract may not change without approval. Iterating the snapshot removes the report-wide PHP array, but both libraries hold the whole document in memory until `save()`. Livewire also base64-encodes the whole file into its JSON response.
+
+### Impact
+Exports remain O(rows). Measured at 15,000 lines: Excel 191 MB / 130 s, Word 902 MB / 483 s. A separate "very large Excel" streaming path is proposed in NEXT_STEPS and awaits approval.
+
+---
+
+
+### Date
 2026-09-26 (Muwakha import — the importer's trim is the one place stored data differs from the source, and it is disclosed rather than hidden)
 
 ### Decision

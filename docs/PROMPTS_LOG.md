@@ -1,6 +1,42 @@
 # Prompts Log
 
 ### Date
+2026-10-04 ("Do NOT silently start or install a production worker" / "Do not fake an exact percentage" / "Use an explicit threshold based on measured evidence" / "visually compare ... and report every visible difference honestly")
+
+### Prompt
+Finish the scalability work: a queued snapshot build with status polling, an OpenSpout large-report Excel path with proper download delivery, a measured Word limit, and a production deployment checklist. Preserve the visible report and audit. Targeted tests only; no commit.
+
+### Purpose
+**"Do not fake an exact percentage"** led to counting the work unit the builder actually pages (transactions), with one index-range COUNT as the denominator. It does not estimate lines.
+
+**"Measured evidence"** set both thresholds at 2,000. It also showed that the streaming workbook, though flat in memory, is too slow to generate inside a request. That moved it into the worker as well.
+
+**"Report every visible difference"** forced a cell-by-cell comparison. That comparison caught two real defects before they shipped: amounts rounded to 14 digits (OpenSpout follows PHP's `precision`), and text beginning with "=" becoming a formula.
+
+---
+
+
+### Date
+2026-10-04 ("This is the FINAL architecture work, not a temporary patch." / "DO NOT GUESS." / "Be honest: PhpSpreadsheet and PhpWord remain O(n) memory unless replaced." / "TARGETED TESTS ONLY.")
+
+### Prompt
+Continue the Comprehensive Financial Transactions scalability task on TEST/DEV, after a completed production audit. The prompt:
+- required confirming the checkout, database, test isolation and queue situation before editing;
+- listed every visible behavior that must not change;
+- specified bounded keyset reading, per-batch note enrichment, an immutable owner-bound snapshot behind a storage abstraction, rows stored once with chunked ordinal indexes, O(1) Livewire state, snapshot pagination with zero ledger re-queries, TTL cleanup, and exports from the snapshot;
+- forbade a silent queue dependency, a silent OpenSpout switch, committing, and full test suites.
+
+### Purpose
+**Measure before and after with the same harness** is what turned a plausible design into a corrected one. The first keyset (one tuple over the line ordering) passed every correctness test. Its scaling numbers showed a per-batch re-sort of the whole remaining period. That led to the two-level keyset; the later MySQL plan led to removing the semi-join-prone EXISTS. Without the measurement requirement, both would have shipped.
+
+**"Old vs new" required a real old.** The pre-change service was frozen verbatim from `HEAD` as a test oracle, so equivalence is asserted with `assertSame` against what production runs today, not against the new code's own output.
+
+**"STOP and report" on the queue** kept the synchronous in-request build. The builder takes plain inputs, so moving it to a job is a follow-up decision rather than a hidden dependency.
+
+---
+
+
+### Date
 2026-09-26 ("Do NOT choose an actor yourself." / "Run the normal importer preflight again immediately before execution." / "DO NOT rerun this command if it reports success." / "Do not assume the audit_events delta. Report its actual delta and explain it based on the records created.")
 
 ### Prompt

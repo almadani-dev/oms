@@ -18,6 +18,7 @@ use Filament\Facades\Filament;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -50,6 +51,9 @@ class ReportExportAuthorizationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // The comprehensive report writes a snapshot on "عرض"; keep it off the real private disk.
+        Storage::fake('report_snapshots');
 
         DB::statement('PRAGMA foreign_keys = OFF');
 

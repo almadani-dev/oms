@@ -4,6 +4,59 @@
 
 ## Recent Changes
 
+- **2026-10-04 (phase 2) — تقرير الحركات المالية الشامل: background snapshot build, background large-report Excel, Word limit. Implemented and verified on TEST/DEV, NOT committed. Report, calculations, filters, table, notes, RTL, audit and the snapshot architecture unchanged.**
+  - **Queue audit:**
+    - Driver `database`, effective `retry_after` 90 s.
+    - Backups use queue `backups` with a 3600 s job timeout. That is already longer than `retry_after`, and is only safe because one worker serves that queue.
+    - Restore clears only unstarted `backups` jobs.
+    - No worker or `schedule:run` is supervised on this machine or documented in the repo.
+    - Report work therefore gets its own queue, `reports`.
+  - **Background build:**
+    - "عرض" reserves a snapshot id (`building.json` = pending), dispatches `App\Jobs\BuildComprehensiveFinancialTransactionsSnapshotJob` (`reports` queue, `tries=1`, `timeout` 1800, `failOnTimeout`) and shows "جاري إعداد التقرير..." with `wire:poll.2s="refreshBuild"`.
+    - The job calls the same builder (`buildReserved()`). `build()` stays the synchronous, directly-tested path.
+    - Status `pending → processing → completed / failed / expired` lives in small files only; polls never touch `transaction_lines`.
+    - Progress is exact: transactions processed against one index-range `COUNT` taken at start, plus lines written.
+    - A failure removes every partial file and keeps only `failed.json`; the Arabic notice is shown and a previously displayed report comes back untouched.
+    - A pending build expires after 30 min; a processing build expires after 10 min without a heartbeat.
+    - A job whose tab moved on (directory gone) exits without work.
+    - On the sync driver (tests) the build runs inline, and failures are caught and shown, never thrown at the user.
+  - **Large Excel:**
+    - Above `styled_excel_max_lines` (2,000, from the measured 8–19 s at 2k vs 58–64 s at 6k) the page queues `BuildComprehensiveFinancialTransactionsExcelExportJob`.
+    - The job writes the snapshot with the new `ComprehensiveFinancialTransactionsStreamingExcelExportService` (OpenSpout, flat 1.2 MB) into a private local temp file, then stores it on the snapshot disk.
+    - The page polls `refreshExcelExport()` and then redirects to a 10-minute signed route, `reports.comprehensive-financial-transactions.xlsx`.
+    - The route re-checks permission, owner and snapshot, writes the Required audit before sending, streams the file and deletes it after sending.
+    - No workbook is generated inside an HTTP request, and none is base64 in Livewire.
+  - **Streaming workbook vs styled workbook (cell-by-cell comparison):**
+    - Identical: sheet, RTL, rows, merges, autofilter, row-1 height, every value, type, font, fill, border, alignment, wrap and number format.
+    - Differences:
+      - A–L have fixed widths (set from measured autosize) instead of autosize.
+      - Text is stored as inline strings (Excel shows them identically).
+      - Whole numbers are stored as `500` instead of `500.0`.
+      - Amounts keep the exact float (PhpSpreadsheet rounds the 17th digit).
+    - Text is always an explicit string cell, so text starting with "=" can never become a formula.
+  - **Word:** refused above `word_max_lines` (2,000, measured 15–20 s / 123 MB at 2k vs 99–109 s / 362 MB at 6k) with an Arabic message recommending Excel. Nothing is truncated or audited.
+  - **Shared audit payload:** `ComprehensiveFinancialTransactionsPage::exportAuditFilters()`, built from the snapshot, is used by the page and the download route. Keys and values are unchanged.
+  - **Cleanup:** `oms:purge-report-snapshots` also removes failed builds, prepared workbooks older than 60 min, and stale local temp files.
+  - **Measured on the "عرض" request** (synthetic, SQLite):
+    - 65–323 ms and 4.3 MB at 2k–150k lines; previously the whole build ran in-request (up to ~35 s at 150k).
+    - Polls take 40–200 ms with 0 ledger queries and 1,546 B of state.
+    - Streaming XLSX: 1.2 MB peak at every size; ~1.6 ms/line on this laptop (60k lines ≈ 99 s, in the worker).
+
+- **2026-10-04 — تقرير الحركات المالية الشامل: scalable data delivery through an immutable per-user report snapshot. Implemented and verified on the TEST/DEV checkout, NOT committed. The report's visible concept, filters, labels, summaries, 16-column table, notes, RTL, dark mode and every financial calculation are unchanged.**
+  - **Why:** the production audit (supplied by the user, not re-run here) found Livewire dehydrating the full `$rows` (~614 rows ≈ 1,051,449 bytes of row JSON against Livewire's 1,048,576-byte payload limit), a report-wide `->get()`, and report-wide source-note enrichment. Reproduced on synthetic data before editing: Livewire state 927,538 B at 614 lines, 9,036,376 B at 6,000 (~1.5 KB/line).
+  - **Reading:** `ComprehensiveFinancialTransactionsReportService::batches()` streams rows with a **two-level keyset**: (1) a single-table page of transactions by `(transaction_time, id)` LIMIT 1000, which is exactly the existing `transactions(transaction_time)` index; (2) those transactions' lines through `tl.transaction_id IN (…)` with the full `(transaction_time, transaction id, line id)` keyset, LIMIT 1000. No OFFSET, no `chunkById()`. Source notes are looked up per batch (≤ 1000 ids, 5 tables). A single line-tuple keyset was implemented first and rejected: its ORDER BY spans two tables, so every batch re-sorted the rest of the period.
+  - **`generate()` still exists** with the identical return shape (built on `batches()`); the page and the exports no longer call it.
+  - **Summaries:** the accumulation loop moved verbatim into `ComprehensiveFinancialTransactionsTotals`. Same float additions in the same order. Distinct transaction counts use contiguity (all lines of a transaction are adjacent in canonical order, and classification/type belong to the transaction) instead of a set of every id; the class throws if lines ever arrive out of order.
+  - **Snapshot:** `ComprehensiveFinancialTransactionsSnapshotBuilder` writes rows once into 100-row chunks and per-classification/per-type ordinal indexes in 1000-ordinal chunks, then commits `manifest.json` last (filters, labels, all summaries, counts, chunk metadata, `owner_id`, `created_at`/`completed_at`/`expires_at`, format/version). Storage sits behind `Contracts\ComprehensiveFinancialTransactionsSnapshotRepository`; the bound `FilesystemComprehensiveFinancialTransactionsSnapshotRepository` uses only portable Storage calls on the new private disk `report_snapshots` (`storage/app/private/report-snapshots`, `throw => true`). Paths are `comprehensive-financial-transactions/{owner}/{ulid}/…`. Reads check owner, id format, commit marker and expiry; group keys must match `none|id-N`. Any build failure discards the partial directory; a published snapshot refuses further writes.
+  - **Page state:** public `$rows` and the three summary arrays are gone. The component keeps `#[Locked] $snapshotId`, `detailPage`/`categoryPage`/`typePage`, the open keys, the (now `#[Locked]`) applied filters/labels/counts. Summaries and the current page rows are `#[Computed]` reads of the snapshot, passed to the view through `getViewData()`. Every read resolves the snapshot with the CURRENT user's id, so a foreign id is simply not found.
+  - **Pagination:** 100 rows per page (`oms.reports.comprehensive_financial_transactions.page_size`) for the main table and for each open classification/type, via the new `comprehensive-financial-transactions-pager` partial. It renders only when there is more than one page, so a one-page report looks exactly as before. The expansion title still shows the bucket's full line count.
+  - **Exports:** both exporters accept any `iterable`; the page passes `$snapshot->rows()` (chunk-by-chunk generator) plus the snapshot's own filters/labels/summaries. Word groups transactions in one streaming pass. Output is identical to the legacy array path (asserted cell-for-cell / document.xml). Authorization and audit are unchanged; an expired snapshot blocks export with a notice and writes no audit event.
+  - **Cleanup:** `oms:purge-report-snapshots`, hourly, synchronous, no queue. It deletes expired snapshots (TTL 240 min) and unpublished builds older than 60 min. Each build also purges its own owner's expired snapshots first. A tab discards its previous snapshot on a new "عرض" or any filter change.
+  - **Measured (synthetic data, SQLite test DB, FK index emulated as on MySQL):** Livewire state after "عرض" 1,531–1,537 B from 100 to 100,000 lines. Initial HTML ≈ 0.54 MB at any size (vs 2.49 MB at 614 and 22.97 MB at 6,000 before). Build peak memory 2.8 MB (614) → 7.4 MB (150,000) vs legacy `generate()` 26 MB (6,000) / 257 MB (60,000). `transaction_lines` queries when opening/paging a classification or type or moving the main page: **0** at every size.
+  - **Exports remain O(rows) (PhpSpreadsheet/PhpWord):** at 15,000 lines Excel peaked at 191 MB / 130 s and Word at 902 MB / 483 s. Livewire also base64-encodes the whole file into the JSON response. Not changed; see DECISIONS_LOG and NEXT_STEPS.
+  - **Queue:** not used. No supervised worker is documented in the repo and none runs on this machine; the build is synchronous in the request and job-compatible (owner id + plain filters).
+  - **Not touched:** accounting formulas, debit/credit semantics, currency separation, SoftDelete rules, filter meanings, notes text, export formats, permissions, schema.
+
 - **2026-09-28 — Search Batch G: the four gaps left by the final read-only search audit are closed. 4 production files, 1 new test file. Implemented and verified, NOT committed.**
   - **الصفحة العامة للمشاريع table:** one table-level ArabicSearch search over the snapshot's own columns: `project_code` as an identifier; `project_name`, `project_super_name` and `donor_name` as alef-folded text (no join, no EXISTS). Placeholder "ابحث في الصفحة العامة للمشاريع...". Snapshot query, calculations, filters, custom sort and exports unchanged.
   - **صرف مبلغ form `partner_id`:** now `FinancialLookupFilters::partnerOptions()` / `partnerLabel()` (Batch E pattern): all non-deleted partners as before, server-side, at most 50, nothing preloaded, the saved partner still restored on edit.

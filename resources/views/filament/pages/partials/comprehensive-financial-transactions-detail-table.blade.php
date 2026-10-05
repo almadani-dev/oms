@@ -1,7 +1,7 @@
 {{--
     The one and only rendering source for the "تفاصيل الحركات المالية" table.
 
-    Rendered three times on the page — once for the full movement list, once
+    Rendered three times on the page — once for the current page of the movement list, once
     inside an expanded classification row, and once inside an expanded
     transaction type row. All three get identical columns, typography, sizing,
     RTL behaviour and horizontal navigation because there is a single markup

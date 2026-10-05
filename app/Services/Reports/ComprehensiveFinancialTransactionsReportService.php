@@ -9,6 +9,9 @@ use App\Models\Currency;
 use App\Models\Project;
 use App\Models\TransactionSuperType;
 use App\Models\TransactionType;
+use App\Services\Reports\ComprehensiveFinancialTransactions\ComprehensiveFinancialTransactionsFilters;
+use App\Services\Reports\ComprehensiveFinancialTransactions\ComprehensiveFinancialTransactionsTotals;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -30,8 +33,6 @@ use Illuminate\Support\Facades\DB;
  */
 class ComprehensiveFinancialTransactionsReportService
 {
-    private const TOLERANCE = 0.01;
-
     /**
      * Financial source records that point AT a transaction via their own
      * nullable transaction_id FK. There is no polymorphic source pointer on
@@ -39,8 +40,9 @@ class ComprehensiveFinancialTransactionsReportService
      * one-to-many — joining them into the main lines query would fan the
      * result out and duplicate debit/credit lines, corrupting every summary.
      *
-     * They are therefore pre-fetched separately, in exactly one bounded
-     * whereIn() query per table, and merged in PHP. See sourceNotesByTransaction().
+     * They are therefore pre-fetched separately, per keyset batch, in exactly
+     * one bounded whereIn() query per table (over at most one batch of
+     * transaction ids), and merged in PHP. See sourceNotesByTransaction().
      *
      * @var array<int, array{0: string, 1: string}> [table, Arabic note label]
      */
@@ -72,6 +74,15 @@ class ComprehensiveFinancialTransactionsReportService
     ];
 
     /**
+     * Whole-report convenience API, kept for direct callers and the existing
+     * service-level tests. It returns exactly the shape it always did, but it
+     * is now built from the same bounded keyset batches the snapshot builder
+     * streams (see batches()), so it can never disagree with the page.
+     *
+     * It still returns every row in one array by contract — the page and the
+     * exports therefore never call it; they read an immutable snapshot built
+     * by ComprehensiveFinancialTransactionsSnapshotBuilder instead.
+     *
      * @param array<int, int> $currencyIds empty array = all currencies
      * @param array<int, int> $accountIds empty array = all accounts ("كل الحسابات")
      * @param string $accountSide self::SIDE_* — narrows the selected accounts to
@@ -90,9 +101,332 @@ class ComprehensiveFinancialTransactionsReportService
         ?int $projectId = null,
         string $accountSide = self::SIDE_ALL,
     ): array {
-        $accountSide = self::normalizeAccountSide($accountSide, $accountIds);
+        $filters = ComprehensiveFinancialTransactionsFilters::make(
+            $dateFrom,
+            $dateTo,
+            $currencyIds,
+            $transactionSuperTypeId,
+            $transactionTypeId,
+            $accountIds,
+            $accountTypeId,
+            $projectId,
+            $accountSide,
+        );
 
-        $lines = DB::table('transaction_lines as tl')
+        $totals = new ComprehensiveFinancialTransactionsTotals();
+        $rows = [];
+
+        foreach ($this->batches($filters, $totals) as $batch) {
+            array_push($rows, ...$batch);
+        }
+
+        return ['rows' => $rows] + $totals->result() + [
+            'filter_labels' => $this->filterLabels($filters),
+            // The normalized side actually applied to the query — the page
+            // stores THIS as its applied snapshot, never the live form
+            // value, so the export audit always describes the exported rows.
+            'account_side' => $filters->accountSide,
+        ];
+    }
+
+    /**
+     * Streams the report's rows in canonical order — transaction_time ASC,
+     * transaction id ASC, transaction_line id ASC — one bounded batch at a
+     * time, feeding every line into $totals before its batch is yielded.
+     *
+     * Two-level keyset, never OFFSET and never chunkById() (which would
+     * re-order by line id alone):
+     *
+     *  1. the next batch_size TRANSACTIONS strictly after the last
+     *     (transaction_time, id) seen. That order lives on ONE table and is
+     *     exactly the transactions(transaction_time) index (InnoDB appends the
+     *     primary key), so the database walks the index and stops at LIMIT;
+     *  2. those transactions' LINES (through the transaction_lines
+     *     (transaction_id) FK index), strictly after the last
+     *     (transaction_time, transaction id, line id) seen, LIMIT batch_size.
+     *     Only lines of at most batch_size transactions are ever sorted.
+     *
+     * A single keyset over the line tuple would be simpler, but its ORDER BY
+     * spans two tables, so no index can supply it: every batch would sort all
+     * remaining lines of the period again — measured, that grows
+     * quadratically with the report. Here every query's work is bounded by
+     * one batch, whatever the size of the period.
+     *
+     * Both cursors are the ORDER BY tuples and both are unique, so no line
+     * can be skipped or repeated at a boundary — including when many
+     * transactions share one transaction_time, and when one transaction has
+     * more lines than a batch.
+     *
+     * Source-record notes are attached per yielded batch (at most one bounded
+     * whereIn() per source table, over at most batch_size transaction ids),
+     * AFTER the batch's lines were added to $totals — so, as before, no note
+     * can ever affect a summary. A transaction split across two batches has
+     * its source notes looked up once for each half; the result is identical.
+     *
+     * $onTransactionPage, when given, is called after each page of
+     * transactions has been fully yielded, with the number of transactions
+     * that page covered — the builder's honest progress unit.
+     *
+     * @param  (callable(int): void)|null  $onTransactionPage
+     * @return \Generator<int, array<int, array<string, mixed>>>
+     */
+    public function batches(ComprehensiveFinancialTransactionsFilters $filters, ComprehensiveFinancialTransactionsTotals $totals, ?int $batchSize = null, ?callable $onTransactionPage = null): \Generator
+    {
+        $batchSize = max(1, $batchSize ?? (int) config('oms.reports.comprehensive_financial_transactions.batch_size', 1000));
+        $typeIdsOfSuperType = $this->typeIdsOfSuperType($filters);
+        $transactionCursor = null;
+
+        do {
+            $transactions = $this->transactionsQuery($filters, $typeIdsOfSuperType)
+                ->when($transactionCursor !== null, function ($q) use ($transactionCursor) {
+                    [$time, $transactionId] = $transactionCursor;
+
+                    $q->where('t.transaction_time', '>=', $time)
+                        ->where(function ($q) use ($time, $transactionId) {
+                            $q->where('t.transaction_time', '>', $time)
+                                ->orWhere(function ($q) use ($time, $transactionId) {
+                                    $q->where('t.transaction_time', '=', $time)
+                                        ->where('t.id', '>', $transactionId);
+                                });
+                        });
+                })
+                ->orderBy('t.transaction_time')
+                ->orderBy('t.id')
+                ->limit($batchSize)
+                ->get(['t.id', 't.transaction_time']);
+
+            if ($transactions->isEmpty()) {
+                return;
+            }
+
+            $last = $transactions->last();
+            $transactionCursor = [(string) $last->transaction_time, (int) $last->id];
+            $pageTransactions = $transactions->count();
+            $moreTransactions = $pageTransactions === $batchSize;
+            $transactionIds = $transactions->pluck('id')->map(fn ($id) => (int) $id)->all();
+            unset($transactions, $last);
+
+            $lineCursor = null;
+
+            do {
+                $lines = $this->linesQuery($filters)
+                    // On the line's own FK column, so the slice is read
+                    // through transaction_lines(transaction_id).
+                    ->whereIn('tl.transaction_id', $transactionIds)
+                    ->when($lineCursor !== null, function ($q) use ($lineCursor) {
+                        [$time, $transactionId, $lineId] = $lineCursor;
+
+                        $q->where(function ($q) use ($time, $transactionId, $lineId) {
+                            $q->where('t.transaction_time', '>', $time)
+                                ->orWhere(function ($q) use ($time, $transactionId, $lineId) {
+                                    $q->where('t.transaction_time', '=', $time)
+                                        ->where(function ($q) use ($transactionId, $lineId) {
+                                            $q->where('t.id', '>', $transactionId)
+                                                ->orWhere(function ($q) use ($transactionId, $lineId) {
+                                                    $q->where('t.id', '=', $transactionId)
+                                                        ->where('tl.id', '>', $lineId);
+                                                });
+                                        });
+                                });
+                        });
+                    })
+                    ->limit($batchSize)
+                    ->get();
+
+                if ($lines->isEmpty()) {
+                    break;
+                }
+
+                $rows = [];
+                $batchTransactionIds = [];
+
+                foreach ($lines as $line) {
+                    $batchTransactionIds[$line->transaction_id] = true;
+                    $rows[] = $this->row($line, $totals);
+                }
+
+                $last = $lines->last();
+                $lineCursor = [(string) $last->transaction_time, (int) $last->transaction_id, (int) $last->line_id];
+                $moreLines = $lines->count() === $batchSize;
+                unset($lines, $last);
+
+                // Deliberately AFTER the batch was accumulated, so no summary,
+                // total or currency bucket can be affected by a note.
+                $this->attachSourceNotes($rows, array_map('intval', array_keys($batchTransactionIds)));
+
+                yield $rows;
+            } while ($moreLines);
+
+            if ($onTransactionPage !== null) {
+                $onTransactionPage($pageTransactions);
+            }
+        } while ($moreTransactions);
+    }
+
+    /**
+     * Exact number of transactions batches() will page through — the same
+     * single-table, index-range query without LIMIT, so it costs one index
+     * range count, never a scan of transaction_lines. The denominator of the
+     * background build's progress.
+     */
+    public function candidateTransactionCount(ComprehensiveFinancialTransactionsFilters $filters): int
+    {
+        return $this->transactionsQuery($filters, $this->typeIdsOfSuperType($filters))->count();
+    }
+
+    /**
+     * One report row from one lines-query record, and that line's
+     * contribution to every summary. Unchanged from the original
+     * report-wide loop, line for line.
+     *
+     * @return array<string, mixed>
+     */
+    private function row(object $line, ComprehensiveFinancialTransactionsTotals $totals): array
+    {
+        $debit = (float) $line->debit_base;
+        $credit = (float) $line->credit_base;
+
+        $currencyLabel = $this->currencyLabel($line->currency_name, $line->currency_code);
+        $currencyShort = $line->currency_code ?: ($line->currency_name ?: 'غير محدد');
+        $category = $line->super_type_name ?: 'غير محدد';
+        $type = $line->type_name ?: 'غير محدد';
+
+        $totals->add(
+            (string) $line->transaction_time,
+            (int) $line->transaction_id,
+            (int) $line->line_id,
+            $currencyLabel,
+            $currencyShort,
+            $category,
+            $this->groupKey($line->super_type_id),
+            $type,
+            $this->groupKey($line->type_id),
+            $debit,
+            $credit,
+        );
+
+        return [
+            'transaction_id' => (int) $line->transaction_id,
+            'line_id' => (int) $line->line_id,
+            'date' => Carbon::parse($line->transaction_time)->format('Y-m-d'),
+            'reference' => $line->transaction_number ?: ('قيد #' . $line->transaction_id),
+            'category' => $category,
+            'category_key' => $this->groupKey($line->super_type_id),
+            'type' => $type,
+            'type_key' => $this->groupKey($line->type_id),
+            'account' => trim(($line->account_code ? $line->account_code . ' - ' : '') . $line->account_name),
+            'bank_type' => $line->bank_type_name ?: '—',
+            'account_type' => $line->account_type_name ?: 'غير محدد',
+            'project' => $line->project_name ?: 'غير مرتبط بمشروع',
+            'currency' => $currencyLabel,
+            'debit' => $debit,
+            'credit' => $credit,
+            'created_by' => $line->created_by_name ?: '-',
+            // Approved audit metadata — display-only, never used for calculations.
+            // transactions.description is rendered in exactly one column
+            // ("البيان"); it is never merged into the notes collection.
+            'transaction_description' => $this->displayOrDash($line->transaction_description),
+            'line_role_label' => TransactionLineRole::labelFor($line->line_role) ?? '—',
+            'line_description' => $this->displayOrDash($line->line_description),
+            // Source-record notes are appended by attachSourceNotes(); every
+            // entry keeps its own source label so a note's origin is never
+            // hidden, and identical text from two different records stays as
+            // two entries.
+            'notes' => $this->ownNotes($line),
+        ];
+    }
+
+    /**
+     * The candidate transactions of the period, in canonical order: a
+     * deliberately SINGLE-TABLE query, so the only plan the database can
+     * reasonably choose is a range walk of transactions(transaction_time)
+     * that stops at the LIMIT — no join or subquery an optimizer could
+     * rewrite into a whole-period sort.
+     *
+     * Only transaction-level filters apply here. It may therefore return
+     * transactions with no reportable line (wrong currency/account, all lines
+     * deleted, …); the lines query applies every filter and such a
+     * transaction simply contributes nothing. It can never drop a line.
+     *
+     * @param  array<int, int>|null  $typeIdsOfSuperType  the classification filter, resolved once per run
+     */
+    private function transactionsQuery(ComprehensiveFinancialTransactionsFilters $filters, ?array $typeIdsOfSuperType): Builder
+    {
+        $transactionTypeId = $filters->transactionTypeId;
+
+        return DB::table('transactions as t')
+            ->whereNull('t.deleted_at')
+            ->whereBetween('t.transaction_time', $this->period($filters))
+            ->when($transactionTypeId, fn ($q) => $q->where('t.transaction_type_id', $transactionTypeId))
+            ->when($typeIdsOfSuperType !== null, fn ($q) => $q->whereIn('t.transaction_type_id', $typeIdsOfSuperType));
+    }
+
+    /**
+     * The transaction types of the filtered classification — the same rows
+     * the lines query's unguarded LEFT JOIN on transactions_types matches
+     * (soft-deleted types included). Null when no classification filter.
+     *
+     * @return array<int, int>|null
+     */
+    private function typeIdsOfSuperType(ComprehensiveFinancialTransactionsFilters $filters): ?array
+    {
+        if (! $filters->transactionSuperTypeId) {
+            return null;
+        }
+
+        return DB::table('transactions_types')
+            ->where('transaction_super_type_id', $filters->transactionSuperTypeId)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+    }
+
+    /**
+     * Line-level filters of the lines query.
+     */
+    private function applyLineFilters(Builder $q, ComprehensiveFinancialTransactionsFilters $filters): void
+    {
+        $currencyIds = $filters->currencyIds;
+        $accountIds = $filters->accountIds;
+        $accountSide = $filters->accountSide;
+        $accountTypeId = $filters->accountTypeId;
+        $projectId = $filters->projectId;
+
+        $q->when($currencyIds !== [], fn ($q) => $q->whereIn('tl.currency_id', $currencyIds))
+            ->when($accountIds !== [], fn ($q) => $q->whereIn('tl.account_id', $accountIds))
+            // "طرف الحساب": the accounting source of truth is the line's own
+            // amount, never the transaction type, line_role or description.
+            // A line is a debit appearance only when it actually carries a
+            // positive debit_base. Already normalized by the filters object,
+            // so these can never fire without an account selection.
+            ->when($accountSide === self::SIDE_DEBIT, fn ($q) => $q->where('tl.debit_base', '>', 0))
+            ->when($accountSide === self::SIDE_CREDIT, fn ($q) => $q->where('tl.credit_base', '>', 0))
+            ->when($accountTypeId, fn ($q) => $q->where('a.account_type_id', $accountTypeId))
+            ->when($projectId, fn ($q) => $q->where('pc.project_id', $projectId));
+    }
+
+    /**
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    private function period(ComprehensiveFinancialTransactionsFilters $filters): array
+    {
+        return [
+            Carbon::parse($filters->dateFrom)->startOfDay(),
+            Carbon::parse($filters->dateTo)->endOfDay(),
+        ];
+    }
+
+    /**
+     * The report's single lines query — joins, SoftDelete guards, filters and
+     * canonical ORDER BY — without any limit. batches() adds the transaction
+     * set, the keyset cursor and the batch LIMIT on top of it.
+     */
+    private function linesQuery(ComprehensiveFinancialTransactionsFilters $filters): Builder
+    {
+        $transactionSuperTypeId = $filters->transactionSuperTypeId;
+        $transactionTypeId = $filters->transactionTypeId;
+
+        $query = DB::table('transaction_lines as tl')
             ->join('transactions as t', 't.id', '=', 'tl.transaction_id')
             ->join('accounts as a', 'a.id', '=', 'tl.account_id')
             ->leftJoin('accounts_type as at', 'at.id', '=', 'a.account_type_id')
@@ -112,23 +446,13 @@ class ComprehensiveFinancialTransactionsReportService
             ->whereNull('tl.deleted_at')
             ->whereNull('t.deleted_at')
             ->whereNull('a.deleted_at')
-            ->whereBetween('t.transaction_time', [
-                Carbon::parse($dateFrom)->startOfDay(),
-                Carbon::parse($dateTo)->endOfDay(),
-            ])
-            ->when($currencyIds !== [], fn ($q) => $q->whereIn('tl.currency_id', $currencyIds))
+            ->whereBetween('t.transaction_time', $this->period($filters))
             ->when($transactionSuperTypeId, fn ($q) => $q->where('tt.transaction_super_type_id', $transactionSuperTypeId))
-            ->when($transactionTypeId, fn ($q) => $q->where('t.transaction_type_id', $transactionTypeId))
-            ->when($accountIds !== [], fn ($q) => $q->whereIn('tl.account_id', $accountIds))
-            // "طرف الحساب": the accounting source of truth is the line's own
-            // amount, never the transaction type, line_role or description.
-            // A line is a debit appearance only when it actually carries a
-            // positive debit_base. Already normalized above, so these can
-            // never fire without an account selection.
-            ->when($accountSide === self::SIDE_DEBIT, fn ($q) => $q->where('tl.debit_base', '>', 0))
-            ->when($accountSide === self::SIDE_CREDIT, fn ($q) => $q->where('tl.credit_base', '>', 0))
-            ->when($accountTypeId, fn ($q) => $q->where('a.account_type_id', $accountTypeId))
-            ->when($projectId, fn ($q) => $q->where('pc.project_id', $projectId))
+            ->when($transactionTypeId, fn ($q) => $q->where('t.transaction_type_id', $transactionTypeId));
+
+        $this->applyLineFilters($query, $filters);
+
+        return $query
             ->orderBy('t.transaction_time')
             ->orderBy('t.id')
             ->orderBy('tl.id')
@@ -158,104 +482,7 @@ class ComprehensiveFinancialTransactionsReportService
                 'c.code as currency_code',
                 'p.name as project_name',
                 'u.name as created_by_name',
-            ])
-            ->get();
-
-        $rows = [];
-        $transactionIds = [];
-        $currencySummaries = [];
-        $categorySummaries = [];
-        $typeSummaries = [];
-
-        foreach ($lines as $line) {
-            $debit = (float) $line->debit_base;
-            $credit = (float) $line->credit_base;
-
-            $currencyLabel = $this->currencyLabel($line->currency_name, $line->currency_code);
-            $currencyShort = $line->currency_code ?: ($line->currency_name ?: 'غير محدد');
-            $category = $line->super_type_name ?: 'غير محدد';
-            $type = $line->type_name ?: 'غير محدد';
-
-            $transactionIds[$line->transaction_id] = true;
-
-            $rows[] = [
-                'transaction_id' => (int) $line->transaction_id,
-                'line_id' => (int) $line->line_id,
-                'date' => Carbon::parse($line->transaction_time)->format('Y-m-d'),
-                'reference' => $line->transaction_number ?: ('قيد #' . $line->transaction_id),
-                'category' => $category,
-                'category_key' => $this->groupKey($line->super_type_id),
-                'type' => $type,
-                'type_key' => $this->groupKey($line->type_id),
-                'account' => trim(($line->account_code ? $line->account_code . ' - ' : '') . $line->account_name),
-                'bank_type' => $line->bank_type_name ?: '—',
-                'account_type' => $line->account_type_name ?: 'غير محدد',
-                'project' => $line->project_name ?: 'غير مرتبط بمشروع',
-                'currency' => $currencyLabel,
-                'debit' => $debit,
-                'credit' => $credit,
-                'created_by' => $line->created_by_name ?: '-',
-                // Approved audit metadata — display-only, never used for calculations.
-                // transactions.description is rendered in exactly one column
-                // ("البيان"); it is never merged into the notes collection.
-                'transaction_description' => $this->displayOrDash($line->transaction_description),
-                'line_role_label' => TransactionLineRole::labelFor($line->line_role) ?? '—',
-                'line_description' => $this->displayOrDash($line->line_description),
-                // Filled in after the loop by attachNotes(); every entry keeps
-                // its own source label so a note's origin is never hidden, and
-                // identical text from two different records stays as two entries.
-                'notes' => $this->ownNotes($line),
-            ];
-
-            // B) per-currency totals — never blended across currencies.
-            if (! isset($currencySummaries[$currencyLabel])) {
-                $currencySummaries[$currencyLabel] = [
-                    'currency' => $currencyLabel,
-                    'total_debit' => 0.0,
-                    'total_credit' => 0.0,
-                ];
-            }
-            $currencySummaries[$currencyLabel]['total_debit'] += $debit;
-            $currencySummaries[$currencyLabel]['total_credit'] += $credit;
-
-            $this->accumulateGrouped($categorySummaries, $category, $this->groupKey($line->super_type_id), (int) $line->transaction_id, $currencyShort, $debit, $credit);
-            $this->accumulateGrouped($typeSummaries, $type, $this->groupKey($line->type_id), (int) $line->transaction_id, $currencyShort, $debit, $credit);
-        }
-
-        // Source-record notes: one bounded whereIn() per source table (5 max,
-        // and zero when the period is empty), merged in PHP. Deliberately run
-        // AFTER the accumulation loop so no summary, total or currency bucket
-        // can be affected by it.
-        $this->attachSourceNotes($rows, array_map('intval', array_keys($transactionIds)));
-
-        foreach ($currencySummaries as &$summary) {
-            $summary['difference'] = $summary['total_debit'] - $summary['total_credit'];
-            $summary['is_balanced'] = abs($summary['difference']) < self::TOLERANCE;
-        }
-        unset($summary);
-
-        return [
-            'rows' => $rows,
-            'currency_summaries' => array_values($currencySummaries),
-            'category_summaries' => $this->finalizeGrouped($categorySummaries),
-            'type_summaries' => $this->finalizeGrouped($typeSummaries),
-            'transaction_count' => count($transactionIds),
-            'line_count' => count($rows),
-            'currencies_count' => count($currencySummaries),
-            'filter_labels' => $this->filterLabels(
-                $currencyIds,
-                $transactionSuperTypeId,
-                $transactionTypeId,
-                $accountIds,
-                $accountTypeId,
-                $projectId,
-                $accountSide,
-            ),
-            // The normalized side actually applied to the query above — the
-            // page stores THIS as its applied snapshot, never the live form
-            // value, so the export audit always describes the exported rows.
-            'account_side' => $accountSide,
-        ];
+            ]);
     }
 
     /**
@@ -295,68 +522,6 @@ class ComprehensiveFinancialTransactionsReportService
     public static function accountSideLabel(?string $accountSide): string
     {
         return self::SIDE_LABELS[$accountSide] ?? self::SIDE_LABELS[self::SIDE_ALL];
-    }
-
-    /**
-     * Adds one line to a category/type summary bucket, keeping debit/credit
-     * totals separated per currency inside the bucket. Transactions are
-     * counted by distinct id (a transaction with several lines still counts
-     * once), while the financial totals stay line-based.
-     *
-     * Buckets are keyed by the underlying lookup ID ($key), never by display
-     * text. Neither transaction_super_types.name nor transactions_types.name
-     * carries a unique constraint or a unique validation rule, so two distinct
-     * classifications may share a name; keying by name would silently merge
-     * them into one row whose totals no consumer could decompose again.
-     *
-     * Keying by ID also makes bucket <-> rows exactly 1:1, which is what lets
-     * the UI filter a classification's detail rows by row['category_key']
-     * and a transaction type's detail rows by row['type_key'], and be certain
-     * the rows it shows are precisely the rows behind the totals.
-     * 'name' is carried alongside for display only.
-     *
-     * @param array<string, array<string, mixed>> $summaries
-     */
-    private function accumulateGrouped(array &$summaries, string $name, string $key, int $transactionId, string $currency, float $debit, float $credit): void
-    {
-        if (! isset($summaries[$key])) {
-            $summaries[$key] = [
-                'name' => $name,
-                'key' => $key,
-                'line_count' => 0,
-                'transaction_ids' => [],
-                'currencies' => [],
-            ];
-        }
-
-        $summaries[$key]['line_count']++;
-        $summaries[$key]['transaction_ids'][$transactionId] = true;
-
-        if (! isset($summaries[$key]['currencies'][$currency])) {
-            $summaries[$key]['currencies'][$currency] = [
-                'currency' => $currency,
-                'total_debit' => 0.0,
-                'total_credit' => 0.0,
-            ];
-        }
-
-        $summaries[$key]['currencies'][$currency]['total_debit'] += $debit;
-        $summaries[$key]['currencies'][$currency]['total_credit'] += $credit;
-    }
-
-    /**
-     * @param array<string, array<string, mixed>> $summaries
-     * @return array<int, array<string, mixed>>
-     */
-    private function finalizeGrouped(array $summaries): array
-    {
-        return array_values(array_map(function (array $summary) {
-            $summary['transaction_count'] = count($summary['transaction_ids']);
-            unset($summary['transaction_ids']);
-            $summary['currencies'] = array_values($summary['currencies']);
-
-            return $summary;
-        }, $summaries));
     }
 
     /**
@@ -407,8 +572,8 @@ class ComprehensiveFinancialTransactionsReportService
     }
 
     /**
-     * Merges the pre-fetched source-record notes onto every row of the
-     * transaction they belong to. Pure in-memory work — no query runs here.
+     * Merges the source-record notes of one batch's transactions onto every
+     * row of that batch they belong to.
      *
      * @param array<int, array<string, mixed>> $rows
      * @param array<int, int> $transactionIds
@@ -432,9 +597,10 @@ class ComprehensiveFinancialTransactionsReportService
     }
 
     /**
-     * At most one bounded query per source table (5 total, regardless of how
-     * many rows or transactions the report returned) — never N+1, and never
-     * a join against the main lines query, which would duplicate lines.
+     * At most one bounded query per source table (5 per batch, each over at
+     * most one batch of transaction ids) — never N+1, never a report-wide id
+     * list, and never a join against the main lines query, which would
+     * duplicate lines.
      *
      * Soft-deleted source records contribute nothing: a deleted record is not
      * a historical label, unlike the lookup tables joined above.
@@ -492,14 +658,30 @@ class ComprehensiveFinancialTransactionsReportService
 
     /**
      * Human-readable snapshot of the applied optional filters, for display
-     * above the results and for the future export phase.
+     * above the results, the exports and the export audit.
      *
-     * @param array<int, int> $currencyIds
-     * @param array<int, int> $accountIds
-     * @param string $accountSide already normalized by generate()
      * @return array<string, string>
      */
-    private function filterLabels(
+    public function filterLabels(ComprehensiveFinancialTransactionsFilters $filters): array
+    {
+        return $this->labelsFor(
+            $filters->currencyIds,
+            $filters->transactionSuperTypeId,
+            $filters->transactionTypeId,
+            $filters->accountIds,
+            $filters->accountTypeId,
+            $filters->projectId,
+            $filters->accountSide,
+        );
+    }
+
+    /**
+     * @param array<int, int> $currencyIds
+     * @param array<int, int> $accountIds
+     * @param string $accountSide already normalized by the filters object
+     * @return array<string, string>
+     */
+    private function labelsFor(
         array $currencyIds,
         ?int $transactionSuperTypeId,
         ?int $transactionTypeId,

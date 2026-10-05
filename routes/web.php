@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Attachments\AttachmentController;
 use App\Http\Controllers\Backups\BackupDownloadController;
+use App\Http\Controllers\Reports\ComprehensiveFinancialTransactionsExcelDownloadController;
 use App\Http\Controllers\Restores\RestoreLaunchController;
 use App\Http\Controllers\Restores\RestoreProgressPollController;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
@@ -59,6 +60,18 @@ Route::get('/backups/{backup}/download', [BackupDownloadController::class, 'show
     ->where('backup', '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}')
     ->middleware(\Filament\Http\Middleware\Authenticate::class)
     ->name('backups.download');
+
+// Large-report Excel download for "تقرير الحركات المالية الشامل": serves a
+// workbook a queued job already prepared. {export} is the opaque export ULID —
+// never a path — constrained to that shape before the controller runs.
+// Filament's own Authenticate middleware (same guard as the panel) plus a
+// short-lived signature issued by the page; the controller still re-checks the
+// export permission, resolves the export and its snapshot for the CURRENT user
+// only, and audits before sending a byte.
+Route::get('/reports/comprehensive-financial-transactions/exports/{export}/xlsx', [ComprehensiveFinancialTransactionsExcelDownloadController::class, 'show'])
+    ->where('export', '[0-9a-hjkmnp-tv-z]{26}')
+    ->middleware([\Filament\Http\Middleware\Authenticate::class, 'signed'])
+    ->name('reports.comprehensive-financial-transactions.xlsx');
 
 // OMS Task 7C.4 — signed launch endpoint for an already-created, fully
 // validated queued restore operation. {uuid} is the restore's own
