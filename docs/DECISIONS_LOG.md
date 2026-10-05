@@ -3060,3 +3060,31 @@ List and global search on the admin, master-data and Transactions resources. No 
 
 ### Impact
 Search and option loading on one report table, one financial form Select, one attachments filter and one permissions column. No accounting, posting, report-calculation, sorting, schema or data change.
+
+---
+
+### Date
+2026-10-05 (OMS stress environment)
+
+### Decision
+1. **Stress data lives only in a separate local database `oms_stress`**, reached through a git-ignored `.env.stress` profile (`--env=stress`) with its own `LARAVEL_STORAGE_PATH`; every stress command is guarded by fixed allow/deny lists, a marker table and double confirmation.
+2. **The generator calls the current production builders** (Filament Create pages' protected line/purpose/summary methods, `deriveAmounts`, description builders, audit snapshotters) instead of re-implementing them, and every payload passes the real financial guards.
+3. **Bulk inserts with explicit ids; `current_balance` written once from a cents ledger**; the verifier recomputes it independently.
+4. **Audit history is generated in full** (one event per real operation, ~285k) with backdated timestamps through a stress staging table, never through filler rows.
+5. **Schema parity may add only plain secondary indexes that exist in `oms` but not in a fresh migrate**; any other difference aborts.
+6. **Browser access via `php artisan serve` on 127.0.0.1:8081 under `APP_ENV=stress`**, plus a banner shown only in the stress environment; no Apache/hosts change.
+7. **Chunk size 500** (measured 3,194 rows/s vs 2,820 at 1,000 and 2,692 at 2,000; 5,000 exceeds MySQL's placeholder limit).
+8. **Slow screens are measured and profiled only** — no optimization in this task.
+
+### Reason
+1. Production and the normal dev database must never receive synthetic data; defence in depth.
+2. No drift between the stress data and what the application writes today.
+3. Hundreds of thousands of Eloquent creates would be slow; one balance write avoids double application.
+4. The user required realistic, coherent audit volume.
+5. Benchmarks must run on the same physical schema as the incrementally migrated database.
+6. Machine-level web-server changes were not safe to automate.
+7. Measured on this machine.
+8. The user asked to measure first.
+
+### Impact
+Stress tooling and docs only, plus one environment-gated render hook. No accounting formula, guard, report calculation, schema migration or SoftDelete semantic changed.

@@ -11,6 +11,7 @@ use Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
+use Filament\View\PanelsRenderHook;
 use Filament\Widgets\AccountWidget;
 use Filament\Widgets\FilamentInfoWidget;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
@@ -18,6 +19,7 @@ use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Support\HtmlString;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 class AdminPanelProvider extends PanelProvider
@@ -69,6 +71,14 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
-            ]);
+            ])
+            // Renders ONLY under the local stress profile (APP_ENV=stress);
+            // every other environment gets an empty string, so normal and
+            // production pages are unchanged.
+            ->renderHook(PanelsRenderHook::BODY_START, fn (): HtmlString => new HtmlString(
+                app()->environment('stress')
+                    ? '<div style="position:sticky;top:0;z-index:1000;background:#b91c1c;color:#fff;text-align:center;padding:6px 12px;font-weight:700;font-size:14px;">بيئة اختبار الضغط (oms_stress) — بيانات وهمية فقط — STRESS TEST ENVIRONMENT, SYNTHETIC DATA ONLY</div>'
+                    : ''
+            ));
     }
 }

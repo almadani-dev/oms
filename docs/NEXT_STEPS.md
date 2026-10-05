@@ -1,6 +1,26 @@
 # Next Steps
 
-## Recommended Next Step (2026-10-04, phase 2 done — review, browser-check, then deploy with the checklist)
+## Recommended Next Step (2026-10-05, `oms_stress` built and verified — review, commit the stress tooling, then decide which measured bottleneck to tackle)
+
+**1. Review and commit the stress tooling** as its own local commit (separate from `f6ec0b8`). Check that `git status` shows no `.env.stress` and nothing under `storage/stress/`.
+
+**2. Browser check on the stress data** (`$env:APP_ENV='stress'; php artisan serve --host=127.0.0.1 --port=8081`, plus `php artisan --env=stress queue:work database --queue=reports --timeout=1900`): the comprehensive report pager/expansions on 500k+ lines, the account statement, the donor report.
+
+**3. Decide, with the evidence in `docs/STRESS_ENVIRONMENT.md`, which bottleneck to address first** (each needs its own audit and approval; nothing was optimized):
+- comprehensive report snapshot size (~1.37 KB/line, 769 MB for the full range) and worker memory growing with report size (599 MB);
+- account statement: two whole-account queries (~4.3 s each, even for one month) and full-HTML rendering (90 MB for 28k lines);
+- donor report full range (21 s, 28 MB HTML);
+- Arabic search on transaction lines (35 s `COUNT(*)` full scan);
+- `oms:check-financial-integrity` (460 s; the journal checker is PHP-bound).
+
+**4. OPEN BUSINESS DECISION — on hold, do not change:** the comprehensive report excludes lines whose account is soft-deleted (`whereNull('a.deleted_at')`; 125 historical Muwakha lines in the stress data). The user will decide explicitly whether historical transactions of deleted accounts must remain visible. Until then the current behaviour stays exactly as it is.
+
+**5. Follow-up audits recorded, not done:** `BudgetsRelationManager` / `ReceiptsRelationManager` plain Create/Edit/Delete actions may bypass ledger, balances and audit; `MuwakhaFamilyAccountStatementService` docblock says receipt lines carry `project_cost_id`, the current write path stores NULL.
+
+---
+
+
+## Previously Recommended Next Step (2026-10-04, phase 2 done — review, browser-check, then deploy with the checklist)
 
 **1. Review and commit** both phases together (snapshot architecture + background build / large Excel / Word limit). Nothing is committed yet.
 

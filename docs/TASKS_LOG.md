@@ -4300,3 +4300,37 @@ Pre-edit check against the source after the Batch F commit (`20ac78f`): all four
 
 ### Commit Hash
 Not committed, not pushed — awaiting review.
+
+---
+
+### Date
+2026-10-05
+
+### Task
+Build a complete, isolated, realistic OMS stress environment (`oms_stress`, ≥ 500,000 transaction lines), verify it, and benchmark the real application against it.
+
+### Result
+**Done on TEST/DEV; not committed (separate diff from `f6ec0b8`).**
+- Small smoke build (seed 20261005): 12,217 lines / 5,532 transactions; 55/55 verifier checks at 0 (run twice: before and after the Muwakha flush-order fix).
+- Large build (seed 20261005, chunk 500): 561,831 active lines (567,292 total), 255,819 transactions, 284,618 audit events; 1,500 s; peak 324 MB; ~1.0 GB.
+- Large verification: 55/55 checks at 0 violations (referential, uniqueness, real balance guards re-run, currencies, FX, 0/0 lines, business rows = ledger, current_balance via SQL and PHP cents, project totals vs ledger, existing integrity checker, attachments, coverage).
+- `oms` row counts unchanged across all tables except `sessions` (+1, from a GET to the normal login page).
+- Benchmarks recorded in `docs/STRESS_ENVIRONMENT.md` (comprehensive report 1/3/12 months/full; other reports; list screens; integrity checker).
+- Bugs found and fixed in the stress tooling during the work: donor account used before its opening day; staging flush variable; PRNG seed constants overflowing ints; parity normalization of redundant `CHARACTER SET`; reset removing the storage skeleton; MySQL 65,535-placeholder cap; Muwakha child rows buffered before their family row (caught at scale, regression test now builds with chunk size 7).
+
+### Changed Files
+- New: `config/oms_stress.php`, `app/Console/Commands/Stress/*` (5 commands + concern), `app/Services/Stress/*` (guard, target, probe, marker, installer), `app/Services/Stress/Generator/**` (context, PRNG, scale, calendar, text, registry, factory, writer, poster, describer, production builders adapter, audit journal/row factory, 8 phases, builder), `app/Services/Stress/Verification/StressVerifier.php`, `tests/Feature/Stress/*` (4 files), `tests/Support/Stress/StressLookupFixtures.php`, `docs/STRESS_ENVIRONMENT.md`, `.env.stress.example`.
+- Modified: `.gitignore` (`/.env.stress`, `/storage/stress/`), `app/Providers/Filament/AdminPanelProvider.php` (stress-only banner render hook), docs, graphify output.
+- Not tracked (git-ignored): `.env.stress`, `storage/stress/`.
+
+### Verification
+1. `php artisan test tests/Feature/Stress tests/Feature/Reports/ComprehensiveFinancialTransactionsSnapshotPageTest.php` → 45/45 (498 assertions).
+2. `php artisan --env=stress oms:stress:verify --database=oms_stress --confirm=oms_stress` → 55 checks, 0 violations (469 s).
+3. Live refusals under `local` for create/build/reset; stress profile resolves `oms_stress` + `storage\stress`.
+4. All 8 synthetic users authenticate with the generated stress-only password (hash check).
+5. Not run: the full suite or the full Feature suite.
+
+### Commit Hash
+Not committed, not pushed — awaiting review.
+
+Follow-up (2026-10-05): the stress-only password was rotated for the 8 synthetic users in `oms_stress` only (it had appeared in a report); the new one is not recorded anywhere.

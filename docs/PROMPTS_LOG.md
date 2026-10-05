@@ -1754,3 +1754,17 @@ See the 2026-09-28 Batch G entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_L
 - 1 new test file (12 tests).
 
 Not committed.
+
+---
+
+### Date
+2026-10-05
+
+### Prompt
+"BUILD A COMPLETE, REALISTIC, FULL-SYSTEM OMS STRESS-TEST DATABASE" — audit first, separate `oms_stress`, hard guards, no production access, ≥ 500,000 transaction lines from real line shapes only, full audit history, deterministic seed, small smoke build before large, STOP on any integrity failure, then benchmark the real application. Follow-up authorized automatic completion on this dev machine: create `.env.stress` without printing secrets, generate a stress-only password, no commit, no push.
+
+### Purpose
+A trustworthy performance baseline for OMS at mature-organization scale.
+
+### Result
+See the 2026-10-05 entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md` and `docs/STRESS_ENVIRONMENT.md`. "STOP on any failure" mattered twice: a schema-parity abort exposed the missing plain index, and a fail-clean large build exposed a flush-order bug that the small scale could not reach.

@@ -3,6 +3,8 @@
 .env
 .env.backup
 .env.production
+/.env.stress
+/storage/stress/
 .phpactor.json
 .phpunit.result.cache
 /.codex

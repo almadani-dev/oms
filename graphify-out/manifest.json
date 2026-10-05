@@ -1425,8 +1425,8 @@
     "semantic_hash": ""
   },
   "app/Providers/Filament/AdminPanelProvider.php": {
-    "mtime": 1784795296.033236,
-    "ast_hash": "062219c3b78af601ceef918ffb1857fc",
+    "mtime": 1791185584.6597614,
+    "ast_hash": "923dddf284506e0c7eaa5964ccbdd30e",
     "semantic_hash": ""
   },
   "app/Services/Attachments/AttachmentStorageService.php": {
@@ -4070,23 +4070,23 @@
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1791115228.1145897,
-    "ast_hash": "81165679e3f15ab7068ac203f6ed61e4",
+    "mtime": 1791190859.8185544,
+    "ast_hash": "41d07e435fd20066fbc69a070d6ba8c0",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
-    "mtime": 1791115228.1241548,
-    "ast_hash": "18bfa989febd5c26de2c44ef3328ece0",
+    "mtime": 1791190862.3765242,
+    "ast_hash": "6f9a64d26fb57f05769ed37455e5f19e",
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1791115228.1291373,
-    "ast_hash": "8165f82291b1c42d9499a4cd31bbadc7",
+    "mtime": 1791190875.0580187,
+    "ast_hash": "8217a7deadbc0ed47ce790451f3626fd",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
-    "mtime": 1791115228.126158,
-    "ast_hash": "32a820b5750da0778725c03d243eb3b2",
+    "mtime": 1791190862.417602,
+    "ast_hash": "27b7ceaedb9bee04d23e766145cf545f",
     "semantic_hash": ""
   },
   "docs/RESTORE_RECOVERY.md": {
@@ -4095,8 +4095,8 @@
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1791115228.1201198,
-    "ast_hash": "2763507806152feac6f4c79d49cac8f3",
+    "mtime": 1791190862.3419735,
+    "ast_hash": "62df85cc68b4f17a08ffcdf3d93a7d0a",
     "semantic_hash": ""
   },
   "public/robots.txt": {
@@ -4912,6 +4912,216 @@
   "docs/COMPREHENSIVE_REPORT_DEPLOYMENT_CHECKLIST.md": {
     "mtime": 1791119061.8663733,
     "ast_hash": "a9fc06bc80df56fadd9b6baffa2568e5",
+    "semantic_hash": ""
+  },
+  "app/Console/Commands/Stress/Concerns/ResolvesStressTarget.php": {
+    "mtime": 1791182743.5045846,
+    "ast_hash": "6f1f9581ab4bd27424310c49b2327c0b",
+    "semantic_hash": ""
+  },
+  "app/Console/Commands/Stress/StressAuditCommand.php": {
+    "mtime": 1791182669.3462906,
+    "ast_hash": "f94b6e84332c75dbbcf1f17c568a3373",
+    "semantic_hash": ""
+  },
+  "app/Console/Commands/Stress/StressBuildCommand.php": {
+    "mtime": 1791184678.7010758,
+    "ast_hash": "da67d0382361cb71bb18330588cb0101",
+    "semantic_hash": ""
+  },
+  "app/Console/Commands/Stress/StressCreateDatabaseCommand.php": {
+    "mtime": 1791182744.0754702,
+    "ast_hash": "480efb84769f1064e32de3f8479a7726",
+    "semantic_hash": ""
+  },
+  "app/Console/Commands/Stress/StressResetCommand.php": {
+    "mtime": 1791184802.0583503,
+    "ast_hash": "2c57346d394c7cc69f1cc9fb2fdef5a7",
+    "semantic_hash": ""
+  },
+  "app/Console/Commands/Stress/StressVerifyCommand.php": {
+    "mtime": 1791182669.1242564,
+    "ast_hash": "f7b8cb24926abf893991652a3255065e",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/Generator/AccountFactory.php": {
+    "mtime": 1791183190.2971718,
+    "ast_hash": "21b35d762f4a20adddd9694e80e2d489",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/Generator/AccountRegistry.php": {
+    "mtime": 1791183189.1282125,
+    "ast_hash": "784efb7b47aa7f46b10813948a55c93a",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/Generator/AuditJournal.php": {
+    "mtime": 1791182029.516194,
+    "ast_hash": "aacecdeff7d9469fd23897a94d173851",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/Generator/Audit/StressAuditRowFactory.php": {
+    "mtime": 1791181683.9396336,
+    "ast_hash": "b991b8d8dc1b38ec9bd6caf76d1ef463",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/Generator/BulkWriter.php": {
+    "mtime": 1791185129.8769763,
+    "ast_hash": "5df63076fea4e1ed4d3efdec16a7d74f",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/Generator/LedgerPoster.php": {
+    "mtime": 1791181966.9120796,
+    "ast_hash": "98c5f6a486aacafe36dbf139d7dce040",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/Generator/Phases/AttachmentsPhase.php": {
+    "mtime": 1791182341.052247,
+    "ast_hash": "eaf6e32358d75a9b1ee5bafaaae6650f",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/Generator/Phases/AuditPhase.php": {
+    "mtime": 1791182770.989668,
+    "ast_hash": "3dc5ff35af2192f9936d8b6da83ae622",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/Generator/Phases/FinancialFlowsPhase.php": {
+    "mtime": 1791183201.165315,
+    "ast_hash": "01f52372502711a2c71b9f96466baf09",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/Generator/Phases/MasterDataPhase.php": {
+    "mtime": 1791181840.7756586,
+    "ast_hash": "3a8d6ebd0ff026d1ef4276f059f0117f",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/Generator/Phases/MuwakhaPhase.php": {
+    "mtime": 1791185459.7804635,
+    "ast_hash": "60b6085e208a5008640a21d7a61b8624",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/Generator/Phases/PartnersAccountsPhase.php": {
+    "mtime": 1791182781.484682,
+    "ast_hash": "c3695df3de73a74fb209f72fa076f60e",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/Generator/Phases/ProjectsPhase.php": {
+    "mtime": 1791182458.232681,
+    "ast_hash": "53f53b7fff2eb05be4ced7a06cd8e269",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/Generator/ProductionFlowBuilders.php": {
+    "mtime": 1791181711.428647,
+    "ast_hash": "8214be8238babf35f6d6fe0e2372d9e3",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/Generator/StressBuildContext.php": {
+    "mtime": 1791182425.2017384,
+    "ast_hash": "184345edf281e9952c8b2fb0d7f8b748",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/Generator/StressCalendar.php": {
+    "mtime": 1791181594.6119666,
+    "ast_hash": "63a6b5e7ddaebbc589baf8b94d6165c6",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/Generator/StressDatasetBuilder.php": {
+    "mtime": 1791182487.38844,
+    "ast_hash": "3e36223eda67cdd3a675024546882268",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/Generator/StressNames.php": {
+    "mtime": 1791181777.9954667,
+    "ast_hash": "5dcf97e0ca25d546fa483a5f0724fc93",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/Generator/StressRandom.php": {
+    "mtime": 1791183142.8007238,
+    "ast_hash": "084ce23630e9f17b6377969929a7d2e8",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/Generator/StressScale.php": {
+    "mtime": 1791181529.2715638,
+    "ast_hash": "3d67f5e47de9bc637639b8ab692ebb29",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/Generator/StressTransactionDescriber.php": {
+    "mtime": 1791181716.4288476,
+    "ast_hash": "010bfc337a9977122d960ed5e3957146",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/Generator/SyntheticText.php": {
+    "mtime": 1791181570.047714,
+    "ast_hash": "6f96b803cf5fefe3d3bbb984eb381ffe",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/StressDatabaseInstaller.php": {
+    "mtime": 1791184786.96211,
+    "ast_hash": "1adaef94d3ff68675d1756a7012d121a",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/StressEnvironmentGuard.php": {
+    "mtime": 1791181284.2759748,
+    "ast_hash": "3e1ed257632082557c41250d9050ddb9",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/StressGuardException.php": {
+    "mtime": 1791181247.9169245,
+    "ast_hash": "e5acb70c594898e4e40c0db4bd24f2c4",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/StressMetaRepository.php": {
+    "mtime": 1791181379.4444141,
+    "ast_hash": "ea99615a56d8af25fe5ea114a96e0a92",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/StressServerProbe.php": {
+    "mtime": 1791181248.8864162,
+    "ast_hash": "ee6eb79e0c58069c0d1d4db28975ac1a",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/StressTarget.php": {
+    "mtime": 1791181248.6721282,
+    "ast_hash": "aeb6b0065af06639f663e675afe987b6",
+    "semantic_hash": ""
+  },
+  "app/Services/Stress/Verification/StressVerifier.php": {
+    "mtime": 1791182644.3107755,
+    "ast_hash": "2b8b3f9944ac43c06b5e9b80e69e3134",
+    "semantic_hash": ""
+  },
+  "config/oms_stress.php": {
+    "mtime": 1791181393.77475,
+    "ast_hash": "0a5b1d9eb81dbcb3923064ebb40c5638",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Stress/StressCommandSafetyTest.php": {
+    "mtime": 1791183021.7221231,
+    "ast_hash": "f3fe530cf971441c66bee0f0ed6c75fd",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Stress/StressEnvironmentGuardTest.php": {
+    "mtime": 1791182822.860556,
+    "ast_hash": "fd07eb7644dbaa88f0d091a8c4621529",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Stress/StressGeneratorSmallBuildTest.php": {
+    "mtime": 1791185473.1308045,
+    "ast_hash": "65919a529b39e0c400e18fc3dfa1cf1c",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Stress/StressProductionParityTest.php": {
+    "mtime": 1791183070.730976,
+    "ast_hash": "4976931448ffc248904e31a32a8f4a28",
+    "semantic_hash": ""
+  },
+  "tests/Support/Stress/StressLookupFixtures.php": {
+    "mtime": 1791183056.363535,
+    "ast_hash": "881265b0dced1b2af805dfc524059e5b",
+    "semantic_hash": ""
+  },
+  "docs/STRESS_ENVIRONMENT.md": {
+    "mtime": 1791190802.286982,
+    "ast_hash": "59d348a9b867ab3d842073263131ad1e",
     "semantic_hash": ""
   }
 }
