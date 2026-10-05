@@ -309,7 +309,9 @@ class ComprehensiveFinancialTransactionsSnapshotTest extends TestCase
 
         $stored = 0;
         foreach ($disk->files($dir.'/rows') as $file) {
-            $stored += count(json_decode($disk->get($file), true));
+            // Format v2: each row chunk is gzip (level 1) over the v1 JSON.
+            $this->assertStringEndsWith('.json.gz', $file);
+            $stored += count(json_decode(gzdecode($disk->get($file)), true));
         }
         $this->assertSame(50, $stored, 'Each row is stored exactly once.');
 

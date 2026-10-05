@@ -115,8 +115,8 @@
     "semantic_hash": ""
   },
   "app/Filament/Pages/ComprehensiveFinancialTransactionsPage.php": {
-    "mtime": 1791118620.6812325,
-    "ast_hash": "995ba4abf275031da31cee1dc03fb650",
+    "mtime": 1791199711.2200499,
+    "ast_hash": "4f75bc63d375c27aba197d287878637a",
     "semantic_hash": ""
   },
   "app/Filament/Pages/Concerns/AuthorizesReportAccess.php": {
@@ -1800,8 +1800,8 @@
     "semantic_hash": ""
   },
   "app/Services/Reports/ComprehensiveFinancialTransactionsReportService.php": {
-    "mtime": 1791115860.3223326,
-    "ast_hash": "8b3bd9965c6a1c8cfd159e3767fb8e2a",
+    "mtime": 1791199749.6553144,
+    "ast_hash": "ce3a1cadf99aaff9250e85e6bf958e19",
     "semantic_hash": ""
   },
   "app/Services/Reports/ComprehensiveFinancialTransactionsWordExportService.php": {
@@ -4070,8 +4070,8 @@
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1791190859.8185544,
-    "ast_hash": "41d07e435fd20066fbc69a070d6ba8c0",
+    "mtime": 1791191645.4005847,
+    "ast_hash": "b294eee85f14f01910b9092e0a1032b9",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
@@ -4080,8 +4080,8 @@
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1791190875.0580187,
-    "ast_hash": "8217a7deadbc0ed47ce790451f3626fd",
+    "mtime": 1791191616.8320441,
+    "ast_hash": "8ed92088e6d3e0c566a3a2c147c63717",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
@@ -4095,8 +4095,8 @@
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1791190862.3419735,
-    "ast_hash": "62df85cc68b4f17a08ffcdf3d93a7d0a",
+    "mtime": 1791191619.4408839,
+    "ast_hash": "96acbf68e46c9c215ef68feea36602b0",
     "semantic_hash": ""
   },
   "public/robots.txt": {
@@ -4830,8 +4830,8 @@
     "semantic_hash": ""
   },
   "app/Services/Reports/ComprehensiveFinancialTransactions/FilesystemComprehensiveFinancialTransactionsSnapshotRepository.php": {
-    "mtime": 1791115839.3072295,
-    "ast_hash": "add69f974a8663c1d0e593b1b2154d71",
+    "mtime": 1791199661.8085513,
+    "ast_hash": "79bd02f32ee8bfb1e16cdf25ae383452",
     "semantic_hash": ""
   },
   "app/Services/Reports/ComprehensiveFinancialTransactions/SnapshotIndexWriter.php": {
@@ -4850,8 +4850,8 @@
     "semantic_hash": ""
   },
   "tests/Feature/Reports/ComprehensiveFinancialTransactionsSnapshotTest.php": {
-    "mtime": 1791116359.8265593,
-    "ast_hash": "964fedc69b87091181b2b1137c0b23fd",
+    "mtime": 1791199931.3869011,
+    "ast_hash": "ad9cca51bf9d0433e20720a2766d456f",
     "semantic_hash": ""
   },
   "tests/Support/Reports/ComprehensiveFinancialTransactionsFixtures.php": {
@@ -5122,6 +5122,16 @@
   "docs/STRESS_ENVIRONMENT.md": {
     "mtime": 1791190802.286982,
     "ast_hash": "59d348a9b867ab3d842073263131ad1e",
+    "semantic_hash": ""
+  },
+  "app/Services/Reports/ComprehensiveFinancialTransactions/ComprehensiveFinancialTransactionsSnapshotUnreadable.php": {
+    "mtime": 1791199610.5279963,
+    "ast_hash": "320b395fc5576dcdf1438c7a55d1244b",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Reports/ComprehensiveFinancialTransactionsSnapshotFormatTest.php": {
+    "mtime": 1791200043.6366534,
+    "ast_hash": "f60985684500767b2b712c208bff3cac",
     "semantic_hash": ""
   }
 }

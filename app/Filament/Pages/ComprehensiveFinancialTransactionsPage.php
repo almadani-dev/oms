@@ -19,6 +19,7 @@ use App\Services\Reports\ComprehensiveFinancialTransactions\ComprehensiveFinanci
 use App\Services\Reports\ComprehensiveFinancialTransactions\ComprehensiveFinancialTransactionsFilters;
 use App\Services\Reports\ComprehensiveFinancialTransactions\ComprehensiveFinancialTransactionsSnapshot;
 use App\Services\Reports\ComprehensiveFinancialTransactions\ComprehensiveFinancialTransactionsSnapshotBuilder;
+use App\Services\Reports\ComprehensiveFinancialTransactions\ComprehensiveFinancialTransactionsSnapshotUnreadable;
 use App\Services\Reports\ComprehensiveFinancialTransactions\Contracts\ComprehensiveFinancialTransactionsSnapshotRepository;
 use App\Services\Reports\ComprehensiveFinancialTransactionsExcelExportService;
 use App\Services\Reports\ComprehensiveFinancialTransactionsReportService;
@@ -727,24 +728,73 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
             return $data;
         }
 
-        $data['detailRows'] = $this->detailRows;
-        $data['detailPager'] = $this->pager($this->detailPage, $snapshot->lineCount(), $perPage);
+        try {
+            $pages = [
+                'detailRows' => $this->detailRows,
+                'detailPager' => $this->pager($this->detailPage, $snapshot->lineCount(), $perPage),
+            ];
 
-        foreach ([
-            'category' => [ComprehensiveFinancialTransactionsSnapshotRepository::DIMENSION_CATEGORY, $this->openCategoryKey, $this->categoryPage],
-            'type' => [ComprehensiveFinancialTransactionsSnapshotRepository::DIMENSION_TYPE, $this->openTypeKey, $this->typePage],
-        ] as $prefix => [$dimension, $key, $page]) {
-            if ($key === null) {
-                continue;
+            foreach ([
+                'category' => [ComprehensiveFinancialTransactionsSnapshotRepository::DIMENSION_CATEGORY, $this->openCategoryKey, $this->categoryPage],
+                'type' => [ComprehensiveFinancialTransactionsSnapshotRepository::DIMENSION_TYPE, $this->openTypeKey, $this->typePage],
+            ] as $prefix => [$dimension, $key, $page]) {
+                if ($key === null) {
+                    continue;
+                }
+
+                $total = $snapshot->groupLineCount($dimension, $key);
+
+                $pages[$prefix.'Rows'] = $snapshot->groupPage($dimension, $key, $page, $perPage);
+                $pages[$prefix.'Pager'] = $this->pager($page, $total, $perPage);
             }
+        } catch (ComprehensiveFinancialTransactionsSnapshotUnreadable $e) {
+            // Damaged storage is shown exactly like an expired report: the
+            // notice and the summaries' removal, never partial rows or a 500.
+            $this->forgetUnreadableSnapshot($e);
 
-            $total = $snapshot->groupLineCount($dimension, $key);
-
-            $data[$prefix.'Rows'] = $snapshot->groupPage($dimension, $key, $page, $perPage);
-            $data[$prefix.'Pager'] = $this->pager($page, $total, $perPage);
+            return array_merge($data, [
+                'snapshotExpired' => $this->hasSubmitted,
+                'currencySummaries' => [],
+                'categorySummaries' => [],
+                'typeSummaries' => [],
+            ]);
         }
 
-        return $data;
+        return array_merge($data, $pages);
+    }
+
+    /**
+     * A snapshot whose stored files cannot be read is reported (for the
+     * logs) and discarded; the page then behaves as for an expired report.
+     */
+    private function forgetUnreadableSnapshot(ComprehensiveFinancialTransactionsSnapshotUnreadable $e): void
+    {
+        report($e);
+        $this->discardSnapshot();
+    }
+
+    /**
+     * Every row of a report small enough for the inline exports (Word and
+     * the styled workbook are capped at 2,000 lines), read BEFORE anything is
+     * audited or streamed, so damaged storage ends in the expired notice
+     * instead of a half-written download. Null when unreadable.
+     *
+     * @return array<int, array<string, mixed>>|null
+     */
+    private function inlineExportRows(ComprehensiveFinancialTransactionsSnapshot $snapshot): ?array
+    {
+        try {
+            return iterator_to_array($snapshot->rows(), false);
+        } catch (ComprehensiveFinancialTransactionsSnapshotUnreadable $e) {
+            $this->forgetUnreadableSnapshot($e);
+
+            Notification::make()
+                ->title(self::EXPIRED_NOTICE)
+                ->warning()
+                ->send();
+
+            return null;
+        }
     }
 
     /**
@@ -859,13 +909,19 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
             return null;
         }
 
+        $rows = $this->inlineExportRows($snapshot);
+
+        if ($rows === null) {
+            return null;
+        }
+
         $this->auditExport(ReportExportFormat::Xlsx);
 
         return app(ComprehensiveFinancialTransactionsExcelExportService::class)->stream(
             $snapshot->filters()->dateFrom,
             $snapshot->filters()->dateTo,
             $snapshot->filterLabels(),
-            $snapshot->rows(),
+            $rows,
             $snapshot->currencySummaries(),
             $snapshot->categorySummaries(),
             $snapshot->typeSummaries(),
@@ -981,13 +1037,19 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
             return null;
         }
 
+        $rows = $this->inlineExportRows($snapshot);
+
+        if ($rows === null) {
+            return null;
+        }
+
         $this->auditExport(ReportExportFormat::Docx);
 
         return app(ComprehensiveFinancialTransactionsWordExportService::class)->stream(
             $snapshot->filters()->dateFrom,
             $snapshot->filters()->dateTo,
             $snapshot->filterLabels(),
-            $snapshot->rows(),
+            $rows,
             $snapshot->currencySummaries(),
             $snapshot->categorySummaries(),
             $snapshot->typeSummaries(),

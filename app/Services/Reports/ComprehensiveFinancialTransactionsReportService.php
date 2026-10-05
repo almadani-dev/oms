@@ -308,7 +308,7 @@ class ComprehensiveFinancialTransactionsReportService
         return [
             'transaction_id' => (int) $line->transaction_id,
             'line_id' => (int) $line->line_id,
-            'date' => Carbon::parse($line->transaction_time)->format('Y-m-d'),
+            'date' => self::lineDate($line->transaction_time),
             'reference' => $line->transaction_number ?: ('قيد #' . $line->transaction_id),
             'category' => $category,
             'category_key' => $this->groupKey($line->super_type_id),
@@ -634,6 +634,30 @@ class ComprehensiveFinancialTransactionsReportService
         }
 
         return $map;
+    }
+
+    /**
+     * The row's "Y-m-d" date — byte-for-byte what
+     * Carbon::parse($time)->format('Y-m-d') returns, without building a Carbon
+     * per line (≈ 16 s on a 560k-line report).
+     *
+     * transactions.transaction_time is a DATETIME, so the database hands back
+     * "YYYY-MM-DD HH:MM:SS", which Carbon parses in the application timezone
+     * with no conversion; its date is then exactly the first ten characters.
+     * The shortcut is taken ONLY for a real calendar date with a real
+     * 00:00:00–23:59:59 clock (a value like 25:00 or 02-30 would roll over in
+     * Carbon); anything else still goes through Carbon unchanged.
+     */
+    public static function lineDate(mixed $transactionTime): string
+    {
+        $value = (string) $transactionTime;
+
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})(?: (?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d)?$/', $value, $m) === 1
+            && checkdate((int) $m[2], (int) $m[3], (int) $m[1])) {
+            return substr($value, 0, 10);
+        }
+
+        return Carbon::parse($transactionTime)->format('Y-m-d');
     }
 
     /**

@@ -19,7 +19,8 @@ use Illuminate\Support\Str;
  *
  *   comprehensive-financial-transactions/{owner}/{id}/building.json   while pending/processing (status + progress)
  *   comprehensive-financial-transactions/{owner}/{id}/failed.json     after a failed build (nothing else kept)
- *   comprehensive-financial-transactions/{owner}/{id}/rows/chunk-000001.json
+ *   comprehensive-financial-transactions/{owner}/{id}/rows/chunk-000001.json.gz   (format version 2)
+ *   comprehensive-financial-transactions/{owner}/{id}/rows/chunk-000001.json      (format version 1, read only)
  *   comprehensive-financial-transactions/{owner}/{id}/idx/category/{key}/chunk-000001.json
  *   comprehensive-financial-transactions/{owner}/{id}/idx/type/{key}/chunk-000001.json
  *   comprehensive-financial-transactions/{owner}/{id}/manifest.json   written LAST
@@ -32,16 +33,48 @@ use Illuminate\Support\Str;
  * Rows are stored exactly once (rows/). A group index is only a list of
  * ascending row ordinals, itself chunked, so even a classification holding
  * hundreds of thousands of lines never becomes one giant array.
+ *
+ * FORMAT VERSIONS. The manifest's `version` states how its row chunks are
+ * encoded, and a reader never guesses:
+ *   1  `rows/chunk-NNNNNN.json`     plain JSON (snapshots built before v2);
+ *   2  `rows/chunk-NNNNNN.json.gz`  the same JSON, gzip level 1, per chunk
+ *      (`row_encoding: json-gzip`, `compression_level: 1`).
+ * New snapshots are always version 2; version 1 stays readable until it
+ * expires. Any other version is unsupported and reads as "not found" (the
+ * page's expired notice). A v2 chunk must carry the gzip magic and inflate;
+ * a v1 chunk must NOT be gzip — a file in the wrong encoding, a missing,
+ * truncated or corrupt chunk, or JSON that does not decode is rejected with
+ * ComprehensiveFinancialTransactionsSnapshotUnreadable, never served as
+ * partial or guessed rows. Indexes are plain JSON in both versions.
  */
 final class FilesystemComprehensiveFinancialTransactionsSnapshotRepository implements ComprehensiveFinancialTransactionsSnapshotRepository
 {
     public const FORMAT = 'oms.comprehensive_financial_transactions.snapshot';
 
-    public const VERSION = 1;
+    /** The version every new snapshot is written in. */
+    public const VERSION = 2;
+
+    /** Plain-JSON row chunks; still readable until such snapshots expire. */
+    public const VERSION_JSON = 1;
+
+    public const ROW_ENCODING_GZIP = 'json-gzip';
+
+    public const COMPRESSION_LEVEL = 1;
+
+    private const GZIP_MAGIC = "\x1f\x8b";
 
     private const BASE = 'comprehensive-financial-transactions';
 
     private const JSON_FLAGS = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR;
+
+    /**
+     * Format version of each snapshot this instance has read a manifest for
+     * ("owner/id" => version). Row reads use it to pick the encoding; a
+     * snapshot whose version is not known here reads its manifest first.
+     *
+     * @var array<string, int>
+     */
+    private array $versions = [];
 
     public function __construct(private readonly FilesystemFactory $filesystems) {}
 
@@ -169,7 +202,14 @@ final class FilesystemComprehensiveFinancialTransactionsSnapshotRepository imple
     {
         $this->assertBuilding($ownerId, $snapshotId);
 
-        $this->put($this->rowChunkPath($ownerId, $snapshotId, $chunk), array_values($rows));
+        // Exactly the JSON a version 1 chunk held, then gzip level 1.
+        $compressed = gzencode(json_encode(array_values($rows), self::JSON_FLAGS), self::COMPRESSION_LEVEL);
+
+        if ($compressed === false) {
+            throw new \RuntimeException('Report snapshot chunk could not be compressed.');
+        }
+
+        $this->disk()->put($this->rowChunkPath($ownerId, $snapshotId, $chunk, self::VERSION), $compressed);
     }
 
     public function writeIndexChunk(int $ownerId, string $snapshotId, string $dimension, string $groupKey, int $chunk, array $ordinals): void
@@ -200,6 +240,8 @@ final class FilesystemComprehensiveFinancialTransactionsSnapshotRepository imple
         $manifest = array_merge($manifest, [
             'format' => self::FORMAT,
             'version' => self::VERSION,
+            'row_encoding' => self::ROW_ENCODING_GZIP,
+            'compression_level' => self::COMPRESSION_LEVEL,
             'id' => $snapshotId,
             'owner_id' => $ownerId,
             'status' => 'completed',
@@ -207,6 +249,7 @@ final class FilesystemComprehensiveFinancialTransactionsSnapshotRepository imple
 
         $this->put($dir.'/manifest.json', $manifest);
         $disk->delete($dir.'/building.json');
+        $this->versions[$ownerId.'/'.$snapshotId] = self::VERSION;
 
         return new ComprehensiveFinancialTransactionsSnapshot($this, $manifest);
     }
@@ -238,17 +281,61 @@ final class FilesystemComprehensiveFinancialTransactionsSnapshotRepository imple
             return null;
         }
 
+        $this->versions[$ownerId.'/'.$snapshotId] = (int) $manifest['version'];
+
         return new ComprehensiveFinancialTransactionsSnapshot($this, $manifest);
     }
 
     public function readRowChunk(int $ownerId, string $snapshotId, int $chunk): array
     {
-        return $this->get($this->rowChunkPath($ownerId, $snapshotId, $chunk));
+        $version = $this->versionOf($ownerId, $snapshotId);
+        $raw = $this->raw($this->rowChunkPath($ownerId, $snapshotId, $chunk, $version));
+        $isGzip = str_starts_with($raw, self::GZIP_MAGIC);
+
+        if ($version === self::VERSION) {
+            // Never treat plain JSON as gzip: the magic must be there and it must inflate.
+            $json = $isGzip ? @gzdecode($raw) : false;
+
+            if (! is_string($json)) {
+                throw new ComprehensiveFinancialTransactionsSnapshotUnreadable('Report snapshot chunk is not valid gzip.');
+            }
+        } else {
+            // Never treat gzip as plain JSON.
+            if ($isGzip) {
+                throw new ComprehensiveFinancialTransactionsSnapshotUnreadable('Report snapshot chunk is not in its declared encoding.');
+            }
+
+            $json = $raw;
+        }
+
+        return $this->decode($json);
     }
 
     public function readIndexChunk(int $ownerId, string $snapshotId, string $dimension, string $groupKey, int $chunk): array
     {
-        return $this->get($this->indexChunkPath($ownerId, $snapshotId, $dimension, $groupKey, $chunk));
+        return $this->decode($this->raw($this->indexChunkPath($ownerId, $snapshotId, $dimension, $groupKey, $chunk)));
+    }
+
+    /**
+     * The snapshot's declared format version, from its manifest (cached per
+     * instance; find() and publish() prime it). An unreadable or unsupported
+     * manifest makes every chunk unreadable rather than guessable.
+     */
+    private function versionOf(int $ownerId, string $snapshotId): int
+    {
+        $key = $ownerId.'/'.$snapshotId;
+
+        if (! isset($this->versions[$key])) {
+            $manifest = $this->readManifest($this->dir($ownerId, $snapshotId));
+
+            if ($manifest === null) {
+                throw new ComprehensiveFinancialTransactionsSnapshotUnreadable('Report snapshot manifest is missing or unsupported.');
+            }
+
+            $this->versions[$key] = (int) $manifest['version'];
+        }
+
+        return $this->versions[$key];
     }
 
     public function purge(\DateTimeInterface $now, ?int $ownerId = null): int
@@ -357,12 +444,19 @@ final class FilesystemComprehensiveFinancialTransactionsSnapshotRepository imple
 
         if (! is_array($manifest)
             || ($manifest['format'] ?? null) !== self::FORMAT
-            || ($manifest['version'] ?? null) !== self::VERSION
             || ($manifest['status'] ?? null) !== 'completed') {
             return null;
         }
 
-        return $manifest;
+        // Exactly the two known layouts; anything else is unsupported.
+        $supported = match ($manifest['version'] ?? null) {
+            self::VERSION_JSON => ! isset($manifest['row_encoding']),
+            self::VERSION => ($manifest['row_encoding'] ?? null) === self::ROW_ENCODING_GZIP
+                && ($manifest['compression_level'] ?? null) === self::COMPRESSION_LEVEL,
+            default => false,
+        };
+
+        return $supported ? $manifest : null;
     }
 
     private function assertBuilding(int $ownerId, string $snapshotId): void
@@ -383,9 +477,9 @@ final class FilesystemComprehensiveFinancialTransactionsSnapshotRepository imple
         return self::BASE.'/'.$ownerId.'/'.$snapshotId;
     }
 
-    private function rowChunkPath(int $ownerId, string $snapshotId, int $chunk): string
+    private function rowChunkPath(int $ownerId, string $snapshotId, int $chunk, int $version): string
     {
-        return $this->dir($ownerId, $snapshotId).'/rows/'.$this->chunkName($chunk);
+        return $this->dir($ownerId, $snapshotId).'/rows/'.$this->chunkName($chunk).($version === self::VERSION ? '.gz' : '');
     }
 
     private function indexChunkPath(int $ownerId, string $snapshotId, string $dimension, string $groupKey, int $chunk): string
@@ -429,15 +523,37 @@ final class FilesystemComprehensiveFinancialTransactionsSnapshotRepository imple
     /**
      * @return array<int|string, mixed>
      */
-    private function get(string $path): array
+    private function raw(string $path): string
     {
-        $raw = $this->disk()->get($path);
-
-        if (! is_string($raw)) {
-            throw new \RuntimeException('Report snapshot chunk is missing.');
+        try {
+            $raw = $this->disk()->get($path);
+        } catch (\Throwable) {
+            $raw = null;
         }
 
-        return json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+        if (! is_string($raw) || $raw === '') {
+            throw new ComprehensiveFinancialTransactionsSnapshotUnreadable('Report snapshot chunk is missing.');
+        }
+
+        return $raw;
+    }
+
+    /**
+     * @return array<int, mixed>
+     */
+    private function decode(string $json): array
+    {
+        try {
+            $data = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            throw new ComprehensiveFinancialTransactionsSnapshotUnreadable('Report snapshot chunk is not valid JSON.');
+        }
+
+        if (! is_array($data) || ! array_is_list($data)) {
+            throw new ComprehensiveFinancialTransactionsSnapshotUnreadable('Report snapshot chunk has an unexpected shape.');
+        }
+
+        return $data;
     }
 
     private function disk(): Filesystem
