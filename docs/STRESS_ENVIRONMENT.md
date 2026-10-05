@@ -45,10 +45,20 @@ php artisan --env=stress oms:stress:verify --database=oms_stress --confirm=oms_s
 php artisan --env=stress oms:stress:reset  --database=oms_stress --confirm=oms_stress --confirm-reset=oms_stress
 ```
 
-- `create-database`: creates the empty database, runs the real migrations, checks schema parity with `oms` (read-only session), copies the 8 lookup tables (currencies, account/bank/partner types, project statuses/supers, transaction super types/types), runs the real `PermissionSyncService`, prepares `storage/stress/`, writes the marker. No operational data.
+- `create-database`: creates the empty database, runs the real migrations, checks schema parity with a fresh migration of the current code (see below), copies the 8 lookup tables from `oms` (read-only session) (currencies, account/bank/partner types, project statuses/supers, transaction super types/types), runs the real `PermissionSyncService`, prepares `storage/stress/`, writes the marker. No operational data.
+  - **Schema parity is checked against the CURRENT code, not `oms`.** A temporary local database `oms_stress_schema_ref_<12 hex>` is created and migrated from zero with the current migrations. `oms_stress` is compared with it under the same strict rules: the marker table is the only allowed difference, and any other missing, extra or different table aborts. The reference is then dropped, including on failure.
+  - The reference follows the same rules as the stress target: write environment only, never `production`, the same loopback base connection, and the live server hostname must be this machine. Its name must match the fixed pattern and can never be `oms`, a forbidden name or an approved stress target.
+  - A reference left behind by a killed process is dropped by the next `create-database` and by `reset`.
+  - `oms` is never migrated by any stress command. It is opened only through a READ ONLY session, to copy the 8 lookup tables.
+  - Since 2026-10-05, a freshly created `oms_stress` no longer gets `oms`'s incremental-only plain index `transaction_lines_account_id_foreign`: its schema is exactly what the migrations create.
 - `build`: refuses a non-empty database. Scales: `small` (~10k lines), `medium` (~100k), `large` (~535k, ≥ 500k active), or `--lines=N`. Same seed + code + schema → same logical dataset. Fail-clean: on error, reset and rebuild.
 - `verify`: read-only. Exits non-zero if any check has violations. **Do not run a larger build after a failed verify.**
 - `reset`: drops `oms_stress` and deletes `storage/stress/`. Never `migrate:fresh`, never `oms`.
+- **After every `build`, rebuild the comprehensive report projection.** The generator bulk-inserts the ledger, so it bypasses the workflows that keep the projection current:
+  ```
+  php artisan --env=stress oms:rebuild-comprehensive-report-projection --verify
+  ```
+  Until that finishes, the report uses its fallback (snapshot) path.
 
 The commands are `$hidden` (not shown in `php artisan list`).
 
@@ -111,7 +121,7 @@ Build: 1,500 s on this laptop, peak PHP memory 324 MB (financial flows 619 s, au
 
 Referential (lines, transactions, business rows, projects/costs, accounts, partners, Muwakha, audit actors, attachments), soft-delete coherence, uniqueness (transaction numbers, project codes, national ids, card codes, links, audit uuids), the real `FinancialTransactionBalanceGuard` re-run on every active transaction, line currency = account currency, no 0/0 or negative lines, business rows = ledger, execution ≤ budget, `current_balance` = ledger (SQL and an independent PHP cents sum), project report totals = totals recomputed from the ledger, the existing `oms:check-financial-integrity`, attachment files present, and report coverage.
 
-Schema parity note: a fresh migrate does not recreate the plain index `transaction_lines_account_id_foreign (account_id)` that the incrementally migrated `oms` has; create-database adds such source-only plain indexes so benchmarks run on the same physical schema, and refuses any other difference.
+Schema parity note (2026-10-05 build of 561k lines): at that time parity was checked against `oms`, and the plain index `transaction_lines_account_id_foreign (account_id)` that only the incrementally migrated `oms` has was added to `oms_stress`. Since the switch to a fresh-migration reference, it is no longer added.
 
 ### Performance (single runs on this laptop; measured, not optimized)
 
@@ -139,6 +149,17 @@ Other screens (first value warm unless noted):
 | Transaction lines list / transactions list / execution payments / audit events (first page) | 3.5 / 2.1 / 1.7 / 1.2 s | | |
 | Transaction lines Arabic search | 36–41 s | 35 s in one `COUNT(*)` with `REPLACE … LIKE` | full scan |
 | `oms:check-financial-integrity` | 460 s | | Journal checker 345 s (300 s PHP), account balance GROUP BY 62 s |
+
+## Current dataset: 1M+ build (2026-10-05, `--lines=1150000`, seed 20261005, chunk 500)
+
+This replaces the 561k build described above (`reset` → `create-database` with fresh-migration schema parity → `build`).
+
+- **Volume:** 1,233,324 transaction lines (**1,221,321 active**), 555,923 transactions, about 616k audit events, 5,043 accounts, 6,446 projects, 2,578 Muwakha families.
+- **Build:** 2,420 s, peak 616 MB.
+- **`oms:stress:verify`:** all checks passed, 0 violations, including `oms:check-financial-integrity`, account balances and project totals; 1,622 s.
+- **Comprehensive report projection:** `oms:rebuild-comprehensive-report-projection` in 700 s. `oms:verify-comprehensive-report-projection` found 0 differences in 79 s. The projection takes 504 MB.
+- The fixed stress login password was set again afterwards through `UserManagementService`. It is stored only as its hash; the generated one was never shown.
+- Report benchmarks on this dataset are in `docs/TASKS_LOG.md` (2026-10-05, real-time reporting projection).
 
 ## Return to normal OMS
 

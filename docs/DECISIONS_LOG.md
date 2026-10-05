@@ -14,6 +14,120 @@
 
 
 ### Date
+2026-10-05 (تقرير الحركات المالية الشامل — real-time reporting projection, maintained synchronously by one explicit service)
+
+### Decision
+- **What the projection is:** a derived, rebuildable read model of the report, `comprehensive_report_lines`.
+  - One row per active line of an active transaction.
+  - It stores IDs, filter keys, order keys and amounts only.
+  - Its clustered primary key is the canonical order `(transaction_time, transaction_id, line_id)`.
+- **Who writes it:** only `ComprehensiveReportProjector::syncTransaction()` / `removeTransaction()`.
+  - It is called once, as the last ledger step, inside each workflow's own `DB::transaction()`: 5 creates, 5 edits (after the force-delete and recreation of lines), 5 deletes, and the opening balance.
+  - It re-derives the rows from the ledger, never from form data, and refuses to run outside a transaction.
+- **Account type:** the `Account` observer re-derives an account's lines when its `account_type_id` changes.
+- **No MySQL triggers. No queue.** A failure rolls back the business row, transaction, lines, balances, audit event and projection together.
+
+### Reason
+- The user required immediate freshness without a worker, atomicity with the business write, and no triggers.
+- One central service with one call per write site keeps the derivation logic in one place.
+- A static test fails if a file that writes ledger rows does not reference the projector.
+
+### Impact
+- Every financial write does ~1–3 extra statements per transaction; the write-overhead benchmark has the figures.
+- Restore, cleanup and stress bulk-loads are covered by the rebuild/verify commands and by the cleanup classification.
+
+---
+
+
+### Date
+2026-10-05 (projection summaries come from exactly-maintained monthly aggregates; raw aggregation measured too slow)
+
+### Decision
+- **Monthly totals:** `comprehensive_report_monthly_totals` holds per-month line counts and debit/credit sums per (type, currency, account type).
+- **Transaction counts:** `comprehensive_report_monthly_transactions` holds distinct-transaction counts per (month, type, signature).
+  - The signature is the sorted set of `currency:account_type` pairs of a transaction's lines.
+  - So "transactions with at least one line in currencies S and account type T" is an exact sum over matching signatures.
+- **Period split:** whole months come from the aggregates; the partial months at the edges, and any account/project/side filter, use indexed queries on the projection lines.
+- **Mutable relations are resolved at query time:** classification → types, project → live cost items, soft-deleted accounts → exclusion.
+  - Lines of soft-deleted accounts are kept in the aggregates and subtracted at query time, so that open business rule can change without a rebuild.
+- **Ordering:** first-appearance order is resolved exactly by one indexed `LIMIT 1` per (type, currency) group.
+
+### Reason
+EXPLAIN ANALYZE on `oms_stress` (561,831 lines, this laptop):
+- Direct full-range `GROUP BY` on the projection: 6.2 s.
+- `COUNT(DISTINCT transaction_id)`: 3.6 s.
+- The heaviest filter (account type 4, 62% of lines), even through a covering index: about 4.9 s.
+
+All of these grow linearly, and the targets are <1 s normal and ≤5 s worst at ≥1M lines.
+
+### Impact
+- Interactive totals are exact decimal sums (bcmath).
+- The old report summed floats line by line. The parity oracle compares rows exactly and amounts as displayed; the largest residue observed was 2.6e-5, never a different displayed cent.
+
+---
+
+
+### Date
+2026-10-05 (live report: keyset pager First / Previous / Next / Last; fallback to the snapshot path whenever the projection is not proven current)
+
+### Decision
+- **Paging:** live-mode pages are keyset walks of the projection's clustered key.
+  - Next walks after the last line on screen; Previous walks before the first; Last walks backwards by exactly the size of the last page.
+  - Arbitrary page jumps are ignored; the existing pager only offers those four buttons.
+- **Readiness:** the page reads the projection only while `comprehensive_report_projection_state.status = ready`.
+  - Otherwise "عرض" uses the unchanged V2 snapshot path, with a visible fallback notice.
+  - If the projection becomes invalid after "عرض", the displayed result is withdrawn like an expired report.
+- **Exports:** they still produce an immutable snapshot, built through the projection when ready (inline ≤2,000 lines; large Excel in the existing `reports` job).
+
+### Reason
+- No deep OFFSET.
+- The page is never shown from an unverified projection.
+- The V2 snapshot infrastructure stays as fallback and export format, as the user required.
+
+### Impact
+Summaries are computed at "عرض" and kept in Livewire state (a few KB). Rows are live per page.
+
+---
+
+
+### Date
+2026-10-05 (stress schema parity checked against a fresh migration of the current code, not against `oms`)
+
+### Decision
+- **Reference schema:** `oms:stress:create-database` compares `oms_stress` with a temporary local database `oms_stress_schema_ref_<12 hex>`.
+  - That database is created, migrated from zero with the current migrations, compared and dropped, including on failure.
+  - Stale references are dropped by the next run and by `reset`.
+- **`oms`:** it is no longer the schema reference and is never migrated by a stress command. It is still opened READ ONLY, only to copy the 8 lookup tables.
+
+### Reason
+The projection migration exists in the code but must not be applied to the development `oms` just so a stress build can run. The user directed this explicitly.
+
+### Impact
+- The comparison stays strict: only the marker table may differ.
+- A fresh `oms_stress` no longer receives `oms`'s incremental-only plain index `transaction_lines_account_id_foreign`.
+
+---
+
+
+### Date
+2026-10-05 (stale fixtures in `CleanOperationalDataCommandTest` repaired)
+
+### Decision
+Three test-only repairs, all reproduced on a clean `HEAD` before the change:
+- The test's Muwakha fixture now sets the NOT NULL columns `martyr_national_id`, `martyrdom_date` and `guardian_phone`.
+- The audit-event fixture no longer writes the nonexistent `updated_at`.
+- The `--apply` command calls pass `--no-interaction` (the command's documented non-interactive mode). Without it, `confirm()` blocked indefinitely under `Artisan::call`.
+
+### Reason
+The user required the cleanup suite to be green. These defects predate the projection work: 5 errors, and a hang reproduced on pure `HEAD` code. They hid the coverage of the new projection tables' classification.
+
+### Impact
+Test-only changes. No application behaviour changed.
+
+---
+
+
+### Date
 2026-10-04 (تقرير الحركات المالية الشامل — report work on its own `reports` queue; build status in files; one try)
 
 ### Decision

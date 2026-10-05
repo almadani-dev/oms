@@ -14,7 +14,9 @@
     method name alone, so the spinner and the disabled state belong to this
     one table: paging the main table never spins a classification's pager,
     and vice versa. Nothing here rebuilds the report — the next render reads
-    that one page from the immutable report snapshot.
+    that one page: in live mode by a keyset walk of the report projection
+    (only First / Previous / Next / Last exist, which is all this pager
+    offers), in fallback mode from the immutable report snapshot.
 --}}
 @if ($pager !== null && $pager['last'] > 1)
     <nav class="cft-pager" wire:key="{{ $pagerKey }}" aria-label="{{ $pagerLabel }}">

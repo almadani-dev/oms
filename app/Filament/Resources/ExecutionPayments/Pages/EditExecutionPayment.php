@@ -17,6 +17,7 @@ use App\Services\Audit\Attachments\AttachmentAuditRecorder;
 use App\Services\Audit\Financial\FinancialAccountRole;
 use App\Services\Audit\Financial\FinancialAuditRecorder;
 use App\Services\Audit\Financial\FinancialAuditSubject;
+use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportProjector;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
@@ -214,6 +215,13 @@ class EditExecutionPayment extends EditRecord
                     $transaction,
                     $this->buildExecutionPaymentSummary($budget)
                 );
+            }
+
+            // Report projection: lines were force-deleted and recreated above;
+            // re-derive this transaction's rows of "تقرير الحركات المالية الشامل"
+            // ONCE, from the final ledger state, inside this same DB transaction.
+            if ($transaction) {
+                app(ComprehensiveReportProjector::class)->syncTransaction($transaction->id);
             }
 
             // STEP 6 - Handle file replacement/removal

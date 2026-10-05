@@ -3,6 +3,8 @@
 namespace App\Services\Reports\ComprehensiveFinancialTransactions;
 
 use App\Services\Reports\ComprehensiveFinancialTransactions\Contracts\ComprehensiveFinancialTransactionsSnapshotRepository;
+use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportProjectionState;
+use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportRows;
 use App\Services\Reports\ComprehensiveFinancialTransactionsReportService;
 
 /**
@@ -29,16 +31,25 @@ final class ComprehensiveFinancialTransactionsSnapshotBuilder
     public function __construct(
         private readonly ComprehensiveFinancialTransactionsReportService $service,
         private readonly ComprehensiveFinancialTransactionsSnapshotRepository $repository,
+        private readonly ComprehensiveReportRows $projectionRows,
+        private readonly ComprehensiveReportProjectionState $projectionState,
     ) {}
 
-    public function build(int $ownerId, ComprehensiveFinancialTransactionsFilters $filters): ComprehensiveFinancialTransactionsSnapshot
+    /**
+     * $preferProjection: find the lines through the projection when it is
+     * READY (the live report's exports); otherwise, and by default, through
+     * the ledger reader. Both yield identical rows in identical order and
+     * feed the same Totals accumulator, so the snapshot is the same either
+     * way — only the cost of finding the lines differs.
+     */
+    public function build(int $ownerId, ComprehensiveFinancialTransactionsFilters $filters, bool $preferProjection = false): ComprehensiveFinancialTransactionsSnapshot
     {
         $this->purgeExpired($ownerId);
 
         $snapshotId = $this->repository->reserve($ownerId);
 
         try {
-            return $this->run($ownerId, $snapshotId, $filters, reportProgress: false);
+            return $this->run($ownerId, $snapshotId, $filters, reportProgress: false, preferProjection: $preferProjection);
         } catch (\Throwable $e) {
             try {
                 $this->repository->discard($ownerId, $snapshotId);
@@ -52,10 +63,10 @@ final class ComprehensiveFinancialTransactionsSnapshotBuilder
         }
     }
 
-    public function buildReserved(int $ownerId, string $snapshotId, ComprehensiveFinancialTransactionsFilters $filters): ComprehensiveFinancialTransactionsSnapshot
+    public function buildReserved(int $ownerId, string $snapshotId, ComprehensiveFinancialTransactionsFilters $filters, bool $preferProjection = false): ComprehensiveFinancialTransactionsSnapshot
     {
         try {
-            return $this->run($ownerId, $snapshotId, $filters, reportProgress: true);
+            return $this->run($ownerId, $snapshotId, $filters, reportProgress: true, preferProjection: $preferProjection);
         } catch (\Throwable $e) {
             try {
                 $this->repository->markFailed($ownerId, $snapshotId, 'build_failed');
@@ -80,8 +91,10 @@ final class ComprehensiveFinancialTransactionsSnapshotBuilder
         }
     }
 
-    private function run(int $ownerId, string $snapshotId, ComprehensiveFinancialTransactionsFilters $filters, bool $reportProgress): ComprehensiveFinancialTransactionsSnapshot
+    private function run(int $ownerId, string $snapshotId, ComprehensiveFinancialTransactionsFilters $filters, bool $reportProgress, bool $preferProjection = false): ComprehensiveFinancialTransactionsSnapshot
     {
+        $fromProjection = $preferProjection && $this->projectionState->isReady();
+
         $config = config('oms.reports.comprehensive_financial_transactions');
         $rowChunkSize = max(1, (int) ($config['row_chunk_size'] ?? 100));
         $indexChunkSize = max(1, (int) ($config['index_chunk_size'] ?? 1000));
@@ -116,7 +129,11 @@ final class ComprehensiveFinancialTransactionsSnapshotBuilder
             ComprehensiveFinancialTransactionsSnapshotRepository::DIMENSION_TYPE => new SnapshotIndexWriter($this->repository, $ownerId, $snapshotId, ComprehensiveFinancialTransactionsSnapshotRepository::DIMENSION_TYPE, $indexChunkSize),
         ];
 
-        foreach ($this->service->batches($filters, $totals, null, $onTransactionPage) as $batch) {
+        $batches = $fromProjection
+            ? $this->projectionRows->batches($filters, $totals)
+            : $this->service->batches($filters, $totals, null, $onTransactionPage);
+
+        foreach ($batches as $batch) {
             foreach ($batch as $row) {
                 $indexes[ComprehensiveFinancialTransactionsSnapshotRepository::DIMENSION_CATEGORY]->add($row['category_key'], $ordinal);
                 $indexes[ComprehensiveFinancialTransactionsSnapshotRepository::DIMENSION_TYPE]->add($row['type_key'], $ordinal);

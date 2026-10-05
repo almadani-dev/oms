@@ -623,6 +623,12 @@
                     <div class="cft-empty">لا توجد حركات مالية ضمن الفترة المحددة</div>
                 </section>
             @else
+                @if ($projectionFallback ?? false)
+                    <section class="cft-card">
+                        <div class="cft-muted" role="status">{{ \App\Filament\Pages\ComprehensiveFinancialTransactionsPage::PROJECTION_FALLBACK_NOTICE }}</div>
+                    </section>
+                @endif
+
                 {{-- A) General summary --}}
                 <section class="cft-summary-grid">
                     <article class="cft-summary-card">

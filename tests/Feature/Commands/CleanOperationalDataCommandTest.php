@@ -187,7 +187,10 @@ class CleanOperationalDataCommandTest extends TestCase
     {
         return MuwakhaFamily::create([
             'martyr_name'         => 'شهيد تجريبي',
+            'martyr_national_id'  => 'T-'.Str::random(12),
+            'martyrdom_date'      => '2024-01-01',
             'guardian_name'       => 'ولي أمر تجريبي',
+            'guardian_phone'      => '0590000000',
             'children_count'      => 3,
             'account_holder_name' => 'صاحب الحساب',
             'account_id'          => $account->id,
@@ -208,7 +211,6 @@ class CleanOperationalDataCommandTest extends TestCase
             'actor_type'     => 'system',
             'status'         => 'succeeded',
             'created_at'     => now(),
-            'updated_at'     => now(),
         ]);
     }
 
@@ -310,7 +312,8 @@ class CleanOperationalDataCommandTest extends TestCase
         config(['app.env' => 'production']);
 
         $exit = Artisan::call('oms:clean-operational-data', [
-            '--apply'        => true,
+            '--apply'          => true,
+            '--no-interaction' => true,
             '--confirmation' => OperationalDataCleanupService::CONFIRMATION_TOKEN,
             '--backup-file'  => $this->backupFile(),
         ]);
@@ -322,7 +325,8 @@ class CleanOperationalDataCommandTest extends TestCase
     public function test_refuses_apply_without_confirmation_token(): void
     {
         $exit = Artisan::call('oms:clean-operational-data', [
-            '--apply'        => true,
+            '--apply'          => true,
+            '--no-interaction' => true,
             '--confirmation' => 'WRONG-TOKEN',
             '--backup-file'  => $this->backupFile(),
         ]);
@@ -334,7 +338,8 @@ class CleanOperationalDataCommandTest extends TestCase
     public function test_refuses_apply_without_valid_backup_file(): void
     {
         $exit = Artisan::call('oms:clean-operational-data', [
-            '--apply'        => true,
+            '--apply'          => true,
+            '--no-interaction' => true,
             '--confirmation' => OperationalDataCleanupService::CONFIRMATION_TOKEN,
             '--backup-file'  => '/path/does/not/exist.sql',
         ]);
@@ -344,7 +349,8 @@ class CleanOperationalDataCommandTest extends TestCase
 
         $emptyPath = tempnam(sys_get_temp_dir(), 'oms-empty-');
         $exit2 = Artisan::call('oms:clean-operational-data', [
-            '--apply'        => true,
+            '--apply'          => true,
+            '--no-interaction' => true,
             '--confirmation' => OperationalDataCleanupService::CONFIRMATION_TOKEN,
             '--backup-file'  => $emptyPath,
         ]);
@@ -361,7 +367,8 @@ class CleanOperationalDataCommandTest extends TestCase
         $this->makeProjectCost($project, $usd);
 
         $exit = Artisan::call('oms:clean-operational-data', [
-            '--apply'        => true,
+            '--apply'          => true,
+            '--no-interaction' => true,
             '--confirmation' => OperationalDataCleanupService::CONFIRMATION_TOKEN,
             '--backup-file'  => $this->backupFile(),
         ]);

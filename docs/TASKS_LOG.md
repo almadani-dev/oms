@@ -17,6 +17,109 @@
 
 
 ### Date
+2026-10-05 (تقرير الحركات المالية الشامل — real-time reporting projection; V2 committed first as `1d9d6a2`; stress schema parity moved to a fresh-migration reference; verified at 1.22M active lines)
+
+### Task
+Implement a synchronously maintained, exactly verifiable projection of the comprehensive report, so that "عرض", paging and category/type navigation are interactive at ≥1M lines without a snapshot build or a worker. Keep V2 for exports and fallback. Prove exact parity with the old report, freshness, atomic rollback and integrity at scale. Then commit locally.
+
+### Result
+**Done. All gates green.**
+
+**Parity with the old report (oracle), on `oms_stress` at 561k lines:** 20/20 filter sets, 0 row differences, 0 summary differences.
+- Sets: day, partial month, edges, 3 months, 12 months, 1 and 2 currencies, classification, type, classification+type, one account, two accounts debit side, two accounts credit side, soft-deleted accounts, account type 4 (347k rows), account type 11, project, combined, full range (561,706 rows), empty.
+- The largest float residue was 2.6e-5: the old path sums floats, the new path exact decimals; displayed values are identical.
+- Re-checked at 1.22M lines after the final index changes: 11/11 sets (day, partial month, edges, 3 months, combined, account 8, account type 11, project, account type 4 with 756,123 rows, full range with 1,221,151 rows, empty). 0 row / 0 summary differences; largest residue 3.2e-5.
+
+**Stress dataset at scale:** `oms_stress` was rebuilt with `--lines=1150000`, seed 20261005.
+- 1,233,324 lines (**1,221,321 active**), 555,923 transactions, ~616k audit events; build 2,420 s, peak 616 MB.
+- `oms:stress:verify`: all checks passed, **0 violations** (including `oms:check-financial-integrity`, balances and project totals), 1,622 s.
+
+**Projection at 1.22M:** rebuild 700 s (sharing the CPU with the verifier). The independent verifier found **0 line / 0 monthly-total / 0 transaction-count differences** over 1,221,321 lines in 79 s.
+
+**Real Livewire page at 1.22M lines (second run, warm; ms / queries):**
+
+| Scenario | "عرض" | First / Prev / Next / Last | Category, next | Type, next | State |
+|---|---|---|---|---|---|
+| default month (9.5k lines) | 288 / 58 | 62–79 | 82, 84 | 103, 113 | 8.0 KB |
+| 1 month (28k) | 229 | 70–82 | 93, 94 | 112, 119 | 8.3 KB |
+| 3 months (104k) | 239 | 69–79 | 107, 97 | 117, 115 | 8.4 KB |
+| 12 months (433k) | 253 | 65–213 | 91, 99 | 108, 118 | 8.4 KB |
+| full range (1,221,151) | 306 / 67 | 69–77 | 92, 91 | 114, 119 | 9.1 KB |
+| full range, partial edges | 364 | 71–95 | 87, 90 | 114, 116 | 8.5 KB |
+| account 8 (59k) | 790 | 77–92 | 97, 104 | 123, 130 | 6.3 KB |
+| currency 1 (550k) | 326 | 71–75 | 102, 95 | 123, 148 | 6.4 KB |
+| project (367) | 264 | 70–81 | 97, 99 | 110, 117 | 3.5 KB |
+| combined: 2 currencies + classification + account type (204k) | 448 / 73 | 76–96 | 106, 102 | 126, 130 | 4.0 KB |
+| account type 4, partial edges (744k) | 557 | 41–55 | 63, 80 | 97, 110 | 8.2 KB |
+| **worst: accounts 1,4,8 debit side, full range** | **1,519** | 65–156 | 143, 95 | 110, 131 | 5.2 KB |
+
+- Rare types (1–58 lines) open in 98–118 ms.
+- Peak process memory 75 MB; the largest per-request memory increase was 6.8 MB.
+
+**Synchronous write overhead per business write** (40 real transactions per flow, in rolled-back transactions; median / p95):
+
+| Flow | create / edit sync | delete |
+|---|---|---|
+| receipt | 8 / 13 ms | 12 / 19 ms |
+| disbursement | 4 / 13 ms | 6 / 13 ms |
+| execution payment | 6 / 16 ms | 7 / 16 ms |
+| general expense | 20 / 27 ms | 20 / 30 ms |
+| general exchange | 12 / 30 ms | 16 / 41 ms |
+| opening balance | 20 / 28 ms | 19 / 30 ms |
+
+Each sync is 12–14 queries.
+
+**Index evidence (EXPLAIN ANALYZE, `oms_stress`):**
+- Raw full-range `GROUP BY` on the projection: 6.2 s; `COUNT(DISTINCT)`: 3.6 s (at 561k). This led to the monthly aggregates.
+- Before the extra indexes, summaries took:
+  - 0.7–1.0 s for date ranges (≈25 first-position lookups at 50–180 ms each, index-merge + sort);
+  - 2.6–5.5 s for account filters (row lookups).
+- With the pinned `(transaction_type_id, currency_id)` index and the account index in keyset order covering every summary column, summaries take 26–60 ms for date ranges and 0.4–1.4 s for account filters.
+- Account group pages: 1.3 ms ordered covering scan, no sort.
+
+**Freshness and atomicity:** proven through the real Filament page methods.
+- Create, edit and delete of all 5 flows plus the opening balance are visible in the report immediately; the verifier reports 0 after each.
+- Forcing the projection write to fail rolls back the business row, transaction, lines, balances and audit event.
+- A later audit failure rolls the projection back too.
+
+**Blocked step, then fixed:** migrating the development `oms` was refused (by design and by the user). Stress schema parity now uses a temporary fresh-migration reference. `oms` was never migrated: still 46 tables, 8 transactions, last migration `2026_08_17_100001`.
+
+**Tests (targeted only):**
+- New: projection write paths 11/11, projection page 24/24 (13 parity filter sets on SQLite), stress schema reference 9/9.
+- Existing: 7 comprehensive-report files 153/153, stress 30/30, `CleanOperationalDataCommandTest` 37/37.
+  - The cleanup file had 5 errors and a hang that predate this work; both were reproduced on a clean `HEAD`. Its stale fixtures were repaired (test-only).
+
+### Changed Files
+New:
+- `database/migrations/2026_10_05_100000_create_comprehensive_report_projection_tables.php`
+- `app/Services/Reports/ComprehensiveFinancialTransactions/Projection/` — `ComprehensiveReportProjection`, `ComprehensiveReportProjectionState`, `ComprehensiveReportProjector`, `ComprehensiveReportProjectionQuery`, `ComprehensiveReportResolvedFilters`, `ComprehensiveReportSummaries`, `ComprehensiveReportRows`, `ComprehensiveReportProjectionRebuilder`, `ComprehensiveReportProjectionVerifier`, `ComprehensiveReportParityChecker`
+- `app/Console/Commands/Reports/RebuildComprehensiveReportProjectionCommand.php`, `VerifyComprehensiveReportProjectionCommand.php`
+- `app/Observers/AccountReportProjectionObserver.php`
+- `app/Services/Stress/StressSchemaReference.php`
+- `tests/Feature/Reports/ComprehensiveReportProjectionWritePathsTest.php`, `ComprehensiveReportProjectionPageTest.php`, `tests/Feature/Stress/StressSchemaReferenceTest.php`
+
+Modified:
+- The 5 Create pages, 5 Edit pages and 5 Tables of the financial flows, plus `CreateAccount` (one projector call each).
+- `ComprehensiveFinancialTransactionsPage` (live mode) and its view, plus the pager partial.
+- `ComprehensiveFinancialTransactionsReportService` (`rowsForLines()`; the query is shared, not changed).
+- `ComprehensiveFinancialTransactionsSnapshotBuilder` (projection source), `BuildComprehensiveFinancialTransactionsExcelExportJob` and `ComprehensiveFinancialTransactionsExcelExports` (live large export).
+- `AppServiceProvider` (observer), `OperationalDataCleanupService` (table classification).
+- `StressDatabaseInstaller`, `config/oms_stress.php`.
+- `tests/Feature/Commands/CleanOperationalDataCommandTest.php` (stale fixtures).
+- Docs: `COMPREHENSIVE_REPORT_DEPLOYMENT_CHECKLIST.md` (rollout addendum), `STRESS_ENVIRONMENT.md`, the memory logs; `graphify-out/`.
+
+### Verification
+- `php artisan --env=stress oms:verify-comprehensive-report-projection` → 0 differences at 1,221,321 lines.
+- `oms:stress:verify` → 0 violations.
+- Scratch parity runner (old service vs projection) → 20/20 at 561k, 11/11 at 1.22M.
+- Targeted PHPUnit files listed above.
+- Reference-schema parity of the live `oms_stress` against the final migrations → OK, reference dropped.
+- `oms` untouched.
+
+---
+
+
+### Date
 2026-10-04 (تقرير الحركات المالية الشامل phase 2 — background build, large Excel, Word policy, deployment checklist; implemented and verified on TEST/DEV, NOT committed)
 
 ### Task

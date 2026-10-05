@@ -117,6 +117,13 @@ class OperationalDataCleanupService
      * @var array<int, string>
      */
     private const DELETION_ORDER = [
+        // Derived read model of the comprehensive financial transactions
+        // report (no foreign keys): emptied with the ledger it mirrors, so it
+        // stays consistent with it. Its one-row state is preserved.
+        'comprehensive_report_lines',
+        'comprehensive_report_monthly_totals',
+        'comprehensive_report_monthly_transactions',
+        'comprehensive_report_signatures',
         // Generated report data — CASCADE children of projects.
         'project_financial_alerts',
         'project_financial_snapshot_currency_totals',
@@ -171,6 +178,10 @@ class OperationalDataCleanupService
         'transactions_types' => true,
         // Laravel / system history.
         'migrations' => false,
+        // Health flag of the comprehensive report projection (derived data;
+        // still READY after a cleanup, since ledger and projection are both
+        // emptied together).
+        'comprehensive_report_projection_state' => false,
         // History tables.
         'audit_events' => false,
         'backup_operations' => true,
@@ -197,6 +208,10 @@ class OperationalDataCleanupService
         'project_financial_snapshots' => false,
         'project_financial_snapshot_currency_totals' => false,
         'project_financial_alerts' => false,
+        'comprehensive_report_lines' => false,
+        'comprehensive_report_monthly_totals' => false,
+        'comprehensive_report_monthly_transactions' => false,
+        'comprehensive_report_signatures' => false,
     ];
 
     /**

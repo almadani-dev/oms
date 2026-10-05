@@ -37,17 +37,26 @@ final class ComprehensiveFinancialTransactionsExcelExports
 
     public function __construct(private readonly FilesystemFactory $filesystems) {}
 
-    public function create(int $ownerId, string $snapshotId): string
+    /**
+     * $buildFilters, when given, means the snapshot $snapshotId is only
+     * RESERVED: the export job builds it first (from these filters), then
+     * writes the workbook — how the live report exports a large result
+     * without ever building a snapshot inside a request.
+     *
+     * @param  array<string, mixed>|null  $buildFilters  ComprehensiveFinancialTransactionsFilters::toArray()
+     */
+    public function create(int $ownerId, string $snapshotId, ?array $buildFilters = null): string
     {
         $exportId = strtolower((string) Str::ulid());
 
-        $this->writeStatus($ownerId, $exportId, [
+        $this->writeStatus($ownerId, $exportId, array_filter([
             'owner_id' => $ownerId,
             'snapshot_id' => $snapshotId,
+            'build_filters' => $buildFilters,
             'status' => self::PENDING,
             'created_at' => now()->toIso8601String(),
             'updated_at' => now()->toIso8601String(),
-        ]);
+        ], fn ($value) => $value !== null));
 
         return $exportId;
     }
@@ -87,7 +96,7 @@ final class ComprehensiveFinancialTransactionsExcelExports
     }
 
     /**
-     * @return array{state: string, snapshot_id: string, filename: ?string}|null
+     * @return array{state: string, snapshot_id: string, filename: ?string, build_filters: ?array<string, mixed>}|null
      */
     public function status(int $ownerId, string $exportId): ?array
     {
@@ -113,6 +122,7 @@ final class ComprehensiveFinancialTransactionsExcelExports
             'state' => $state,
             'snapshot_id' => (string) ($status['snapshot_id'] ?? ''),
             'filename' => isset($status['filename']) ? (string) $status['filename'] : null,
+            'build_filters' => isset($status['build_filters']) && is_array($status['build_filters']) ? $status['build_filters'] : null,
         ];
     }
 

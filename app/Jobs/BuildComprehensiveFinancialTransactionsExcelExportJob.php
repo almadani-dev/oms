@@ -3,6 +3,8 @@
 namespace App\Jobs;
 
 use App\Services\Reports\ComprehensiveFinancialTransactions\ComprehensiveFinancialTransactionsExcelExports;
+use App\Services\Reports\ComprehensiveFinancialTransactions\ComprehensiveFinancialTransactionsFilters;
+use App\Services\Reports\ComprehensiveFinancialTransactions\ComprehensiveFinancialTransactionsSnapshotBuilder;
 use App\Services\Reports\ComprehensiveFinancialTransactions\Contracts\ComprehensiveFinancialTransactionsSnapshotRepository;
 use App\Services\Reports\ComprehensiveFinancialTransactions\ExportTemporaryFiles;
 use App\Services\Reports\ComprehensiveFinancialTransactionsStreamingExcelExportService;
@@ -52,6 +54,26 @@ class BuildComprehensiveFinancialTransactionsExcelExportJob implements ShouldQue
 
         // Owner-checked like every other snapshot read.
         $snapshot = $snapshots->find($this->ownerId, $status['snapshot_id']);
+
+        // A live (projection-backed) report only reserves its export snapshot
+        // and leaves the build to this job: rows streamed through the
+        // projection, summaries accumulated exactly as for the ledger path.
+        if ($snapshot === null && $status['build_filters'] !== null) {
+            $exports->markProcessing($this->ownerId, $this->exportId);
+
+            try {
+                $snapshot = app(ComprehensiveFinancialTransactionsSnapshotBuilder::class)->buildReserved(
+                    $this->ownerId,
+                    $status['snapshot_id'],
+                    ComprehensiveFinancialTransactionsFilters::fromArray($status['build_filters']),
+                    preferProjection: true,
+                );
+            } catch (Throwable $e) {
+                $exports->markFailed($this->ownerId, $this->exportId);
+
+                throw $e;
+            }
+        }
 
         if ($snapshot === null) {
             $exports->markFailed($this->ownerId, $this->exportId);

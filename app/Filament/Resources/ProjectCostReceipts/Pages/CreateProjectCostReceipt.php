@@ -14,6 +14,7 @@ use App\Services\Attachments\AttachmentUploadService;
 use App\Services\Audit\Financial\FinancialAccountRole;
 use App\Services\Audit\Financial\FinancialAuditRecorder;
 use App\Services\Audit\Financial\FinancialAuditSubject;
+use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportProjector;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
@@ -117,6 +118,11 @@ class CreateProjectCostReceipt extends CreateRecord
                 $transaction,
                 $this->buildReceiptSummary($transaction, $projectCost)
             );
+
+            // Report projection: re-derive this transaction's rows of
+            // "تقرير الحركات المالية الشامل" from the final ledger state, inside
+            // this same DB transaction (a failure rolls all of it back).
+            app(ComprehensiveReportProjector::class)->syncTransaction($transaction->id);
 
             // STEP 6 - If file uploaded
             if (!empty($data['receipt_image'])) {

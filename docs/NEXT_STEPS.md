@@ -1,6 +1,34 @@
 # Next Steps
 
-## Recommended Next Step (2026-10-05, `oms_stress` built and verified — review, commit the stress tooling, then decide which measured bottleneck to tackle)
+## Recommended Next Step (2026-10-05, real-time comprehensive report projection committed locally — browser check, then decide on the dev DB and production rollout)
+
+**1. Browser check on the stress data** (`$env:APP_ENV='stress'; php artisan serve --host=127.0.0.1 --port=8081`, login `stress.super_admin@stress-oms.invalid`):
+- "عرض" with no waiting screen;
+- First / Previous / Next / Last on the main table and inside a classification / type;
+- no fallback notice;
+- Word and styled Excel on a small period;
+- a large Excel (needs `php artisan --env=stress queue:work database --queue=reports --timeout=1900`).
+
+**2. Development `oms` (decision for the user):** it was intentionally NOT migrated, so on the normal dev site the report keeps using the fallback (snapshot) path.
+- To switch dev to live mode: `php artisan migrate` then `php artisan oms:rebuild-comprehensive-report-projection --verify`.
+- These are additive tables only, but this changes `oms`, so it needs explicit approval.
+
+**3. Production rollout:** follow the addendum in `docs/COMPREHENSIVE_REPORT_DEPLOYMENT_CHECKLIST.md`.
+- Backup.
+- A short `down` window: `migrate`, `queue:restart`, `up`.
+- In-place `rebuild --verify`.
+- A parity check.
+- An operator decision on a daily verify schedule.
+
+**4. Still open, unchanged:**
+- The soft-deleted-account visibility rule in this report (business decision, on hold; the projection applies it at query time, so changing it later needs no rebuild).
+- The relation-manager bypass audits.
+- Account statement / donor report / line search / integrity checker speed at scale.
+
+---
+
+
+## Previously Recommended Next Step (2026-10-05, `oms_stress` built and verified — review, commit the stress tooling, then decide which measured bottleneck to tackle)
 
 **1. Review and commit the stress tooling** as its own local commit (separate from `f6ec0b8`). Check that `git status` shows no `.env.stress` and nothing under `storage/stress/`.
 

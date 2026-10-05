@@ -15,6 +15,7 @@ use App\Models\TransactionSuperType;
 use App\Models\TransactionType;
 use App\Services\Audit\Crud\AuditedCrudService;
 use App\Services\Audit\Financial\FinancialAuditValue;
+use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportProjector;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use Carbon\Carbon;
@@ -117,6 +118,11 @@ class CreateAccount extends CreateRecord
                 $transaction,
                 "تسجيل الرصيد الافتتاحي لحساب {$account->name}"
             );
+
+            // Report projection: re-derive this transaction's rows of
+            // "تقرير الحركات المالية الشامل" from the final ledger state, inside
+            // this same DB transaction (a failure rolls all of it back).
+            app(ComprehensiveReportProjector::class)->syncTransaction($transaction->id);
 
             // STEP 7 - The single account AuditEvent for this creation,
             // inside this same transaction and REQUIRED, carrying the

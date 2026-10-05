@@ -281,7 +281,7 @@ class ComprehensiveFinancialTransactionsReportService
      *
      * @return array<string, mixed>
      */
-    private function row(object $line, ComprehensiveFinancialTransactionsTotals $totals): array
+    private function row(object $line, ?ComprehensiveFinancialTransactionsTotals $totals): array
     {
         $debit = (float) $line->debit_base;
         $credit = (float) $line->credit_base;
@@ -291,7 +291,7 @@ class ComprehensiveFinancialTransactionsReportService
         $category = $line->super_type_name ?: 'غير محدد';
         $type = $line->type_name ?: 'غير محدد';
 
-        $totals->add(
+        $totals?->add(
             (string) $line->transaction_time,
             (int) $line->transaction_id,
             (int) $line->line_id,
@@ -426,7 +426,24 @@ class ComprehensiveFinancialTransactionsReportService
         $transactionSuperTypeId = $filters->transactionSuperTypeId;
         $transactionTypeId = $filters->transactionTypeId;
 
-        $query = DB::table('transaction_lines as tl')
+        $query = $this->joinedLinesQuery()
+            ->whereBetween('t.transaction_time', $this->period($filters))
+            ->when($transactionSuperTypeId, fn ($q) => $q->where('tt.transaction_super_type_id', $transactionSuperTypeId))
+            ->when($transactionTypeId, fn ($q) => $q->where('t.transaction_type_id', $transactionTypeId));
+
+        $this->applyLineFilters($query, $filters);
+
+        return $query;
+    }
+
+    /**
+     * Joins, SoftDelete guards, selected columns and canonical ORDER BY of
+     * every report row — shared by the filtered report query above and by
+     * rowsForLines(), so a projected page is labelled by the very same SQL.
+     */
+    private function joinedLinesQuery(): Builder
+    {
+        return DB::table('transaction_lines as tl')
             ->join('transactions as t', 't.id', '=', 'tl.transaction_id')
             ->join('accounts as a', 'a.id', '=', 'tl.account_id')
             ->leftJoin('accounts_type as at', 'at.id', '=', 'a.account_type_id')
@@ -446,13 +463,6 @@ class ComprehensiveFinancialTransactionsReportService
             ->whereNull('tl.deleted_at')
             ->whereNull('t.deleted_at')
             ->whereNull('a.deleted_at')
-            ->whereBetween('t.transaction_time', $this->period($filters))
-            ->when($transactionSuperTypeId, fn ($q) => $q->where('tt.transaction_super_type_id', $transactionSuperTypeId))
-            ->when($transactionTypeId, fn ($q) => $q->where('t.transaction_type_id', $transactionTypeId));
-
-        $this->applyLineFilters($query, $filters);
-
-        return $query
             ->orderBy('t.transaction_time')
             ->orderBy('t.id')
             ->orderBy('tl.id')
@@ -483,6 +493,39 @@ class ComprehensiveFinancialTransactionsReportService
                 'p.name as project_name',
                 'u.name as created_by_name',
             ]);
+    }
+
+    /**
+     * The finished report rows of exactly these lines, in canonical order —
+     * labels, descriptions and every note read live from the ledger with the
+     * report's own joins (one query) plus at most one bounded query per
+     * source-note table. This is how a page of the projection is rendered:
+     * the projection decides WHICH lines, the ledger says what they read.
+     *
+     * $totals, when given, receives each row's contribution exactly as
+     * batches() feeds it (the rows must then arrive in canonical order
+     * across calls — the projection reader guarantees that).
+     *
+     * @param  array<int, int>  $lineIds  at most a page or a batch
+     * @return array<int, array<string, mixed>>
+     */
+    public function rowsForLines(array $lineIds, ?ComprehensiveFinancialTransactionsTotals $totals = null): array
+    {
+        if ($lineIds === []) {
+            return [];
+        }
+
+        $rows = [];
+        $transactionIds = [];
+
+        foreach ($this->joinedLinesQuery()->whereIn('tl.id', array_values($lineIds))->get() as $line) {
+            $transactionIds[$line->transaction_id] = true;
+            $rows[] = $this->row($line, $totals);
+        }
+
+        $this->attachSourceNotes($rows, array_map('intval', array_keys($transactionIds)));
+
+        return $rows;
     }
 
     /**

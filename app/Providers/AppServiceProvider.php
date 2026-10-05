@@ -2,12 +2,14 @@
 
 namespace App\Providers;
 
+use App\Models\Account;
 use App\Models\Project;
 use App\Models\ProjectCost;
 use App\Models\ProjectCostBudget;
 use App\Models\ProjectCostBudgetsPayment;
 use App\Models\ProjectCostReceipt;
 use App\Models\User;
+use App\Observers\AccountReportProjectionObserver;
 use App\Observers\ProjectCostBudgetObserver;
 use App\Observers\ProjectCostBudgetsPaymentObserver;
 use App\Observers\ProjectCostObserver;
@@ -207,5 +209,9 @@ class AppServiceProvider extends ServiceProvider
         ProjectCostReceipt::observe(ProjectCostReceiptObserver::class);
         ProjectCostBudget::observe(ProjectCostBudgetObserver::class);
         ProjectCostBudgetsPayment::observe(ProjectCostBudgetsPaymentObserver::class);
+
+        // "تقرير الحركات المالية الشامل" projection: an account's type is
+        // copied onto its projected lines, so a type change re-derives them.
+        Account::observe(AccountReportProjectionObserver::class);
     }
 }

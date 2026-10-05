@@ -10,8 +10,9 @@ use Illuminate\Support\Facades\File;
 use Spatie\Permission\PermissionRegistrar;
 
 /**
- * Builds an EMPTY stress database: schema from the real migrations, the
- * eight lookup tables copied from the development database, the real
+ * Builds an EMPTY stress database: schema from the real migrations (checked
+ * against a fresh migration of the current code, see StressSchemaReference),
+ * the eight lookup tables copied read-only from the development database, the real
  * permission/role sync, the stress storage skeleton and the marker.
  *
  * Creates no operational data. Only ever runs after StressEnvironmentGuard
@@ -38,7 +39,10 @@ class StressDatabaseInstaller
         'transactions_types',
     ];
 
-    public function __construct(private readonly StressEnvironmentGuard $guard) {}
+    public function __construct(
+        private readonly StressEnvironmentGuard $guard,
+        private readonly StressSchemaReference $reference,
+    ) {}
 
     /**
      * @param  Closure(string): void  $log
@@ -69,12 +73,18 @@ class StressDatabaseInstaller
         Artisan::call('migrate', ['--database' => $target->connection, '--force' => true]);
         $log(trim(Artisan::output()));
 
-        $source = $this->openSourceReadOnly($target);
-
-        $log('Checking schema parity with the development database …');
-        $reconciled = $this->assertSchemaParity($source, $target->connection, $log);
-        (new StressMetaRepository($target->connection))->put('schema_parity_reconciled_indexes', $reconciled);
+        // Schema source of truth: the CURRENT code's migrations, applied to
+        // a temporary reference database (never the development `oms`,
+        // which is not migrated for the sake of a stress build).
+        $log('Checking schema parity with a fresh migration of the current code …');
+        $this->reference->using(
+            $target,
+            fn (string $reference) => $this->assertSchemaParity($reference, $target->connection),
+            $log,
+        );
         $log('Schema parity OK.');
+
+        $source = $this->openSourceReadOnly($target);
 
         $log('Copying lookup tables …');
         foreach ($this->copyLookups($source, $target->connection) as $table => $count) {
@@ -97,6 +107,9 @@ class StressDatabaseInstaller
     public function drop(StressTarget $target): void
     {
         $this->assertIdentifier($target->database);
+
+        // Leftover schema references of an interrupted create-database.
+        $this->reference->dropStale($target);
 
         DB::purge($target->connection);
         DB::connection($target->connection.'_server')->statement("DROP DATABASE `{$target->database}`");
@@ -138,7 +151,8 @@ class StressDatabaseInstaller
 
     /**
      * The development database, through a session MySQL itself holds
-     * read-only: any accidental write would be rejected by the server.
+     * read-only: any accidental write would be rejected by the server. Only
+     * the eight lookup tables are read from it.
      */
     private function openSourceReadOnly(StressTarget $target): string
     {
@@ -153,64 +167,16 @@ class StressDatabaseInstaller
     }
 
     /**
-     * @param  null|Closure(string): void  $log
-     * @return array<int, string> secondary indexes added to match the source
+     * Strict comparison of the stress schema with a schema of reference
+     * (the current code's migrations, applied from zero). The stress-only
+     * marker table is the one allowed difference; anything else aborts.
      */
-    private function assertSchemaParity(string $source, string $stress, ?Closure $log = null): array
+    public function assertSchemaParity(string $reference, string $stress): void
     {
-        $sourceSchema = $this->schemaOf($source);
         $stressSchema = $this->schemaOf($stress);
-        $reconciled = [];
-
         unset($stressSchema[(string) config('oms_stress.marker_table')]);
 
-        // An incrementally migrated database can keep a plain secondary index
-        // that a fresh migrate never creates (MySQL drops an implicit FK index
-        // once another index can serve the FK; a dump/restore makes it
-        // explicit). Such an index — and ONLY a plain, non-unique KEY that
-        // exists in the source and not in the stress copy — is added, so the
-        // benchmarks run on the same physical schema. Anything else aborts.
-        foreach (array_intersect(array_keys($sourceSchema), array_keys($stressSchema)) as $table) {
-            $sourceOnly = array_diff($this->lines($sourceSchema[$table]), $this->lines($stressSchema[$table]));
-            $stressOnly = array_diff($this->lines($stressSchema[$table]), $this->lines($sourceSchema[$table]));
-
-            if ($sourceOnly === [] || $stressOnly !== []) {
-                continue;
-            }
-
-            $plainKeys = [];
-
-            foreach ($sourceOnly as $line) {
-                if (preg_match('/^\s*KEY `([A-Za-z0-9_]+)` \(((?:`[A-Za-z0-9_]+`(?:\(\d+\))?,?)+)\),?$/', $line, $m) !== 1) {
-                    $plainKeys = [];
-
-                    break;
-                }
-
-                $plainKeys[] = [$m[1], $m[2]];
-            }
-
-            foreach ($plainKeys as [$name, $columns]) {
-                DB::connection($stress)->statement("ALTER TABLE `{$table}` ADD INDEX `{$name}` ({$columns})");
-                $reconciled[] = "{$table}.{$name} ({$columns})";
-                $log && $log("  parity: added source-only plain index {$table}.{$name} ({$columns})");
-            }
-        }
-
-        if ($reconciled !== []) {
-            $stressSchema = $this->schemaOf($stress);
-            unset($stressSchema[(string) config('oms_stress.marker_table')]);
-        }
-
-        $missing = array_diff(array_keys($sourceSchema), array_keys($stressSchema));
-        $extra = array_diff(array_keys($stressSchema), array_keys($sourceSchema));
-        $different = [];
-
-        foreach (array_intersect(array_keys($sourceSchema), array_keys($stressSchema)) as $table) {
-            if (! $this->sameDefinition($sourceSchema[$table], $stressSchema[$table])) {
-                $different[] = $table;
-            }
-        }
+        [$missing, $extra, $different] = $this->compareSchemas($this->schemaOf($reference), $stressSchema);
 
         if ($missing !== [] || $extra !== [] || $different !== []) {
             throw new StressGuardException(sprintf(
@@ -220,8 +186,28 @@ class StressDatabaseInstaller
                 implode(', ', $different),
             ));
         }
+    }
 
-        return $reconciled;
+    /**
+     * @param  array<string, string>  $reference  table => SHOW CREATE TABLE (normalized)
+     * @param  array<string, string>  $stress
+     * @return array{0: array<int, string>, 1: array<int, string>, 2: array<int, string>} missing, extra, different
+     */
+    public function compareSchemas(array $reference, array $stress): array
+    {
+        $different = [];
+
+        foreach (array_intersect(array_keys($reference), array_keys($stress)) as $table) {
+            if (! $this->sameDefinition($reference[$table], $stress[$table])) {
+                $different[] = $table;
+            }
+        }
+
+        return [
+            array_values(array_diff(array_keys($reference), array_keys($stress))),
+            array_values(array_diff(array_keys($stress), array_keys($reference))),
+            $different,
+        ];
     }
 
     /**

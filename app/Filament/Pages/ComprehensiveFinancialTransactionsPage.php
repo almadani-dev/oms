@@ -21,6 +21,11 @@ use App\Services\Reports\ComprehensiveFinancialTransactions\ComprehensiveFinanci
 use App\Services\Reports\ComprehensiveFinancialTransactions\ComprehensiveFinancialTransactionsSnapshotBuilder;
 use App\Services\Reports\ComprehensiveFinancialTransactions\ComprehensiveFinancialTransactionsSnapshotUnreadable;
 use App\Services\Reports\ComprehensiveFinancialTransactions\Contracts\ComprehensiveFinancialTransactionsSnapshotRepository;
+use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportProjectionQuery;
+use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportProjectionState;
+use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportResolvedFilters;
+use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportRows;
+use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportSummaries;
 use App\Services\Reports\ComprehensiveFinancialTransactionsExcelExportService;
 use App\Services\Reports\ComprehensiveFinancialTransactionsReportService;
 use App\Services\Reports\ComprehensiveFinancialTransactionsWordExportService;
@@ -51,12 +56,21 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * total. The report only loads when the user presses "عرض"; any filter change
  * clears the displayed results.
  *
- * "عرض" builds ONE immutable, owner-bound report snapshot (see
- * ComprehensiveFinancialTransactionsSnapshotBuilder) and this component keeps
- * only its id. Summaries, every detail page, every classification/type page
- * and both exports are read back from that snapshot — so the Livewire state
- * stays the same small size whatever the number of lines, and paging or
- * expanding never re-reads the ledger.
+ * Live mode (the normal path, while the report projection is READY): "عرض"
+ * computes the summaries from the projection's bounded aggregate queries and
+ * keeps them (a few KB) with the applied filters; every detail, classification
+ * and type page is then one keyset walk of the projection (First / Previous /
+ * Next / Last — never OFFSET) whose ~100 lines are rendered from the ledger
+ * itself. Nothing is built, queued or waited for, and every page reflects the
+ * ledger as committed at that moment.
+ *
+ * Snapshot mode (the fallback, while the projection is missing, rebuilding
+ * or invalid): "عرض" builds ONE immutable, owner-bound report snapshot in the
+ * background (see ComprehensiveFinancialTransactionsSnapshotBuilder) and this
+ * component keeps only its id, exactly as before.
+ *
+ * Exports always write an immutable snapshot (built through the projection
+ * when it is READY), so both modes export the same rows and figures.
  *
  * Reads via ComprehensiveFinancialTransactionsReportService only. Never
  * writes to transactions/transaction_lines/accounts or current_balance.
@@ -98,6 +112,13 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
     public const PREPARING_EXCEL_NOTICE = 'جاري تجهيز ملف Excel للتقارير الكبيرة، وسيبدأ التنزيل تلقائيًا عند اكتماله...';
 
     public const EXCEL_EXPORT_FAILED_NOTICE = 'تعذر تجهيز ملف Excel لهذا التقرير. يرجى المحاولة مرة أخرى.';
+
+    /** Shown above a report produced by the fallback (snapshot) path. */
+    public const PROJECTION_FALLBACK_NOTICE = 'تم إعداد هذا التقرير بالطريقة الاحتياطية لأن فهرس التقرير السريع قيد التحديث حاليًا؛ النتائج دقيقة لكن قد يستغرق إعدادها وقتًا أطول.';
+
+    public const MODE_LIVE = 'live';
+
+    public const MODE_SNAPSHOT = 'snapshot';
 
     public static function reportViewPermission(): string
     {
@@ -224,6 +245,58 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
 
     #[Locked]
     public int $currenciesCount = 0;
+
+    /**
+     * How the displayed report is read: MODE_LIVE (the projection), MODE_SNAPSHOT
+     * (the fallback snapshot), or null when nothing is displayed.
+     */
+    #[Locked]
+    public ?string $reportMode = null;
+
+    /**
+     * Live mode: the applied filters (ComprehensiveFinancialTransactionsFilters::toArray()),
+     * re-resolved on each request so a page always reads current relations.
+     *
+     * @var array<string, mixed>
+     */
+    #[Locked]
+    public array $liveFilters = [];
+
+    /**
+     * Live mode: the summaries computed at "عرض" — the same shapes a snapshot
+     * manifest carries, a few KB whatever the number of lines.
+     *
+     * @var array<int, array<string, mixed>>
+     */
+    #[Locked]
+    public array $liveCurrencySummaries = [];
+
+    /** @var array<int, array<string, mixed>> */
+    #[Locked]
+    public array $liveCategorySummaries = [];
+
+    /** @var array<int, array<string, mixed>> */
+    #[Locked]
+    public array $liveTypeSummaries = [];
+
+    /**
+     * Live mode keyset cursors of the main, classification and type tables:
+     * [first, last] canonical positions ([transaction_time, transaction id,
+     * line id]) of the page on screen, or null on page 1.
+     *
+     * @var array{0: array{0: string, 1: int, 2: int}, 1: array{0: string, 1: int, 2: int}}|null
+     */
+    #[Locked]
+    public ?array $detailCursor = null;
+
+    #[Locked]
+    public ?array $categoryCursor = null;
+
+    #[Locked]
+    public ?array $typeCursor = null;
+
+    /** Request-local memo of $liveFilters, resolved. */
+    protected ?ComprehensiveReportResolvedFilters $resolvedLiveFilters = null;
 
     /**
      * Request-local memo of the resolved snapshot. Protected, so Livewire
@@ -451,6 +524,12 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
         $this->abandonExcelExport();
         $this->buildError = null;
 
+        if (app(ComprehensiveReportProjectionState::class)->isReady()) {
+            $this->showLiveReport($filters);
+
+            return;
+        }
+
         $repository = app(ComprehensiveFinancialTransactionsSnapshotRepository::class);
         app(ComprehensiveFinancialTransactionsSnapshotBuilder::class)->purgeExpired($this->ownerId());
 
@@ -541,6 +620,43 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
         $this->lineCount = $snapshot->lineCount();
         $this->currenciesCount = $snapshot->currenciesCount();
 
+        $this->forgetLiveReport();
+        $this->reportMode = self::MODE_SNAPSHOT;
+        $this->applyFilters($filters, $snapshot->filterLabels());
+    }
+
+    /**
+     * Live mode "عرض": the summaries from the projection's bounded queries,
+     * nothing built and nothing queued. The pages are read on render.
+     */
+    private function showLiveReport(ComprehensiveFinancialTransactionsFilters $filters): void
+    {
+        $summaries = app(ComprehensiveReportSummaries::class)->compute($filters);
+
+        // This tab's previous report (a snapshot, if any) is unreachable now.
+        $this->discardSnapshot();
+        $this->forgetLiveReport();
+
+        $this->reportMode = self::MODE_LIVE;
+        $this->liveFilters = $filters->toArray();
+        $this->liveCurrencySummaries = $summaries['currency_summaries'];
+        $this->liveCategorySummaries = $summaries['category_summaries'];
+        $this->liveTypeSummaries = $summaries['type_summaries'];
+
+        $this->transactionCount = $summaries['transaction_count'];
+        $this->lineCount = $summaries['line_count'];
+        $this->currenciesCount = $summaries['currencies_count'];
+
+        $this->applyFilters($filters, app(ComprehensiveFinancialTransactionsReportService::class)->filterLabels($filters));
+    }
+
+    /**
+     * The only place the applied filters/labels are set, for both modes.
+     *
+     * @param  array<string, string>  $labels
+     */
+    private function applyFilters(ComprehensiveFinancialTransactionsFilters $filters, array $labels): void
+    {
         $this->appliedDateFrom = $filters->dateFrom;
         $this->appliedDateTo = $filters->dateTo;
         $this->appliedCurrencyIds = $filters->currencyIds;
@@ -550,7 +666,7 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
         $this->appliedAccountSide = $filters->accountSide;
         $this->appliedAccountTypeId = $filters->accountTypeId;
         $this->appliedProjectId = $filters->projectId;
-        $this->appliedFilterLabels = $snapshot->filterLabels();
+        $this->appliedFilterLabels = $labels;
 
         $this->hasSubmitted = true;
         $this->openCategoryKey = null;
@@ -558,6 +674,23 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
         $this->detailPage = 1;
         $this->categoryPage = 1;
         $this->typePage = 1;
+        $this->detailCursor = null;
+        $this->categoryCursor = null;
+        $this->typeCursor = null;
+        $this->forgetRenderedReport();
+    }
+
+    private function forgetLiveReport(): void
+    {
+        $this->reportMode = null;
+        $this->liveFilters = [];
+        $this->liveCurrencySummaries = [];
+        $this->liveCategorySummaries = [];
+        $this->liveTypeSummaries = [];
+        $this->detailCursor = null;
+        $this->categoryCursor = null;
+        $this->typeCursor = null;
+        $this->resolvedLiveFilters = null;
     }
 
     /**
@@ -604,6 +737,7 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
     {
         $this->openCategoryKey = $this->openCategoryKey === $key ? null : $key;
         $this->categoryPage = 1;
+        $this->categoryCursor = null;
     }
 
     /**
@@ -624,6 +758,7 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
     {
         $this->openTypeKey = $this->openTypeKey === $key ? null : $key;
         $this->typePage = 1;
+        $this->typeCursor = null;
     }
 
     /**
@@ -633,11 +768,31 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
      */
     public function goToDetailPage(int $page): void
     {
+        if ($this->reportMode === self::MODE_LIVE) {
+            [$this->detailPage, $this->detailCursor] = $this->moveLivePage($this->liveFilters(), $page, $this->detailPage, $this->detailCursor, $this->lineCount);
+
+            return;
+        }
+
         $this->detailPage = ComprehensiveFinancialTransactionsSnapshot::clampPage($page, $this->lineCount, self::pageSize());
     }
 
     public function goToCategoryPage(int $page): void
     {
+        if ($this->reportMode === self::MODE_LIVE) {
+            if ($this->openCategoryKey !== null) {
+                [$this->categoryPage, $this->categoryCursor] = $this->moveLivePage(
+                    $this->liveGroupFilters(ComprehensiveFinancialTransactionsSnapshotRepository::DIMENSION_CATEGORY, $this->openCategoryKey),
+                    $page,
+                    $this->categoryPage,
+                    $this->categoryCursor,
+                    $this->openGroupLineCount(ComprehensiveFinancialTransactionsSnapshotRepository::DIMENSION_CATEGORY, $this->openCategoryKey),
+                );
+            }
+
+            return;
+        }
+
         $this->categoryPage = ComprehensiveFinancialTransactionsSnapshot::clampPage(
             $page,
             $this->openGroupLineCount(ComprehensiveFinancialTransactionsSnapshotRepository::DIMENSION_CATEGORY, $this->openCategoryKey),
@@ -647,6 +802,20 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
 
     public function goToTypePage(int $page): void
     {
+        if ($this->reportMode === self::MODE_LIVE) {
+            if ($this->openTypeKey !== null) {
+                [$this->typePage, $this->typeCursor] = $this->moveLivePage(
+                    $this->liveGroupFilters(ComprehensiveFinancialTransactionsSnapshotRepository::DIMENSION_TYPE, $this->openTypeKey),
+                    $page,
+                    $this->typePage,
+                    $this->typeCursor,
+                    $this->openGroupLineCount(ComprehensiveFinancialTransactionsSnapshotRepository::DIMENSION_TYPE, $this->openTypeKey),
+                );
+            }
+
+            return;
+        }
+
         $this->typePage = ComprehensiveFinancialTransactionsSnapshot::clampPage(
             $page,
             $this->openGroupLineCount(ComprehensiveFinancialTransactionsSnapshotRepository::DIMENSION_TYPE, $this->openTypeKey),
@@ -660,6 +829,10 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
     #[Computed]
     public function currencySummaries(): array
     {
+        if ($this->reportMode === self::MODE_LIVE) {
+            return $this->liveCurrencySummaries;
+        }
+
         return $this->reportSnapshot()?->currencySummaries() ?? [];
     }
 
@@ -669,6 +842,10 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
     #[Computed]
     public function categorySummaries(): array
     {
+        if ($this->reportMode === self::MODE_LIVE) {
+            return $this->liveCategorySummaries;
+        }
+
         return $this->reportSnapshot()?->categorySummaries() ?? [];
     }
 
@@ -678,6 +855,10 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
     #[Computed]
     public function typeSummaries(): array
     {
+        if ($this->reportMode === self::MODE_LIVE) {
+            return $this->liveTypeSummaries;
+        }
+
         return $this->reportSnapshot()?->typeSummaries() ?? [];
     }
 
@@ -689,6 +870,10 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
     #[Computed]
     public function detailRows(): array
     {
+        if ($this->reportMode === self::MODE_LIVE) {
+            return $this->livePageRows($this->liveFilters(), $this->detailCursor);
+        }
+
         return $this->reportSnapshot()?->page($this->detailPage, self::pageSize()) ?? [];
     }
 
@@ -701,6 +886,10 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
      */
     protected function getViewData(): array
     {
+        if ($this->reportMode === self::MODE_LIVE) {
+            return $this->liveViewData();
+        }
+
         $snapshot = $this->reportSnapshot();
         $perPage = self::pageSize();
 
@@ -713,6 +902,7 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
                 default => null,
             },
             'snapshotExpired' => $this->hasSubmitted && $snapshot === null,
+            'projectionFallback' => $this->reportMode === self::MODE_SNAPSHOT || $this->buildId !== null,
             'currencySummaries' => $this->currencySummaries,
             'categorySummaries' => $this->categorySummaries,
             'typeSummaries' => $this->typeSummaries,
@@ -761,6 +951,143 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
         }
 
         return array_merge($data, $pages);
+    }
+
+    /**
+     * Live mode render: the summaries kept since "عرض" plus exactly one page
+     * per visible table, each a keyset walk of the projection rendered from
+     * the ledger. If the projection stopped being READY since "عرض" (a drift
+     * was detected, or a rebuild from an untrusted state began), the result
+     * is withdrawn like an expired report — never shown from a projection
+     * that is not proven current.
+     *
+     * @return array<string, mixed>
+     */
+    private function liveViewData(): array
+    {
+        $perPage = self::pageSize();
+
+        $data = [
+            'buildStatus' => null,
+            'buildErrorNotice' => null,
+            'snapshotExpired' => false,
+            'projectionFallback' => false,
+            'currencySummaries' => $this->liveCurrencySummaries,
+            'categorySummaries' => $this->liveCategorySummaries,
+            'typeSummaries' => $this->liveTypeSummaries,
+            'detailRows' => [],
+            'detailPager' => null,
+            'categoryRows' => [],
+            'categoryPager' => null,
+            'typeRows' => [],
+            'typePager' => null,
+        ];
+
+        if (! app(ComprehensiveReportProjectionState::class)->isReady()) {
+            return array_merge($data, [
+                'snapshotExpired' => true,
+                'currencySummaries' => [],
+                'categorySummaries' => [],
+                'typeSummaries' => [],
+            ]);
+        }
+
+        $data['detailRows'] = $this->detailRows;
+        $data['detailPager'] = $this->pager($this->detailPage, $this->lineCount, $perPage);
+
+        foreach ([
+            'category' => [ComprehensiveFinancialTransactionsSnapshotRepository::DIMENSION_CATEGORY, $this->openCategoryKey, $this->categoryPage, $this->categoryCursor],
+            'type' => [ComprehensiveFinancialTransactionsSnapshotRepository::DIMENSION_TYPE, $this->openTypeKey, $this->typePage, $this->typeCursor],
+        ] as $prefix => [$dimension, $key, $page, $cursor]) {
+            if ($key === null) {
+                continue;
+            }
+
+            $data[$prefix.'Rows'] = $this->livePageRows($this->liveGroupFilters($dimension, $key), $cursor);
+            $data[$prefix.'Pager'] = $this->pager($page, $this->openGroupLineCount($dimension, $key), $perPage);
+        }
+
+        return $data;
+    }
+
+    /**
+     * The applied live filters, resolved once per request.
+     */
+    private function liveFilters(): ComprehensiveReportResolvedFilters
+    {
+        return $this->resolvedLiveFilters ??= app(ComprehensiveReportProjectionQuery::class)
+            ->resolve(ComprehensiveFinancialTransactionsFilters::fromArray($this->liveFilters));
+    }
+
+    private function liveGroupFilters(string $dimension, string $groupKey): ComprehensiveReportResolvedFilters
+    {
+        return app(ComprehensiveReportRows::class)->forGroup($this->liveFilters(), $dimension, $groupKey);
+    }
+
+    /**
+     * The rendered rows of the page that starts at $cursor (page 1 when null).
+     *
+     * @param  array{0: array{0: string, 1: int, 2: int}, 1: array{0: string, 1: int, 2: int}}|null  $cursor
+     * @return array<int, array<string, mixed>>
+     */
+    private function livePageRows(ComprehensiveReportResolvedFilters $filters, ?array $cursor): array
+    {
+        $rows = app(ComprehensiveReportRows::class);
+
+        $positions = $cursor === null
+            ? $rows->positions($filters, ComprehensiveReportRows::FIRST, null, self::pageSize())
+            : $rows->positions($filters, ComprehensiveReportRows::FROM, $cursor[0], self::pageSize());
+
+        return $rows->hydrate($positions);
+    }
+
+    /**
+     * Keyset navigation for one live table. Only First, Previous, Next and
+     * Last exist (any other page number is ignored): Next walks forward from
+     * the last line on screen, Previous backward from the first, Last
+     * backward from the end by exactly the size of the last page — so pages
+     * stay aligned to the same 100-line boundaries a numbered pager shows,
+     * and no line is ever skipped or repeated, without any OFFSET.
+     *
+     * @param  array{0: array{0: string, 1: int, 2: int}, 1: array{0: string, 1: int, 2: int}}|null  $cursor
+     * @return array{0: int, 1: array{0: array{0: string, 1: int, 2: int}, 1: array{0: string, 1: int, 2: int}}|null}
+     */
+    private function moveLivePage(ComprehensiveReportResolvedFilters $filters, int $requested, int $current, ?array $cursor, int $total): array
+    {
+        $perPage = self::pageSize();
+        $last = ComprehensiveFinancialTransactionsSnapshot::lastPage($total, $perPage);
+        $rows = app(ComprehensiveReportRows::class);
+        $this->forgetRenderedReport();
+
+        if ($requested <= 1) {
+            return [1, null];
+        }
+
+        if ($requested === $current + 1 && $requested <= $last) {
+            $lastOnScreen = $cursor[1] ?? (array_slice($rows->positions($filters, ComprehensiveReportRows::FIRST, null, $perPage), -1)[0] ?? null);
+
+            if ($lastOnScreen === null) {
+                return [$current, $cursor];
+            }
+
+            $positions = $rows->positions($filters, ComprehensiveReportRows::AFTER, $lastOnScreen, $perPage);
+
+            return $positions === [] ? [$current, $cursor] : [$requested, [$positions[0], end($positions)]];
+        }
+
+        if ($requested === $current - 1 && $cursor !== null) {
+            $positions = $rows->positions($filters, ComprehensiveReportRows::BEFORE, $cursor[0], $perPage);
+
+            return $positions === [] ? [1, null] : [$requested, [$positions[0], end($positions)]];
+        }
+
+        if ($requested === $last) {
+            $positions = $rows->positions($filters, ComprehensiveReportRows::LAST, null, $total - $perPage * ($last - 1));
+
+            return $positions === [] ? [1, null] : [$last, [$positions[0], end($positions)]];
+        }
+
+        return [$current, $cursor];
     }
 
     /**
@@ -820,7 +1147,25 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
 
     private function openGroupLineCount(string $dimension, ?string $key): int
     {
-        return $key === null ? 0 : ($this->reportSnapshot()?->groupLineCount($dimension, $key) ?? 0);
+        if ($key === null) {
+            return 0;
+        }
+
+        if ($this->reportMode === self::MODE_LIVE) {
+            $summaries = $dimension === ComprehensiveFinancialTransactionsSnapshotRepository::DIMENSION_CATEGORY
+                ? $this->liveCategorySummaries
+                : $this->liveTypeSummaries;
+
+            foreach ($summaries as $summary) {
+                if ($summary['key'] === $key) {
+                    return (int) $summary['line_count'];
+                }
+            }
+
+            return 0;
+        }
+
+        return $this->reportSnapshot()?->groupLineCount($dimension, $key) ?? 0;
     }
 
     /**
@@ -901,12 +1246,22 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
             return null;
         }
 
-        $snapshot = $this->reportSnapshot();
+        if ($this->reportMode === self::MODE_LIVE) {
+            if ($this->lineCount > self::styledExcelMaxLines()) {
+                $this->startLargeExcelExport(null);
 
-        if ($snapshot->lineCount() > self::styledExcelMaxLines()) {
-            $this->startLargeExcelExport($snapshot);
+                return null;
+            }
 
-            return null;
+            $snapshot = $this->liveExportSnapshot();
+        } else {
+            $snapshot = $this->reportSnapshot();
+
+            if ($snapshot->lineCount() > self::styledExcelMaxLines()) {
+                $this->startLargeExcelExport($snapshot);
+
+                return null;
+            }
         }
 
         $rows = $this->inlineExportRows($snapshot);
@@ -915,7 +1270,8 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
             return null;
         }
 
-        $this->auditExport(ReportExportFormat::Xlsx);
+        $this->auditExport(ReportExportFormat::Xlsx, $snapshot);
+        $this->discardLiveExportSnapshot($snapshot);
 
         return app(ComprehensiveFinancialTransactionsExcelExportService::class)->stream(
             $snapshot->filters()->dateFrom,
@@ -935,7 +1291,7 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
      * Queues the large-report workbook of the displayed snapshot. The page
      * then polls refreshExcelExport(), which starts the download when ready.
      */
-    private function startLargeExcelExport(ComprehensiveFinancialTransactionsSnapshot $snapshot): void
+    private function startLargeExcelExport(?ComprehensiveFinancialTransactionsSnapshot $snapshot): void
     {
         if ($this->excelExportId !== null) {
             Notification::make()->title(self::PREPARING_EXCEL_NOTICE)->info()->send();
@@ -944,10 +1300,19 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
         }
 
         $exports = app(ComprehensiveFinancialTransactionsExcelExports::class);
-        $this->excelExportId = $exports->create($this->ownerId(), $snapshot->id());
+
+        // Live mode: only reserve the export snapshot; the export job builds
+        // it (through the projection) and then writes the workbook.
+        $this->excelExportId = $snapshot !== null
+            ? $exports->create($this->ownerId(), $snapshot->id())
+            : $exports->create(
+                $this->ownerId(),
+                app(ComprehensiveFinancialTransactionsSnapshotRepository::class)->reserve($this->ownerId()),
+                $this->liveFilters,
+            );
 
         Notification::make()
-            ->title('التقرير كبير ('.number_format($snapshot->lineCount()).' بند)؛ '.self::PREPARING_EXCEL_NOTICE)
+            ->title('التقرير كبير ('.number_format($snapshot?->lineCount() ?? $this->lineCount).' بند)؛ '.self::PREPARING_EXCEL_NOTICE)
             ->info()
             ->send();
 
@@ -1026,24 +1391,26 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
             return null;
         }
 
-        $snapshot = $this->reportSnapshot();
+        $lineCount = $this->reportMode === self::MODE_LIVE ? $this->lineCount : $this->reportSnapshot()->lineCount();
 
-        if ($snapshot->lineCount() > self::wordMaxLines()) {
+        if ($lineCount > self::wordMaxLines()) {
             Notification::make()
-                ->title(self::wordLimitNotice($snapshot->lineCount()))
+                ->title(self::wordLimitNotice($lineCount))
                 ->danger()
                 ->send();
 
             return null;
         }
 
+        $snapshot = $this->reportMode === self::MODE_LIVE ? $this->liveExportSnapshot() : $this->reportSnapshot();
         $rows = $this->inlineExportRows($snapshot);
 
         if ($rows === null) {
             return null;
         }
 
-        $this->auditExport(ReportExportFormat::Docx);
+        $this->auditExport(ReportExportFormat::Docx, $snapshot);
+        $this->discardLiveExportSnapshot($snapshot);
 
         return app(ComprehensiveFinancialTransactionsWordExportService::class)->stream(
             $snapshot->filters()->dateFrom,
@@ -1067,13 +1434,46 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
      * built by the report service, so it is passed through as a bounded flat
      * list of "label: value" strings, never as report data.
      */
-    protected function auditExport(ReportExportFormat $format): void
+    protected function auditExport(ReportExportFormat $format, ComprehensiveFinancialTransactionsSnapshot $snapshot): void
     {
         app(ReportExportAuditRecorder::class)->exportRequested(
             ReportExportSubject::ComprehensiveFinancialTransactions,
             $format,
-            self::exportAuditFilters($this->reportSnapshot(), $this->hasSubmitted),
+            self::exportAuditFilters($snapshot, $this->hasSubmitted),
         );
+    }
+
+    /**
+     * Live mode inline export: a fresh immutable snapshot of the applied
+     * filters, built through the projection inside this request — bounded,
+     * since inline exports are capped at a few thousand lines. It is what the
+     * file AND the export audit describe.
+     */
+    private function liveExportSnapshot(): ComprehensiveFinancialTransactionsSnapshot
+    {
+        return app(ComprehensiveFinancialTransactionsSnapshotBuilder::class)->build(
+            $this->ownerId(),
+            ComprehensiveFinancialTransactionsFilters::fromArray($this->liveFilters),
+            preferProjection: true,
+        );
+    }
+
+    /**
+     * A live inline export's snapshot has served its purpose once its rows
+     * are materialized and the export audited; it is removed right away
+     * (best effort — the expiry purge collects anything left).
+     */
+    private function discardLiveExportSnapshot(ComprehensiveFinancialTransactionsSnapshot $snapshot): void
+    {
+        if ($this->reportMode !== self::MODE_LIVE) {
+            return;
+        }
+
+        try {
+            app(ComprehensiveFinancialTransactionsSnapshotRepository::class)->discard($this->ownerId(), $snapshot->id());
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     /**
@@ -1151,6 +1551,10 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
             return false;
         }
 
+        if ($this->hasSubmitted && $this->reportMode === self::MODE_LIVE) {
+            return true;
+        }
+
         if ($this->hasSubmitted && $this->reportSnapshot() !== null) {
             return true;
         }
@@ -1182,6 +1586,7 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
         $this->abandonExcelExport();
         $this->buildError = null;
         $this->discardSnapshot();
+        $this->forgetLiveReport();
         $this->hasSubmitted = false;
         $this->transactionCount = 0;
         $this->lineCount = 0;

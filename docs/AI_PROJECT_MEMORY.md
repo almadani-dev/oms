@@ -4,6 +4,47 @@
 
 ## Recent Changes
 
+- **2026-10-05 — تقرير الحركات المالية الشامل: real-time reporting projection (live mode) + stress schema parity against fresh migrations. Verified at 1.22M active lines; committed locally. No accounting formula, guard, currency rule, SoftDelete semantic or report calculation changed; the ledger stays the only source of truth.**
+  - **Why:** "عرض" had to build a snapshot of the whole period in a worker (≈100 s for the full range). The user required an interactive, exact report:
+    - immediately current after every commit;
+    - "عرض" under 1 s normally and at most 5 s in the worst case;
+    - paging under 0.5 s;
+    - no triggers, and no queue needed for correctness.
+  - **Projection (`comprehensive_report_*`, migration `2026_10_05_100000`, no FKs):**
+    - `comprehensive_report_lines` holds one row per active line of an active transaction: ids, filter keys, `transaction_time`, amounts.
+      - It also carries a copy of the account's type, kept current by `AccountReportProjectionObserver`.
+      - The clustered PK is the canonical order `(transaction_time, transaction_id, line_id)`.
+    - Monthly aggregates are exact (bcmath):
+      - `monthly_totals` by type × currency × account type;
+      - `monthly_transactions` gives distinct-transaction counts by type × signature (signature = the sorted `currency:account_type` pairs of a transaction).
+    - `comprehensive_report_projection_state` holds `ready` / `building` / `invalid`.
+  - **Maintenance:** `ComprehensiveReportProjector::syncTransaction()` / `removeTransaction()` is called once per write site (5 creates, 5 edits, 5 deletes, opening balance), inside the flow's own `DB::transaction()`.
+    - It re-derives from the ledger and refuses to run outside a transaction.
+    - A failure rolls back everything.
+    - A static test fails if a ledger write site lacks it.
+  - **Reading:**
+    - `ComprehensiveReportSummaries` answers whole months from the aggregates and edge months / account / project / side filters from indexed line queries.
+      - Mutable relations (classification types, live project cost items, soft-deleted accounts) are resolved per run.
+      - The soft-deleted-account exclusion stays exactly as before and is query-time only.
+    - `ComprehensiveReportRows` does keyset pages; `rowsForLines()` labels a page with the report's own joins plus per-page source notes.
+  - **Page:**
+    - Live mode while READY: summaries are kept in Livewire state (≤ 9 KB); the pager is First / Previous / Next / Last (keyset; no arbitrary jumps).
+    - Otherwise the unchanged V2 snapshot path is used, with a fallback notice. A projection found invalid after "عرض" withdraws the result.
+    - Exports still go through V2 snapshots, built through the projection; a large Excel builds its snapshot inside the existing `reports` job.
+  - **Commands:**
+    - `oms:rebuild-comprehensive-report-projection` (in place, idempotent windows + month swaps, `--resume`, `--untrusted`, `--verify`).
+    - `oms:verify-comprehensive-report-projection`: independent SQL; marks the projection INVALID on drift; `--parity` runs the old-vs-new oracle.
+  - **Results:**
+    - Parity 20/20 sets at 561k (0 row / 0 summary differences).
+    - 1.22M: verifier 0 differences, `oms:stress:verify` 0 violations.
+    - "عرض" 0.23–0.79 s; worst legitimate filter 1.52 s.
+    - Paging 41–213 ms; write overhead 4–20 ms median per business write.
+    - Full numbers in TASKS_LOG 2026-10-05.
+  - **Stress tooling change:** `oms:stress:create-database` now checks schema parity against a temporary `oms_stress_schema_ref_<hex>` database migrated from zero with the current code (always dropped; stale ones swept). It no longer compares against `oms`.
+    - `oms` is never migrated by stress commands and still only provides the 8 lookup tables (read-only session).
+    - **`oms` (dev) was deliberately NOT migrated:** the report there runs in fallback mode until it is migrated and rebuilt.
+  - **Pre-existing issue fixed (test-only):** `CleanOperationalDataCommandTest` had stale Muwakha/audit fixtures and `--apply` calls that blocked on `confirm()`.
+
 - **2026-10-05 — Isolated OMS stress environment `oms_stress` (synthetic data only). Built, verified and benchmarked on this DEV machine; NOT committed. No accounting formula, guard, report calculation or SoftDelete semantic changed.**
   - **Why:** measure the real application on a mature multi-year dataset (≥ 500k transaction lines) without touching `oms` or production. The user confirmed (2026-10-05) that this Laragon machine and `oms` are development only.
   - **Isolation:** separate local MySQL database `oms_stress`; `.env.stress` (git-ignored copy of `.env` with only `APP_ENV=stress`, `DB_DATABASE=oms_stress`, `LARAVEL_STORAGE_PATH=…\storage\stress`); every disk under `storage/stress/` (git-ignored); commands run with `--env=stress`.

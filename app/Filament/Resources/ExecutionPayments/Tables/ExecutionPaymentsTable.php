@@ -11,6 +11,7 @@ use App\Services\Audit\Attachments\AttachmentAuditRecorder;
 use App\Services\Audit\Financial\FinancialAccountRole;
 use App\Services\Audit\Financial\FinancialAuditRecorder;
 use App\Services\Audit\Financial\FinancialAuditSubject;
+use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportProjector;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
@@ -245,6 +246,10 @@ class ExecutionPaymentsTable
 
                 // STEP 3 - Soft delete the transaction
                 $transaction->delete();
+
+                // Report projection: this transaction leaves "تقرير الحركات
+                // المالية الشامل" inside this same DB transaction.
+                app(ComprehensiveReportProjector::class)->removeTransaction($transaction->id);
             }
 
             // STEP 5 - Soft delete the attachment record (keep the physical file for audit)

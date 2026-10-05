@@ -39,8 +39,10 @@ return [
     'base_connection' => 'mysql',
 
     // The normal development database, opened READ-ONLY (a MySQL session in
-    // READ ONLY transaction mode) only to check schema parity and to copy the
-    // eight lookup tables. Never written to.
+    // READ ONLY transaction mode) only to copy the eight lookup tables. Never
+    // written to, never migrated, and no longer the schema reference: schema
+    // parity is checked against a temporary fresh migration of the current
+    // code (App\Services\Stress\StressSchemaReference).
     'source_database' => 'oms',
 
     // The runtime-only connection name the stress commands register.

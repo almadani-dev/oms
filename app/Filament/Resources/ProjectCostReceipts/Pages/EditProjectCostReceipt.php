@@ -15,6 +15,7 @@ use App\Services\Audit\Attachments\AttachmentAuditRecorder;
 use App\Services\Audit\Financial\FinancialAccountRole;
 use App\Services\Audit\Financial\FinancialAuditRecorder;
 use App\Services\Audit\Financial\FinancialAuditSubject;
+use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportProjector;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
@@ -177,6 +178,13 @@ class EditProjectCostReceipt extends EditRecord
                     $record->transaction,
                     $this->buildReceiptSummary($record->transaction, $projectCost)
                 );
+            }
+
+            // Report projection: re-derive this transaction's rows of
+            // "تقرير الحركات المالية الشامل" from the final ledger state, inside
+            // this same DB transaction (a failure rolls all of it back).
+            if ($record->transaction_id) {
+                app(ComprehensiveReportProjector::class)->syncTransaction((int) $record->transaction_id);
             }
 
             // STEP 7 - Handle file upload/replacement/removal

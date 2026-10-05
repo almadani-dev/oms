@@ -123,3 +123,80 @@ The report build and the large Excel export run on the queue **`reports`**. Back
 1. `git revert` the release (or redeploy the previous tag), then `php artisan config:cache` and `php artisan queue:restart`.
 2. The previous release builds the report in-request and ignores the new directories. Afterwards delete `storage/app/private/report-snapshots` and `storage/app/private/report-exports`; they contain only regenerable report data.
 3. The `reports` worker can be stopped (`supervisorctl stop oms-queue-reports`). No database rollback is needed; nothing in this change touches the schema or financial tables.
+
+---
+
+# Addendum (2026-10-05) — real-time reporting projection
+
+Prepared 2026-10-05. **Nothing here has been executed against production.** This release **adds a schema migration**: `2026_10_05_100000_create_comprehensive_report_projection_tables` creates 5 new tables. It is additive only: no existing table, column, index or financial row changes, and there are no foreign keys.
+
+## P1. What changes for users
+
+- **"عرض" while the projection is READY (live mode):**
+  - The summaries come from bounded aggregate queries on the projection.
+  - Every page, classification and type page is a keyset walk of the projection. Its ~100 lines are rendered from the ledger itself.
+  - No snapshot is built, nothing is queued, and there is nothing to wait for.
+  - Every financial create, edit or delete is visible at the next "عرض", inside the same DB transaction that wrote it.
+- **Paging:** the pager offers الأولى / السابقة / التالية / الأخيرة. Arbitrary page numbers are not supported in live mode.
+- **Fallback:** while the projection is not READY (not built yet, rebuilding from an untrusted state, or marked invalid by the verifier), the page uses the previous snapshot path unchanged. It shows the fallback notice, so the figures stay exact, just slower.
+- **Exports:** they still write an immutable snapshot, built through the projection when it is READY.
+  - Word and Excel up to 2,000 lines are built in the request.
+  - Larger Excel files are built by the existing `reports` worker job, which first builds the snapshot.
+  - Rows and figures are identical to the on-screen report.
+
+## P2. Deploy order
+
+1. **Take a verified backup** (as for every release).
+2. **Brief maintenance window.** Every financial write now also writes the projection, so code and migration must arrive together:
+   ```
+   php artisan down
+   git pull / deploy the release
+   php artisan migrate --force          # creates the 5 projection tables (status: not built)
+   php artisan config:cache
+   php artisan queue:restart
+   php artisan up
+   ```
+   Until the next step finishes, the report keeps working through the fallback path. From this moment, every financial write already maintains its own projection rows.
+3. **Build the projection in place while the system is in use:**
+   ```
+   php artisan oms:rebuild-comprehensive-report-projection --verify
+   ```
+   - It is restartable: if it is interrupted, run it again with `--resume`.
+   - It commits one window (500 transactions) or one month at a time.
+   - Memory is bounded by one window or one month.
+   - Live writes during the rebuild are safe: every step re-derives from the ledger and is idempotent, and the month aggregates are swapped under a shared lock.
+   - Measured on the dev laptop:
+     - 561,831 lines: rebuild 296 s, verifier 33 s;
+     - 1,221,321 lines: rebuild 700 s (while another heavy job shared the CPU), verifier 79 s.
+   - Measured size: 504 MB for 1.22M lines (≈ 0.43 KB per line, indexes included).
+   - At the end the status is READY and the page switches to live mode.
+4. **Check:**
+   - `php artisan oms:verify-comprehensive-report-projection --parity --from=<first day of this month> --to=<today>` must report `line differences: 0 | monthly total differences: 0 | transaction count differences: 0` and `row differences: 0 | summary differences: 0`.
+   - Open the report and press "عرض": no "جاري إعداد التقرير..." wait, no fallback notice.
+
+## P3. Operations
+
+- **Drift check (recommended daily, not scheduled automatically — operator decision):**
+  - Run `php artisan oms:verify-comprehensive-report-projection`.
+  - It is read-only on data. Any difference marks the projection INVALID, the page falls back, and the exit code is 1.
+  - Repair with `php artisan oms:rebuild-comprehensive-report-projection --untrusted --verify`.
+- **Health:** the single row of `comprehensive_report_projection_state` has `status` (`ready` / `building` / `invalid`), `phase`, `resume_after`, `rebuilt_at`, `verified_at` and `note`.
+- **After any database restore:**
+  - A backup taken after this release restores ledger and projection from the same consistent dump (`--single-transaction`).
+  - A backup taken before it has no projection: restore's `migrate --force` recreates the tables empty, the status is "not built", and the page falls back.
+  - Either way, run the verify command and rebuild if it reports differences.
+- **Operational data cleanup** (`oms:clean-operational-data`) empties the 4 projection data tables together with the ledger. The state row is preserved.
+- **Soft-deleted accounts:** their lines stay excluded, exactly as before. The rule is applied at query time only, so changing it later needs no rebuild.
+- **An account's type is editable:** the `Account` observer re-derives that account's projected lines inside the edit's transaction.
+- **Measured cost per financial write** (1.22M lines, dev laptop): +4–20 ms median and ≤ 41 ms p95, 12–14 extra queries.
+- **Measured report speed** (1.22M lines):
+  - "عرض" 0.23–0.79 s for normal filters, worst legitimate filter 1.5 s;
+  - First / Previous / Next / Last 41–213 ms;
+  - classification / type pages ≤ 0.19 s;
+  - Livewire state ≤ 9.1 KB.
+
+## P4. Rollback
+
+- Redeploy the previous release. The new tables are then simply unused; leaving them is harmless.
+- To remove them: `php artisan migrate:rollback --step=1`, from the release that contains the migration, before switching code.
+- No financial data is touched either way.

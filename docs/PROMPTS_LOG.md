@@ -1,6 +1,34 @@
 # Prompts Log
 
 ### Date
+2026-10-05 ("APPROVED — COMMIT V2 FIRST, THEN AUDIT + IMPLEMENT THE FINAL REAL-TIME REPORTING PROJECTION" / "NO MySQL triggers" / "The ledger stays authoritative" / "ZERO differences" / "DO NOT MIGRATE OR MODIFY THE NORMAL `oms` DATABASE")
+
+### Prompt
+Commit the V2 snapshot format, then audit and implement a real-time projection of the comprehensive report. Requirements:
+- ≥1M active lines.
+- Immediately current after every commit, with no queue needed for correctness.
+- Normal open under 1 s, paging under 0.5 s, the worst legitimate filter within 5 s.
+- One explicit synchronous projection service inside each business transaction.
+- A keyset First/Previous/Next/Last pager.
+- A minimal projection with per-page hydration.
+- V2 kept for exports and as fallback.
+- Exact parity with the old report as oracle.
+- Freshness and forced-rollback tests, drift verifier and rebuild commands, benchmarks.
+- One local commit only when every gate is green.
+
+A follow-up prompt forbade migrating the development `oms` and directed the stress schema parity to a temporary fresh-migration reference.
+
+### Purpose
+**"Benchmark direct aggregation first; add aggregate tables only if proven needed"** produced the evidence: 6.2 s and 3.6 s at 561k lines on the raw projection, about 4.9 s for the heaviest filter. That led to the monthly aggregates plus the signature table for exact distinct-transaction counts under currency × account-type filters.
+
+**"The old report is the oracle"** made a parity checker part of the deliverable. It compares every row (all 20 keys, notes included) and every summary of the old ledger path against the new path, for 20 filter sets on the stress data.
+
+**"DO NOT MIGRATE `oms`"** turned a blocked step into a design fix. Stress schema parity now uses the current code's migrations as the source of truth, so a dev database no longer has to be migrated for a stress build.
+
+---
+
+
+### Date
 2026-10-04 ("Do NOT silently start or install a production worker" / "Do not fake an exact percentage" / "Use an explicit threshold based on measured evidence" / "visually compare ... and report every visible difference honestly")
 
 ### Prompt
