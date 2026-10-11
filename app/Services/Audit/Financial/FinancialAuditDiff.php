@@ -11,7 +11,9 @@ namespace App\Services\Audit\Financial;
  *  1. CONTEXT fields (`operation_type`, `transaction_id`,
  *     `transaction_number`) are never business changes. They are carried on
  *     both sides so the event can always be tied back to its workflow and
- *     its ledger transaction, but they never appear in `changed_fields`.
+ *     its ledger transaction, but they never appear in `changed_fields` —
+ *     except a `transaction_number` that actually differs (a cross-year
+ *     General Expense renumber), which is reported as changed.
  *
  *  2. SATELLITE fields (a `_label` / `_code` belonging to a foreign key —
  *     see FinancialAuditFieldNames) are never business changes either. A
@@ -56,6 +58,14 @@ final class FinancialAuditDiff
 
         foreach ($keys as $key) {
             if (FinancialAuditFieldNames::isContextField($key)) {
+                // The one exception: a transaction_number that really
+                // differs is a renumber (a General Expense moved to another
+                // year), a change in its own right. It is otherwise constant,
+                // so no other edit can ever report it.
+                if ($key === 'transaction_number' && ($before[$key] ?? null) !== ($after[$key] ?? null)) {
+                    $changed[] = $key;
+                }
+
                 continue;
             }
 
@@ -72,11 +82,11 @@ final class FinancialAuditDiff
             return new self([], [], []);
         }
 
-        $carry = array_merge(
+        $carry = array_values(array_unique(array_merge(
             FinancialAuditFieldNames::CONTEXT_FIELDS,
             $changed,
             self::satellitesOf($changed, $keys),
-        );
+        )));
 
         return new self(
             old: self::only($before, $carry),

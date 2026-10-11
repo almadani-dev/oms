@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\GeneralExpenses\Pages;
 
+use App\Filament\Concerns\GeneratesSequentialTransactionNumbers;
 use App\Filament\Concerns\RedirectsToResourceView;
 use App\Enums\TransactionLineRole;
 use App\Filament\Resources\GeneralExpenses\GeneralExpenseResource;
@@ -9,6 +10,7 @@ use App\Filament\Resources\GeneralExpenses\Schemas\GeneralExpenseForm;
 use App\Filament\Resources\GeneralExpenses\Tables\GeneralExpensesTable;
 use App\Models\Attachment;
 use App\Models\GeneralExpense;
+use App\Models\Transaction;
 use App\Models\TransactionLine;
 use App\Services\Attachments\AttachmentUploadService;
 use App\Services\Audit\Attachments\AttachmentAuditRecorder;
@@ -30,6 +32,7 @@ use Illuminate\Support\Facades\DB;
 
 class EditGeneralExpense extends EditRecord
 {
+    use GeneratesSequentialTransactionNumbers;
     use RedirectsToResourceView;
 
     protected static string $resource = GeneralExpenseResource::class;
@@ -151,8 +154,22 @@ class EditGeneralExpense extends EditRecord
         // تعديل أي حقل آخر إلى مسح جهة مستفيدة تاريخية. السجلات الجديدة تبقى NULL.
         $preservedPartnerId = $record->partner_id ?? $record->transaction?->partner_id;
 
-        return DB::transaction(function () use ($record, $data, $amount, $currencyId, $oldDebit, $oldCredit, $accounts, $lines, $audit, $before, $preservedPartnerId) {
+        // The stored number as it is BEFORE this edit, read once: a retried
+        // attempt must decide from it, never from the in-memory value a
+        // failed attempt left on the model.
+        $originalNumber = $record->transaction?->transaction_number;
+
+        // Only a renumber can collide on transaction_number; the retry re-runs
+        // the whole (rolled back) DB transaction with a freshly computed number.
+        return $this->retryOnTransactionNumberCollision(fn () => DB::transaction(function () use ($record, $data, $amount, $currencyId, $oldDebit, $oldCredit, $accounts, $lines, $audit, $before, $preservedPartnerId, $originalNumber) {
             $transaction = $record->transaction;
+
+            // STEP 0 - Keep GEN-YYYY- in step with the expense date's year
+            // (the Create rule). The FIRST write of this transaction, so a
+            // number collision rolls back before any balance or line changed.
+            $renumberedTo = $transaction
+                ? $this->renumberForDateYear($transaction, $originalNumber, $data['date'])
+                : null;
 
             // STEP 1 - Reverse old balances (old debit decrement, old credit increment)
             $oldDebit?->account?->decrement('current_balance', (float) $oldDebit->debit_base);
@@ -249,14 +266,41 @@ class EditGeneralExpense extends EditRecord
                 ]),
             );
 
-            // STEP 8 - Success
+            // STEP 8 - Success (with the new number, as Create shows it, when
+            // the expense was renumbered into another year)
             Notification::make()
                 ->title('تم تعديل المصروف بنجاح')
+                ->body($renumberedTo !== null ? 'رقم المعاملة: ' . $renumberedTo : null)
                 ->success()
                 ->send();
 
             return $record;
-        });
+        }));
+    }
+
+    /**
+     * The transaction number's year follows the expense date, exactly as on
+     * Create ("GEN-" + year of the date). Same year: the number is kept.
+     * Another year: the next number of THAT year's GEN sequence, from the
+     * shared generator (MAX+1 over every existing number incl. soft-deleted
+     * ones, under lockForUpdate; the UNIQUE index + retry cover the race).
+     * A number not in the GEN-YYYY-NNNN form is never touched.
+     *
+     * @return string|null the new number, or null when it was kept
+     */
+    protected function renumberForDateYear(Transaction $transaction, ?string $originalNumber, mixed $date): ?string
+    {
+        $year = Carbon::parse($date)->format('Y');
+
+        if (! preg_match('/^GEN-(\d{4})-\d+$/', (string) $originalNumber, $match) || $match[1] === $year) {
+            return null;
+        }
+
+        $number = $this->generateTransactionNumber('GEN-' . $year . '-');
+
+        $transaction->update(['transaction_number' => $number]);
+
+        return $number;
     }
 
     /**
