@@ -253,7 +253,7 @@ Hide or remove the button (code rollback). The job, routes and store are additiv
 
 - **D1. Users see:**
   - «تصدير البيانات CSV»: detail rows only; one `.csv` up to 100,000 rows, otherwise a ZIP of detail files;
-  - «تصدير الإحصائيات Excel» and «تصدير الإحصائيات Word»: the same statistics only, generated immediately.
+  - «تصدير الإحصائيات Excel» and «تصدير الإحصائيات Word»: the same statistics only, generated immediately; Excel on one worksheet.
 
   The Account Statement Word is refused above 2,000 summary rows. Check the production PHP `memory_limit` (~105 MB peak at that cap).
 - **D2. Deploy:** no migration and no new queue. Restart every `reports` worker after deploying (`php artisan queue:restart`): a worker started before the deploy still runs the old CSV code (the one with the summary file).

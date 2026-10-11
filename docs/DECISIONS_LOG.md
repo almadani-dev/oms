@@ -14,6 +14,24 @@
 
 
 ### Date
+2026-10-11 (single-sheet statistics Excel; dead-code cleanup scope)
+
+### Decision
+- **Statistics Excel = exactly one worksheet** (user requirement): all sections stacked vertically on «الإحصائيات», in the same order as the Word document.
+- **Autofilter:** kept on the Account Statement account table (the only table that benefits). Comprehensive has none, because Excel allows one autofilter per worksheet and it has two group tables.
+- **Cleanup scope:** only the proven-dead Word-detail code was removed (references in code / tests / routes / jobs / config / views and Graphify checked first). The old detailed-Excel infrastructure stays until the user decides.
+
+### Reason
+- One sheet is simpler to read, print and share, and mirrors the Word document.
+- Removing unreferenced Word code now avoids carrying two Word paths; the Excel infrastructure still serves any workbook queued before the change.
+
+### Impact
+- No financial calculation, CSV content or Word rule changed.
+- The deleted `AccountStatementWordExportService.php` had uncommitted edits from 2026-10-07; they are discarded with the file (session backup patch keeps them).
+
+---
+
+### Date
 2026-10-11 (Word statistics-only; Word size limit)
 
 ### Decision

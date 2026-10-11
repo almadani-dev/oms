@@ -715,14 +715,6 @@ class AccountStatementPage extends Page implements HasSchemas
     }
 
     /**
-     * @return \Generator<int, array<string, mixed>>
-     */
-    private function exportRows(): \Generator
-    {
-        return app(AccountStatementReport::class)->rows($this->scope(), $this->plan);
-    }
-
-    /**
      * FORMER detail-Excel path, no longer reached from the page (the
      * «تصدير الإحصائيات Excel» button writes statistics only). Kept, with
      * its status URL and forgetExcelExport(), so a large workbook queued

@@ -1153,30 +1153,6 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
     }
 
     /**
-     * Every row of a report small enough for the inline exports (Word and
-     * the styled workbook are capped at 2,000 lines), read BEFORE anything is
-     * audited or streamed, so damaged storage ends in the expired notice
-     * instead of a half-written download. Null when unreadable.
-     *
-     * @return array<int, array<string, mixed>>|null
-     */
-    private function inlineExportRows(ComprehensiveFinancialTransactionsSnapshot $snapshot): ?array
-    {
-        try {
-            return iterator_to_array($snapshot->rows(), false);
-        } catch (ComprehensiveFinancialTransactionsSnapshotUnreadable $e) {
-            $this->forgetUnreadableSnapshot($e);
-
-            Notification::make()
-                ->title(self::EXPIRED_NOTICE)
-                ->warning()
-                ->send();
-
-            return null;
-        }
-    }
-
-    /**
      * @return array{page: int, last: int, from: int, to: int, total: int}
      */
     private function pager(int $page, int $total, int $perPage): array
@@ -1633,59 +1609,9 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
     }
 
     /**
-     * OMS Task 9B.5 — see AccountStatementPage::auditExport() for the shared
-     * placement rule. Filters come from the applied* snapshot only.
-     *
-     * $appliedFilterLabels is a flat map of already-humanized filter strings
-     * built by the report service, so it is passed through as a bounded flat
-     * list of "label: value" strings, never as report data.
-     */
-    protected function auditExport(ReportExportFormat $format, ComprehensiveFinancialTransactionsSnapshot $snapshot): void
-    {
-        app(ReportExportAuditRecorder::class)->exportRequested(
-            ReportExportSubject::ComprehensiveFinancialTransactions,
-            $format,
-            self::exportAuditFilters($snapshot, $this->hasSubmitted),
-        );
-    }
-
-    /**
-     * Live mode inline export: a fresh immutable snapshot of the applied
-     * filters, built through the projection inside this request — bounded,
-     * since inline exports are capped at a few thousand lines. It is what the
-     * file AND the export audit describe.
-     */
-    private function liveExportSnapshot(): ComprehensiveFinancialTransactionsSnapshot
-    {
-        return app(ComprehensiveFinancialTransactionsSnapshotBuilder::class)->build(
-            $this->ownerId(),
-            ComprehensiveFinancialTransactionsFilters::fromArray($this->liveFilters),
-            preferProjection: true,
-        );
-    }
-
-    /**
-     * A live inline export's snapshot has served its purpose once its rows
-     * are materialized and the export audited; it is removed right away
-     * (best effort — the expiry purge collects anything left).
-     */
-    private function discardLiveExportSnapshot(ComprehensiveFinancialTransactionsSnapshot $snapshot): void
-    {
-        if ($this->reportMode !== self::MODE_LIVE) {
-            return;
-        }
-
-        try {
-            app(ComprehensiveFinancialTransactionsSnapshotRepository::class)->discard($this->ownerId(), $snapshot->id());
-        } catch (\Throwable $e) {
-            report($e);
-        }
-    }
-
-    /**
      * The export audit payload, built from the exported snapshot itself —
-     * shared by the page's exports and the streaming-Excel download route so
-     * the two can never describe an export differently. Same keys and values
+     * used by the former streaming-Excel download route, and the same shape
+     * as the statistics exports' auditFiltersFor(). Same keys and values
      * as before (the applied* properties are set from this same snapshot).
      *
      * filter_labels is a flat map of already-humanized filter strings built
@@ -1749,21 +1675,6 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
     public static function styledExcelMaxLines(): int
     {
         return max(0, (int) config('oms.reports.comprehensive_financial_transactions.styled_excel_max_lines', 2000));
-    }
-
-    /**
-     * FORMER Word cap (detail lines), unused since Word holds statistics only
-     * (2026-10-11).
-     */
-    public static function wordMaxLines(): int
-    {
-        return max(0, (int) config('oms.reports.comprehensive_financial_transactions.word_max_lines', 2000));
-    }
-
-    public static function wordLimitNotice(int $lineCount): string
-    {
-        return 'تصدير Word متاح للتقارير التي لا تتجاوز '.number_format(self::wordMaxLines()).' بند، '
-            .'وهذا التقرير يحتوي على '.number_format($lineCount).' بند. يرجى استخدام «'.self::CSV_EXPORT_LABEL.'» لهذا التقرير.';
     }
 
     /**

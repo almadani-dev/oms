@@ -22,10 +22,14 @@ namespace App\Services\Reports\AccountStatement;
  *   8,094      10  |  15.1       2.6       —
  *
  * A summary row costs ~0.25–0.45× a movement row in every renderer, hence a
- * conservative weight of 0.5. Caps (units):
- *  - styled Excel and Word ≤ 2,000 (worst measured ≈ 4–6 s);
+ * conservative weight of 0.5. Caps (units) of the FORMER detail Excel
+ * (excelMode(), no longer reached from the page since 2026-10-11):
+ *  - styled Excel ≤ 2,000 (worst measured ≈ 4–6 s);
  *  - streaming Excel inline ≤ 8,000 (≈ 4 s);
- *  - above that, Excel is prepared in the background; Word is refused.
+ *  - above that, Excel is prepared in the background.
+ *
+ * Since 2026-10-11 Excel and Word hold statistics only: Excel has no cap;
+ * Word is capped on its SUMMARY rows only (wordAllowed()). CSV: csvInline().
  */
 final class AccountStatementExportPlan
 {
@@ -112,14 +116,5 @@ final class AccountStatementExportPlan
     public static function inlineStreamingExcelMaxUnits(): int
     {
         return max(1, (int) config('oms.reports.account_statement.inline_streaming_excel_max_units', 8000));
-    }
-
-    /**
-     * FORMER Word cap (movements + accounts), unused since Word holds
-     * statistics only (2026-10-11).
-     */
-    public static function wordMaxUnits(): int
-    {
-        return max(1, (int) config('oms.reports.account_statement.word_max_units', 2000));
     }
 }

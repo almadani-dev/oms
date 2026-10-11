@@ -163,8 +163,7 @@ Only exports above 20,000 rows need `queue:work`. Browsing never does.
 
 - **«تصدير البيانات CSV»** holds the movements only (§5.1 without the summary file). A single file of at most `csv.plain_max_rows` (100,000) planned movements is delivered as a plain `كشف_الحساب_<ts>.csv`. Larger exports are a ZIP of `حركات_كشف_الحساب.csv` / `حركات_NNN.csv`.
 - **«تصدير الإحصائيات Excel»** (`AccountStatementStatisticsExcelExportService`, OpenSpout through `Excel\StatisticsWorkbook`) holds statistics only, and is always written inside the click (≤ 2 s at 4,997 accounts):
-  - sheet «الإحصائيات»: info, every applied filter, counts, notes and the per-currency summary;
-  - sheet «ملخص الحسابات»: every covered account.
+  - ONE worksheet «الإحصائيات» (final pre-commit, same day): title and export time, period, every applied filter, counts, notes, the per-currency summary, then every covered account.
 - The styled / streaming / background detail-Excel modes are no longer reachable from the page; the code is kept until the user decides on its removal.
 - Audit `purpose`: `detail_data` (CSV), `statistics` (Excel / Word).
 - **«تصدير الإحصائيات Word»** (addendum, same day): the same statistics from the same model (`AccountStatementStatistics` → `Word\StatisticsDocument`). It is refused only above `word_max_summary_rows` = 2,000 summary rows (accounts + currencies), never on movements. The movement-based Word cap of the tables above no longer applies.

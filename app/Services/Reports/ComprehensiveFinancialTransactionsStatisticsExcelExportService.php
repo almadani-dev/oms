@@ -8,9 +8,9 @@ use App\Services\Reports\Excel\StatisticsWorkbook;
 /**
  * «تصدير الإحصائيات Excel» of "تقرير الحركات المالية الشامل": the
  * statistics the displayed report already produced (ComprehensiveStatistics
- * — the same model as the Word statistics), one worksheet per part,
- * right-to-left. Never a detail row (detail data is «تصدير البيانات CSV»).
- * Purely a renderer: no query, no recalculation.
+ * — the same model as the Word statistics), in ONE right-to-left worksheet.
+ * Never a detail row (detail data is «تصدير البيانات CSV»). Purely a
+ * renderer: no query, no recalculation.
  */
 class ComprehensiveFinancialTransactionsStatisticsExcelExportService
 {
@@ -18,11 +18,7 @@ class ComprehensiveFinancialTransactionsStatisticsExcelExportService
 
     public const CONTENT_NOTE = ComprehensiveStatistics::CONTENT_NOTE;
 
-    public const SUMMARY_SHEET = ComprehensiveStatistics::SUMMARY_SHEET;
-
-    public const CATEGORY_SHEET = ComprehensiveStatistics::CATEGORY_SHEET;
-
-    public const TYPE_SHEET = ComprehensiveStatistics::TYPE_SHEET;
+    public const SHEET = ComprehensiveStatistics::SHEET;
 
     public const FILTER_KEYS = ComprehensiveStatistics::FILTER_KEYS;
 

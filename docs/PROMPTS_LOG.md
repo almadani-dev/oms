@@ -1,6 +1,20 @@
 # Prompts Log
 
 ### Date
+2026-10-11 ("FINAL PRE-COMMIT task — single-sheet statistics Excel + safe dead-code cleanup")
+
+### Prompt
+- Statistics Excel = exactly one RTL worksheet with every section stacked vertically (both reports); keep Excel == Word.
+- Audit references first, then remove only the proven-dead old Word-detail code; keep the old detailed-Excel infrastructure and report it.
+- Keep the Word rules and the three button names.
+- Targeted tests; open real files; no commit / push / production.
+
+### Purpose
+- **"Audit references FIRST":** each candidate was checked in app / routes / config / resources / tests / database and with Graphify before deletion; `AccountStatementExportLayout::money()` turned out dead too and was removed with the Word service.
+
+---
+
+### Date
 2026-10-11 ("CHANGE TO CURRENT EXPORT-SEPARATION TASK — Word must ALSO become STATISTICS-ONLY")
 
 ### Prompt

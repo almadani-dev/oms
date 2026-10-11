@@ -4,6 +4,12 @@
 
 ## Recent Changes
 
+- **2026-10-11 (final pre-commit) — statistics Excel is ONE worksheet; dead Word-detail code removed (NOT committed):**
+  - Both statistics workbooks now hold every section on a single RTL worksheet «الإحصائيات», in the same order as the Word document. Excel == Word with 0 differences.
+  - Deleted after a reference + Graphify audit: the old `AccountStatementWordExportService` and `ComprehensiveFinancialTransactionsWordExportService`, their page helpers, `AccountStatementExportLayout::money()` and the `word_max_units` / `word_max_lines` config.
+  - The old detailed-Excel infrastructure is kept (unused from the UI) for a later decision.
+  - **Pre-existing, unrelated:** 20 `MuwakhaFamilyImportTest` failures (Windows absolute temp path treated as relative).
+
 - **2026-10-11 (addendum) — «تصدير الإحصائيات Word» on both reports (NOT committed):**
   - Word now holds the same statistics as Excel. Both render one model (`Statistics\StatisticsReport`): `Excel\StatisticsWorkbook` and the new `Word\StatisticsDocument` (PhpWord, RTL tables).
   - No detail rows in Excel or Word; CSV stays detail-only.

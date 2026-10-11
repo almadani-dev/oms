@@ -249,8 +249,16 @@ class ComprehensiveStatisticsExcelTest extends TestCase
      */
     private function assertStatisticsOnly(array $sheets, array $report): void
     {
-        $this->assertSame([Statistics::SUMMARY_SHEET, Statistics::CATEGORY_SHEET, Statistics::TYPE_SHEET], array_keys($sheets));
-        $main = $sheets[Statistics::SUMMARY_SHEET];
+        // ONE worksheet holding every section, in order, once.
+        $this->assertSame([Statistics::SHEET], array_keys($sheets));
+        $main = $sheets[Statistics::SHEET];
+        $banners = array_values(array_map(fn (array $r) => array_values(array_filter($r, fn ($v) => $v !== null && $v !== ''))[0], array_filter($main, fn (array $r) => count(array_filter($r, fn ($v) => $v !== null && $v !== '')) === 1)));
+        $this->assertSame([
+            Statistics::TITLE,
+            'بيانات التقرير', 'الفلاتر المطبقة', 'الملخص العام', 'الملخص حسب العملة',
+            'إحصائيات حسب تصنيف المعاملة ('.count($report['category_summaries']).')',
+            'إحصائيات حسب نوع المعاملة ('.count($report['type_summaries']).')',
+        ], array_values(array_filter($banners, fn ($b) => ! str_starts_with((string) $b, 'تاريخ ووقت التصدير'))), 'Every section present, once, in order.');
         $this->assertSame(Statistics::TITLE, $main[0][0]);
 
         foreach (Statistics::FILTER_KEYS as $key) {
@@ -266,11 +274,11 @@ class ComprehensiveStatisticsExcelTest extends TestCase
         );
         $this->assertSame(
             self::expectedGroups($report['category_summaries']),
-            self::normalized($this->table($sheets[Statistics::CATEGORY_SHEET], ['تصنيف المعاملة', 'عدد المعاملات', 'عدد البنود', 'العملة', 'إجمالي المدين', 'إجمالي الدائن']), [4, 5]),
+            self::normalized($this->table($main, ['تصنيف المعاملة', 'عدد المعاملات', 'عدد البنود', 'العملة', 'إجمالي المدين', 'إجمالي الدائن']), [4, 5]),
         );
         $this->assertSame(
             self::expectedGroups($report['type_summaries']),
-            self::normalized($this->table($sheets[Statistics::TYPE_SHEET], ['نوع المعاملة', 'عدد المعاملات', 'عدد البنود', 'العملة', 'إجمالي المدين', 'إجمالي الدائن']), [4, 5]),
+            self::normalized($this->table($main, ['نوع المعاملة', 'عدد المعاملات', 'عدد البنود', 'العملة', 'إجمالي المدين', 'إجمالي الدائن']), [4, 5]),
         );
 
         $text = self::allText($sheets);
@@ -309,7 +317,7 @@ class ComprehensiveStatisticsExcelTest extends TestCase
         Queue::assertNothingPushed();
         $this->assertSame([], Storage::disk('report_snapshots')->allFiles(), 'No snapshot built for statistics.');
         $this->assertStatisticsOnly($sheets, $report);
-        $this->assertSame($report['filter_labels']['نوع المعاملة'], $this->pair($sheets[Statistics::SUMMARY_SHEET], 'نوع المعاملة'), 'Every selected type.');
+        $this->assertSame($report['filter_labels']['نوع المعاملة'], $this->pair($sheets[Statistics::SHEET], 'نوع المعاملة'), 'Every selected type.');
         $this->assertStringContainsString('،', (string) $report['filter_labels']['نوع المعاملة']);
 
         // The screen's own numbers (kept since "عرض") are the same.
@@ -343,9 +351,9 @@ class ComprehensiveStatisticsExcelTest extends TestCase
         $sheets = $this->exportWorkbook($test);
 
         $this->assertStatisticsOnly($sheets, $report);
-        $this->assertNotSame('الكل', $this->pair($sheets[Statistics::SUMMARY_SHEET], 'الحساب'));
-        $this->assertNotSame('الكل', $this->pair($sheets[Statistics::SUMMARY_SHEET], 'طرف الحساب'));
-        $this->assertNotSame('الكل', $this->pair($sheets[Statistics::SUMMARY_SHEET], 'المشروع'));
+        $this->assertNotSame('الكل', $this->pair($sheets[Statistics::SHEET], 'الحساب'));
+        $this->assertNotSame('الكل', $this->pair($sheets[Statistics::SHEET], 'طرف الحساب'));
+        $this->assertNotSame('الكل', $this->pair($sheets[Statistics::SHEET], 'المشروع'));
     }
 
     public function test_the_snapshot_fallback_exports_the_snapshots_statistics(): void
@@ -403,8 +411,6 @@ class ComprehensiveStatisticsExcelTest extends TestCase
         $this->freezeTime();
         $fx = $this->seedLedger();
         Queue::fake();
-        // The former line-count cap at its minimum: no longer consulted.
-        config(['oms.reports.comprehensive_financial_transactions.word_max_lines' => 1]);
         $test = $this->page(['date_from' => '2026-06-01', 'date_to' => '2026-09-30', 'transaction_type_ids' => [(string) $fx['typeA'], (string) $fx['typeC'], (string) $fx['typeNone']]]);
         $this->assertSame(ComprehensiveFinancialTransactionsPage::MODE_LIVE, $test->get('reportMode'));
         $report = $this->ledgerReport(ComprehensiveFinancialTransactionsFilters::fromArray($test->get('liveFilters')));

@@ -7,12 +7,16 @@ use App\Services\Reports\Statistics\StatisticsReport;
 
 /**
  * The statistics of the APPLIED "تقرير كشف الحساب" — one model for
- * «تصدير الإحصائيات Excel» and «تصدير الإحصائيات Word»:
+ * «تصدير الإحصائيات Excel» and «تصدير الإحصائيات Word», ONE worksheet,
+ * top to bottom:
  *
- *   الإحصائيات       report data, every applied filter, overall counts,
- *                    the mixed-currency / dimension notes, per-currency
- *                    summary
- *   ملخص الحسابات    every covered account (the screen's account summary)
+ *   title and export date / time
+ *   بيانات التقرير        period, export time, content
+ *   الفلاتر المطبقة       every applied filter («الكل» when unused)
+ *   إحصائيات عامة        movements, covered accounts, currencies
+ *   notes                 mixed currencies / dimension filters, when relevant
+ *   الملخص حسب العملة    one row per currency
+ *   ملخص الحسابات         every covered account (the screen's account summary)
  *
  * Values come from AccountStatementPage::buildExportContext(): the summary
  * computed at "عرض" and every covered account's summary of the same applied
@@ -25,9 +29,8 @@ final class AccountStatementStatistics
 
     public const CONTENT_NOTE = 'إحصائيات وملخصات فقط — الحركات التفصيلية متاحة عبر «تصدير البيانات CSV»';
 
-    public const SUMMARY_SHEET = 'الإحصائيات';
-
-    public const ACCOUNTS_SHEET = 'ملخص الحسابات';
+    /** The workbook's only worksheet. */
+    public const SHEET = 'الإحصائيات';
 
     private const CURRENCY_KINDS = ['text', 'count', 'money', 'money', 'money', 'money', 'count'];
 
@@ -53,7 +56,7 @@ final class AccountStatementStatistics
         }
 
         $report = (new StatisticsReport(self::TITLE, 'تاريخ ووقت التصدير: '.$exportedAt))
-            ->sheet(self::SUMMARY_SHEET, [30, 16, 18, 18, 18, 18, 14])
+            ->sheet(self::SHEET, [44, 14, 18, 18, 18, 18, 14])
             ->pairs('بيانات التقرير', [
                 ['من تاريخ', (string) $context['filters']['date_from']],
                 ['إلى تاريخ', (string) $context['filters']['date_to']],
@@ -69,7 +72,6 @@ final class AccountStatementStatistics
 
         return $report
             ->table('الملخص حسب العملة', Layout::CURRENCY_HEADERS, Layout::currencyRows($context), self::CURRENCY_KINDS)
-            ->sheet(self::ACCOUNTS_SHEET, [44, 12, 18, 18, 18, 18, 14])
             ->table('ملخص الحسابات ('.number_format(count($context['accounts'] ?? [])).' حساب)', Layout::ACCOUNT_HEADERS, Layout::accountRows($context), self::ACCOUNT_KINDS, autoFilter: true);
     }
 

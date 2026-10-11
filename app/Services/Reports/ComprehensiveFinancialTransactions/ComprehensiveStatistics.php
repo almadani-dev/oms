@@ -7,13 +7,16 @@ use Illuminate\Support\Carbon;
 
 /**
  * The statistics of the displayed "تقرير الحركات المالية الشامل" — one
- * model for «تصدير الإحصائيات Excel» and «تصدير الإحصائيات Word»:
+ * model for «تصدير الإحصائيات Excel» and «تصدير الإحصائيات Word», ONE
+ * worksheet, top to bottom:
  *
- *   الملخص               report data, every applied filter, general counts,
- *                        per-currency summary (debit, credit, difference,
- *                        balanced)
- *   حسب تصنيف المعاملة   one row per classification × currency
- *   حسب نوع المعاملة     one row per transaction type × currency
+ *   title and export date / time
+ *   بيانات التقرير                  period, export time, content
+ *   الفلاتر المطبقة                 every applied filter («الكل» when unused)
+ *   الملخص العام                    transactions, lines, currencies
+ *   الملخص حسب العملة              debit, credit, difference, balanced
+ *   إحصائيات حسب تصنيف المعاملة    one row per classification × currency
+ *   إحصائيات حسب نوع المعاملة      one row per transaction type × currency
  *
  * Built from the statistics the report already produced ("عرض": the live
  * summaries, or the snapshot manifest) — no query, no recalculation. A
@@ -27,11 +30,8 @@ final class ComprehensiveStatistics
 
     public const CONTENT_NOTE = 'إحصائيات وملخصات فقط — الحركات التفصيلية متاحة عبر «تصدير البيانات CSV»';
 
-    public const SUMMARY_SHEET = 'الملخص';
-
-    public const CATEGORY_SHEET = 'حسب تصنيف المعاملة';
-
-    public const TYPE_SHEET = 'حسب نوع المعاملة';
+    /** The workbook's only worksheet. */
+    public const SHEET = 'الإحصائيات';
 
     /** Applied-filter rows, in the report's display order; unused = «الكل». */
     public const FILTER_KEYS = ['العملات', 'تصنيف المعاملة', 'نوع المعاملة', 'الحساب', 'طرف الحساب', 'نوع الحساب', 'المشروع'];
@@ -58,7 +58,7 @@ final class ComprehensiveStatistics
         $exportedAt = now()->format('Y-m-d H:i');
 
         $report = (new StatisticsReport(self::TITLE, 'تاريخ ووقت التصدير: '.$exportedAt))
-            ->sheet(self::SUMMARY_SHEET, [30, 20, 20, 20, 16])
+            ->sheet(self::SHEET, [34, 20, 20, 22, 20, 20])
             ->pairs('بيانات التقرير', [
                 ['من تاريخ', self::date($dateFrom)],
                 ['إلى تاريخ', self::date($dateTo)],
@@ -78,16 +78,17 @@ final class ComprehensiveStatistics
                 ['text', 'money', 'money', 'money', 'balanced'],
             );
 
+        // Two tables on one worksheet: no autofilter (Excel allows only one
+        // per worksheet, and neither table should get it alone).
         foreach ([
-            [self::CATEGORY_SHEET, 'إحصائيات حسب تصنيف المعاملة', 'تصنيف المعاملة', $categorySummaries],
-            [self::TYPE_SHEET, 'إحصائيات حسب نوع المعاملة', 'نوع المعاملة', $typeSummaries],
-        ] as [$sheet, $title, $nameHeader, $summaries]) {
-            $report->sheet($sheet, [34, 14, 14, 22, 20, 20])->table(
+            ['إحصائيات حسب تصنيف المعاملة', 'تصنيف المعاملة', $categorySummaries],
+            ['إحصائيات حسب نوع المعاملة', 'نوع المعاملة', $typeSummaries],
+        ] as [$title, $nameHeader, $summaries]) {
+            $report->table(
                 $title.' ('.number_format(count($summaries)).')',
                 [$nameHeader, 'عدد المعاملات', 'عدد البنود', 'العملة', 'إجمالي المدين', 'إجمالي الدائن'],
                 self::groupRows($summaries),
                 self::GROUP_KINDS,
-                autoFilter: true,
             );
         }
 

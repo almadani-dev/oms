@@ -8,8 +8,8 @@ use App\Services\Reports\Excel\StatisticsWorkbook;
 /**
  * «تصدير الإحصائيات Excel» of "تقرير كشف الحساب": the APPLIED report's
  * statistics only (AccountStatementStatistics — the same model as the Word
- * statistics), one worksheet per part, right-to-left. Never a movement row
- * (detail data is «تصدير البيانات CSV»). Purely a renderer, read-only.
+ * statistics), in ONE right-to-left worksheet. Never a movement row (detail
+ * data is «تصدير البيانات CSV»). Purely a renderer, read-only.
  */
 class AccountStatementStatisticsExcelExportService
 {
@@ -17,9 +17,7 @@ class AccountStatementStatisticsExcelExportService
 
     public const CONTENT_NOTE = AccountStatementStatistics::CONTENT_NOTE;
 
-    public const SUMMARY_SHEET = AccountStatementStatistics::SUMMARY_SHEET;
-
-    public const ACCOUNTS_SHEET = AccountStatementStatistics::ACCOUNTS_SHEET;
+    public const SHEET = AccountStatementStatistics::SHEET;
 
     /**
      * @param  array<string, mixed>  $context  AccountStatementPage::buildExportContext()

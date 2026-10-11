@@ -5,9 +5,9 @@ namespace App\Services\Reports\AccountStatement;
 use Illuminate\Support\Carbon;
 
 /**
- * The content of every "تقرير كشف الحساب" export, shared by the styled
- * workbook, the streaming workbook and the Word document so they can never
- * disagree: report information, warnings, the per-currency and per-account
+ * The content of every "تقرير كشف الحساب" export, shared by the statistics
+ * model (AccountStatementStatistics), the former styled / streaming detail
+ * workbooks and the screen so they can never disagree: report information, warnings, the per-currency and per-account
  * summaries and the 14 movement columns.
  *
  * $context is AccountStatementPage::buildExportContext(): the APPLIED
@@ -163,11 +163,6 @@ final class AccountStatementExportLayout
             : count($accounts).'-accounts';
 
         return "account-statement-{$subject}-{$from}-{$to}.{$extension}";
-    }
-
-    public static function money(string $value): string
-    {
-        return number_format((float) $value, 2);
     }
 
     private static function sanitize(?string $value, string $fallback): string

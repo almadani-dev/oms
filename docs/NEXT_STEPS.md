@@ -1,5 +1,21 @@
 # Next Steps
 
+## Recommended Next Step (2026-10-11, final pre-commit state — NOT committed, awaiting the user's approval)
+
+**1. User review**, then approval to commit. The state:
+- CSV = detail rows only;
+- Excel and Word = the same statistics (Excel on one worksheet);
+- the old Word-detail code is removed;
+- 360 targeted tests pass.
+
+Real sample files are in the session scratchpad `final-files/`.
+
+**2. Later decision:** remove the old detailed-Excel infrastructure (list: TASKS_LOG 2026-10-11 final pre-commit).
+
+**3. Separate, pre-existing:** `MuwakhaFamilyImportTest` fails 20 tests on this Windows machine. The import command resolves an absolute temp path as relative; this needs its own fix.
+
+---
+
 ## Recommended Next Step (2026-10-11, data CSV vs statistics Excel on both reports — verified on `oms_stress`, NOT committed)
 
 **1. User check in the browser** (LAN stress site; the `reports` worker was restarted with the new code). On both reports:

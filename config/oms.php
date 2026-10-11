@@ -93,7 +93,6 @@ return [
             // 99–109 s / 362 MB at 6,000. Above these line counts Excel
             // switches to the streaming export and Word is refused.
             'styled_excel_max_lines' => (int) env('OMS_CFT_STYLED_EXCEL_MAX_LINES', 2000),
-            'word_max_lines' => (int) env('OMS_CFT_WORD_MAX_LINES', 2000),
 
             // Streaming XLSX: private, short-lived temporary files.
             'export_temp_dir' => storage_path('app/private/report-exports'),
@@ -157,7 +156,6 @@ return [
         'account_statement' => [
             'summary_row_weight' => 0.5,
             'styled_excel_max_units' => (int) env('OMS_AS_STYLED_EXCEL_MAX_UNITS', 2000),
-            'word_max_units' => (int) env('OMS_AS_WORD_MAX_UNITS', 2000),
             // «تصدير الإحصائيات Word» (statistics only): refused above this
             // many summary rows (covered accounts + currencies) — never on
             // the number of movements. 2,000 rows ≈ 1.3 s / ~105 MB peak

@@ -463,8 +463,7 @@ class ComprehensiveFinancialTransactionsLargeExportTest extends TestCase
 
     public function test_word_statistics_are_never_refused_on_the_line_count(): void
     {
-        // The former line cap at its minimum: no longer consulted.
-        config(['oms.reports.comprehensive_financial_transactions.word_max_lines' => 5]);
+        // Statistics-only Word has no line-count limit at all.
         $this->seedAwkwardLedger();
         $test = $this->page($this->superAdmin());
 
@@ -472,9 +471,8 @@ class ComprehensiveFinancialTransactionsLargeExportTest extends TestCase
         $this->assertSame('statistics', AuditEvent::sole()->new_values['purpose']);
     }
 
-    public function test_word_within_its_limit_is_unchanged(): void
+    public function test_word_statistics_stream_and_are_audited_once(): void
     {
-        config(['oms.reports.comprehensive_financial_transactions.word_max_lines' => 14]);
         $this->seedAwkwardLedger();
         $test = $this->page($this->superAdmin());
 
@@ -485,6 +483,5 @@ class ComprehensiveFinancialTransactionsLargeExportTest extends TestCase
     public function test_default_thresholds_are_the_measured_ones(): void
     {
         $this->assertSame(2000, ComprehensiveFinancialTransactionsPage::styledExcelMaxLines());
-        $this->assertSame(2000, ComprehensiveFinancialTransactionsPage::wordMaxLines());
     }
 }

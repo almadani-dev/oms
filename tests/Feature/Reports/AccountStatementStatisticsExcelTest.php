@@ -95,6 +95,28 @@ class AccountStatementStatisticsExcelTest extends TestCase
     }
 
     /**
+     * Section banners (single-cell rows) of the worksheet: exactly $sections,
+     * in this order, each once.
+     *
+     * @param  array<int, array<int, mixed>>  $rows
+     * @param  array<int, string>  $sections
+     */
+    private function assertSectionsInOrder(array $rows, array $sections): void
+    {
+        $banners = [];
+
+        foreach ($rows as $row) {
+            $cells = array_values(array_filter($row, fn ($v) => $v !== null && $v !== ''));
+
+            if (count($cells) === 1 && in_array($cells[0], $sections, true)) {
+                $banners[] = $cells[0];
+            }
+        }
+
+        $this->assertSame($sections, $banners, 'Every section present, once, in order.');
+    }
+
+    /**
      * The value beside $label in a label / value block.
      *
      * @param  array<int, array<int, mixed>>  $rows
@@ -202,7 +224,9 @@ class AccountStatementStatisticsExcelTest extends TestCase
         $sheets = $this->exportWorkbook($test);
         Queue::assertNothingPushed();
 
-        $this->assertSame([AccountStatementStatisticsExcelExportService::SUMMARY_SHEET, AccountStatementStatisticsExcelExportService::ACCOUNTS_SHEET], array_keys($sheets));
+        // ONE worksheet holding every section, in order, once.
+        $this->assertSame([AccountStatementStatisticsExcelExportService::SHEET], array_keys($sheets));
+        $this->assertSectionsInOrder($sheets['الإحصائيات'], ['بيانات التقرير', 'الفلاتر المطبقة', 'إحصائيات عامة', 'الملخص حسب العملة', 'ملخص الحسابات (2 حساب)']);
         $main = $sheets['الإحصائيات'];
         $this->assertSame(AccountStatementStatisticsExcelExportService::TITLE, $main[0][0]);
 
@@ -232,7 +256,7 @@ class AccountStatementStatisticsExcelTest extends TestCase
         // Every covered account = the screen's account summaries, exactly.
         $this->assertSame(
             $this->screenAccounts($applied),
-            $this->normalized($this->table($sheets['ملخص الحسابات'], AccountStatementExportLayout::ACCOUNT_HEADERS), [2, 3, 4, 5]),
+            $this->normalized($this->table($sheets['الإحصائيات'], AccountStatementExportLayout::ACCOUNT_HEADERS), [2, 3, 4, 5]),
         );
 
         // No detail: no movement header, no transaction number, no line text.
@@ -278,7 +302,7 @@ class AccountStatementStatisticsExcelTest extends TestCase
             array_map(fn (array $c): array => [(string) $c['currency_code'], $c['accounts'], $c['opening'], $c['debit'], $c['credit'], $c['closing'], $c['lines']], $summary['currencies']),
             $this->normalized($this->table($main, AccountStatementExportLayout::CURRENCY_HEADERS), [2, 3, 4, 5]),
         );
-        $this->assertSame($this->screenAccounts($test->get('appliedFilters')), $this->normalized($this->table($sheets['ملخص الحسابات'], AccountStatementExportLayout::ACCOUNT_HEADERS), [2, 3, 4, 5]));
+        $this->assertSame($this->screenAccounts($test->get('appliedFilters')), $this->normalized($this->table($sheets['الإحصائيات'], AccountStatementExportLayout::ACCOUNT_HEADERS), [2, 3, 4, 5]));
     }
 
     public function test_zero_activity_accounts_stay_in_the_account_summary(): void
@@ -287,7 +311,7 @@ class AccountStatementStatisticsExcelTest extends TestCase
         $test = $this->statementPage(['account_type_ids' => [(string) $fx['bankType']->id], 'date_from' => '2027-01-01', 'date_to' => '2027-01-31']);
 
         $sheets = $this->exportWorkbook($test);
-        $accounts = $this->table($sheets['ملخص الحسابات'], AccountStatementExportLayout::ACCOUNT_HEADERS);
+        $accounts = $this->table($sheets['الإحصائيات'], AccountStatementExportLayout::ACCOUNT_HEADERS);
 
         $this->assertCount(3, $accounts, 'A, B and E: no movement in the period, still listed.');
         $this->assertSame([0, 0, 0], array_column($accounts, 6));
@@ -383,8 +407,8 @@ class AccountStatementStatisticsExcelTest extends TestCase
     public function test_many_movements_never_block_word_only_the_summary_size_does(): void
     {
         $fx = $this->seedStatementLedger();
-        // The former movement-based cap at its minimum: no longer consulted.
-        config(['oms.reports.account_statement.word_max_units' => 1, 'oms.reports.account_statement.word_max_summary_rows' => 3]);
+        // Only the summary size counts (the former movement cap is gone).
+        config(['oms.reports.account_statement.word_max_summary_rows' => 3]);
 
         // 2 accounts + 1 currency = 3 summary rows, hundreds of movements.
         $test = $this->statementPage(['account_ids' => [(string) $fx['a']->id, (string) $fx['b']->id], 'date_from' => '2025-01-01', 'date_to' => '2026-12-31']);
