@@ -1,1145 +1,6 @@
 # Prompts Log
 
-### Date
-2026-10-11 ("FINAL PRE-COMMIT task — single-sheet statistics Excel + safe dead-code cleanup")
-
-### Prompt
-- Statistics Excel = exactly one RTL worksheet with every section stacked vertically (both reports); keep Excel == Word.
-- Audit references first, then remove only the proven-dead old Word-detail code; keep the old detailed-Excel infrastructure and report it.
-- Keep the Word rules and the three button names.
-- Targeted tests; open real files; no commit / push / production.
-
-### Purpose
-- **"Audit references FIRST":** each candidate was checked in app / routes / config / resources / tests / database and with Graphify before deletion; `AccountStatementExportLayout::money()` turned out dead too and was removed with the Word service.
-
----
-
-### Date
-2026-10-11 ("CHANGE TO CURRENT EXPORT-SEPARATION TASK — Word must ALSO become STATISTICS-ONLY")
-
-### Prompt
-On both reports:
-- «تصدير الإحصائيات Word» = statistics only, matching Excel;
-- re-decide the Word size limit from the actual statistics workload (no "too many movements" refusal);
-- benchmark;
-- Excel == Word parity with 0 differences;
-- report the old Word detail code;
-- user messages must point to «تصدير البيانات CSV» for detail data;
-- targeted tests only; browser validation;
-- no commit, no push, no production.
-
-### Purpose
-- **"Do NOT keep a too-many-movements refusal just because it existed before":** led to measuring Word cost per summary row and a limit on summary rows only (Account Statement); none for Comprehensive.
-
----
-
-### Date
-2026-10-11 ("TASK — SEPARATE DATA EXPORT FROM STATISTICS EXPORT FOR BOTH FINANCIAL REPORTS")
-
-### Prompt
-On both financial reports:
-- rename the buttons to «تصدير البيانات CSV» and «تصدير الإحصائيات Excel»;
-- CSV = detail rows only (no summary file / section; ZIP only when needed, one CSV when enough);
-- Excel = formatted statistics only (title, applied filters, currency / account / classification / type summaries), generated immediately unless measured otherwise;
-- audit format and purpose;
-- keep the old detailed Excel code until audited, report the dead code;
-- benchmark the CSV again;
-- 0-difference correctness; browser validation; targeted tests only;
-- no commit, no push, no production, `oms_stress` only, preserve the uncommitted work.
-
-### Purpose
-- **"If one CSV is enough, use one data CSV":** a single file of up to 1M rows would be ~1 GB uncompressed. The user chose a plain CSV up to 100,000 rows and a ZIP above that.
-- **"CSV performance before/after summary removal":** this laptop drifts 10–30 % between runs, so the comparison was made as an interleaved A/B against an exact copy of the pre-change code.
-
----
-
-### Date
-2026-10-10 ("NEXT TASK — ULTRA-FAST CSV EXPORT FOR COMPREHENSIVE FINANCIAL TRANSACTIONS")
-
-### Prompt
-Add «تصدير CSV» beside «تصدير Excel» on `/admin/comprehensive-financial-transactions` only, the same product idea as the Account Statement CSV:
-- the applied filters (Transaction Type multi-select included), all lines, never the 50-row page;
-- straight from the real-time projection, streamed (no Livewire rows, Eloquent per line, snapshot JSON or OFFSET), exact canonical order;
-- the 16 Excel / Word detail columns; a summary CSV; a ZIP split near 1M rows; UTF-8 + BOM, formula guard;
-- reuse the proven CSV core; keep report semantics separate;
-- consistency under concurrent writes (bounded retry), live projection vs snapshot fallback decision;
-- floors A–E, a 50k–1.22M matrix, worker counts, filtered cases, STORE vs DEFLATE;
-- independent 0-difference verification; browser validation; targeted tests only;
-- no commit, no push, no production, `oms_stress` only, preserve all uncommitted work.
-
-### Purpose
-- **"If MySQL needs 12 seconds just to read the full text-heavy rows, say so clearly":** led to the per-text-column floor breakdown (`t.description` per line, source notes by time join), which exposed two avoidable costs (repeated transaction texts, the source-notes join) before measuring the remaining physical floor.
-- **"Do not deliver a mixed-time export":** led to the start-marker / re-verify protocol, which proves a single instant without one connection re-reading the whole period.
-
----
-
-### Date
-2026-10-08 ("NEXT TASK — ACCOUNT STATEMENT ULTRA-FAST CSV EXPORT")
-
-### Prompt
-Add «تصدير CSV» beside «تصدير Excel» on the Account Statement only:
-- the applied filters;
-- straight from the projection, streamed (no Livewire rows or Eloquent per movement, no OFFSET);
-- the exact running balance per account;
-- a summary CSV;
-- a ZIP, split around 1M rows per file;
-- UTF-8 + BOM, numeric money, formula-injection safety;
-- audit and authorization like Excel;
-- a 1M-in-≤ 5 s stretch target with an A–F floor test and a 50k–1.2M matrix;
-- independent 0-difference verification;
-- browser check on the stress site;
-- targeted tests only;
-- no commit, no runtime change.
-
-### Purpose
-- **"Measure actual end-to-end … If 5 seconds is physically impossible, report the real measured lower bound":** led to the A–F floor measured with the same 8-way parallelism. It showed the ledger-text read (11.5 s per 1M), not PHP, is the bound.
-- **"Do not remove financially useful information just for speed":** kept the descriptions and notes, which are exactly that bound.
-
----
-
-### Date
-2026-10-07 ("MAJOR TASK — REDESIGN THE ACCOUNT STATEMENT FOR MULTI-ACCOUNT REPORTING, EXTREME SPEED, AND HIGH FLEXIBILITY")
-
-### Prompt
-Redesign تقرير كشف الحساب:
-- several accounts in one statement with per-account/currency running balances;
-- every select filter multi-value, with server-searchable pickers;
-- 50-row keyset First/Previous/Next/Last;
-- under 1 s at ~1M rows;
-- immediate freshness, no queue for browsing, bounded Livewire state;
-- exact exports.
-
-Requirements and guardrails:
-- audit and baseline first;
-- independent verifier, rebuild command, old/new and multi-account parity, benchmark matrix A–L;
-- targeted tests only;
-- `oms_stress` only;
-- no commit, no push, no production.
-
-### Purpose
-- **"Do NOT guess — ask only real business-semantics questions"** produced the two questions that decided the design: actual vs filtered balance under dimension filters, and whether empty Accounts means all matching accounts.
-- **"Do not choose an approximate method / do not rewrite a million rows on a backdated write"** led to exact checkpoint totals (daily, monthly, all-time) instead of stored running balances.
-
----
-
-### Date
-2026-10-05 ("APPROVED — COMMIT V2 FIRST, THEN AUDIT + IMPLEMENT THE FINAL REAL-TIME REPORTING PROJECTION" / "NO MySQL triggers" / "The ledger stays authoritative" / "ZERO differences" / "DO NOT MIGRATE OR MODIFY THE NORMAL `oms` DATABASE")
-
-### Prompt
-Commit the V2 snapshot format, then audit and implement a real-time projection of the comprehensive report. Requirements:
-- ≥1M active lines.
-- Immediately current after every commit, with no queue needed for correctness.
-- Normal open under 1 s, paging under 0.5 s, the worst legitimate filter within 5 s.
-- One explicit synchronous projection service inside each business transaction.
-- A keyset First/Previous/Next/Last pager.
-- A minimal projection with per-page hydration.
-- V2 kept for exports and as fallback.
-- Exact parity with the old report as oracle.
-- Freshness and forced-rollback tests, drift verifier and rebuild commands, benchmarks.
-- One local commit only when every gate is green.
-
-A follow-up prompt forbade migrating the development `oms` and directed the stress schema parity to a temporary fresh-migration reference.
-
-### Purpose
-**"Benchmark direct aggregation first; add aggregate tables only if proven needed"** produced the evidence: 6.2 s and 3.6 s at 561k lines on the raw projection, about 4.9 s for the heaviest filter. That led to the monthly aggregates plus the signature table for exact distinct-transaction counts under currency × account-type filters.
-
-**"The old report is the oracle"** made a parity checker part of the deliverable. It compares every row (all 20 keys, notes included) and every summary of the old ledger path against the new path, for 20 filter sets on the stress data.
-
-**"DO NOT MIGRATE `oms`"** turned a blocked step into a design fix. Stress schema parity now uses the current code's migrations as the source of truth, so a dev database no longer has to be migrated for a stress build.
-
----
-
-
-### Date
-2026-10-04 ("Do NOT silently start or install a production worker" / "Do not fake an exact percentage" / "Use an explicit threshold based on measured evidence" / "visually compare ... and report every visible difference honestly")
-
-### Prompt
-Finish the scalability work: a queued snapshot build with status polling, an OpenSpout large-report Excel path with proper download delivery, a measured Word limit, and a production deployment checklist. Preserve the visible report and audit. Targeted tests only; no commit.
-
-### Purpose
-**"Do not fake an exact percentage"** led to counting the work unit the builder actually pages (transactions), with one index-range COUNT as the denominator. It does not estimate lines.
-
-**"Measured evidence"** set both thresholds at 2,000. It also showed that the streaming workbook, though flat in memory, is too slow to generate inside a request. That moved it into the worker as well.
-
-**"Report every visible difference"** forced a cell-by-cell comparison. That comparison caught two real defects before they shipped: amounts rounded to 14 digits (OpenSpout follows PHP's `precision`), and text beginning with "=" becoming a formula.
-
----
-
-
-### Date
-2026-10-04 ("This is the FINAL architecture work, not a temporary patch." / "DO NOT GUESS." / "Be honest: PhpSpreadsheet and PhpWord remain O(n) memory unless replaced." / "TARGETED TESTS ONLY.")
-
-### Prompt
-Continue the Comprehensive Financial Transactions scalability task on TEST/DEV, after a completed production audit. The prompt:
-- required confirming the checkout, database, test isolation and queue situation before editing;
-- listed every visible behavior that must not change;
-- specified bounded keyset reading, per-batch note enrichment, an immutable owner-bound snapshot behind a storage abstraction, rows stored once with chunked ordinal indexes, O(1) Livewire state, snapshot pagination with zero ledger re-queries, TTL cleanup, and exports from the snapshot;
-- forbade a silent queue dependency, a silent OpenSpout switch, committing, and full test suites.
-
-### Purpose
-**Measure before and after with the same harness** is what turned a plausible design into a corrected one. The first keyset (one tuple over the line ordering) passed every correctness test. Its scaling numbers showed a per-batch re-sort of the whole remaining period. That led to the two-level keyset; the later MySQL plan led to removing the semi-join-prone EXISTS. Without the measurement requirement, both would have shipped.
-
-**"Old vs new" required a real old.** The pre-change service was frozen verbatim from `HEAD` as a test oracle, so equivalence is asserted with `assertSame` against what production runs today, not against the new code's own output.
-
-**"STOP and report" on the queue** kept the synchronous in-request build. The builder takes plain inputs, so moving it to a job is a follow-up decision rather than a hidden dependency.
-
----
-
-
-### Date
-2026-09-26 ("Do NOT choose an actor yourself." / "Run the normal importer preflight again immediately before execution." / "DO NOT rerun this command if it reports success." / "Do not assume the audit_events delta. Report its actual delta and explain it based on the records created.")
-
-### Prompt
-The authorization to perform the one real import, issued as a **third** separate message after implementation and after a real-source dry run — each phase forbidding the next until it had been reviewed. It re-listed the source path, project code and actor; required the preflight to be re-run immediately before the write and the import abandoned if anything had changed; required before-counts and max ids to be recorded first; specified the exact command once; enumerated nine read-only verifications (A–I) to perform afterwards; and required a post-import dry run to prove duplicate protection with `--execute` explicitly forbidden a second time.
-
-### Purpose
-**"Do NOT choose an actor yourself" is what kept a real audit trail honest.** The importer can resolve any active user, and picking a plausible one would have attributed 72 families and 288 audit events to someone who never authorized them. Listing the three eligible users read-only — id, name, roles, deleted/active — and stopping cost one round trip and made the attribution a decision with a name behind it.
-
-**Re-running the preflight immediately before the write turned "it passed earlier" into "it passes now".** Between the dry run and the execution the database could have gained a conflicting family or lost a lookup; the second preflight (still 72 READY / 0 ERROR, same source md5) is the only thing that rules that out, and it costs nothing because the preflight writes nothing by construction.
-
-**"Do not assume the audit_events delta" caught the one number that could have been fudged.** The honest answer is +288, which is 4 × 72 — one `created` event each for the Account, the family, the ownership mapping and the project link. Reporting it as "72 audit events" would have looked tidier and been wrong, and the breakdown is also what proves the official service wrote every artefact rather than the importer inserting rows itself.
-
-**Recording max ids before the write is what made the verification provable rather than plausible.** With `accounts.id` at 396 and `audit_events.id` at 1906 beforehand, "the imported rows" became an exact set instead of a guess based on timestamps — which is how the actor attribution, the account type, the zero balances and the absence of orphans could each be asserted over precisely the 72 new rows.
-
-**The staged phases are why the trailing-space finding surfaced at all.** A field-by-field re-read of all 72 rows against the source (1,296 comparisons) was worth doing only because the import was treated as reviewable rather than done; it found that two `notes` values lost a trailing space to the importer's documented trim, and that is now recorded as a known difference instead of being discovered later by someone diffing the spreadsheet.
-
-**"DO NOT rerun if it reports success", plus the required post-import dry run, tested the safety net from the outside.** The second dry run reports 0 READY / 72 ERROR with every row flagged on both the national id and the card code, which is the accidental-second-run scenario proven against real data — the property the preflight was designed for, verified without risking it.
-
----
-
-### Date
-2026-09-26 ("Before implementing the mapping, inspect the REAL MuwakhaFamilyForm and MuwakhaFamilyService and derive the exact payload field names required by the application. Do not guess field names from this prompt." / "Do not silently 'correct', normalize, merge, renumber or deduplicate business data." / "The importer adapts the source to the official domain. The official domain must NOT be changed to accommodate the import.")
-
-### Prompt
-A brief for a one-time 72-family bulk importer, explicitly scoped to **implementation and dry run only**, forbidding the real import in the same task. It named the official write path to reuse (`CreateMuwakhaFamily → MuwakhaFamilyService::create()`) and the four ways not to write (`DB::table()`, direct `Model::create()`, direct Account creation, a separate accounting path); it supplied the source JSON shape while forbidding the field names in it from being trusted; it listed seven approved source anomalies one by one with "do not fix this" attached to each; it required a pre-implementation report of four named parts before any edit; and it required preflight to report every error for every row rather than stopping at the first.
-
-### Purpose
-**"Derive the payload field names from the real code, do not guess them from this prompt" was the single most load-bearing line, and the two differed in exactly the places that matter.** The brief's shape carries `bank_type_name`, `currency_code`, `card_code` and `account_holder_name` flat on one object; the application wants `bank_type_id`/`currency_id` resolved at runtime, `card_code` nested inside `muwakha_project_links` rows, and four of the keys split off onto the Account rather than the family. A prompt-shaped payload would have been accepted by `create()` and quietly produced wrong rows — `account_code` would have landed as a family column and the project link would never have been written.
-
-**Enumerating the approved anomalies individually is what made them survivable.** "Preserve source values" alone would not have stopped a well-meaning normalization of `/910717941`, and no code reading could tell that two rows for one martyr are two households rather than a duplicate. Each anomaly came with its own instruction, which is why the importer ended up with **no** name-based, account-number-based or sequence-based check anywhere — a design property, not an omission.
-
-**"Report ALL errors, not the first" changed the shape of the code, not just its output.** It forced a three-pass preflight (per-row validation, then in-source duplicates, then database conflicts) where every row is carried through all three passes even after it has failed, so a 72-row spreadsheet is fixed in one round instead of seventy-two.
-
-**Splitting implementation from execution is what let two real defects be found before they mattered.** The dry-run-only instruction made a read-only verification run against the live database the natural next step, and that run — not code review — revealed that validation messages render as raw translation keys here (no `lang/` files are published) and that 72 rows of inline error text are unreadable in a table. Both were fixed while nothing was at stake.
-
-**"Do not weaken the domain" resolved an ambiguity that would otherwise have been tempting.** The martyr-id UNIQUE index spans soft-deleted rows by documented design, which means a soft-deleted family permanently reserves its national id. The import-friendly reading is to ignore trashed rows; the instruction settles it — the preflight checks `withTrashed()` and reports the conflict instead.
-
-**The one thing the brief could not anticipate was the environment.** Targeted tests were written but could not run: `phpunit` is absent from this `--no-dev` deployment and `pdo_sqlite` is absent while `phpunit.xml` pins the suite to `sqlite :memory:`. Asked rather than assumed, and the answer was to install nothing on production — so the honest result is a written-but-unrun test file plus a read-only dry-run verification with before/after table counts proving zero writes.
-
----
-
-### Date
-2026-09-26 ("If anything differs from the audit below, STOP and ASK — do not guess." / "Do not disable foreign-key safety globally as a shortcut unless the existing trusted cleanup implementation already has a justified safe mechanism." / "do not pretend filesystem deletion can be rolled back by a DB transaction")
-
-### Prompt
-A brief in eleven labelled sections for a destructive data reset, structured so that **Phase 1 was audit-only and deletion was explicitly forbidden until a later message**. It named the service and command to extend rather than letting a second cleanup system be invented, listed the tables to preserve and the tables to empty as two explicit inventories, restated the known foreign-key dependencies, demanded a verified backup before anything destructive, enumerated sixteen specific things the targeted tests must assert, and closed with a required PRE-EXECUTION REPORT of eight named parts followed by "Then STOP and wait for my explicit confirmation."
-
-### Purpose
-**Splitting audit from execution is what surfaced the contract inversion, and nothing else would have.** The brief listed `accounts` and `partners` under "OPERATIONAL DATA TO DELETE COMPLETELY". The service listed both under `PRESERVED_TABLES`, with six tests asserting donors and accounts survive and a `current_balance = 0` update standing in for the deletion. Both readings are internally coherent; the code cannot adjudicate between them. Because Phase 1 forbade deletion, that collision was reported and decided instead of being silently resolved in whichever direction the implementation happened to run.
-
-**"If anything differs from the audit below" paid off four separate times, and three of them were omissions rather than contradictions.** The brief's own dependency list said `accounts` are RESTRICTed by three tables — correct — but also implied `partners` were restricted, when every edge into `partners` is `nullOnDelete`. Three tables appeared in neither of the brief's two inventories: `notifications` (66 rows), and — more consequentially — the service knew nothing of `muwakha_families`, `muwakha_family_accounts` or `muwakha_family_projects` even though the brief *did* list them, which meant the old code would have left 256 rows behind and then failed on the RESTRICT edges into `accounts`. An instruction to report divergence is only useful if it covers *absence*, and here the absences mattered more than the contradictions.
-
-**"Do not disable foreign-key safety globally as a shortcut" reframed the deletion order from a comment into a checkable invariant.** Forbidding the shortcut means the order is the mechanism, so it has to be right for a reason that outlives the person who wrote it. That is what motivated a check that walks every RESTRICT/NO ACTION edge in `information_schema` and fails if a child is scheduled after its parent, rather than a docblock asserting the order was "verified against the migrations" — which is what the previous revision said, and which was already wrong: it cited a `projects_costs.account_id` foreign key on a column that does not exist.
-
-**"Do not pretend filesystem deletion can be rolled back by a DB transaction" was the prompt's sharpest line, and following it exposed a real gap.** Taking it seriously means asking what the backup actually contains, and `AttachmentCollector` turned out to archive only the private `attachments` disk while the service hardcoded the `public` disk — so the one disk it operated on was the one disk the backup excluded, and it also ignored the per-row `disk` column entirely. The brief's own instruction ("first determine whether the current backup includes them; if not, STOP and report before deleting physical files") became a fail-closed guard in code rather than a one-off check, which is the difference between being right once and staying right.
-
-**Enumerating sixteen test assertions was more useful than asking for "good coverage", because six of them were impossible under the old contract.** Items 3, 4 and 5 — partners deleted, accounts deleted, Muwakha deleted — directly contradicted existing passing tests. A numbered list makes that visible as a conflict to raise; "test the cleanup thoroughly" would have produced a suite that passed while asserting the opposite of what was wanted.
-
-**The instruction not to run the full suite interacted with an environment problem the brief could not have anticipated.** Targeted-only was satisfiable in intent but not in fact: `phpunit` is absent from this `--no-dev` deployment and `pdo_sqlite` is absent while `phpunit.xml` pins the suite to `sqlite :memory:`. The honest result is written tests plus nine read-only structural checks against the live schema, reported as unproven rather than as passing — and the brief's "STOP and ASK" posture is what made reporting that preferable to installing packages on a live server unasked.
-
----
-
-### Date
-2026-09-22 ("If you discover any ambiguity about whether debit/credit should be based on debit_base/credit_base or another canonical field, STOP AND ASK before implementing. Do not guess.")
-
-### Prompt
-An eighteen-section brief for one Select. Section 0 was `FIRST: AUDIT CURRENT IMPLEMENTATION`: it named six files, listed five facts to confirm rather than assume (the account filter's state name, how applied filters are separated from live form state, every consumer the filters reach, whether the columns are still `debit_base`/`credit_base`, whether the lines table is still aliased `tl`), and closed with *"If the current architecture materially differs from this prompt: STOP AND ASK."* Section 3 then enumerated what the side must **not** be inferred from, section 6 pre-authorised the unbalanced-looking output, section 13 forbade `Collection::filter()` after loading, section 15 repeated the permanent no-full-suite rule, and section 18 said do not commit.
-
-### Purpose
-**Naming the forbidden inference sources was worth more than naming the correct one.** `line_role` is the trap: it exists, it is right there in the select list, it holds values that read like sides, and a `where line_role = 'debit'` would have produced plausible output on some data. It is nullable on historical lines and stores a role, not a ledger side, so it would have quietly dropped rows. A brief that only said "use the amounts" would not have forced that to be checked; one that said "do NOT infer from line_role" did.
-
-**Section 2 asked for a disabled control; the useful reading was that it asked for an invariant.** Disabling a Select is a UI state — it does not survive a stale Livewire payload, a replayed export or a direct service call, and Filament's own `disabled()` implies `dehydrated(false)`, so the key simply vanishes from `getState()` rather than arriving as `all`. Putting the collapse in the service (`normalizeAccountSide()`) and having `generate()` hand the normalized value **back** for the page to store made the applied snapshot, the audit and the query provably the same value. The brief's own TEST 7 — "a side without an account selection must NOT filter the whole report" — is the invariant, and it reads as a service test, not a UI test.
-
-**Section 5's "there must be one consistent applied-filter state" was already true, and confirming that was the point of the audit.** `generate()` accumulates rows, per-currency totals and both statistics buckets in one pass over one result set, and the expansion panels filter the already-hydrated `$rows` in Blade. So the honest implementation was *one* `when()` on the existing query — and the work was proving that reached all seven consumers, not wiring seven of them.
-
-**"Do not clutter the applied-filter summary unnecessarily if defaults are normally omitted. Use the current report convention consistently."** This is the instruction that prevented a wrong-looking-but-passing result. The on-screen summary omits defaults; both export covers print every key with `الكل` as the fallback for a missing one. Those are not in conflict — they are the same convention seen from two ends — and the implementation that satisfies both is to emit the label only when it narrowed something and add the key to each exporter's `FILTER_KEYS`. A brief that had simply said "add the label" would have produced `طرف الحساب: الكل` badges on every default report.
-
----
-
-### Date
-2026-09-22 ("If one requested search field would make every search substantially worse, report that specific field and why rather than implementing a bad solution.")
-
-### Prompt
-A fourteen-step brief to widen global search and make the lookup filters searchable on `سطور المعاملات`. It opened with *"STEP 1 — AUDIT CURRENT TABLE FIRST"*, named nine classes to inspect, and added *"If the real relationships differ from the assumptions below, follow the real codebase and do not guess."* The steps that did the real work were the ones that **pre-authorised doing less**: on numeric fields, *"do NOT introduce fragile LIKE casts across large numeric columns just to say 'everything is searchable'"*; on filters, *"Do NOT mechanically add searchable() to simple boolean/small enum filters where it adds no value"*; and the closing escape hatch quoted above. STEP 5 gated the cascade on *"if the page already implements that relationship"*, and STEP 11 demanded *"inspect the generated query for a representative global search and confirm it remains database-side."*
-
-### Purpose
-**The escape hatch is what made the `fx_rate` answer possible.** Every other requested field went in; `fx_rate` is a rate that sits at `1.000000` on nearly every line, so searching it would match almost the whole table and bury real results. Without an explicit licence to decline one field and explain why, the pressure of a checklist is to implement all of it and let the user discover the flood later.
-
-**"Do not guess" plus a named class list surfaced the two findings that shaped the design.** Reading `TransactionLineRole` showed the database stores `beneficiary` while the table renders `مستفيد` — so a `searchable()` on `line_role` would have matched only text the user can never see, and would have looked like it worked. Reading Filament's `applyGlobalSearchToTableQuery` showed it `continue`s on hidden columns — so the existing `searchable()` on `notes` (hidden by default) had **never** done anything, and `description` lost its search whenever its column was toggled off. Neither is visible from the table file alone, and both changed where the search had to be declared.
-
-**"Inspect the generated query" beat reasoning about it.** The first SQL dump was clean on the thing that was asked about — zero joins, all correlated `EXISTS`, SoftDeletes intact on all six related tables — and also showed an unasked-for `(0 = 1)` branch from a `whereIn` over an empty array. That is not a bug, but it is noise in every search that matches no line role, and it was only visible because the SQL was printed rather than assumed.
-
-**Cross-checking hits against an independent query was worth more than counting them.** Three searches returned more rows than the obvious ground truth: `USD` matched four ILS lines, `حنين` matched all 22, `صرف مبلغ مشروع` matched 20 of 14. Each traced to a real cause — the transaction-level البيان names both currencies, names the beneficiary on every transaction, and Filament splits search terms on whitespace and ANDs them. All three are correct. Had the counts simply been eyeballed, the honest options would have been to call them false positives or to wave them through, and both would have been wrong.
-
----
-
-### Date
-2026-09-22 ("Inspect the current implementation and identify the exact files/classes involved. Do not guess file names if the actual structure differs.")
-
-### Prompt
-A display-only brief for a single new `نوع البنك` column on `سطور المعاملات`, opening with an explicit inspect-before-editing instruction and *"If account.bankType does not exist as a model relation, STOP AND ASK before creating/changing model relationships."* It then fenced the work off in unusual detail: an eleven-section structure that named the data source, forbade a toggle three different ways, required `placeholder('—')`, demanded no N+1 with *"Do NOT fetch bank type inside a row closure with a query"*, and — most usefully — **declined to require sorting or searching**: *"Do NOT force sortable/searchable just for convenience … If adding sorting/searching would require custom joins … then leave the column display-only."* A `DO NOT CHANGE` list enumerated fifteen untouchable areas, and the View page was gated behind *"ONLY if this is a straightforward consistent display change … If the View page structure is more involved, do not expand the scope; report it instead."*
-
-### Purpose
-**Pre-authorising the weaker option is what kept the change two lines.** `account.bankType.name` is a two-hop relationship, and the reflex on a table column is to append `->sortable()->searchable()` because every neighbouring column has them. That would have meant custom joins onto `accounts` and `bank_types` to make a read-only field clickable. Because the brief had already said display-only was an acceptable outcome *and named the tradeoff that would justify it*, the restraint needed no negotiation and no follow-up round.
-
-**The View-page gate worked the same way.** `ViewTransactionLine` has no infolist — it falls back to the shared `TransactionLineForm`, so "add a display field" there actually means inserting a disabled, non-dehydrated field into a **form** schema. An unconditional "also add it to the view page" would have produced exactly that. The escape hatch turned a scope-creep edit into a one-line report.
-
-**The STOP-AND-ASK clause cost nothing and would have caught the worst case.** `Account::bankType()` already existed, so it never fired — but it pre-decided the one branch where an agent is most tempted to be helpful and least entitled to be: inventing a model relationship to satisfy a display request.
-
-**Naming the null cases individually mattered more than it looks.** The brief listed three — account NULL, `bank_type_id` NULL, and *"bank type relation cannot resolve"*. The third is real here precisely because `BankType` uses `SoftDeletes`, and the live database has **zero** accounts with a NULL `bank_type_id`, so a verification pass driven only by existing data would have exercised none of them and reported success.
-
----
-
-### Date
-2026-09-21 ("Report the evidence BEFORE modifying code" — a brief that named the suspected mechanism and still demanded it be disproved)
-
-### Prompt
-A jitter report for `ComprehensiveFinancialTransactionsPage` opening with *"DO NOT guess and do NOT redesign the scrollbar"* and *"Use the REAL authenticated OMS page in Chrome and diagnose the jitter first."* It listed what to instrument (*"scroll event count per element, current scrollLeft per element, animation/rAF state, synchronization lock state, whether ResizeObserver/refresh()/measure() runs during smooth movement"*), then spelled out a specific suspected chain — *"bodyWrap scroll → topBar assignment → topBar scroll event → bodyWrap assignment → bottomBar event → repeated corrections"* — and a second hypothesis: *"verify whether more than one element is being instructed to perform behavior:'smooth' for the same movement."* It ended that section with *"Report the evidence BEFORE modifying code"*, gave the expected architecture *"if this is the cause"*, listed ten real-Chrome checks to run after the fix, enumerated eight already-verified fixes to preserve, and restated the permanent no-full-suite rule.
-
-### Purpose
-**Naming a suspected chain and still requiring evidence is what made the diagnosis land in one pass.** The hypothesis was right about the mechanism (scroll-event feedback) and wrong about the symptom (the movement was not shaking on its way to the target — it was being killed 3.2px into an 875px step and never arriving). Only a real measurement could tell those apart, and the difference matters: a fix aimed at "smoothing" the motion would have left the abort in place. The brief's two explicit hypotheses were also **separable** — instrumenting for both meant the second one, competing `behavior:'smooth'` animations, could be positively **ruled out** rather than left as an open possibility, which is what licensed keeping `nudge()` exactly as it was.
-
-**"Report the evidence BEFORE modifying code" paid for itself twice.** The first control experiment — disabling `mirror()` at runtime and re-clicking — appeared to *exonerate* the mirror, because the animation still died. Under a fix-first approach that would have sent the work off after a phantom cause. Because the instruction was to keep gathering evidence, the next step was a `scrollLeft` setter trap with stack traces, which named `at Array.forEach / at mirror` outright and revealed that the runtime patch had simply failed to take effect through Alpine's reactive proxy. **A stack trace on the mutation is worth more than any amount of reasoning about the handler.**
-
-**The instruction not to redesign the scrollbar sharpened rather than blocked the second finding.** Measurement showed the three containers did not share one scroll range — the bars' range was 896 against the table's 832, because the arrows narrow the track — which is exactly the kind of discovery that invites replacing the whole ghost-spacer approach with a proportional mapping. The constraint forced the minimal correction instead: subtract each bar's own viewport deficit from its spacer, restoring the invariant the existing design had always assumed. Same architecture, one arithmetic change.
-
-**Listing the eight fixes to preserve turned regression checking into a checklist rather than a judgement call.** "Do NOT regress the disappearing scrollbar bug" in particular is not something a passing test suite can show, since it only manifests on a *surviving* node after a Livewire morph — so it was verified the only way it can be, by driving four expand/collapse round trips in real Chrome and reading the main table's spacer width and thumb visibility after each.
-
-### Result
-See `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md` (2026-09-21 entries) for the full evidence and measurements. One file changed. One blocking question was raised rather than worked around: the Chrome tab initially reported `document.visibilityState: "hidden"`, which freezes `requestAnimationFrame` so that `behavior:'smooth'` never animates and scroll events never dispatch — the user was asked to bring the window to the foreground rather than have a synthetic substitute stand in for the real page. Targeted test green (18 passed, 94 assertions); full suite and full Feature suite not run, per the permanent project rule. Not committed, not pushed.
-
----
-
-### Date
-2026-09-21 ("STOP guessing from code" — forcing diagnosis onto the real authenticated page in Chrome)
-
-### Prompt
-A correction of method, issued after two passes had failed to fix the user's actual symptom. It opened by refusing the mode of work rather than the output: *"STOP guessing from code. This time you MUST reproduce and diagnose the bug on the REAL OMS page in Chrome"*, immediately fenced with *"Do NOT use only a synthetic harness"* and *"Do NOT claim the issue is fixed until you reproduce the exact user sequence in the real page and verify it after the fix."* It then specified the evidence to capture **before** touching code — DOM identity, a named list of geometry readings, scroll state, `getComputedStyle` on four elements, `::-webkit-scrollbar` rules, and whether the node survives or is morphed — and supplied eight candidate causes under the heading *"VERY IMPORTANT DIAGNOSTIC QUESTION"*, closing with *"Do NOT choose one before measuring it."* It ranked its own instructions: *"But Chrome measurements take priority over theory."* On authentication it was explicit — *"DO NOT read .env … DO NOT invent credentials … STOP and ask me to log in manually"* — and it ended *"If you cannot access the authenticated real page in Chrome, STOP and ask me to log in. Do NOT return another theoretical fix."*
-
-### Purpose
-**The instruction that mattered most was the cheapest to write: "Do NOT choose one before measuring it."** Eight candidates were listed, and the true cause was #2 — a stale spacer width — while the *symptom* was #1, `scrollWidth == clientWidth`. Those two are trivially confusable, and the previous passes had in effect picked #6 and fixed it, which was a real defect but not this one. Being required to measure each candidate turned the eight into a checklist that could be *falsified*: node replacement was ruled out by element identity coming back `SAME`, CSS visibility by the thumb returning the instant the width was restored, wrong-element Alpine state by `refresh()` repairing the correct element, and native overlay scrollbars by the thumb being visible in the initial state under identical CSS. None of those eliminations required an argument.
-
-**Forbidding the harness is what surfaced the cause at all.** The bug is that Livewire's morph syncs a surviving element's attributes back to the server-rendered HTML and therefore deletes a width that only exists at runtime. That failure mode **cannot occur in a page without Livewire** — so the harness built in the previous pass was not merely weaker evidence, it was structurally incapable of showing the defect, and it had returned green. "Do not substitute a test harness for the authenticated OMS page" is the single line that separated two failed passes from one successful one.
-
-**Requiring BEFORE evidence prevented the usual trap of fixing and then measuring.** Capturing `style="width: 1926px"` and `topBar 1030/1926` *before* expanding is what made the after-reading (`null`, `1030/1030`) legible as an attribute deletion rather than a layout quirk. It also made a controlled-repetition proof obvious: restore the width by hand, confirm the thumb returns, trigger one more round trip, watch it vanish again — attribution without needing a debugger, which mattered because the browser extension blocked the `MutationObserver` and Livewire-hook scripts that would have been the first instinct.
-
-**"Fix the root cause only" and "smallest robust fix" pulled against each other productively.** The smallest possible fix was to re-apply the width on every Livewire update via a global hook; the brief's preference for local component lifecycle and no shared state ruled that out. What remained was `wire:ignore` on an inert subtree — prevention rather than repair — and, for the second instance of the same defect, the recognition that the Alpine lifecycle *could not* be made reliable there (`hasObserver: true`, host resolved, yet a forced resize verifiably not repaired) and that the width therefore belonged in CSS, where a morph cannot reach it. The brief had anticipated exactly this branch: *"If the issue is CSS/native scrollbar visibility, fix the CSS instead. If the issue is the spacer width, fix the spacer calculation."* Both turned out to apply, to two different elements.
-
-**The authentication clause was load-bearing, not boilerplate.** It converted a blocker into a defined handoff. Stopping to ask for a manual login cost one exchange; the alternative the brief explicitly forbade — *"another theoretical fix"* — had already cost two passes.
-
----
-
-### Date
-2026-09-20 (Rejection of a prior design — "DO NOT create a separate compact table design")
-
-### Prompt
-A rejection brief. It opened by refusing the previous turn's output outright — *"The previous compact redesign of the expanded classification table is NOT accepted"* — then specified the replacement by reference rather than by description: render the expanded classification with *"the SAME layout, column structure, sizing, typography, scrolling behavior, and visual styling as the main `تفاصيل الحركات المالية` table below"*, with *"the only difference"* being which rows it contains. It enumerated eleven properties that had to match, forbade shrinking the expanded table *"differently from the main details table"*, demanded the same synchronized top/bottom horizontal scrollbars with *"its own independent scroll state"*, and asked for extraction — *"If possible, create/reuse a Blade partial/component … so both use the same rendering source"* — while fencing that with *"do not over-refactor unrelated code"* and *"if extracting a partial would introduce risk, keep the change scoped"*. A DATA section froze queries, totals, grouping, category keys, notes, account filtering, bank-type logic, exports and accounting logic, and restated *"Opening a classification must not add ledger queries."*
-
-### Purpose
-**Specifying the target by reference instead of by attribute is what made this a one-pass change.** The previous brief had specified the nested table numerically — 12px, 7–9px padding, 1.4–1.5 line-height — and got exactly that, a second table that was internally coherent and wrong. "Same as the one below it" is not vaguer; it is stricter, because it has a single referent that can be pointed at in the file. It also converts the eleven-property checklist from eleven things to implement into one thing to do — move the markup — and then the checklist becomes a way to *verify* rather than a specification to satisfy. The instruction that the two tables differ only in `$rows` is the entire diff.
-
-**"Do not squeeze the columns just to fit the visible screen" named the failure before it happened.** The obvious way to get a 1250px table into a `<td>` is to make it not be 1250px. The line forbidding that forced the real question — *why doesn't it scroll on its own?* — and the answer is a CSS fact that is easy to get wrong in the other direction: `min-width` on a table inside a cell doesn't overflow the cell, it widens the cell, and therefore the parent table. Without that sentence the likely outcome was a narrower nested table that looked fine in a screenshot and quietly wasn't the same table. With it, the fix had to be the wrapper's width, which is where the one piece of genuinely new code in this change ended up.
-
-**The extraction request carried its own escape hatch, and the escape hatch was worth not taking.** *"If extracting a partial would introduce risk, keep the change scoped"* is a real offer, and the honest answer was that the risk here is near zero precisely because the extraction is a verbatim move: the markup is not rewritten, only relocated, so the only new failure mode is a variable that doesn't reach the partial. That turned out to be the one thing worth checking carefully — Blade's `@include` compiles to `$__env->make(view, explicit, get_defined_vars())`, so `@php`-defined locals like `$money` and `$detailColumnCount` do propagate, which is *not* obvious and is the difference between a clean extraction and an undefined-variable error at render time. Confirming that before moving anything is what let the partial keep the page as the single owner of the `colspan` constant.
-
-**"Each expanded classification table must have its own independent scroll state" prevented a plausible over-engineering.** The tempting reading of "extract a partial" is to also hoist the shared Alpine state to a parent scope so the two tables coordinate. That would have been actively wrong: the nested table is a filtered subset of the same `$rows`, so a shared `openNotes` keyed by `line_id` would open the same note in both tables at once. One clause in the brief ruled out a whole class of tidier-looking design.
-
-**The DATA fence did the same work it did last time, in a change that again touched no PHP.** Restating "no ledger queries on open" for what is a markup move sounds redundant until you notice that the straightforward way to give an expanded classification the *main* table's columns is to fetch that classification's rows — and the row shape already in `$rows` has every one of the sixteen fields, so the correct implementation was to filter, not to query. The existing `test_expanding_a_classification_issues_no_database_query` then proves it rather than the brief merely asserting it.
-
----
-
-### Date
-2026-08-19 (Three-turn sequence: production bug diagnosis → impact audit → implementation, BUD/EXT zero percentages)
-
-### Prompt
-A deliberately staged sequence, each turn fencing off the next. Turn 1 was a bug report framed as an investigation: *"This task is DIAGNOSIS ONLY … Do NOT change any code yet. Do NOT clear production data. Do NOT guess the cause"*, with a required report structure ending *"If evidence is insufficient because a fresh failed request is required: STOP and tell me exactly what action to perform."* Turn 2 converted the finding into *"Impact Audit Only — Do Not Modify Code Yet"*, enumerating every consumer to inspect and repeating *"If anything is unclear, STOP AND ASK — DO NOT GUESS."* Turn 3 authorised implementation across both workflows, restated the accounting invariant twice (*"Do NOT weaken `assertValidLinePayload()`"*, *"The correct fix is to not build the zero line"*), and carried an explicit data ruling: *"Production is still test-only and its data will be deleted. Do NOT create a migration to rewrite historical BUD/EXT transactions."*
-
-### Purpose
-**The framing "device-specific bug" was wrong, and the diagnosis-only fence is what made that discoverable.** The report described the same user succeeding on Device A and failing on Device B, which points hard at sessions, CSRF, cookies or cached assets — and the brief dutifully asked for all of them to be audited. They were, and they were clean: `AuthenticateSession` only invalidates on a password change, so two devices cannot evict each other. Had the turn permitted edits, the plausible-looking session/proxy findings (there is genuinely no `trustProxies()` configured) would have been an inviting place to start fixing. Being forbidden to fix anything forced the cheaper question first — *what does this code do when the form is submitted?* — and the answer was that a 0% deduction builds a zero-valued journal line, gets rejected under the error key `lines`, and renders nothing because no field owns that key. Not device-specific at all: **input-specific**, and reported as device-specific because two operators habitually typed different percentages. Running the real guard classes over the four percentage combinations turned a hypothesis into a reproduction without touching production.
-
-**The most valuable instruction was the one that produced an argument rather than compliance.** The brief said the deduction line's existence should follow the *percentage*. Implementing that literally leaves a hole: 0.4% of 1.00 derives to 0.00, so a positive percentage would still build a forbidden zero line. Both obvious resolutions are wrong — write the line (violates the invariant the brief protects twice) or drop it silently (discards a deduction the operator typed and shows up as an unexplained final amount). The third option, rejecting it on the percentage field, was added and flagged rather than quietly chosen, and its real payoff was structural: once that assertion passes, `percentage > 0` and `amount > 0` are equivalent, which is precisely what stops the line payload, the account guard, the balance mutations and the audit role map from drifting apart. A brief specified in terms of the input needed one guarantee tying the input back to the derived amount.
-
-**"Do not weaken the guard", stated twice, was doing real work.** The failing assertion was `assertValidLinePayload()`, and the shortest path to green was to let zero lines through. That would have made 0% work while quietly permitting meaningless journal rows in flows where they are genuine defects. Repeating the constraint moved the fix to the only correct place — never build the line — which then propagated: positional `$lines[0..3]` access had to become role-keyed, the integrity checker had to learn three more valid shapes, and `['destination','source']` had to be classified as multi-currency rather than as an ordinary two-line pair. That last one was the sharpest trap in the change: filed as single-currency it would have demanded `fx_rate == 1` and reported perfectly correct two-line disbursements as unbalanced.
-
-**The audit turn paid for itself in what it found downstream rather than in the fix itself.** Enumerating consumers surfaced two hard blockers a page-level change would have missed entirely — `JournalBalanceIntegrityChecker`'s `count() === 4` and `TransactionFlowClassifier`'s exact-count check — and, just as usefully, established that `TransactionLineDescriptionBuilder` already documented zero-amount deduction lines as *legitimate placeholders*. Two layers of the same codebase had contradictory beliefs about whether a 0% line was valid, which is the clearest evidence available that this was a design gap rather than a typo. It also proved the audit's negative half: the donor report, the snapshotter, the diff, the view pages and the delete paths were all already null-safe and needed nothing, so the change stayed narrow.
-
-### Date
-2026-08-18 (Recovery after an unexpected power outage — Muwakha Family Account Statement)
-
-### Prompt
-A recovery brief rather than a feature brief. It opened by refusing to trust its own premise — *"The implementation had reportedly reached the testing/verification stage when the machine powered off. Do NOT assume the previous process completed cleanly"* — and made that refusal operational: *"Do not trust prior terminal output unless the result is reproducible from the current on-disk state"*, *"If you cannot prove a prior test completed, treat it as **not verified**"*, *"Do not report mixed-state or interrupted test numbers as valid."* It fenced off the destructive reflexes an outage invites (*"Do not clean or revert anything automatically"*, *"Do not recreate working code merely because the previous session was interrupted"*, *"Do not alter Accounts / Transactions / Transaction Lines … simply to make tests pass"*) and pre-committed to a stop: *"If the previous session had reached a STOP condition because Project linkage was not reliable, do not bypass it. Report it and STOP."*
-
-### Purpose
-**The instruction that did the most work was "do not recreate working code."** The instinct after a power loss is to re-derive the feature, which would have quietly discarded a complete and correct implementation and replaced it with a fresh one carrying fresh bugs. Treating the audit as the deliverable — lint every changed file, read the tails of the files written closest to the outage, diff the docs, check for orphaned processes — established in a few read-only calls that nothing was truncated. The feature never needed rebuilding; it needed *proving*.
-
-**"Do not trust prior terminal output" turned out to be the load-bearing sentence, and it cut in the unexpected direction.** The surviving evidence was `.phpunit.result.cache`, and it recorded **five failing** statement tests. The tempting reading — the session died with a broken feature — was as wrong as blindly trusting a green run would have been. File mtimes settled it: the cache was written at 11:21, the service and page were edited at 11:24:24 and 11:24:53. The session had died *fixing* those five, and the cache described a state that no longer existed on disk. Both the optimistic and the pessimistic reading of stale evidence were unreproducible; only the rerun was real, and it returned 33/33. An outage does not just cast doubt on success — it casts doubt on recorded failure too.
-
-**The Project-filter clause was a genuine STOP that did not fire, and verifying that mattered more than accepting it.** The prompt demanded an *authoritative structured relationship* and listed the disqualifying shortcuts (notes, text, Account name, Family↔Project membership). The implementation claimed two FK paths in a docblock — but a docblock is prose, and prose survives an outage whether or not the code beneath it does. Checking every column of both chains against the actual migrations was what converted a claim into a finding. It also surfaced *why* Path B exists: execution payments write `project_cost_id = NULL`, so Path A alone would have produced a confidently empty statement for the very movements the report exists to show. That is the failure mode the prompt's "must NOT infer" list was aimed at, reached from an unexpected direction — not by inferring from text, but by trusting a structurally valid path that happens to be blank for this feature's main case.
-
-**"Resume from the smallest necessary test scope" kept the one real defect legible.** Running the full suite would have buried a single expectation failure in thousands of results; the graduated scope surfaced it immediately as what it was — a page-list assertion that legitimately had to gain `account-statement`, not a production bug — so the fix stayed one line and the guard against restore/force-delete pages stayed intact.
-
-
----
-
-### Date
-2026-08-17 (Muwakha Family View — compact full-width linked-accounts table, repositioned)
-
-### Prompt
-A layout-only brief, scoped hard: *"Refine the Muwakha Family View page layout only … The current `الحسابات المرتبطة بالأسرة` section is visually too tall because each mapped Account is rendered as a vertical RepeatableEntry/card. Change it to a compact **full-width table-style section**."* It then fixed the position exactly — *"`ملاحظات` → `الحسابات المرتبطة بالأسرة` → `مشاريع المؤاخاة`"*, *"It must span the full available content width, not sit inside the left/right two-column upper layout"* — and fenced everything else off: *"Do not change: schema, models unless only a small presentation/query helper change is required, historical Account matching, reuse logic, account creation, exports, permissions, audit, financial workflow."*
-
-### Purpose
-**"Visually too tall because each Account is rendered as a vertical card" pointed at a symptom whose cause was one level down.** The section was *already* a `RepeatableEntry::table()` producing real `<table>` markup, so the diagnosis "it is a card list" was not literally true — but the complaint was. Rendering the page and reading the HTML showed why: every one of the seven cells emitted its own label column above its value, so each row was seven labelled stacks and read exactly like a card. That is why the fix is `hiddenLabel()` on each cell rather than a switch to a different component. Taking the reported symptom at face value would have produced a rewrite; taking it as *wrong* would have produced a "works as intended" reply. Neither was right.
-
-**The required order is what settled the component choice.** The instinctive way to make something "resemble the existing OMS/Filament tables" is a relation manager with a real table builder — but Filament renders relation managers after the whole infolist, so that table could only land *below* `مشاريع المؤاخاة`, never between it and `ملاحظات`. The ordering sentence therefore ruled out the obvious implementation, and keeping the section in the infolist has the side benefit of matching *"Do not add: edit / delete / restore / change-current-account / unlink actions"* by construction rather than by discipline.
-
-**"Keep the existing rule" and the list of untouched concerns is why this stayed a one-file change.** The behaviour — deleted Accounts hidden as a display filter, mappings kept, per-mapping holder names, the authorization-gated link, the separate `الحساب الحالي محذوف` warning — was already correct and already tested. The brief's explicit *"models unless only a small presentation/query helper change is required"* was an invitation that turned out not to be needed: `MuwakhaFamily::visibleAccountLinks()` already returned exactly the right rows in exactly the right order with its eager loads, so no model change was made.
-
-**Layout requirements got layout assertions.** Because the defect was invisible to every existing test — all of which passed against the tall version — the ordering, the full-width span and the one-row-per-Account structure are now asserted directly, the ordering one on the real page response rather than on the Livewire component, since the relation manager only appears in the full document.
-
-### Result
-Delivered as a presentation-only change to `MuwakhaFamilyInfolist.php`, plus the affected View tests. `tests/Feature/Muwakha/MuwakhaFamilyLinkedAccountsTest.php` **12 passed / 121 assertions**; `tests/Feature/Muwakha` **144 passed / 726 assertions**. Full suite **intentionally not run, by explicit user instruction**. Not verified in a live browser. No commit, no push, no Graphify.
-
----
-
-### Date
-2026-08-17 (Muwakha UI — deleted-account visibility, and project links on the Create form)
-
-### Prompt
-Two refinements in one brief. Part A overruled a decision I had made and documented the day before: *"the existing `بيانات الحساب` section may still expose the current Account through a `withTrashed()` relation … **If an Account is soft-deleted, do not display that Account's details anywhere on the Muwakha Family View page**,"* followed immediately by the boundary — *"keep the `muwakha_family_accounts` mapping untouched … do not restore … do not reactivate … do not modify historical data."* Part B asked for project linking during family creation, with the constraint that mattered most stated twice: *"Reuse the existing `MuwakhaFamilyProjectService` or existing centralized domain validation. **Do not duplicate Project-link business logic inside Filament callbacks**,"* and *"Do not depend only on Select option filtering. Validate server-side using the existing domain service/rules."*
-
-### Purpose
-**Part A corrected a genuine misjudgement of mine.** I had deliberately left the deleted current Account's details visible, reasoning that a vanished payment destination should stay legible as a reported problem — and I had written that reasoning into `docs/DECISIONS_LOG.md` as intentional. The user's rule is better: displaying an account number, IBAN and holder name for a **deleted** account invites someone to pay into it. The warning still reports the fault; it simply refuses to hand over payment details. The prompt's second half is what kept the correction from overshooting — "do not restore, do not modify historical data" is why this became a `->visible()` predicate rather than a repoint or a mapping cleanup.
-
-**"Do not duplicate Project-link business logic inside Filament callbacks" is what produced real atomicity.** The obvious implementation — create the family, then write links in the page's `afterCreate()` — would have committed the family before the links were validated, leaving a family with some of its links on any rejection. Replaying each row through `MuwakhaFamilyProjectService::link()` **inside** `MuwakhaFamilyService::create()`'s existing transaction gave one rollback boundary over Account + family + ownership mapping + links, and made duplicate detection *within a single submission* fall out for free: each row is checked against the rows already inserted, so "same project twice" and "same card code twice" hit exactly the same rules as a link added a month later.
-
-**"Do not depend only on Select option filtering" decided how blank rows are handled.** It would have been convenient to drop rows with no `project_id` before replaying them; instead they are forwarded so the domain service rejects them, because a crafted request is precisely the case where the form's `required()` never ran.
-
-**A naming collision the tests caught twice.** `الحساب الحالي محذوف` contains the badge text `الحساب الحالي`, so the badge-absence assertion written for the previous task started failing on a page where the filter worked perfectly — the same class of false signal as the section description a task earlier. The assertion was moved onto the resolved link collection, where it means what it says.
-
-### Result
-Part A and Part B delivered with no schema change, no migration, no model change and no permission change. Focused Muwakha suite run sequentially (result reported to the user for this run). Full suite **intentionally not run, by explicit user instruction**. No commit, no push, no Graphify.
-
----
-
-### Date
-2026-08-17 (Muwakha Family View — linked-accounts section)
-
-### Prompt
-A small, tightly-scoped UI brief: *"Do not redesign any existing account-history/reuse logic … add a clear section titled `الحسابات المرتبطة بالأسرة` … This section must display all Accounts mapped to the Family through `muwakha_family_accounts`, not only `muwakha_families.account_id`."* The two instructions that mattered most were the ones drawing a line between display and data: *"**Do not display deleted / soft-deleted Accounts** … Do not delete its mapping and do not change historical data. This is only a display filter. Also do not silently restore or reactivate deleted Accounts,"* and *"The data source must be the mapped Account + the historical `account_holder_name` stored on `muwakha_family_accounts`. **Do not use the Family's current holder name for every historical row.**"*
-
-### Purpose
-**"This is only a display filter" is the sentence that kept the feature honest.** The obvious shortcuts — drop the mapping, or soft-delete it alongside the Account — would both have destroyed the durable ownership record that the exact-reuse logic depends on, and would have done so from a read-only screen. Separating "hidden" from "deleted" is why the tests assert both halves: the Account name is absent from the page **and** the mapping row is still in the database with its holder name intact.
-
-**"Do not use the Family's current holder name for every historical row" prevented a subtle lie.** `accounts` has no holder column, so the family row is the tempting source and would have rendered correctly-looking output — while retroactively reassigning every past Account to today's holder, the exact distortion the Account-immutability rule exists to prevent.
-
-**The read-only constraint was implemented structurally, not by omission.** The section carries no action of any kind, and a test greps the Infolist source for `Action`, `headerActions`, `footerActions` and `recordActions` — so a future edit that adds a "make current" or "restore" button fails immediately rather than quietly creating a second, unaudited path to move a payment destination.
-
-**One test caught a self-inflicted false pass.** The section's description originally read "… الحساب الحالي والحسابات السابقة", which contains the badge text verbatim; `assertSee('الحساب الحالي')` therefore passed even when no badge rendered, and `assertDontSee` failed on a page where the filter was working perfectly. Rewording the description so the badge phrase appears only on a row is what made both assertions actually test the badge.
-
-### Result
-7 focused tests added; `tests/Feature/Muwakha` — **125 passed / 579 assertions, 0 failures**. Only the directly affected Muwakha tests were run, per instruction. No migration, no schema change, no service change, no commit, no push, no Graphify.
-
----
-
-### Date
-2026-08-17 (FINAL — Muwakha historical family Account design)
-
-### Prompt
-A final pre-commit refinement brief with four stated goals: *"preserve historically correct Account data for financial reports … create a new Account whenever material payment/account identity changes … reuse an exact old Account when the Family returns to the exact same account details … make Muwakha Accounts immediately clear in the general Accounts screen."* It carried the same fence as before — *"Do not redesign the Project financial workflow … If anything below conflicts with the real repository architecture: **STOP AND ASK — DO NOT GUESS.**"* — plus two instructions that shaped the implementation more than the feature list did:
-
-*"Before implementing the mapping migration: inspect the current local database … Do not infer ownership of old unlinked Accounts based solely on: martyr name, Account name, account number. Do not guess."*
-
-*"Do not perform a loose string search like `where name LIKE '%martyr%'`. Do not use account number globally. The reuse search must be: Family-scoped through mappings … Do not rely solely on the canonical Account name; compare the underlying fields too."*
-
-### Purpose
-**"Inspect first, do not infer ownership" turned a tempting cleanup into a reported fact.** The local database held three Accounts with the same account number and near-identical Arabic names, only one of which any family row pointed at. Every heuristic available — martyr name, account name, account number — would have "correctly" mapped all three to family 1, and would have been guesswork dressed as a migration. The backfill therefore reads the `muwakha_families.account_id` foreign key and nothing else: one mapping created, two look-alike Accounts left untouched and reported for human review. The same instruction is why the one permitted rename was fenced twice — unambiguous ownership through the FK **and** zero `transaction_lines`.
-
-**"Compare the underlying fields too, not just the name" prevented a real collision.** The canonical name contains martyr name, currency and account number — but not bank type, IBAN or account-holder name. A comparison on the name alone would have treated "same number, same currency, different bank" as the *same* Account and silently rerouted a family onto the wrong ledger. Building a `MuwakhaAccountIdentity` value object that compares all seven fields, with the name as one of them rather than instead of them, is what makes that impossible.
-
-**"Family-scoped through mappings, never globally" is load-bearing because of an earlier decision.** `accounts.account_code` was deliberately made non-unique on 2026-08-16 precisely so two families could share one real bank number. A global reuse search would have turned that concession into a cross-family ledger merge. The brief's insistence on the mapping scope is what keeps the two decisions compatible.
-
-**The 58-point test list did the same job the 34-point list did last round, one level deeper.** Points 20–25 ("previous Account attributes byte-for-byte unchanged", "previous Transactions unchanged") are implemented as full `getAttributes()` snapshots and row-level `transactions`/`transaction_lines` comparisons; points 32–35 (near-miss vs exact match) became a data-provider matrix that would fail the moment any identity field were dropped from the comparison.
-
-### Result
-Delivered inside the fence. **723 tests, 720 passed, 3 pre-existing skips, 3 857 assertions, 0 failures** across the Muwakha, Audit, CRUD/Integrity, ExecutionPayments and Permissions suites, run sequentially; both migrations applied to the real local database and the backfill verified by direct query; `oms:check-financial-integrity` → **Result: OK, exit 0**. Full suite **intentionally not run, by explicit user instruction**. No commit, no push, no Graphify, no account-history event table, no historical Account mutated.
-
----
-
-### Date
-2026-08-17 (Muwakha family-account currency — one approved change, fenced) *(Superseded the same day — see the entry above.)*
-
-### Prompt
-A single tightly-fenced change brief: *"We have one approved change to the implemented Muwakha Families feature. Do not redesign anything else. If the repository contradicts an assumption below, **STOP AND ASK — DO NOT GUESS.**"* It specified that family accounts must no longer be fixed to ILS, that the currency is selected from existing OMS currencies with **no hard-coded currency IDs**, and — the load-bearing rule — *"**Never change `currency_id` on the existing Account** … If the user changes the Family Account currency, create a **new Account** … The old Account must remain completely untouched … We explicitly do **not** want an account-history table. The old Account itself is the historical financial record."* It also directed: *"Inspect the real `currencies` schema and existing display conventions and use the system's actual human-readable currency name/label. Do not invent a new currency-name field or hard-code Arabic names if the existing currency reference data already provides the appropriate label,"* plus a 34-point test list, a **scoped** test policy (*"Do not run the full test suite"*, run sequentially), and *"Then **STOP BEFORE COMMIT**."*
-
-### Purpose
-**"Use the system's actual label, do not hard-code Arabic names" is what kept the naming rule correct.** The brief's own examples were `شيكل` / `دولار` / `يورو`, which are values, not a field — and the repository's Muwakha code was reading `currencies.code` (`ILS`) while `AccountForm` and `AccountsTable` both display `currencies.name`. Taking the examples literally would have produced a hard-coded Arabic map that silently disagrees with whatever an administrator actually typed into the currency register. Following the instruction instead produced one helper, `MuwakhaReference::currencyDisplayName()` over `currencies.name`, that every surface reads.
-
-**"Never change `currency_id` on the existing Account" was implemented mechanically rather than by discipline.** The rule is easy to satisfy today and easy to break later by adding one field to an update payload. It is enforced instead by the shape of the code: `currency_id` appears in **no** Account UPDATE payload anywhere in `MuwakhaFamilyService`, and the only place a currency is written is the shared `makeAccount()` creation helper.
-
-**"Do not redesign anything else" bounded a change that invites scope creep.** A currency-per-account model tempts an account-history table, a currency filter, a per-currency balance view. The brief pre-empted the first explicitly; the other two were left alone. The list table's new `العملة` column was added as **toggleable and hidden by default**, per the brief's own instruction that a new column must match the approved toggleable design rather than becoming a default column.
-
-**The 34-point test list translated the prose guarantee into checkable facts.** In particular points 21–29 ("old Account still exists / active / same currency / name / code / bank / IBAN / balance / ledger untouched") are what turn "remains completely untouched" from an intention into an assertion — implemented as a full `getAttributes()` snapshot comparison plus a row-level comparison of `transactions` and `transaction_lines` before and after the fork.
-
-### Result
-Delivered inside the stated fence. **298 tests, 298 passed, 1 480 assertions, 0 failures** across the Muwakha suite and the directly affected Account/Audit/Export/Execution-Payment suites, run sequentially; `oms:check-financial-integrity` → **Result: OK, exit 0**. Full suite **intentionally not run, by explicit user instruction**. No commit, no push, no Graphify, no account-history table.
-
----
-
-### Date
-2026-08-16 (OMS Muwakha Families — read-only audit first, then implementation)
-
-### Prompt
-Two prompts, deliberately sequenced. The first was a **read-only architecture audit**: *"Does the existing OMS `accounts` system already represent real beneficiary payment accounts/bank wallets that can be reused, or is `accounts` primarily an accounting chart-of-accounts abstraction? … DO NOT implement anything yet. Do not guess from documentation if the actual code gives a different answer."* The second was the implementation brief, which repeated the same discipline: *"This is an implementation task, but you MUST begin with a short read-only impact audit before changing code,"* with an explicit list of STOP conditions — including *"If there is no safe/unique way to identify that main project through the existing hierarchy, or more than one live root project matches that name: **STOP and report before implementing the project-link filtering**"* — and *"If you need clarification, STOP AND ASK — DO NOT GUESS."* Two later prompts refined it: redact personal identifiers in audit payloads, grant Project Manager the full set, and *"Do not run the full test suite … Stop and wait for review."*
-
-### Purpose
-**The audit-before-implementation split is what made this feature correct rather than plausible.** The design brief described "a main/root project with child projects", and a reasonable implementer would have built exactly that. The read-only audit established from the live schema that `projects` has **no self-referencing parent column at all** — the only hierarchy is `projects_super` → `projects.project_super_id` — and that no row named `مشروع المؤاخاة` existed in either table. Had the audit been skipped, the likely outcome was a second, parallel hierarchy added to the core `projects` table: a change that would have been hard to reverse and that the brief itself elsewhere forbade.
-
-**The explicit STOP clause is what turned a discovered mismatch into a decision rather than a guess.** Two STOP conditions fired — the missing root, and the total absence of any reference-data shipping pattern in the repository — and both were answered by the user before any file was written. The same clause is why "the root project itself is not selectable" ended up satisfied *structurally* (a `ProjectSuper` is not a `Project`, so it cannot appear in a project Select) instead of by a filter that a forged request could bypass.
-
-**"Do not guess from documentation if the actual code gives a different answer" earned its place twice.** The documentation's account of the `accounts` table was accurate, but only the code showed that `project_cost_budgets_payments` stores **no** beneficiary account at all — the account lives solely on `transaction_lines.account_id`, tagged by a `notes` string that all read-back code still matches on. And the first audit's §7 had to report honestly that `accounts` held **zero rows**, so the real-world format of `account_code`/`iban` could not be characterised from data rather than inventing a plausible sample.
-
-**The later privacy prompt changed the design in a way testing alone would not have caught.** Redacting the three identifier values was straightforward; the non-obvious part was that `subject_label` and the family relation label also carried `martyr_national_id`, and those are displayed in the audit UI. Redacting only the payload would have looked complete and leaked anyway.
-
-### Result
-Feature implemented end-to-end with no change to Transaction posting, balances, FX, project reports or the Execution Payment workflow. Focused + regression: **1502 passed / 6388 assertions, 0 failures, 5 pre-existing skips**; `oms:check-financial-integrity` → **Result: OK**. Full suite **intentionally not run, by explicit user instruction**. Not committed.
-
----
-
-### Date
-2026-07-30 (Roadmap cleanup — remove the obsolete PDF export roadmap)
-
-### Prompt
-**"Documentation-only correction. Remove all stale statements that: PDF or mPDF export is planned; Excel + PDF is the next OMS phase; current reports need additional export development. Keep the accurate state: reports are working and approved; exports use Excel and Word where implemented; no PDF work is planned; no report task is currently pending."** Scope fixed to six files (`OMS_Master_Reference.md` and the five `docs/` logs), with: *preserve valid history, but mark old PDF/mPDF plans as cancelled or superseded where necessary; do not inspect broadly; do not modify code, tests, database, Composer or Graphify manually; do not run PHPUnit.* Then `git diff --check`, `php artisan oms:check-financial-integrity`, commit as `remove obsolete PDF export roadmap`, wait for the Graphify hook and commit any `graphify-out` changes separately, do not push.
-
-### Purpose
-Two clauses did the real work. **"Preserve valid history, but mark old plans as cancelled or superseded"** is what stopped this from becoming a search-and-delete: three log entries had recorded the export as the next phase at the time they were written, and those sentences are true statements about what was believed then. Striking them through with a dated supersession note keeps the record while making the current state unambiguous — and the roadmap bullet is labelled **CANCELLED** rather than removed, so a reader who remembers the approved plan sees that it was cancelled rather than finding it silently missing. **"Do not inspect broadly"** kept the pass to a targeted search for `pdf`/`mpdf`/`Excel +`/next-phase wording across exactly the six named files, which surfaced the distinction that mattered: most surviving `pdf` hits are *accurate* — the `report_export` audit contract stating that no export service produces CSV or PDF, and attachments that happen to be PDFs — and only three statements actually claimed PDF was planned. One narrow check outside the six files was made deliberately: `composer.json` was searched for `pdf` (no match) rather than asserting from memory that no PDF package is installed.
-
-### Result
-Six files edited, zero code changes. `mPDF` removed from the tech-stack table; §6's "next system phase" note rewritten to state that no report or export task is pending; the Excel + PDF roadmap bullet struck through and marked **CANCELLED 2026-07-30**; `NEXT_STEPS.md`'s "next approved roadmap item" section replaced with a no-pending-task section; four historical sentences annotated as superseded across `AI_PROJECT_MEMORY`/`TASKS_LOG`/`DECISIONS_LOG`/`PROMPTS_LOG`. **No next system phase is set.** `git diff --check` clean, exit 0; `oms:check-financial-integrity` → **Result: OK, exit 0**; PHPUnit not run, per scope. See `docs/TASKS_LOG.md` / `docs/DECISIONS_LOG.md` / `docs/NEXT_STEPS.md` (2026-07-30 roadmap-cleanup entries).
-
----
-
-### Date
-2026-07-30 (OMS Task 9B.8 — final Audit system acceptance, full regression and release readiness)
-
-### Prompt
-A thirteen-section closing acceptance brief for the whole Audit initiative, supplied with the accepted state (9B.1–9B.7 complete, `358b7d8`/`6481bda`, clean tree, 18 commits ahead, integrity exit 0) and an accepted real-local baseline (`audit_events` 4, users 5, roles 7, permissions 186, transactions 9, transaction_lines 26, backup_operations 13). Sections: read-only acceptance review producing a coverage matrix (category, action, subject alias, integration point, failure mode, transaction ownership, duplicate-prevention mechanism, primary test class); final event-contract review; sensitive-data acceptance scan over production code, fixtures **and** the four real rows, distinguishing comments from executable reads; immutability/authorization review; database/index review against real query plans; isolated migration acceptance; restore acceptance; eleven focused test groups run sequentially; the approved final full-suite run; real-local read-only reconfirmation plus smoke checks; documentation across six files marking the initiative `COMPLETE`; a final quality check; and a full report. Hard constraints: **do not push, do not run Graphify, do not create/update/delete real local business data, do not perform a real restore against the local OMS database, do not add features, do not add an index or migration on assumption (STOP and report if a schema change appears necessary), do not run focused groups concurrently, do not build a new restore harness, do not print sensitive payloads, and STOP before commit.** Every failure had to be classified as Audit regression / pre-existing-or-environment-gated / unrelated real regression, and "no failure may be ignored without a specific documented reason."
-
-### Purpose
-Several clauses did real work by forbidding the convenient answer. **"Do not add an index based on assumption alone… If a schema change appears necessary: STOP and report"** turned the index review into an evidence exercise rather than a hardening exercise: eleven `EXPLAIN`s showed two full scans, and the discipline forced separating an artifact (an unfiltered page on an 8-row table, where MySQL ignores an index that the date-range variant proves is usable) from a structural fact (`event_action` is the composite index's second column and cannot be seeked alone) — and then declining to add either, because a permanent write cost on an append-only table is not justified by an unmeasured admin filter. **"Distinguish comments/docblocks from executable reads"** was essential, because this codebase documents its threats extensively: every hit for `getMessage()`, `APP_KEY`, `storage_path()` and `getBindings` in the audit tree is prose explaining why the code refuses to do that, and a naive grep would have reported a dozen false leaks. **"Classify every failure"** is what produced the phase's one real investigation: `tests/Feature/Reports` exits 1 with all 72 tests passing, which could have been silently accepted as green or wrongly blamed on the report-export recorder; a git worktree at `6061a1d` (before that integration) reproduced it identically, settling it as pre-existing. **"Do not make broad formatting changes outside files touched by this phase"** collided with a repo-wide Pint failure and correctly resolved to reporting rather than reformatting 24 Audit files into a half-formatted repository. And the **read-only real-data constraints** are what made the baseline drift legible instead of confusing: because this phase could only read, the four new rows had to have come from somewhere else — and their Livewire route names, browser user agents and LAN IPs identified concurrent human use of the app.
-
-### Result
-**Audit initiative marked COMPLETE with zero production or test code changes — no fix was required; the only diff is documentation.** Contract: 6 categories, 27 actions, 34 subject aliases, no FQCN reachable as `subject_type`. Sensitive-data scan **PASS** (all secret-shaped hits are docblocks or a display label; all **8** real rows CLEAN, no payload value printed). Immutability/authorization **PASS**, no `audit` permission in `PermissionRegistry`. Index review: six required lookups all index-served, **no migration made**, §5 STOP not triggered. Isolated migration on a disposable SQLite file: 68 DONE / 0 FAIL, seeders exit 0, permission sync 162 = 162 with zero drift. Restore replay: 30 passed / 320 assertions, simulation accepted per the brief, **real production drill recorded as a deployment/operations item**. Focused groups 11/11 green. **Full suite: 2337 tests / 8528 assertions / 0 failures / 0 errors / 6 pre-existing skips / 16.7 min, sequential, one run.** `migrate:status` all Ran, 0 pending; `oms:check-financial-integrity` → **Result: OK, exit 0**; `/admin/login` 200; `/admin/audit-events` 302 → `/admin/login`; every protected financial/security/report/attachment/backup route preserved its behavior; **0 audit rows created by unauthenticated smoke checks**; `git diff --check` clean; `graphify-out/` untouched; no Composer package installed. **Two reported non-defects:** the pre-existing repo-wide Pint failure (351/712 files, no `pint.json`), and the pre-existing Reports exit-code artifact. **One reported drift:** real-local `audit_events` moved 4 → 8 during the run from concurrent browser use of the application — not from this phase, whose six other baseline counts are unchanged and whose integrity check still passes. Next phase set to `OMS_Master_Reference.md` §6's approved Excel/PDF Arabic export, **not started**, with the double-entry receipt defect flagged *at the time* as a correctness item that may outrank it. **Corrected 2026-07-30:** that defect was already resolved — the receipt flow posts a balanced debit and credit line pair — and has been removed from the roadmap, leaving the export as the unambiguous next phase at that time. **Further corrected 2026-07-30 (see the entry above):** the Excel/PDF Arabic export item is itself **cancelled** — reports are working and approved, exports ship as Excel and Word where implemented, no PDF/mPDF work is planned — so **no next phase is set and no report or export task is pending**. See `docs/TASKS_LOG.md` / `docs/DECISIONS_LOG.md` / `docs/NEXT_STEPS.md` (2026-07-30 Task 9B.8 entries).
-
----
-
-### Date
-2026-07-30 (OMS Task 9B.7 — required compatibility correction: unknown categorical values must render safely)
-
-### Prompt
-**"Task 9B.7 is approved except for one required compatibility correction."** The review accepted the implementation but rejected one reported limitation: "The current report states that `actor_type` and another displayed field are enum-cast, and an out-of-vocabulary stored value can fail during `AuditEvent` hydration. This violates the approved requirement that future unknown audit values must still render safely." It required unknown stored values to render safely in **every** displayed categorical field — naming `event_category`, `event_action`, `actor_type`, `subject_type` and `status` "if it is an actual `AuditEvent` column displayed by the UI" — with a historical row containing an unknown future string not crashing the **list page, view page, search, sorting or pagination**; known values keeping their Arabic labels; unknown values rendered as **their exact stored string, escaped as plain text**; no stored row modified; and **no weakening of `AuditRedactor` or `AuditEvent` immutability**. The solution was constrained: "Prefer a UI-only/raw-value solution: raw query aliases; `getRawOriginal()`; or another narrowly scoped presentation mechanism. **Do not remove domain enum casts globally unless there is no safe UI-only solution. If changing model casts is objectively required, STOP and report before doing it.**" Tests had to insert unknown values **directly through the query builder, bypassing Eloquent enum assignment**, and prove safe rendering on list and view, escaping of malicious HTML inside an unknown value, that opening such records creates **no recursive `AuditEvent`**, and that known values still receive Arabic labels. Only the new tests plus `tests/Feature/Audit/Ui` and `tests/Unit/Support/Audit` were to be run — never the full suite. Documentation was to be updated "only as needed", **removing the reported unresolved risk once the tests prove it fixed**. Forbidden: redesigning the UI, adding a migration, adding permissions, running Graphify, committing, pushing, and starting Task 9B.8.
-
-### Purpose
-To close the gap between a stated guarantee and the code that had to deliver it. Two clauses carried the fix. First, **"do not remove domain enum casts globally… STOP and report before doing it"**: that ruled out the easy fix (drop the casts) and forced the failure to be located precisely rather than papered over — which surfaced the fact that Eloquent resolves an enum cast on **attribute access**, not during hydration, so the row loads fine and only the UI's own attribute read is the hazard. That is exactly the kind of boundary a UI-only mechanism can own, so no cast needed to change and no STOP was required. Second, **"insert unknown values directly through the query builder, bypassing Eloquent enum assignment"**: it is the only way to create the hazard honestly (the model would refuse to write one), and it made a stronger assertion possible — the same test proves the stored value is intact, that `AuditEvent::findOrFail(...)->actor_type` **still throws**, and that the page **still renders**, so the fix can never be confused with a weakened cast. The instruction to render the exact stored string also settled the badge colour question: an unknown `status` is grey, because painting an uninterpretable value green would be the UI asserting a success it cannot know occurred.
-
-### Result
-**Exactly two displayed fields were enum-cast**: `actor_type` (`AuditActorType`) and `status` (`AuditStatus`) — both plain varchars in the 9B.1 migration. One new class, `App\Support\Audit\AuditRawValue`; `AuditLabels::actorType()`/`status()` widened to `enum|string|null` with backing-value maps and verbatim fallback, plus a new `statusColor()`; `AuditEventsTable` and `AuditEventInfolist` routing all five categorical fields through the raw read. **No model cast changed, no migration, no permission, no UI redesign, `AuditRedactor` and the immutability hooks untouched, no stored row modified.** Focused suites: `tests/Feature/Audit/Ui` + `tests/Unit/Support/Audit` — **93 passed / 614 assertions** (up from 74/499), including 19 new tests. `oms:check-financial-integrity` → `Result: OK` exit 0; `git diff --check` clean. Real local `audit_events` holds 4 rows from a manual application walkthrough whose timestamps precede this correction's first file write — none created by this work, which runs entirely against SQLite `:memory:`. See `docs/TASKS_LOG.md`/`docs/DECISIONS_LOG.md` (2026-07-30 Task 9B.7 correction entries).
-
----
-
-### Date
-2026-07-30 (OMS Task 9B.7 — read-only Audit Log UI for the real Super Admin)
-
-### Prompt
-**"Implement OMS Task 9B.7: READ-ONLY AUDIT LOG UI FOR REAL SUPER ADMIN."** A structured brief for a Filament interface over `audit_events` (`النظام` → `سجل التدقيق`, pages `ListAuditEvents` + `ViewAuditEvent`), with these load-bearing constraints: a mandatory **read-only inspection first** of the real migration, model, enums, aliases, DTOs, services, Filament v5 conventions, navigation ordering, the real Super Admin access checks, the `UserResource`/`RoleResource` lockdown patterns, the existing Arabic RTL patterns and **the current indexes on `audit_events`** — "Do not assume field names from documentation" — with a **STOP condition**: "If the existing schema lacks an index objectively required for the approved filters: STOP and report before creating a migration. Prefer no schema change"; an explicit do-not-create list (Create page, Edit page, delete, bulk delete, restore, force delete, replicate, import, export, inline editing, editable columns, mutating relation managers) and "The interface must never mutate AuditEvent records"; access limited to **"the real Super Admin role only"** with navigation hidden and direct URLs 403 for everyone else, unauthenticated → `/admin/login`, **"Super Admin Gate bypass must not accidentally expose the resource through a broad permission"**, **"do not add audit permissions to PermissionRegistry"**, **"do not create audit.view or audit.manage permissions yet"**, and no change to `UserPolicy`, `Gate::before`, `canAccessPanel` or existing role rules; Arabic labels for known categories/actions/aliases/actor types where **"Unknown future values must still render safely using their stored value"**; filters **"only where supported efficiently by real columns"** with **"Do not build filters by loading every distinct historical value into memory"** and action options **"derive from existing enums/known action registry; or use a bounded static mapping plus safe fallback"**; a detail view rendering **"only fields that actually exist"**, showing the actor snapshot **"even when actor_user_id is null"**, clearly distinguishing **"null, empty array and unavailable value"**, preserving decimal strings and `[REDACTED]` exactly, and **"never resolve deleted historical relations to replace stored snapshots"** nor **"render raw unescaped HTML from any audit field"**; a shared presentation helper **"only if it materially reduces duplication"** that must never execute HTML/Markdown/JavaScript/URLs, never auto-linkify, and **"never expose hidden model attributes through fresh model loading"**, while **"Do not weaken AuditRedactor"** and **"Do not modify stored AuditEvent payloads"**; a **no-recursive-auditing** section — viewing, filtering, searching and pagination must create no `AuditEvent`, and **"No AuditEventResource write path may call AuditLogger"**; performance rules (database pagination, indexed-column filters only, select only required list columns, avoid JSON scans, avoid loading actor relations when the snapshot suffices, no per-row model or permission lookups, **"no payload decoding work for columns not displayed"**, and **"Do not add caching that could leak records between users"**); focused sequential tests only with a named coverage list across authorization, read-only behaviour, rendering, filters and regression; real-local verification that must not **"insert real audit events merely to test the UI"** — **"Because the real local audit_events table is empty, use test databases for populated UI rendering tests"**; documentation across six files; and a sixteen-point report before commit. Forbidden: pushing, running Graphify before review, running the full suite, running PHPUnit concurrently, and starting Task 9B.8.
-
-### Purpose
-To make six phases of audit data readable without introducing the one thing an audit trail cannot survive — a surface that can change it, or that quietly widens who may see it. Four clauses carried the design. First, **"do not create audit.view or audit.manage permissions yet"** combined with **"Gate bypass must not accidentally expose the resource through a broad permission"**: these two together ruled out copying `BackupAuthorization`'s role-AND-permission shape, because inventing a permission purely for symmetry would create exactly the widening risk the second clause forbids. The answer was a plain role check with no permission at all — proven against a fixture holding all 186 registered permissions. Second, the **index STOP condition**: it forced the filter set to be designed against the real schema rather than the other way round, and the inspection showed all five needed indexes already existed — so the honest answer was no migration, plus a written explanation of the two low-cardinality filters that deliberately run without one. Third, **"never resolve deleted historical relations to replace stored snapshots"**: every actor and subject field reads the row's own snapshot, which is also why the actor filter applies a direct `where('actor_user_id', …)` instead of `SelectFilter`'s default `whereHas` EXISTS subquery — that default would have silently stopped matching once a user row was deleted. Fourth, **"recursively escape all text"** read against **"never render raw unescaped HTML"**: escaping inside the helper *and* in Filament's `KeyValueEntry` would double-encode, showing an audited `<script>` as `&lt;script&gt;` — so escaping happens exactly once at the boundary that emits HTML, with the rendered-HTML test asserting the actual outcome rather than the mechanism.
-
-### Result
-Three new support classes (`AuditViewAuthorization`, `AuditLabels`, `AuditPayloadPresenter`) and five new Filament classes under `App\Filament\Resources\AuditEvents`. **No migration, no schema change, no permission, no policy, and no existing application file modified** — the panel already discovers `app/Filament/Resources`, so even `AdminPanelProvider` needed no edit. Eleven list columns plus seven toggleable technical ones, seven filters, eight Arabic detail sections.
-
-Focused suites, strictly sequential: new suites **74 passed / 499 assertions**; `tests/Feature/Audit` + `tests/Unit/Support/Audit` + `tests/Unit/Services/Audit` **399 passed / 2646 assertions**; `tests/Feature/Permissions` + `tests/Feature/Roles` + `tests/Feature/Users` **490 passed, 3 pre-existing by-design skips**. Proven directly: a fully-permissioned non-Super-Admin sees no navigation entry and gets 403 on both list and view; create/edit URLs are 404; all nine mutation abilities are false even for a Super Admin; the model still throws on update and delete; opening, filtering, searching, sorting and paginating each leave `AuditEvent::count()` unchanged; a hard-deleted actor and a subject with no surviving row both still render from their snapshots with **no query against `projects`**; `<script>`/`<img onerror>` payloads render escaped on both surfaces; `'1500.00'` stays `'1500.00'`; `[REDACTED]` stays visible; the list query never selects the three JSON columns; the date filter emits no `strftime`; the actor filter emits `"actor_user_id" = ?` and no `exists (select`; and no query against `audit_events` uses `distinct`. Real local data verified read-only and **unchanged** (`audit_events` **0** — no event was inserted to test the UI — users 5, roles 7, permissions 186, transactions 8, lines 22, `backup_operations` 13); `oms:check-financial-integrity` → `Result: OK` exit 0; `/admin/login` 200 and `/admin/audit-events` unauthenticated 302 → `/admin/login`. See `docs/TASKS_LOG.md`/`docs/AI_PROJECT_MEMORY.md`/`docs/DECISIONS_LOG.md` (2026-07-30 Task 9B.7 entries).
-
----
-
-### Date
-2026-07-30 (OMS Task 9B.6 — backup & restore audit integration)
-
-### Prompt
-**"Implement OMS Task 9B.6: BACKUP AND RESTORE AUDIT INTEGRATION."** A structured brief covering manual/scheduled/command backup requests, completion, failure, download and deletion, plus the whole restore lifecycle (request, confirmation, start, completion, failure, partial/interrupted state, and reconciliation after a database replacement), with these load-bearing constraints: a mandatory **read-only architecture audit first** across the Filament page, backup commands and scheduler, `BackupCreationOrchestrator`, archive/manifest builders, encryption services, download and deletion handlers, the restore command/orchestrator, the restore progress/recovery journal, `RestoreReconciler`, the `BackupOperation` model, filesystem locations and retention cleanup — required to determine *the exact manual/scheduled/command/recovery entry points*, *which database mutations are transactional*, *which file operations cannot be rolled back*, *how restore progress survives replacing the database*, and *what existing external state can preserve audit facts across a restore*; a **STOP condition** — "If the current architecture cannot safely preserve restore audit history across database replacement, STOP after the read-only analysis and report the exact gap. Do not invent an unsafe custom encryption or restore mechanism"; `event_category = backup_restore` with the narrowest accurate alias of `backup`/`restore`/`backup_operation` and **"Never store FQCN values"**; bounded backup and restore payloads with an explicit never-store list (encryption key, `APP_KEY`, `.env`, database credentials, raw SQL, archive contents, private/temporary paths, full process output, stack traces, and **"exception messages containing paths, SQL, or bindings"**) and a requirement to **"use generic sanitized failure metadata"**; accurate lifecycle semantics because **"filesystem actions are not database-atomic"** — completion only after generation, encryption and final placement succeed, `backup_delete_requested` before an irreversible deletion, and two explicit prohibitions: **"Do not claim an irreversible file action rolled back when it did not"** and **"Do not delete a valid completed backup merely because a completion audit insert fails unless the existing architecture already explicitly guarantees that behavior"**; Required-before-serving for a private download where **"audit failure must prevent download"** while **"ordinary 404 cases create no event"** and a denied 403 **"may use BestEffort and must remain denied"**; a database-replacement survival section requiring the request and actor context to survive outside the database, `RestoreReconciler` to write the authoritative lifecycle into the restored table, interrupted restores to stay recoverable, replay to be idempotent, and a correlation id to link both sides — while **"Do not create a second unencrypted sensitive log"** and any external state must reuse existing backup/restore protection patterns; "one lifecycle state = one event" with a six-source duplicate list (Filament plus command, scheduler plus command, restore command plus reconciler, retries and recovery runs, post-restore permission synchronization, retention loops); a per-entry-point actor policy (real user / `scheduler` with **"no invented user"** / `command` preserving an initiating user **"only if the existing architecture genuinely passes one"** / `system` or `command` for reconciliation with the original requester preserved in bounded metadata); unchanged authorization with no permission broadening, no new public route, no Audit UI and no `audit.view`; focused sequential tests only, never the full suite, never concurrent PHPUnit, and **"Do not perform a real restore"**; read-only real-local verification that must not **"create, download, delete, decrypt, or restore a real local backup merely for testing"**; documentation across six files; and an eighteen-point report before commit. Forbidden: pushing, running Graphify before review, running the full suite, and starting the Audit Log UI (9B.7).
-
-### Purpose
-To audit the one subsystem that can replace or destroy every other audit record in the application — and to do it without the audit layer making the backup/restore engine less honest than it already was. Three clauses carried the design. First, the **STOP condition**: the brief refused to accept an invented recovery mechanism, so the read-only audit had to establish whether real durable state already existed. It did — the Task 7C.2/7C.5 signed progress journal, already private, HMAC-signed, bounded, and already carrying the requester identity and confirmation timestamp *before* the import runs — which is why this phase added no migration, no second log and no new encryption. Second, **"do not delete a valid completed backup merely because a completion audit insert fails"** and **"do not claim an irreversible file action rolled back when it did not"**: these forced Required/BestEffort to be decided by what is still reversible at each point rather than by a blanket "audit must be atomic" rule, and one of the tests written to prove it found a genuine defect — the ledger's existence probe sat outside the best-effort guard, so a dropped audit table threw into the creation pipeline's catch block and marked a fully published, verified archive as `failed`. Third, **"audit only actions that genuinely exist… do not invent UI actions or lifecycle states"**: the brief's own scope list included restore-file selection/upload and cancellation, and both had to be reported as non-existent paths rather than implemented — as did a separate confirmation event, since the wizard's confirmation is inseparable from the request it creates.
-
-### Result
-Six new classes under `App\Services\Audit\BackupRestore` (subject enum, idempotency ledger, structural failure classifier, one backup recorder, one restore recorder, one bounded facts value object) wired into eleven existing files. Seven backup actions and seven restore actions, all under `event_category = backup_restore`, with `correlation_id` = the operation's own UUID. Restore history survives a database replacement by replay from the signed journal at two independent points (`RestoreReconciler`'s new non-fatal eighth step and `RestoreTerminalResultWriter`), idempotent through a `(correlation_id, event_action)` ledger check and marked `replayed_after_database_replacement: true`.
-
-Focused suites, strictly sequential: new suites **30 passed / 320 assertions**; `tests/Feature/Backup` **214 passed, 1 pre-existing skip**; `tests/Feature/Restore` **287 passed**; `tests/Feature/Audit` **305 passed / 2081 assertions**; `Commands`+`Console` **60 passed**; `tests/Unit` **450 passed, 2 pre-existing skips**. Forced audit-failure drills proved no queued backup is created, a published archive is never falsified to `failed`, a private archive is not served and stays in place, a manual delete refuses and the archive stays in place, a restore request creates no row, a restore claim rolls back relaunchable with its nonce intact, and a 403 stays a 403. A simulated database replacement (every `audit_events` row removed, journal untouched) reconstructed the full lifecycle exactly once each with the original requester and correlation id preserved. Real local data verified read-only and **unchanged** (`audit_events` 0, `backup_operations` 13, 11 backup files with unchanged sizes, 9 journal files, users 5 / roles 7 / permissions 186, transactions 8, lines 22, `debit_base` = `credit_base` = 235,000.00, accounts 5, per-currency balances 0.00); no real backup was created, downloaded, deleted, decrypted or restored; `oms:check-financial-integrity` → `Result: OK` exit 0; `/admin/login` 200, `/admin/backup-management` and `/backups/{uuid}/download` 302 → `/admin/login`, `/restores/{uuid}/progress` 403 unsigned, with `audit_events` still 0 afterwards. See `docs/TASKS_LOG.md`/`docs/AI_PROJECT_MEMORY.md`/`docs/DECISIONS_LOG.md` (2026-07-30 Task 9B.6 entries).
-
----
-
-### Date
-2026-07-29 (OMS Task 9B.5 — attachment & report-export audit integration)
-
-### Prompt
-**"Implement OMS Task 9B.5: ATTACHMENT AND REPORT-EXPORT AUDIT INTEGRATION."** A structured brief covering attachment upload/replacement/deletion/secure view/secure download/403, and Excel/Word/other financial report exports, with these load-bearing constraints: a mandatory **read-only audit first** — "Do not guess from documentation" — required to determine *whether attachment view and download are separate actions or one response path*, *where the final file name/path/size/type become authoritative*, *which operations are already inside `DB::transaction()`*, *the exact list of exportable pages and formats*, and *whether exports are streamed or temporarily stored*; `event_category = attachment` with bounded metadata and an explicit never-store list (raw bytes, private absolute paths, storage disk root, temporary upload paths, signed URLs, tokens, authorization headers); one logical file action = one `AuditEvent`, with replacement carrying old/new metadata and only meaningful changed fields; an atomicity policy requiring DB metadata and the Required audit event to commit or roll back together while **"Do not claim filesystem atomicity where it does not exist"** and **"If strict audit integration risks deleting the old file before the DB/audit commit is safe, STOP and report the exact path before changing it"**; Required-before-response for authorized private access with **"if auditing fails, do not serve the private file"**, and **"Distinguish viewed vs downloaded only if the application has a trustworthy explicit distinction… Do not invent download semantics from browser headers"**; BestEffort for a genuine 403 that must survive an audit failure, with **"never log arbitrary attacker-controlled path input"** and no auditing of ordinary 404s; `event_category = report_export` with one event per request after authorization and before the response, **"Use only aliases verified from actual pages"**, a bounded id+label filter payload, and explicit prohibitions on storing exported rows, result datasets, file content or a generated temporary path; an export-semantics rule — **"Do not claim the export completed successfully if generation throws afterward… use `export_requested` unless the current synchronous code can safely prove successful generation before the response"**; a four-source duplicate-prevention list; focused tests only, never concurrent, never the full suite; read-only real-local verification that must not upload, delete, download or export real data; documentation across six files; and a seventeen-point report before commit. Forbidden: pushing, running Graphify before review, running the full suite, and starting Backup/Restore (9B.6) or the Audit Log UI.
-
-### Purpose
-To close the two remaining ways financial evidence leaves the system — someone reading a private payment proof, and someone taking a full financial dataset out as a file — neither of which any earlier phase recorded at all. Three clauses did most of the work, and all three were conditional rather than prescriptive, which is what made the mandated read-only audit load-bearing rather than ceremonial. First, "distinguish viewed vs downloaded **only if** the application has a trustworthy explicit distinction… do not invent download semantics from browser headers": the answer had to come from the route and controller, not from a preference. Second, "use `export_requested` **unless** the current synchronous code can safely prove successful generation before the response": the answer had to come from reading how the export services actually return. Third, the §4 STOP clause about deleting an old file before the commit is safe — an instruction to halt and report rather than quietly rewrite crash-safe file handling inside an audit task.
-
-### Result
-The read-only audit answered all five mandated questions from the code. **View and download are genuinely distinct** (route-level `->whereIn('mode', ['view','download'])`, re-validated in the controller, selecting `inline` versus `attachment`), so both are recorded as distinct actions with the dependency documented so they collapse to one accurate `accessed` if the route ever does. **Metadata becomes authoritative in exactly one place**, `AttachmentUploadService::store()`, which all ten upload call sites already funnel through — so that is the single choke point, with a new `replacing:` argument letting callers *state* upload-vs-replacement rather than having it guessed. **All fifteen write call sites are already inside a `DB::transaction()`.** **Ten export paths across six pages, all streamed, none producing a temporary file.** **The §4 STOP condition did not trigger:** no path in this application deletes a prior attachment file from disk at all — replacement soft-deletes the previous *row* after the new file lands, and the five workflow delete methods keep the file "for audit" — so the crash-safe ordering was left untouched, and the atomicity claim was written for the database only, explicitly *not* for the filesystem (a rollback still orphans one new file, as it always did).
-
-Exports therefore record **`export_requested`**: all nine services serialize inside the `streamDownload` callback, which Symfony invokes only after the response is returned and headers are committed, and the writer targets `php://output`, so no artifact exists to prove success either. **Two things were reported rather than fabricated:** the original client filename does not exist in this application (no form calls `preserveFilenames()`), so no `original_file_name` was invented; and CSV/PDF were not added as format vocabulary because no export service produces them. **A real redaction collision was found by the new tests**, not by inspection — `parent_key` was being redacted by `AuditRedactor`'s global `key`-segment rule, erasing the field linking an attachment event to its parent's financial event; renamed to `parent_id` following the existing `setting_name` precedent, rather than weakening the redactor with another exception entry.
-
-Focused suites, strictly sequential: new suites **45 passed / 287 assertions**; `Audit`+`Attachments`+`Reports` regression **529 passed / 2418 assertions, 0 failed**; the five financial workflow suites **70 passed / 285 assertions**. Forced audit failure proved a create-with-attachment rolls back both the `Attachment` and the `GeneralExpense` row, a private file is not served, and an export throws instead of delivering — while the BestEffort mirror proved a 403 stays a 403 under the same outage. Real local data verified read-only and **unchanged** (`audit_events` 0, attachments 9/7 trashed, transactions 8, lines 22, accounts 5, balance sum 0.00, 8 files on the private disk); `oms:check-financial-integrity` → `Result: OK` exit 0; `/admin/login` 200 and all protected attachment/report routes 302 → `/admin/login` while unauthenticated, with `audit_events` still 0 afterwards. See `docs/TASKS_LOG.md`/`docs/AI_PROJECT_MEMORY.md`/`docs/DECISIONS_LOG.md` (2026-07-29 Task 9B.5 entries).
-
----
-
-### Date
-2026-07-29 (OMS Task 9B.4 — users, roles, permissions & authentication audit)
-
-### Prompt
-**"Implement OMS Task 9B.4: USERS, ROLES, PERMISSIONS, AND AUTHENTICATION AUDIT."** A structured brief covering User create/update/delete/restore, activation/deactivation, administrator password changes, role assignment/removal/replacement, direct user permission assignment/removal, role permission management, `oms:sync-permissions`, and login success/failure/logout — with these load-bearing constraints: **"Inspect the real User, Role, Permission resources/services and authentication flow first. Do not assume standard Filament paths."**; `AuditFailureMode::Required` inside the same `DB::transaction()` for every identity/privilege mutation, `BestEffort` for authentication, with the explicit rule that audit failure must **"never allow audit failure to prevent a legitimate logout or create a login loop"**; one logical action = one event, with `syncRoles(['Admin','Accountant'])` naming exactly one event and **"do not audit Spatie pivot-table writes independently"**; stable subject aliases (`user`, `role`, `permission`, `authentication`, `permission_sync`) and **"never store FQCN values"**; a closed user payload allowlist with an explicit never-store list (password, hash, confirmation, remember token, reset token, session id, cookies, authorization headers, full permission dumps) and `"password_changed": true` as the only password representation; sorted deterministic before/after/added/removed arrays for roles and permissions; a failed-login policy requiring the submitted email be resolved against existing users and **"never store arbitrary attacker-controlled email text"**, with a generic unidentified subject otherwise; **"prevent recursive or duplicate login events"**; a bounded permission-sync summary where **"a no-op command execution may still create one audit event because running this security administration command is itself accountable"**; a hard authorization freeze (Gate::before, UserPolicy, canAccessPanel, no broadened permission, no Audit UI, no `audit.view`); focused tests only, never concurrent, never the full suite, including forced-audit-failure rollback of pivots and model changes; read-only real-DB verification that creates no local users/roles/permissions; documentation across six files; and an eighteen-point report before commit. Forbidden: pushing, running Graphify before review, running the full suite, and starting attachments, exports, backup/restore or the Audit UI.
-
-### Purpose
-To close the last mutation category that can silently rewrite who is allowed to do anything. Three clauses did most of the work. First, "inspect the real services first, do not assume standard Filament paths" — which paid off differently than in 9B.3: here the paths were already correctly centralised in `UserManagementService`/`RoleManagementService`/`PermissionSyncService`, and the discovery worth having was that `syncRoles()`/`syncPermissions()` write Spatie **pivot** rows an Eloquent observer cannot see at all, which is what rules observers out for this phase on stronger grounds than 9B.2's. Second, the explicit "never create a login loop" clause, which is the difference between an audit trail and a self-inflicted denial of service: an audit-storage outage must not be able to lock every administrator out of the system they would need to log into in order to fix it. Third, "prevent duplicate login events" — a requirement that turned out to describe two genuinely independent duplicate sources in the framework and the panel, neither of which is visible without actually exercising the real login page.
-
-### Result
-The real write paths were confirmed against the resource/page classes and were already service-centralised, so auditing joined each service's existing `DB::transaction()`. Built `app/Services/Audit/Security/` (5 classes) plus one event subscriber, splitting Required and BestEffort across **two classes that physically cannot emit each other's mode**. **Two real defects were found by the new tests rather than reasoned away.** (1) Laravel's framework `EventServiceProvider` auto-discovers public `handle*` methods under `app/Listeners` *in addition to* an explicit `Event::subscribe()` mapping — with `handleLogin`/`handleLogout` names, `Event::getRawListeners()` showed the listener registered twice and every login and logout wrote **two identical rows**; methods were renamed to `on*` and a regression test now pins one listener per auth event. (2) A panel-access denial dispatches `Failed` twice (once from `SessionGuard::attemptWhen()`, once from Filament's `Login::authenticate()`), de-duplicated per **attempt** via the `Attempting` event, which required binding the recorder as a container singleton. **Two scope items were reported rather than faked:** this application has **no direct-user-permission write path** and **no password-reset flow** (`->passwordReset()` is never called on the panel) — the direct-permission snapshot/diff/payload were implemented and tested at the recorder level so they are correct the moment such a path exists, but inventing one would have meant adding a privilege-granting surface, contradicting the same brief's no-broadening rule. Focused suites, strictly sequential: new security-audit suites **81 passed / 388 assertions**; `Users`+`Roles`+`Permissions` regression **493 tests, 490 passed, 3 pre-existing skips, 0 failed**; `Audit`+`Crud` regression **318 passed / 1741 assertions**. Forced audit failure (table dropped) proved rollback of user creation with pivots, user update with rename/deactivation/password/roles, delete, restore, role creation with pivots, role rename + permission replacement, role deletion and the whole permission-sync run. Real local DB verified read-only and **unchanged** (users 5 / roles 7 / permissions 186 / pivots 4/0/599 / `audit_events` 0); integrity checker `Result: OK` exit 0; `/admin/login` 200 and all four protected User/Role/Permission routes 302 → `/admin/login` while unauthenticated. See `docs/TASKS_LOG.md`/`docs/AI_PROJECT_MEMORY.md`/`docs/DECISIONS_LOG.md` (2026-07-29 Task 9B.4 entries).
-
----
-
-### Date
-2026-07-29 (OMS Task 9B.3 — financial audit integration)
-
-### Prompt
-**"Implement OMS Task 9B.3: FINANCIAL AUDIT INTEGRATION."** A structured brief covering the five financial workflows (Project Cost Receipt, Project disbursement, Execution Payment, General Expense, General Exchange) and the four financial master-data models (Account, AccountType, Currency, ExchangeRateHistory), with these load-bearing constraints: **"Audit actual write paths, not model names assumed from documentation. Some workflows may use multiple resources or models; confirm the real mapping first."**; a core rule that **one logical financial action = exactly one `AuditEvent`**, with no separate `Transaction`/`TransactionLine` auditing and no observer or generic CRUD wiring for either, the source event instead carrying the resulting transaction identifiers; strict atomicity — `AuditFailureMode::Required`, the insert inside the **same existing** `DB::transaction()` as the source record, the transaction/lines, the balance increments/decrements and any already-in-scope attachment metadata, with an explicit prohibition on opening an independent audit transaction or enabling global Filament transactions; a bounded payload specification (transaction id/number, operation type, project/cost/budget identifiers, currency ids and codes, amounts and `final_amount` as **decimal strings**, deductions/percentages, `fx_rate`, affected account ids with bounded labels, and an account **role** from a fixed list) with explicit prohibitions on storing full `TransactionLine` arrays, full Eloquent models, relations/collections, file contents, unbounded notes or floating-point money; per-action event behavior (create/update/delete/no-op) including preserving old and new account/project/currency labels by id; the nine stable subject aliases, distinguished **by workflow alias and real route/resource, not by FQCN, where two workflows share a model**; a seven-source duplicate-prevention list; `HasUserTracking` activation on `Account`/`AccountType` **without backfilling existing rows**; focused tests only (never the full suite, never concurrent PHPUnit), including forced-audit-failure rollback of source model, transaction, lines and balances; a hard rule not to create test financial data in the real local OMS database plus real-DB verification requirements; documentation updates across six files; and an eighteen-point report before commit. Forbidden: pushing, running Graphify before review, running the full suite, and starting users/security, attachments, backup/restore, exports or the Audit UI.
-
-### Purpose
-To extend the audit trail from master data to the money itself — the part where an unaudited or half-audited mutation is an actual accounting integrity failure rather than a missing convenience. Two clauses did most of the work. First, "audit actual write paths, not model names assumed from documentation" — which turned out to be exactly right: the project's own Master Reference had two of the five workflows mapped to the wrong model classes, and one to a class that does not exist. Second, the insistence that the audit insert join the workflow's **existing** transaction rather than open its own, which is the difference between an audit trail and a decoration: the previous phase's service could own its transaction because it wrapped a single save, whereas a financial workflow already spans a transaction, several lines and several balance movements that must all roll back together.
-
-### Result
-The real mapping was confirmed against the resource classes and **contradicted the documentation**: `ProjectCostBudgetsPaymentResource` ("صرف مبلغ المشروع") writes `ProjectCostBudget`; `ExecutionPaymentResource` ("صرف مبالغ التنفيذ") writes `ProjectCostBudgetsPayment`; **no `ExecutionPayment` model class exists**. `OMS_Master_Reference.md` was corrected and given a warning table. Built `app/Services/Audit/Financial/` (8 classes) with `FinancialAuditRecorder` as the single `financial`-category gateway that **never opens a transaction** and throws `LogicException` when `DB::transactionLevel() < 1`; wired all 15 call sites inside the existing transactions and before the success notifications; routed the four master-data subjects through the existing 9B.2 CRUD path with decimal-string value policies; activated `HasUserTracking` on `Account`/`AccountType` with no backfill; and kept the Account opening-balance path to exactly one event via a new, deliberately narrow `AuditedCrudService::recordCreatedWithin()`. Focused suites, run strictly sequentially: `tests/Feature/Audit` 150 passed / 1089 assertions; the five financial workflow suites 70 passed; `Crud`+`Integrity`+`Commands`+the two description-builder unit suites 183 passed; `Permissions`+`Reports` 410 passed / 3 skipped. Forced-audit-failure proved full rollback of record, transaction, lines and balances on create, edit and delete. **The real-database verification could not be completed: the MySQL80 Windows service is Stopped and starting it requires elevation this session lacks** — the integrity check, row-count/balance comparison and HTTP smoke checks are outstanding and were reported as such rather than skipped silently. See `docs/TASKS_LOG.md`/`docs/AI_PROJECT_MEMORY.md`/`docs/DECISIONS_LOG.md` (2026-07-29 Task 9B.3 entries).
-
----
-
-### Date
-2026-07-28 (Graphify hygiene extension — untrack dated snapshots, exclude `.claude/**`, clean deterministic rebuild)
-
-### Prompt
-**"The Graphify cache-untracking work is accepted in principle, but do not commit yet. Extend this same hygiene task to remove the two remaining tracked sensitive-path sources"** — the historical dated snapshots under `graphify-out/20*/` and local `.claude/**` files being indexed by Graphify. A nine-section brief: (1) preserve the already-approved cache work without resetting it; (2) audit whether the dated directories are entirely generated historical snapshots, whether any application code, Git hook, CI, script, documentation or Graphify runtime requires them tracked, whether Git history already provides sufficient retention, and whether the post-commit hook recreates them — then, if no runtime dependency exists, adopt the policy that only canonical root outputs are tracked, add a narrow `/graphify-out/20*/` rule after verifying it matches only dated directories, `git rm --cached` them without deleting local files, and confirm `git ls-files "graphify-out/20*"` returns nothing, with an instruction to STOP and report if a real dependency exists and never to hand-redact thousands of paths; (3) add `.claude/**` to `.graphifyignore` covering `settings.local.json` and future local Claude state while never excluding the repository-root `CLAUDE.md`, never reading sensitive Claude config contents and never adding `.claude` files to git; (4) a clean deterministic rebuild with `PYTHONHASHSEED=0` — back outputs up outside the repository, remove only the required generated root files, run `graphify update .` twice, and require byte-identical SHA-256 for `graph.json`/`manifest.json`/`GRAPH_REPORT.md`, without removing application files, storage, backups, uploads or `.env`; (5) a tracked-file-aware leak check across a 14-item list, explicitly distinguishing legitimate source identifiers such as `BackupService` from real filesystem path leakage, plus confirmation that Task 9B.1/9B.2 nodes and legitimate source remain indexed; (6) verify the exact root-level files that remain tracked and explain any additional tracked Graphify metadata; (7) documentation updates that explicitly supersede earlier snapshot-retention decisions rather than duplicating conflicting ones; (8) `git diff --check` plus the integrity checker; (9) a fourteen-point pre-commit report. Forbidden: PHPUnit, starting Task 9B.3, pushing, touching real backup files or uploaded attachments.
-
-### Purpose
-To finish the hygiene job rather than leave two known tracked leak sources in place before the next phase. The first pass had cleaned the generated cache but explicitly reported two remaining sources it had deliberately not acted on; this brief authorises exactly those, and its insistence on auditing whether the snapshots are ever *read* — not merely written — is what converts "they look generated" into a defensible policy change. The demand for two byte-identical from-scratch rebuilds exists because the project had already been bitten by Graphify's incremental merge failing to prune nodes for newly-excluded paths.
-
-### Result
-The dated directories were proven fully generated and **write-only**: `graphify.export.backup_if_protected()` snapshots artifacts before an overwrite, and all four call sites discard its return value while nothing in Graphify ever enumerates or restores a dated folder. No application code, hook or CI depends on them, and Git history is strictly better retention — **75 commits touch `graphify-out/graph.json`** versus 15 daily snapshots. They were also the largest remaining leak, carrying 2681 `storage/app` references, 85 `livewire-tmp`, 30 `.claude` and 27 `.sql` across 42 of their 75 files as frozen pre-exclusion copies. Applied `/graphify-out/20*/` (verified with `git check-ignore --no-index` to match only dated directories) plus `git rm --cached -r` (75 unindexed, 75 retained on disk), and `.claude/**` in `.graphifyignore` with root `CLAUDE.md` confirmed still indexed. The clean deterministic rebuild produced **byte-identical SHA-256** across two independent from-scratch runs (820 files, 12480 nodes, 512 communities), with zero hits across all fourteen leak patterns in the seven remaining tracked files while `BackupCreationOrchestrator` (649), `RestoreCommand` (384) and `AttachmentStorageService` (264) survived as source identifiers. One newly discovered third source — `graphify-out/.graphify_python`, a tracked file holding an absolute machine-local interpreter path — was reported rather than fixed, being outside the two scoped sources. See `docs/TASKS_LOG.md`/`docs/AI_PROJECT_MEMORY.md`/`docs/DECISIONS_LOG.md` (2026-07-28 "Graphify hygiene extension" entries).
-
----
-
-### Date
-2026-07-28 (Graphify cache-tracking hygiene — untrack `graphify-out/cache/**`)
-
-### Prompt
-**"Perform a focused Graphify cache-tracking hygiene task before OMS Task 9B.3."** A seven-section brief prompted by the finding reported at the end of Task 9B.2: the tracked generated file `graphify-out/cache/stat-index.json` contains three stale absolute paths naming real local database-backup `.sql` files under `storage/app/.../backups/`. Required: (1) a read-only audit of the locally installed Graphify source and project usage establishing whether `graphify-out/cache/**` is entirely generated, whether it must be committed, whether Graphify recreates it, whether untracking affects `graph.json`/`manifest.json`/`GRAPH_REPORT.md`/incremental rebuilds/the post-commit hook, and whether any project code, CI script, documentation or hook depends on it being tracked — inspecting metadata and configuration only, never opening the referenced SQL backups; (2) if confirmed generated, the durable repository-policy fix only — add `/graphify-out/cache/` to `.gitignore`, keep `.graphifyignore` unchanged, `git rm --cached` the tracked cache, keep local files on disk, with explicit prohibitions on redacting just the three current paths ("that would recur later") and on adding a custom post-generation scrubber, and an instruction to STOP and report if Graphify genuinely requires the cache tracked, never hand-editing the cache JSON as a fallback; (3) verify the ignore rule and tracking state and search all *tracked* repository content for the three backup paths, `storage/app/.../backups`, `.sql` filenames, local Laragon paths and other absolute paths, using tracked-file-aware searches so the ignored local cache cannot create false positives, reporting counts and sanitized examples only; (4) a `PYTHONHASHSEED=0 graphify update .` functional check confirming Graphify succeeds with the cache ignored, recreates it without adding anything to git status, keeps the audit foundation and Task 9B.2 nodes indexed and excluded paths absent, without forcing a multi-hour full rebuild; (5) documentation updates; (6) `git diff --check` plus the integrity checker; (7) an eleven-point pre-commit report. Explicitly forbidden: accessing, modifying, moving or deleting the real backup files; starting Task 9B.3; pushing; running PHPUnit.
-
-### Purpose
-To close a real supply-chain-shaped hygiene gap before the next phase rather than after: absolute runtime paths — including uploaded financial-attachment and database-backup filenames — had been committed inside a generated cache that nobody reads, and the previous phase's `.graphifyignore` work had cleaned only the curated graph outputs, not the cache. The brief's insistence on auditing Graphify's own source before changing anything, and its explicit rejection of both hand-redaction and a scrubber, is what forced the durable answer (repository policy) instead of a fix that would silently regress on the next rebuild.
-
-### Result
-The audit confirmed the cache is a pure speed optimisation (`cache.py`: "per-file extraction cache - skip unchanged files on re-run"), fully self-recreating, and safe to untrack — and revealed the leak was far broader than reported: **1511 stat-index keys, 100% absolute machine paths**, 695 of them under `storage\` (506 `framework\testing`, 145 compiled Blade `framework\views`, 31 `app\private` including the 3 backup `.sql` names and `livewire-tmp` upload scratch files, 12 `app\public` uploaded financial-attachment filenames), plus `.claude/settings.local.json`. Graphify keys the index on `str(p.resolve())` by design while deliberately keeping the cache *hash* relative "so shared caches and CI work correctly", so the file can never be portable. Nothing depended on tracking it (cache miss is non-fatal at both `load_cached()` call sites; no CI; the hook's only cache reference is its own rebuild log), and the only tracked mentions of `graphify-out/cache` in the repository were historical prompt-log entries already instructing never to commit it. Applied `/graphify-out/cache/` in `.gitignore` plus `git rm --cached -r` (2157 files unindexed, 2157 retained on disk); `PYTHONHASHSEED=0 graphify update .` then succeeded (822/822 files, 12464 nodes, exit 0) with zero cache entries returning to git and all Task 9B.1/9B.2 nodes still indexed. Two pre-existing findings were reported rather than silently fixed: the 15 historical dated snapshot directories still carry pre-exclusion sensitive references, and Graphify indexes the git-ignored `.claude/settings.local.json`. No real backup file was read, moved, modified or deleted. See `docs/TASKS_LOG.md`/`docs/AI_PROJECT_MEMORY.md`/`docs/DECISIONS_LOG.md` (2026-07-28 "Graphify cache" entries).
-
----
-
-### Date
-2026-07-28 (OMS Task 9B.2 — Audit Log: general CRUD integration)
-
-### Prompt
-**"Implement OMS Task 9B.2: AUDIT LOG — GENERAL CRUD INTEGRATION."** A 17-section brief integrating the accepted 9B.1 foundation with selected general/master-data CRUD only: eleven named models (`Project`, `ProjectCost`, `Partner`, `PartnerType`, `ProjectSuper`, `ProjectStatus`, `BankType`, `FiscalYear`, `TransactionType`, `TransactionSuperType`, `Setting`), events `created`/`updated`/`deleted`/`restored`, with an explicit exclusion list (all financial workflow models, `Transaction`/`TransactionLine`, `Account`/`AccountType`, `Currency`, `ExchangeRateHistory`, `User`/`Role`/`Permission`, `Attachment`, `BackupOperation`, auth events, report exports, backup/restore, and the Filament audit UI). Mandated: a targeted read-only audit of every real write path first; **strict atomicity** in `AuditFailureMode::Required`, with an explicit prohibition on relying on an after-save/after-delete observer when the mutation may already be committed outside a transaction, and an instruction to stop and report rather than force any target that cannot be made atomic without a risky refactor; the smallest reusable shared component (stable aliases, bounded Arabic subject labels, explicit audited-field policy, exactly one event per logical action, no FQCN in `subject_type`, no serialized relations, no recursive auditing); precise snapshot/diff rules per event type; named technical/noise fields to exclude; translation and relationship handling rules; per-model rules (Project dirty-flag noise, ProjectCost project reference, Setting secret policy); no `HasUserTracking` on `Account`/`AccountType`; no accidental audit history from migrations/seeders/factories/tests, with any suppression mechanism required to be explicit, scope-bound and `try`/`finally`-restored; duplicate-prevention with proving tests; a detailed minimum test matrix including forced audit-failure rollbacks; real-local-database verification with no artificial audit rows; six documentation files; and a 22-point final report. Explicit restrictions: no schema change, no packages, no Graphify, no commit, no push, no 9B.3.
-
-### Purpose
-To move the Audit Log from an unused foundation to a real, provably atomic trail over the low-risk master-data surface first — deliberately before the financial and security surfaces — so the shared CRUD component, the alias taxonomy, the redaction/bounding behavior under real Arabic data, and above all the commit/rollback coupling are all validated on data whose corruption would not be a financial event. The brief's insistence on auditing the real write paths before writing any code is what surfaced the phase's central constraint (no Filament write path is transactional today), which in turn decided the architecture.
-
-### Result
-The read-only audit found that neither the Filament panel nor any Action enables database transactions, so the observer-based design the brief warned against was ruled out on evidence rather than preference, and auditing was given to a transaction-owning `AuditedCrudService` plus two page concerns and one action-factory class. Eleven models, 34 Filament files wired, 11 new production classes, 6 new test files. 33 new focused tests (86 in `tests/Feature/Audit`, 486 assertions, all passing), 117/117 CRUD/Filament/Policy regression, 341 Permissions tests (338 passed, 3 pre-existing by-design skips). Real local DB untouched: `audit_events` still 0 rows, all business row counts unchanged, `oms:check-financial-integrity` **Result: OK, exit code 0**, `/admin/login` 200. Two things were deliberately reported rather than silently resolved: the `settings.key` column stays redacted inside payloads (the key is carried in the un-redacted `subject_label` instead, rather than weakening the reviewed 9B.1 redactor), and no restore write path exists in the UI for any target model, so `restore()` is implemented and tested but currently has no caller. See `docs/TASKS_LOG.md`/`docs/AI_PROJECT_MEMORY.md`/`docs/DECISIONS_LOG.md` (2026-07-28 "OMS Task 9B.2" entries) for full detail.
-
----
-
-### Date
-2026-07-27 (OMS Task 7C.8 acceptance pass — attachment-test retry-margin fix, real Laravel maintenance-mode test, stale-acknowledgment dual-gate proof, request-serialization proof, eligibility fresh-read fix, live browser walkthrough)
-
-### Prompt
-**"Task 7C.8 is approved in principle, but do NOT commit yet. Perform one final focused acceptance pass only."** Nine sections: (1) reproduce and stabilize the one default-order regression failure with a genuine zero-failure bar — 10 consecutive runs of the specific test, the whole class, directly-interacting attachment-state classes, default order, and randomized order twice with distinct seeds, all must be 0 failed/0 errors, no weakening/skipping/retries, fix only test isolation unless a genuine production defect is found; (2) prove the DB-independent polling endpoint survives the REAL Laravel maintenance mechanism (not merely a mocked inspector) — real maintenance state, a normal route blocked, the signed poll route reachable, database unavailable, zero queries, invalid/expired/tampered signatures still denied, guaranteed cleanup; (3) confirm stale acknowledgment terminalizes BOTH the database gate and the signed-progress gate with focused tests covering DB-active+progress-active, DB-row-missing, DB-terminal-but-progress-active, post-acknowledgment new-restore-allowed, and progress-write-failure-must-not-report-success; (4) verify `RestoreRequestService`'s check-then-create critical section is genuinely serialized by the approved subsystem lock against a true concurrent race, not merely sequential calls, with a focused test; (5) verify every server-side restore-eligibility condition is re-checked at execution time, especially archive-exists immediately before request creation; (6) perform one focused live local browser/manual walkthrough (no real destructive restore) confirming the two-step flow, scope options, wrong/correct phrase handling, cancellation, and RTL rendering; (7) correct a docs error describing OMS Task 7C.9 as Hostinger deployment — it is real local end-to-end restore testing; (8) confirm `graphify-out` has no stray changes before the main commit; (9) run only the directly affected test scope (not the full application suite) plus `php -l`/`git diff --check`, then commit the implementation, run `graphify update .`, and commit graphify separately. Explicit: do not push, do not start 7C.9.
-
-### Purpose
-The initial 7C.8 implementation report was thorough but left several claims unverified by a genuinely adversarial pass: a real (non-zero) regression failure had been explained away rather than root-caused; the maintenance-mode DB-independence claim rested on a mock; the stale-acknowledgment "dual gate" claim had no test proving both gates independently; request-creation "serialization" had never been tested under a true concurrent race; and no human had actually looked at the UI in a browser. This pass exists to close every one of those gaps with evidence, not assertion, before the feature is allowed to reach `main`.
-
-### Result
-Root-caused the one regression failure to a test-only zero-retry-margin fragility (`RestoreAttachmentActivationServiceTest`'s default mover), fixed, and verified 10x/class/related-classes/default/2-randomized all clean. Separately discovered and corrected a genuine testing-process mistake made mid-investigation (concurrent `php artisan test` processes corrupting shared `Storage::fake()` state, explaining a second wave of seemingly-unrelated failures) — not a code defect, but significant enough to warrant its own `docs/DECISIONS_LOG.md` entry so it isn't rediscovered the hard way again. Added a real (non-mocked) Laravel maintenance-mode acceptance test with a hard precondition check plus double-safety-net cleanup. Added 5 stale-acknowledgment dual-gate tests and 1 genuine-lock-contention concurrency test. Found and fixed one small real gap (scope compatibility wasn't re-checked against a freshly-read source record, unlike every sibling eligibility field) with 2 new tests proving it. Performed a live browser walkthrough against the real local instance using throwaway, fully-cleaned-up fixtures (Playwright + system Chrome), confirming the full Step 1 → Step 2 → cancel flow renders and behaves correctly in Arabic/RTL, with zero restore rows created after cancellation. Corrected the 7C.9 scope description in `docs/NEXT_STEPS.md` (×2 occurrences). Confirmed `graphify-out` untouched. Final acceptance: targeted suite 162/162 passed; broader `Restore|Backup` regression 854 tests — default order and two distinct-seed randomized runs all **851 passed, 0 failed, 0 errors, 3 skipped**. See `docs/TASKS_LOG.md`/`docs/AI_PROJECT_MEMORY.md`/`docs/DECISIONS_LOG.md` (2026-07-27 "acceptance pass" entries) for full detail.
-
----
-
-### Date
-2026-07-27 (OMS Task 7C.8 — Filament restore UI: two-step confirmation, DB-independent signed progress polling, stale/tampered banners, explicit crash acknowledgment)
-
-### Prompt
-**"Implement OMS Task 7C.8 only: Secure Filament restore UI, two-step confirmation, DB-independent signed progress polling, restore status display, and explicit stale/crashed restore acknowledgment."** Detailed sections covered: targeted reads only (no full codebase scan); restore action visibility/authorization (real Super Admin + `backups.restore`, re-checked server-side, never button-visibility-only); a Step 1 confirmation modal (danger warning, scope select limited to compatible scopes, required bounded reason, typed `RESTORE {uuid8}` confirmation never persisted); a Step 2 final explicit confirmation before any mutation; request-row creation (`RestoreRequestService`, concurrency-safe, one queued row per attempt); launch integration reusing the existing signed POST launch path/service without duplicating its claim logic; live progress display with the exact current phase vocabulary (not an invented one); a DB-independent private signed polling endpoint proven to need zero database queries and to survive maintenance mode; restore-history table display (Arabic labels, no download/verify on restore rows); a stale/crashed-restore banner; an explicit, narrowly-eligible Super-Admin-only acknowledgment action that only terminalizes the safety gate (never resume/retry/rollback); tampered-progress handling (manual-review message, no acknowledgment offered); notifications reusing the existing `BackupNotificationEvent` values; and a full test/verification/documentation protocol (targeted + default-order + two randomized full-suite runs, `php -l`, `git diff --check`, docs diff shown before commit). Explicit scope restrictions: no restore-engine architecture changes unless a real integration bug required it, no automatic recovery, no production deployment, no real destructive restore, no full application suite, no push, no migration unless a real blocker was found and reported first, stop before committing.
-
-### Purpose
-`RestoreOrchestrator` (7C.7) was the verified, tested, hardened execution engine but had zero UI surface — nothing in the Filament admin panel could launch, monitor, or recover a restore. This task closes that gap safely: exposing a highly destructive capability (full data replacement) behind the same two-layer authorization this codebase already uses everywhere else for backups, with UI-level safeguards (typed confirmations, narrow eligibility, no confirmation phrase ever persisted) layered on top of — never replacing — the engine's own server-side guarantees.
-
-### Result
-Implemented and verified, not yet committed. New `RestoreRequestService`, `RestoreStaleAcknowledgmentService`, `RestoreProgressPollController` (+2 exception classes, 2 support classes), a restore row action + stale-acknowledgment header action on `BackupManagementPage` (both single two-step Filament Wizard actions), a live-progress Alpine widget in the page's Blade view, one new DB-independent GET route with a matching maintenance-mode exception, and one narrow additive addition to `RestoreProgressSnapshot::ALLOWED_PHASES` (`crashed_acknowledged`, `restore_failed_phase`-only, the sole restore-engine schema touch this task made — reported and justified in `docs/DECISIONS_LOG.md` rather than silently done). Four pre-existing `BackupManagementPageTest` guard tests that asserted "restore is not implemented yet" were updated to assert the new real behavior (the same pattern 7C.4 already established for an analogous supersession), and one absolute query-count threshold was raised after a genuine N+1 was caught and fixed (not just the threshold bumped — `resolvedRestoreActivityState()` memoization was added first, cutting the regression before any threshold change). 124 new/updated targeted tests, all passing; broader `Restore|Backup` regression 845 tests — one real-filesystem-rename flake in a pre-existing, untouched test file on the first (default-order) run, confirmed non-reproducing in isolation and in both required randomized full-suite re-runs (both fully clean). See `docs/TASKS_LOG.md`/`docs/AI_PROJECT_MEMORY.md`/`docs/DECISIONS_LOG.md` (2026-07-27 "Task 7C.8" entries) for full detail.
-
----
-
-### Date
-2026-07-26 (test-stability pass — stabilize backup restore regression tests)
-
-### Prompt
-**"Task 7C.6 is approved architecturally and already committed. Before starting 7C.7, perform one narrowly focused test-stability pass only."** Investigate the one flaky failure from the prior pass's broader regression run (`BackupCreationOrchestratorTest::...pre_publish_verification_fails` — 742/738/1-failed/3-skipped, passes in isolation, reported as pre-existing test-order flakiness): (1) reproduce with the smallest test combination (starting with the orchestrator test class plus directly preceding/following restore/backup classes, order controls/random order only as needed, no full suite); (2) identify leaked shared state among a specific list of likely sources (container bindings, `Storage::fake()`, config mutations, `Carbon::setTestNow()`, Cache locks, filesystem `flock()` handles, `RestoreActivityGuard` state, progress/marker files, static/`once()` memoization, env vars, DB rows, mock expectations, process runner fakes); (3) fix the root cause, not the assertion — no weakening, no retries, no skipping, no reordering as the fix; (4) specifically review `once()`/memoized state in the backup subsystem for staleness across tests/operations; (5) verify with the specific test run 10+ times, the full orchestrator class, the same broader regression subset, and once in randomized order — required final result 0 failures; (6) commit policy — update only required docs, commit as `stabilize backup restore regression tests` if anything changed, run `graphify update .` only if production code changed (separate commit if so); if nothing needed to change and repeated runs are clean, report exactly what did/didn't reproduce rather than an empty commit. Do not run the full suite, do not push, do not start 7C.7.
-
-### Purpose
-Task 7C.6's crash-safety correction pass left one unexplained flaky failure in an unrelated pre-existing test. Rather than assume it away, this pass exists to actually prove whether it was a genuine regression (a real bug this session's changes introduced into shared/global state) or a pre-existing issue merely surfaced by the new test suite's presence — and either way, to leave the regression suite in a state where "0 failures" is a real, verified property, not an assumption, before building the much larger 7C.7 orchestrator on top of it.
-
-### Result
-Root-caused as a genuine test-isolation bug (not a production bug): 7 methods in `RestoreAttachmentActivationServiceTest.php` called `activate()` (a real-filesystem-mutating, real-`flock()`-holding operation) before entering the `try/finally` that releases the lock — a leaked handle from any of them could block `BackupCreationOrchestrator::run()`'s own lock acquisition in a later, unrelated test in the same PHPUnit process. Fixed by restructuring all 7 methods so the entire acquire-to-release span is inside one `try/finally`. No `once()` memoization issue found (the subsystem's only usage, in `BackupDeletionService`, is correctly per-instance-scoped and unrelated). Verified: specific test 10/10 clean; `BackupCreationOrchestratorTest` 25/25; combined filter 54/54; broader `Restore|Backup` regression 742/739/0-failed/3-skipped in both default and randomized order. Test-file-only change (76 insertions, 58 deletions) — no production code touched, so `graphify update .` was not run. See `docs/TASKS_LOG.md`/`docs/DECISIONS_LOG.md` (2026-07-26 "test-stability pass" entries) for full detail.
-
----
-
-### Date
-2026-07-26 (OMS Task 7C.6 crash-safety correction pass — signed/durable swap marker, write-ahead phase protocol, InterruptedDuringRollback state, validated attachment manifest value object)
-
-### Prompt
-**"Approved in principle, but do not commit Task 7C.6 yet. Perform one final focused crash-safety review/correction only."** Eleven itemized points: (1) harden `AttachmentSwapMarker` into a signed/tamper-evident marker (purpose-derived HMAC from `APP_KEY`, distinct stable context `oms-restore-attachment-swap-v1`, strict bounded schema, UUID validated, fixed allowed phases only, no arbitrary arrays/secrets/caller-supplied paths, stable timestamp format, signature verified before every read; a malformed/unsigned/UUID-mismatched/unsupported/signature-invalid marker must never be interpreted as a normal safe state, always `InconsistentNeedsManualReview`, never silently repaired/overwritten); (2) make marker writes crash-safe/durable using the same discipline as `RestoreProgressWriter` (temp file → fwrite → fflush → fsync → close → atomic rename → parent-directory fsync on Linux; documented Windows limitation; never unlink a valid marker before a complete replacement exists), reusing `RestoreProgressDurability` rather than inventing a second implementation; (3) make the swap state machine write-ahead/crash-consistent with explicit durable phases before and after every destructive filesystem transition, and if a marker update fails after a mutation: do not blindly continue, inspect actual state, preserve recoverable trees, throw a sanitized manual-review/failure result; (4) fix the `NotActivated` vs `Finalized` ambiguity — a pure read-only inspector cannot safely infer a completed/finalized restore from identical directory layout alone; valid signed marker + facts determine state, disagreement or an invalid marker always means manual review, never guessed; (5) make the rollback-discard path deterministic/UUID-derived (suggested rename to `attachments.restore_discard.{uuid}`), never caller-controlled, included in state inspection, and cover four specific crash windows (A: quarantine exists/live missing/staged exists; B: quarantine exists/live restored-tree exists/discard absent; C: quarantine exists/live missing/discard exists; D: quarantine absent/live original-tree exists/discard exists) with any impossible/mismatching combination becoming `InconsistentNeedsManualReview`; (6) replace the raw manifest file-list array accepted by `RestoreAttachmentRevalidator` with a small immutable validated value object (`VerifiedAttachmentManifest`/`RestoreAttachmentManifest`) containing only bounded per-file metadata, created only through strict validation, never persisting the full list into progress.json unless later proven necessary; (7) confirm `activate()`/`rollback()`/`finalize()` re-inspect the live exclusive lock, the verified signed marker, and real filesystem facts before each destructive transition rather than trusting only an earlier `AttachmentSwapHandle`, with activate/rollback/finalize each restricted to their own exact allowed entry states and any ambiguous/tampered state failing closed to manual review; (8) fix finalization marker ordering — `finalization_started` → delete quarantine symlink-safely → verify quarantine truly absent → `finalized`; a partial deletion failure must never report success; (9) add/review focused crash-window tests across marker integrity, activation/rollback/finalization crash windows, and manifest-boundary validation; (10) report exact `git diff --name-status` file counts; (11) run only directly affected tests + `php -l` + `git diff --check`, then commit as `implement crash-safe attachment restore primitives`, run `graphify update .`, commit that separately as `refresh graphify after attachment restore primitives`, and report commit hashes, exact file counts, the signed marker schema/phases, marker durability sequence, deterministic quarantine/discard paths, crash-state inspector behavior, the validated manifest value object, activation/rollback/finalization transition rules, targeted test totals, and final `git status`. Do not run the full suite, do not push, do not start 7C.7 yet.
-
-### Purpose
-A pre-commit crash-safety hardening pass on Task 7C.6 specifically targeting the one component the initial implementation's own report flagged as a potential weak point: an unsigned, best-effort JSON marker file serving as the sole disambiguator between "never touched" and "fully completed and cleaned up" for a restore's live attachment tree. Left as originally implemented, a corrupted, tampered, or simply lost marker file could cause a future recovery flow to misclassify a restore's true state and authorize a destructive action (rollback or finalize) against the wrong assumption — exactly the class of bug a crash-recovery primitive exists to prevent, not introduce.
-
-### Result
-Implemented as described in `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md` (2026-07-26 correction-pass entries): the marker is now signed (HMAC-SHA256, distinct APP_KEY-derived context) and durably written/read through new `AttachmentSwapMarkerWriter`/`AttachmentSwapMarkerReader` reusing the existing `RestoreProgressDurability` seam; an 8-phase write-ahead protocol (`AttachmentSwapPhase`) is persisted before and after every destructive rename; a new `InterruptedDuringRollback` state covers the previously-uncovered mid-rollback crash window; the rollback-discard path is renamed to `attachments.restore_discard.{uuid}`; `RestoreAttachmentRevalidator` now requires a validated `RestoreAttachmentManifest` value object instead of a raw array; all three lifecycle methods re-inspect lock+marker+facts at entry; a genuine test-fake bug (an unconstrained 3rd move call silently masking the intended crash window) was found and fixed while writing the new `InterruptedDuringRollback` test. 36 files changed (29 added, 7 modified, 0 deleted). Targeted attachment suite: 326 tests, 323 passed, 3 pre-existing skips, 770 assertions. Broader `Restore|Backup` regression: 742 tests, 738 passed, 1 pre-existing unrelated flaky failure (confirmed passing in isolation), 3 skipped, 1768 assertions.
-
----
-
-### Date
-2026-07-26 (OMS Task 7C.6 — attachment restore primitives: staged revalidation, three-phase activate/rollback/finalize lifecycle, crash-state inspector, Windows retry seam)
-
-### Prompt
-**"Implement OMS Task 7C.6 only: Safe attachment restoration, pre-activation revalidation, quarantine swap, rollback, and finalization."** A detailed, itemized spec (sections A–P): (A) targeted reads only (CLAUDE.md, project-memory docs, `AttachmentStorageService`+tests, `AttachmentCollector`, `SymlinkDetector`/`NativeSymlinkDetector`, `SafeBackupPath`, `RestoreWorkspace`, `RestoreArchiveExtractor`, `PreparedRestore`/`RestoreExtractionResult`, `RestorePreflightChecker`'s filesystem-compatibility logic, `BackupSubsystemLock`/`Handle`, the restore config denylist, `filesystems.php` disk definitions, focused attachment/restore filesystem tests) — no full codebase scan — first reporting internally what `AttachmentStorageService` currently allows/validates, then implementing the approved policy (historical manifest-authenticated attachments must not depend on today's mutable upload allowlist; the fixed executable/script denylist applies as defense in depth regardless); (B) a three-explicit-phase lifecycle (`activate()`/`rollback()`/`finalize()`) rather than one irreversible `restore()` call, with small bounded value objects (`AttachmentSwapHandle`/`AttachmentSwapState`) if useful; (C) all three destructive methods require a currently-live Exclusive `BackupSubsystemLockHandle` (reject no-handle/released/Shared/foreign-path), with no second filesystem or Cache lock acquired inside them; (D) a deterministic UUID-derived quarantine layout outside the live attachments root, on the same filesystem, never inside `attachments/` itself or anywhere `AttachmentCollector` would treat as live, refusing activation if an unrecognized existing quarantine is found; (E) a complete revalidation of the staged attachment tree immediately before the first live rename — exact file set, uniqueness, no symlink/junction/device-file traversal, size/SHA-256/total-byte match against the manifest, case-insensitive compound-safe executable/script denylist (`php`/`phtml`/`phar`/`exe`/`sh`/`bat`/`cmd`/`dll`/`htaccess`) — aborting before touching live attachments on any failure; (F) the Linux authoritative activation sequence (verify lock → same-filesystem check → quarantine-conflict check → live→quarantine rename → staged→live rename, with an immediate quarantine→live rollback attempt and a distinct sanitized failure if that also fails); (G) Windows/Laragon bounded retry/backoff around directory rename via an injectable move seam, explicitly documented as weaker atomicity than Linux; (H) rollback sequence (discard current restored tree aside → quarantine→live → delete discard only after original is safely live, preserving recoverable data on forced failure); (I) finalize() only from a successful-activation state, symlink-safe confined recursive quarantine deletion, reporting failure rather than claiming success; (J) a read-only crash/state inspector distinguishing NotActivated/Activated/InterruptedDuringActivation/RolledBack/Finalized/InconsistentNeedsManualReview from deterministic filesystem facts only, no automatic repair; (K) safe empty/missing-live-root handling, never treating an inaccessible/erroring directory as empty; (L) private permissions preserved, never public; (M) focused new exceptions (`RestoreAttachmentsException`/`RestoreAttachmentValidationException`/`RestoreAttachmentSwapException`/`RestoreAttachmentRollbackException`/`RestoreAttachmentFinalizationException`), bounded/sanitized, no paths/content/secrets; (N) an extensive named test matrix across policy review, staged revalidation, lock safety, activation, rollback, finalization, state inspection, and the Windows retry seam; (O) an explicit scope-restriction list (no `RestoreOrchestrator`, no maintenance mode, no safety-backup orchestration, no `DatabaseRestorer`/`RestoreReconciler` invocation, no `RestoreCommand` connection, no watchdog, no recovery action, no Filament UI, no polling route, no real destructive restore test, no migration/schema change, no full codebase scan, no full test suite, no Graphify before approval, no commit, no push); (P) run only directly relevant tests + `php -l` + `git diff --check`, update required docs, and report in detail (exact files, `AttachmentStorageService` findings, final quarantine path, revalidation rules, Linux/Windows swap behavior, rollback/finalization behavior, crash-state inspector states, lock enforcement, test totals/skips, doc diff summary, risks) before stopping for approval.
-
-### Purpose
-Build the attachment-side counterpart to Task 7C.5's database-restore/reconciliation primitives, in complete isolation from destructive orchestration risk: a way to safely swap a verified, staged attachment tree into place with a genuine rollback path if the later database import fails, a way to permanently commit that swap only once the whole restore has succeeded, and a crash-safe way to tell which of those states a half-finished restore is actually in — all provable with real local-filesystem tests and injected failure seams, with zero wiring into `RestoreCommand` or any future orchestrator.
-
-### Result
-Implemented as described in `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md` (2026-07-26 Task 7C.6 entries): confirmed `AttachmentStorageService` has no extension allowlist to depend on in the first place; new `RestoreAttachmentPaths`/`AttachmentSwapHandle`/`AttachmentSwapState`/`AttachmentSwapMarker`/`AttachmentSwapStateInspector`/`RestoreAttachmentRevalidator`/`RestoreAttachmentActivationService`/`NativeAttachmentMoveRunner` plus a new `AttachmentMoveRunner` contract and five new sanitized exceptions. A real gap (finalize() not verifying its own best-effort deletion actually succeeded) was found and fixed before any test was written against it. Targeted suite: 65 tests, 64 passed, 1 skipped (Linux-only branch), 122 assertions; broader `Restore|Backup|Attachment` regression: 894 tests, 890 passed, 0 failed, 4 skipped, 2222 assertions. Not wired to `RestoreCommand`/orchestrator; not committed.
-
----
-
-### Date
-2026-07-26 (OMS Task 7C.5 correction pass — durable reconciliation snapshots, full backups-queue purge, single-connection policy, metadata completeness, stream-capture re-verification)
-
-### Prompt
-**"Approved in principle, but do not commit Task 7C.5 yet. Perform one final focused correctness pass only on the items below."** Six itemized points: (1) extend the signed `RestoreProgressSnapshot` protocol with a small OPTIONAL bounded reconciliation-snapshot section (authoritative source/safety/restore snapshots) persistable before the database import, since holding them only in PHP memory can't survive a crash after import and before metadata reconstruction — strictly validated value objects, bounded, signed as part of progress.json, no secrets/nonce/confirmation phrase/raw command/raw exception, backward compatible (old files without it must still read), with round-trip/tampering/invalid-rejection/backward-compat/reconstruction-without-the-pre-import-DB tests; (2) correct the backups-queue cleanup policy to delete ALL rows on that queue regardless of `reserved_at` (approved v1 behavior — the queue is intentionally disposable during restore), preserving every other queue/failed_jobs/job_batches/notifications, with focused tests for unreserved/reserved/delayed-removed and unrelated-preserved; (3) review and close the ambiguous-connection risk between `DatabaseRestorer`'s mysql import target and `migrate`/permission-sync/metadata-upsert/queue-cleanup's implicit target, choosing and reporting one explicit safe policy (restore-only-supports-default-connection, fail closed otherwise, OR explicitly force every step onto one named connection), with a focused mismatch-rejection test; (4) review metadata reconstruction completeness against the actual current `backup_operations` schema (deleted_at cleared, launch_nonce null, UUID-based FK resolution, forced Completed+verified for both source and safety, restore stays Restoring, created_by existence-checked, no dangling FK), adding only missing focused assertions; (5) verify (not merely re-assert) `SymfonyProcessStreamInputRunner`'s actual stderr/stdout capture behavior given `disableOutput()`, with tests proving bounded large stderr, MYSQL_PWD sanitization, useful bounded diagnostic text on non-zero exit, and no unbounded memory growth from large stdout; (6) re-run only directly affected tests + `php -l` + `git diff --check`, then commit as `implement streamed database restore reconciliation`, run `graphify update .`, commit that separately as `refresh graphify after database restore reconciliation`, and report both hashes, exact file counts, and detailed behavior for every point above. Do not run the full suite; do not push.
-
-### Purpose
-A pre-commit correctness review specifically targeting the areas most likely to have real gaps in the initial 7C.5 implementation: a genuine crash-recovery hole (in-memory-only metadata snapshots vanish exactly when they'd be needed most — after a database replacement, before reconciliation), an incomplete queue-cleanup policy that could let stale transport work replay against a freshly-restored system, an unexamined connection-identity assumption that could silently reconcile the wrong physical database, and an unverified claim about whether `disableOutput()` genuinely still captures stderr or silently discards it — each independently serious enough to warrant fixing before this phase is committed and built upon.
-
-### Result
-Implemented as described in `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md` (2026-07-26 correction-pass entries): a new `RestoreReconciliationSnapshot` value object extends the signed progress protocol (optional, nullable, backward compatible, no schema_version bump); `RestoreEphemeralTablePolicy` now purges the entire backups queue; `DatabaseRestorer`/`RestoreReconciler` enforce a single-default-connection policy (chosen and documented); `BackupOperationSnapshot` gained `manifest_version` plus new deleted_at/verified_at/no-dangling-FK assertions; `SymfonyProcessStreamInputRunner`'s stderr-capture-despite-disableOutput() claim was re-confirmed directly against the Symfony Process source and proven with new bounded-memory/no-deadlock tests. Targeted suite: 586 total, 584 passed, 0 failed, 2 pre-existing skips, 1359 assertions — up from 560/558/1304 before this pass.
-
----
-
-### Date
-2026-07-25 (OMS Task 7C.5 — streamed database restoration and post-import reconciliation services)
-
-### Prompt
-**"Implement OMS Task 7C.5 only: Streamed MySQL database restoration and safe post-import reconciliation."** A detailed, itemized spec across thirteen sections: (A) targeted reads only, no full codebase scan; (B) a `ProcessStreamInputRunner` contract + real `SymfonyProcessStreamInputRunner` implementation that streams an absolute input-file path into a process's stdin as a binary read stream, never `file_get_contents()`, never the full dump in PHP memory, closing the stream in every path, verified against the installed Symfony Process source and a real non-destructive PHP-child integration test (no MySQL); (C) a `DatabaseRestorer` that validates scope/staged-file-existence/regular-file/not-symlink/workspace-confinement/mysql-client-re-check/DB-connection-fields before building a plain mysql argv array (host/port/user/charset/database only, no shell redirection), puts the password only in `MYSQL_PWD` environment (never argv/logs/progress/exception text), and wraps every failure (non-zero exit/timeout/missing binary/unreadable dump/launch failure) in a bounded sanitized `RestoreDatabaseException`; (D) a focused post-import step that explicitly disconnects/purges the restored DB connection, reconnects, and verifies usability, never assuming the pre-import PDO remains valid; (E) a `RestoreReconciler` running only after a successful import, assuming the future orchestrator still holds the lock+maintenance mode (acquiring neither itself), in the exact required order: connection reset → `migrate --force` → `oms:sync-permissions` → `permission:cache-reset` → FK-safe metadata reconstruction (source → safety → restore) → selective ephemeral-table policy → `queue:restart`, stopping immediately with a sanitized exception on any failure, never lifting maintenance mode; (F) bounded immutable/value-object metadata snapshot definitions for source/safety backups and the restore operation itself (specific field lists given), never arbitrary raw model arrays, never a password/key/nonce/confirmation phrase/raw exception data/raw command string; (G) exact upsert behavior — force source to authoritative Completed, insert the safety row (likely absent from the restored dump), upsert the restore row last with `source_backup_id`/`pre_restore_safety_backup_id` resolved after their rows exist, status staying Restoring, `created_by` resolved by checking the freshly-restored `users` table (present → preserve ID, absent → null + identity snapshot), UUID-based (never old numeric ID) relationship resolution; (H) an exact selective ephemeral-table policy (jobs: delete only pending rows on the exact configured backups queue, preserving unrelated queues; failed_jobs/job_batches/notifications preserved; cache/cache_locks/sessions cleared only if configured tables exist; queue:restart last, before maintenance mode is lifted by a future phase), with reasoning for preserving unrelated business queues documented; (I) no single all-encompassing transaction (migrations/Artisan commands may use separate connections, schema changes mid-run), small local transactions only where they genuinely help, FK-safe order, explicit phase-specific exceptions; (J) an injectable Artisan command runner seam (not a tight coupling to the global Artisan facade) so tests can prove exact order/failures, no secrets in any command; (K) an extensive named test matrix across process-input streaming, `DatabaseRestorer`, connection reset, reconciliation order, metadata, queue/table policy, and failure-propagation categories; (L) an explicit scope-restriction list (no maintenance mode, no pre-restore safety-backup orchestration, no attachment swapping/quarantine, no full `RestoreOrchestrator`, no command-shell connection to the real engine, no watchdog, no recovery acknowledgment, no Filament UI, no progress polling, no real destructive MySQL test, no migration/schema change, no full-codebase scan, no full test suite, no Graphify before approval, no commit, no push); (M) run only directly-relevant tests + `php -l` + `git diff --check`, update the required docs, and report in detail (exact files, streamed-input implementation, exact mysql argv/password handling, PDO purge/reconnect behavior, reconciliation order, metadata snapshot/upsert behavior, queue/cache/session policy, test totals, skips+reasons, doc diff summary, risks) before stopping for approval. Explicitly: do not connect any of this to the destructive restore command/orchestrator yet.
-
-### Purpose
-Build the two services every later "real" restore engine (Task 7C.7's `RestoreOrchestrator`) will call, in complete isolation from the destructive orchestration risk: a genuinely streaming way to feed a potentially huge SQL dump into `mysql` without ever buffering it in PHP memory or leaking its password anywhere, and a reconciliation step that turns a freshly-imported (and therefore untrustworthy — stale connection, stale metadata, stale queue/cache/session state) database back into a trustworthy, migrated, permission-synced application state with correct backup/restore audit history — all provable with fakes and a real migrated SQLite schema, with zero real MySQL involvement and zero wiring into anything destructive.
-
-### Result
-Implemented as described in `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md` (2026-07-25 "Task 7C.5" entries): `SymfonyProcessStreamInputRunner`, `DatabaseRestorer`, `LaravelRestoreDatabaseConnectionResetter`, `RestoreReconciler` (+ `LaravelArtisanCommandRunner`, `RestoreMetadataUpserter`, `RestoreEphemeralTablePolicy`), and the bounded `BackupOperationSnapshot`/`RestoreOperationSnapshot` value objects. Nothing was wired into `RestoreCommand`, `RestoreLaunchService`, or any orchestrator — `AppServiceProvider` only gained container bindings for the 5 new interfaces. Targeted suite: 560 total, 558 passed, 0 failed, 2 pre-existing skips, 1304 assertions. Not committed, per instruction.
-
----
-
-### Date
-2026-07-25 (OMS Task 7C.4 correction pass — POST route, restore-execution activity gate, progress-phase semantics, real cross-process retry test, process descriptors/cwd)
-
-### Prompt
-**"Approved in principle, but do not commit yet. Perform one final focused correction pass for Task 7C.4."** Six required fixes: (1) change the mutating launch route from GET to POST, keeping auth/expiration/signature/CSRF, with no GET route able to claim/spawn at all; (2) close the parent-to-child lock handoff race by implementing a restore-execution activity gate (`shared subsystem lock → restore-execution activity check → existing Cache lock → existing per-backup file lock`) applied to `BackupCreationOrchestrator::run()`, `BackupRetentionService::run()`, `BackupIntegrityVerifier::verify()`, `BackupDeletionService::delete()`, and `BackupDownloadController::show()` — blocking on a claimed/running restore DB row or a valid/tampered signed progress file, never on a merely-queued unlaunched request, checked while the shared lock is still held, released immediately when blocked, download returning 423, `runWithLockAlreadyHeld()` deliberately exempt; (3) correct progress-phase semantics so the parent never reports `lock_acquired` before the child genuinely holds the lifetime lock; (4) replace the skipped bounded-retry test with a real cross-process test (a second real PHP process, not `pcntl_fork`) proving the retry-then-succeed handoff, working on both Windows/Laragon and Linux; (5) confirm both platform launchers' child process descriptors/cwd (absolute paths, validated UUID only, `cwd=base_path()`, no inherited request pipes, no secrets in argv/logs/exceptions); (6) re-run only directly affected tests + `php -l` + `git diff --check`, then commit code/tests/docs as `implement replay-safe independent restore launch`, run `graphify update .`, commit that separately as `refresh graphify after independent restore launch`, and report both hashes, exact behavior/counts, and final `git status`. Do not run the full suite; do not push.
-
-### Purpose
-A pre-commit correction pass specifically targeting the security/robustness gaps a careful review found in the just-implemented Task 7C.4: a signed-but-mutating GET is trivially triggerable by browser prefetching or link scanners; the original lock handoff left a real window where an ordinary backup operation could start after the parent released its launch lock but before the detached child acquired its own lifetime lock (and, after a crash, a stale-but-still-non-terminal progress file needs to keep blocking ordinary operations until explicit recovery); the initial progress phase (`lock_acquired`, written by the parent before the child even exists) was factually inaccurate; and the previous bounded-retry test was a skip rather than a genuine proof of the exact cross-process handoff this whole phase exists to get right.
-
-### Result
-All six points implemented and verified. (1) `routes/web.php`'s `restores.launch` route is now `POST`-only; `RestoreLaunchControllerTest` updated to `postJson()`/`post()` throughout plus a new dedicated GET-is-405-and-never-launches test. (2) `RestoreActivityGuard::blocksOrdinaryOperations()` added and wired into all five call sites exactly in the required lock order; `BackupDeletionService`'s wiring was corrected mid-pass from an inline `delete()` check to a new `eligibility()` rule (`restore_activity_in_progress`, memoized via `once()`) after it broke two pre-existing tests by making `eligibility()` and `delete()` disagree — see `docs/DECISIONS_LOG.md` for the full reasoning; a new dedicated test file (`RestoreActivityOrdinaryOperationGateTest`, 13 tests) proves all five paths block on both a claimed restore and a tampered progress file, that a merely-queued restore never blocks, and that `runWithLockAlreadyHeld()` remains exempt. (3) `RestoreProgressSnapshot::ALLOWED_PHASES` gained `launching`; `RestoreLaunchService` now writes it as the initial/failure phase instead of `lock_acquired`; `RestoreCommand` gained `advanceToLockAcquired()`, writing `lock_acquired` only after genuinely holding the lifetime lock, immediately before its existing fail-closed terminal write. (4) The skipped test was replaced with a genuine cross-process test: a second real `php` process (spawned via Symfony `Process`, running a tiny standalone lock-holder script) takes a real `flock()` on the exact lock file `BackupSubsystemLock` uses, signals readiness via a sentinel file, holds for 1.5s, then releases — the main test calls `Artisan::call('oms:restore', ...)` and asserts it both waited (>500ms elapsed) and then succeeded in acquiring the lock (row reached `RestoreFailed`, not left stuck at `Restoring`). Runs unmodified on this Windows host; relies on nothing but standard `flock()` semantics, so it should run identically on Linux. (5) Both launchers now construct their `Process` via a new `buildProcess()` method setting explicit `cwd=base_path()`, verified by two new unit tests asserting `getWorkingDirectory()` without ever starting the process; argv/env/output-descriptor properties were already correct from the initial implementation (confirmed, not re-derived). Targeted suite after all corrections: 418 total, 417 passed, 0 failed, 1 skipped (pre-existing, unrelated), 957 assertions — up from 401/399/2-skipped/915 before this pass. `php -l` and `git diff --check` both clean. Not committed yet at the time of this entry — see the commit hashes recorded in `docs/TASKS_LOG.md`'s updated 7C.4 entry once approved.
-
----
-
-### Date
-2026-07-25 (OMS Task 7C.4 — replay-safe restore launch, global serialization, detached process launcher, `oms:restore` command shell)
-
-### Prompt
-**"Implement OMS Task 7C.4 only: Replay-safe restore launch, globally serialized claim, independent detached process launcher, and the oms:restore command shell."** A detailed, itemized spec across twelve sections: (A) targeted reads only, no full codebase scan; (B) a `RestoreLaunchService` that launches only an already-created, fully validated queued restore row (type/status/`started_at`/nonce/verified source backup/`operation_reason`/bounded restore_metadata requester+confirmation snapshot/valid scope — no confirmation phrase itself stored), never creating one; (C) the complete critical section (dual `RestoreActivityGuard` check excluding the current UUID, atomic DB claim, initial signed progress write, detached spawn) under one short-lived exclusive `BackupSubsystemLock`, held through every success/failure path, released in every one, no peek-and-release — the current queued row excluded from the activity check but any other active restore or tampered progress file (even for the current UUID) still blocking; (D) an atomic conditional UPDATE (exact SQL shape given) that consumes `launch_nonce`, sets `started_at`/`status`, preserves a bounded launch-audit entry, never stores the nonce anywhere, and returns a safe conflict on zero rows affected — a DB transaction scoped only to the claim/audit update, never wrapping process execution; (E) a narrowly scoped signed, doubly-authorized (real Super Admin + `backups.restore`, never relying on `Gate::before` alone) launch route accepting only UUID/nonce/signature/expiration, mapping outcomes to 202/409/423/403-401/500, with no Filament UI button/link/URL generator added; (F) the initial progress snapshot built from the authoritative DB row via the existing validated `RestoreProgressSnapshot::create()`/`RestoreProgressWriter` path, never a new arbitrary field, never the nonce/confirmation phrase, with progress-write failure moving the row to `RestoreFailed` before any spawn is attempted; (G) an injectable `RestoreProcessLauncher` contract with real Linux/Windows implementations and a bounded result object — argv containing only `php`/`artisan`/`oms:restore`/the UUID, UUID validated before command construction, absolute paths, no unsafe shell concatenation, output redirected so no web-request pipe survives, launcher returning promptly without waiting for completion, explicitly checking for any required detachment binary (e.g. `setsid`) and failing closed if missing, Linux authoritative/Windows best-effort-and-documented; (H) the `oms:restore {uuid}` command shell — validating the claim (type/active status/`started_at`/consumed nonce/valid non-terminal signed progress matching the UUID), acquiring the lifetime exclusive lock with a short bounded retry, re-checking after acquiring it, never the DB queue, never the Cache lock, and — since the destructive orchestrator isn't implemented yet — always failing closed to a terminal sanitized `RestoreFailed` state rather than ever leaving a permanently active restore, structured so OMS Task 7C.7 can later replace only the execution call; (I) launcher-failure handling rules (no auto-retry from the web request, terminal DB+progress state, bounded sanitized error context, nonce never restored, OS-reported-success-then-later-crash left to a future watchdog); (J) an extensive named test matrix across authorization, atomic claim, global serialization, progress, launcher, and command-shell categories; (K) minimal configuration only (child lock-retry timeout/interval, PHP binary override, Linux detachment binary path); (L) an explicit scope-restriction list (no request-creation UI, no confirmation UI, no maintenance mode, no safety-backup orchestration, no archive extraction changes, no DB import, no post-import work, no attachment swap, no full `RestoreOrchestrator`, no watchdog, no recovery acknowledgment, no progress-polling UI, no migration/schema change, no full-codebase scan, no full test suite, no Graphify before approval, no commit, no push); (M) run only directly-relevant tests + `php -l` + `git diff --check`, update the required docs, and report in detail (files, route/authorization model, atomic claim logic, serialization, progress timing, both launcher mechanisms, exact child argv, command-shell behavior, test totals, skips+reasons, doc diff summary, risks) before stopping for approval.
-
-### Purpose
-Build the one mechanism every later restore phase depends on but that must itself never be destructive: a way to safely and idempotently move an already-validated, already-queued restore request from "sitting in the database" to "an independent, detached OS process is now responsible for it" — with a hard guarantee that a replayed signed URL, two racing requests for the same row, or two different queued rows racing each other can never result in two restore processes running at once, and with the actual destructive engine (Task 7C.7) deliberately still absent so this phase's correctness can be proven in complete isolation from database-import/attachment-swap risk.
-
-### Result
-Implemented as described in `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md` (2026-07-25 "Task 7C.4" entries): `RestoreLaunchService`, the signed `restores.launch` route + `RestoreLaunchController`, `RestoreProcessLauncher` (+ `LinuxDetachedRestoreProcessLauncher`/`WindowsDetachedRestoreProcessLauncher`/`RestoreProcessLauncherFactory`), and the fail-closed `oms:restore` command shell (`RestoreCommand`). One pre-existing test (`BackupManagementPageTest::test_no_restore_route_exists`) had to be updated — it asserted no restore-related route existed at all, which this phase's one required signed launch route necessarily changes — replaced with a tightened guard proving no *other* restore route exists alongside it. Targeted suite: 401 total, 399 passed, 0 failed, 2 skipped (1 pre-existing OS-level symlink skip, 1 new documented skip for a true concurrent-lock-release scenario this Windows host cannot safely simulate without a second real OS process), 915 assertions. Not committed, per instruction.
-
----
-
-### Date
-2026-07-25 (OMS Task 7C.3 correction pass — pre-commit final review)
-
-### Prompt
-**"Approved in principle. Before committing Task 7C.3, perform one final focused correctness review and make only the corrections below where needed."** Seven itemized points: (1) fix the disk-space estimator so the mandatory pre-restore safety backup (always FULL, regardless of selected scope) is sized from current live data — current attachments and current database size via a focused MySQL query or reliable source, with a documented non-zero fallback — never from the source backup's own `original_size_bytes` alone, plus 5 named focused tests; (2) review double-counting and report the final itemized formula with every term's reason spelled out; (3) harden `excludeRestoreUuid` so it can never turn a corrupt/tampered progress-file state into "safe" — a malformed/unsigned/invalid-signature/UUID-mismatched file for the excluded UUID must still block for manual review; (4) confirm the extractor independently re-validates the current ZIP entry set against the verified manifest immediately before writing staged content (not relying solely on the earlier `BackupArchiveContentVerifier` result), rejecting extra/missing/duplicate entries, with a focused TOCTOU-style test; (5) confirm workspace/extraction symlink and containment safety end to end (UUID validated before path construction, workspace root stays under the configured disk, no symlink/junction component can redirect writes, cleanup confined to the workspace subtree, cleanup failure never masks the original exception); (6) report exact file counts via `git diff --name-status`, not grouped brace-list entries; (7) run only directly-affected tests + `php -l` + `git diff --check`, then commit code/tests/docs as one commit, run `graphify update .`, commit the Graphify output separately, and report both hashes, exact counts, the final formula, and confirmation of every point above. Do not run the full suite; do not push.
-
-### Purpose
-A pre-commit correctness audit specifically targeting the areas most likely to have been gotten subtly wrong in the initial 7C.3 implementation — disk-space accuracy for the safety backup, a possible logic gap in the new activity-guard exclusion parameter, a possible TOCTOU gap between archive verification and extraction, and defense-in-depth around workspace path/symlink safety — before anything is committed, since 7C.3 is the layer every later restore phase will build directly on top of.
-
-### Result
-The review caught four real, worth-fixing issues (see `docs/DECISIONS_LOG.md`'s four 2026-07-25 correction entries): (1) the disk-space estimator was genuinely wrong for the safety-backup sizing — corrected via a new injectable `CurrentDatabaseSizeEstimator`; (2) `RestoreActivityGuard`'s `$excludeRestoreUuid` had a real bug — it skipped reading the excluded UUID's progress file entirely rather than only suppressing a valid non-terminal result, meaning a tampered file for that UUID would have silently passed; fixed and pinned down with 6 new tests; (3) `RestoreArchiveExtractor` gained an independent full-manifest entry-set re-check immediately before extraction, closing the verify-vs-extract gap, with 4 new tests including a genuine extra-entry TOCTOU-style case; (4) `RestoreWorkspace` gained the same `SymlinkDetector` seam already used elsewhere, with 5 new tests. One item (workspace-cleanup-failure-never-masks-original-exception) was fixed in code but could not be proven with a forced-failure test on this Windows/Laragon host (empirically confirmed `unlink()` succeeds against an open file handle here, so `Storage::deleteDirectory()` cannot be deterministically forced to fail) — documented as a known limitation, same class as the pre-existing real-symlink-creation test gaps. Targeted suite after all corrections: 433 total, 431 passed, 0 failed, 2 pre-existing skips, 984 assertions. See `docs/TASKS_LOG.md`'s updated 7C.3 entry for the full file list and both commit hashes.
-
----
-
-### Date
-2026-07-25 (OMS Task 7C.3 — restore preflight, decryption/verification, safe extraction, private staging)
-
-### Prompt
-**"Implement OMS Task 7C.3 only"** — secure restore preflight, encrypted archive decryption, full archive validation, and safe private staging. A detailed, itemized spec: (A) targeted reads only, no assumptions about archive entry names/manifest structure; (B) a `RestorePreflightChecker` validating source backup state/scope compatibility, encryption/key resolvability (fail closed, no key material in failures, no full-archive decryption), mysql-client/database-connection presence (DB/full scope only), same-filesystem compatibility (Linux device check, documented Windows limitation), and the existing `RestoreActivityGuard` (with an optional current-restore-UUID exclusion for later orchestration, never weakening any other active restore's block); (C) a conservative, itemized, injectable `RestoreDiskSpaceEstimator` — explicitly not a "3× encrypted size" multiplier — covering declared/original size, SQL/attachment workspace estimates, live-attachment quarantine size, safety-backup working/published estimates, decrypted-ZIP workspace, atomic-write overhead, a configured margin (default 20%) and absolute floor (default 1 GiB); (D) a private, UUID-validated, escape-proof `RestoreWorkspace` under `storage/app/private/restores/{uuid}/workspace/` that never touches live attachments/DB on creation, cleans up plaintext best-effort on failure, transfers cleanup responsibility to a later orchestrator on success, and never deletes progress files/`.locks`/quarantine/another active restore's state (no age-based stale cleanup); (E) a `RestoreArchivePreparer` enforcing the exact order preflight → workspace → decrypt (existing `SecretstreamEnvelope`/`BackupKeyRing`) → full verify (existing `BackupArchiveContentVerifier`) → only-then stage, failing closed and cleaning plaintext on any decrypt/verify failure without ever modifying the source archive; (F) safe scope-limited extraction — never `ZipArchive::extractTo()`, every path validated via the existing `SafeBackupPath`, rejecting absolute/drive-letter/traversal/backslash-traversal/null-byte/duplicate-normalized/symlink/hard-link-or-special/unexpected-manifest-absent entries, verifying declared size and a streamed SHA-256 per entry, enforcing a manifest-declared total-byte ceiling, refusing writes through an existing destination symlink, and closing every stream in every path; (G) a bounded `PreparedRestore` result excluding keys/passwords/raw commands/unbounded manifest data/open resources; (H) restore-specific sanitized exceptions; (I) a large targeted test matrix, preferring real fixture archives built through the existing backup builder/encryption code over restated mocks; (J) an explicit scope-restriction list excluding launch/execution/maintenance-mode/DB-import/attachment-swap/UI/orchestration entirely; (K) run only targeted tests + `php -l` + `git diff --check`, update the required docs, and report in detail before stopping for approval. Do not run Graphify before approval, do not commit, do not push, minimize context/token usage.
-
-### Purpose
-Build the one remaining piece needed before any restore can safely touch the live system: prove a chosen backup and scope are actually restorable (without yet risking anything), and get its content decrypted, cryptographically re-verified, and safely staged into an isolated private workspace — so a later orchestration phase can consume already-validated, already-staged files instead of ever handling raw archive bytes or unchecked ZIP entries itself.
-
-### Result
-Phase 7C.3 implemented exactly as scoped — see `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md` (2026-07-25 "Task 7C.3" entries) for the full file list and reasoning. Reused `SecretstreamEnvelope`/`BackupKeyRing`/`BackupArchiveContentVerifier`/`SafeBackupPath`/`SymlinkDetector` unchanged rather than duplicating any crypto or archive-integrity logic — the only addition to existing Backup-namespace code was one small `SecretstreamEnvelope::peekKeyId()` method (reusing its existing private header-parsing helper) and one additive optional parameter on `RestoreActivityGuard::isActive()`. Targeted suite: 415 total, 413 passed, 0 failed, 2 pre-existing skips, 963 assertions. Fixture archives for the decrypt/verify/extract tests were built through the real `BackupCreationOrchestrator` (fake process runner, faked disks) rather than hand-mocked, per the task's own instruction. Awaiting review before commit; launch/execution/maintenance-mode/DB-import/attachment-swap/UI/orchestration remain entirely unbuilt.
-
----
-
-### Date
-2026-07-23 (OMS Task 7C.2 — independent lock, signed progress protocol, atomic progress storage, restore-activity dual gate)
-
-### Prompt
-**"Implement OMS Task 7C.2 only"** — the independent backup-subsystem filesystem lock, signed restore-progress protocol, atomic progress storage, and restore-activity dual gate, per the final approved architecture from the prior audit/delta-plan turns. A detailed, itemized spec: (A) a `BackupSubsystemLock`/`BackupSubsystemLockHandle`/`LockMode` design with non-blocking shared/exclusive `flock()`, a handle validated (not merely type-checked) before any lock-bypass path is accepted; (B) the exact required lock-acquisition order applied to all five ordinary operations (shared subsystem lock → existing Cache/per-backup lock, no peek-and-release, download holding through the full streamed transmission); (C) a `runWithLockAlreadyHeld()` internal path for the future pre-restore safety backup, sharing one pipeline with `run()`, never duplicated; (D)–(F) the signed progress-file protocol (schema version from config, HMAC-SHA256 keyed off `APP_KEY` with a fixed context string, signature verified before every read, crash-safe atomic temp-file-then-rename writes, one previous snapshot retained); (E) the exact bounded field list and what must never be stored; (G) the dual restore-activity gate (DB row OR signed progress file, tampered files never silently ignored); (H) a detailed test matrix including real filesystem lock contention; (I) an explicit scope-restriction list excluding every later-phase concern (launch, archive extraction, DB/attachment restore, maintenance mode, watchdog, UI). Also carried forward a standing correction for the later launch phase (7C.4 must serialize concurrent launch attempts under a short-lived exclusive lock) and reconfirmed the complete Phase 7C.2 lock order for future services to follow. Read only the targeted 7C.1 files, existing lock/download services and their tests, and the two config files; run only targeted tests; update docs; stop before committing.
-
-### Purpose
-Build the one mechanism every later restore phase depends on for correctness — a mutual-exclusion primitive that survives the exact failure mode (the database being replaced mid-restore) that would defeat the database-backed lock the rest of the backup subsystem already uses, plus a tamper-evident, crash-safe way to record and later read a restore's progress independently of that same database — without yet building anything that could actually launch or perform a restore, so this layer can be fully reviewed and tested in isolation first.
-
-### Result
-Phase 7C.2 implemented exactly as scoped — see `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md` (both 2026-07-23 "Task 7C.2" entries) for the full file list and reasoning. No bugs found this round (unlike 7C.1's `BackupDeletionRejectedException::forReason()` gap) — the existing exception/status vocabulary was reused as-is for the new subsystem-lock-unavailable case in all five operations, confirmed by extending each operation's existing test file rather than needing new exception plumbing. Targeted suite: 347 total, 345 passed, 0 failed, 2 pre-existing skips, 856 assertions (after a final-review round that corrected inaccurate fsync wording — `fsync()` is core PHP since 8.1 and genuinely runs on this 8.3 runtime — documented Linux-atomic vs. Windows-replace-in-place rename behavior explicitly, and added a UUID-only directory filter to `RestoreActivityGuard` so a stray non-UUID directory can never create a false permanent restore block; 3 new focused guard tests). Awaiting review before commit; Phase 7C.3 onward not started.
-
----
-
-### Date
-2026-07-23 (OMS Task 7C.1 — restore domain/schema/config/authorization foundation)
-
-### Prompt
-A four-turn sequence for OMS Task 7C (secure backup restore). (1) A strictly read-only architecture audit and phased implementation plan (A–P sections: current architecture, gaps, threat model, restore architecture/data flow, schema proposal, progress-file format, locking/crash-recovery design, DB/attachments restore design, compensation strategy, Arabic UI flow, test matrix, an 8-phase plan, open questions) — no code changed. (2) A delta-plan correction round applying user decisions (production is a single Linux Hostinger VPS; typed confirmation `RESTORE {uuid8}`; `mysql` import outside `DB::transaction()` approved; `RestorePartial` approved) plus mandatory architecture fixes: eliminate a nested-lock deadlock between the restore orchestrator and `BackupCreationOrchestrator`; replace the TTL Cache lock with an independent filesystem lock as restore's authoritative mutex; reorder full restore to stage everything before the irreversible database import; correct post-import metadata/permission/migration reconciliation; define an ephemeral-table policy; require crash-safe atomic progress-file writes; prove progress polling works while the database is down; keep the restore process independent of the DB queue; add explicit preflight checks — revised into a 9-phase plan. (3) A second, final correction round: fix a peek-and-release race in the ordinary-operation lock guard (shared-vs-exclusive `flock` model instead); replace an "unforgeable token" claim with a validated live lock handle; block a new restore on a DB row **or** a signed progress file, not the DB row alone; add idempotent/atomic launch-claim semantics; correct the audit-schema gap (inspect the real schema first, add one JSON column instead of two narrow ones); replace a blanket queue-table-truncation policy with a selective one; move non-destructive preflight before maintenance mode; replace a 3× disk-space heuristic with an itemized estimate; add plaintext-cleanup requirements; correct a claim about maintenance mode stopping queue workers. (4) **"Start implementation of OMS Task 7C.1 only"** — restore domain/schema/configuration/authorization/deletion-eligibility foundation, with an explicit standing correction for the later launch phase (7C.4 must serialize concurrent launch attempts under a short-lived exclusive lock) and the complete approved ordinary-operation lock order for 7C.2 (shared filesystem lock → Cache lock → per-backup file lock) — a precise, itemized scope list (migration shape, enum additions, model changes, permission registration, disk, config keys, deletion-eligibility rule, and a bounded-but-not-yet-implemented `restore_metadata` structure), an explicit "do not implement" list covering every later phase, and instructions to read only targeted files, run only targeted tests, update the required docs, and stop before committing.
-
-### Purpose
-Design and begin building a restore capability for the OMS backup system that can safely replace the live financial database and private attachments — including the database that would otherwise be storing the restore's own progress — without ever silently corrupting data, racing a concurrent backup/retention/download, leaving the app stuck in maintenance mode, or granting restore access to anyone but a real Super Admin, and to do so incrementally (foundation first, with nothing destructive or user-reachable until much later phases) so each layer can be reviewed and tested in isolation before the next is built on top of it.
-
-### Result
-Phase 7C.1 implemented exactly as scoped — see `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md` (both 2026-07-23 "Task 7C.1" entries) for the full file list and reasoning, including one real pre-existing bug (`BackupDeletionRejectedException::forReason()` silently coercing unrecognized reason codes) found and fixed while wiring the new `restore_source_in_use` deletion rule through end-to-end. Targeted suite: 291 total, 289 passed, 0 failed, 2 pre-existing skips, 1189 assertions (includes a post-review correction: the `restore_source_in_use` deletion rule was broadened from matching only `Restoring` to every active `BackupStatus`, proven by data-provider tests over both the active and terminal status sets). Awaiting review before commit; Phases 7C.2 onward not started.
-
----
-
-### Date
-2026-07-23 (Backup management page — deletion-eligibility UI clarification)
-
-### Prompt
-"Implement a small, focused UI clarification in the OMS backup management page" — rename the table's "الحماية" column to "إمكانية الحذف" and show one of four badges ("مسموح" / three "ممنوع —" reasons) reflecting the exact same rules `BackupDeletionService` already uses for the delete action (reused, not duplicated), keep the details-modal "الحماية" field but rename its values to make clear it is manual-protection-only ("محمية يدويًا"/"غير محمية يدويًا"), add focused tests for last-known-good/manually-protected/deletable/badge-and-delete-parity, read only the directly relevant files, run only the targeted backup tests, and show the diff and test results before committing.
-
-### Purpose
-Prevent operators from misreading "غير محمية" (not manually protected) as "this backup can be deleted" when it may actually be undeletable for an entirely different reason (it's the last verified good backup, or a file lock is currently held) — a real UX ambiguity that could lead someone to assume a delete attempt will succeed when it won't, or conversely assume a genuinely deletable backup is protected when it only lacks the manual flag.
-
-### Result
-Implemented as scoped — see `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md` (both 2026-07-23 "deletion-eligibility UI clarification" entries) for the full file list and reasoning. Targeted backup suite: 174 total, 173 passed, 0 failed, 1 pre-existing skip, 499 assertions. Awaiting review before commit.
-
----
-
-### Date
-2026-07-23 (OMS Task 7B.2 — Filament backup management page)
-
-### Prompt
-A three-part sequence. (1) **"Implement OMS Task 7B.2: FILAMENT BACKUP MANAGEMENT PAGE"**: build the Super-Admin-only Filament page (`النظام` → `النسخ الاحتياطي والاستعادة`) on top of the 7B.1 backup core — overview stat cards, manual-backup/verify/download/delete row and header actions, a backup operations table with polling, and persistent database notifications — explicitly excluding Restore (no action/permission/job/route, a static informational notice only), with 94 numbered required test cases and pre-flight instructions to inspect the exact existing 7B.1 APIs before integrating; report and wait for approval. Mid-implementation, a genuine conflict was found and raised before proceeding rather than guessed at: `BackupCreationOrchestrator::enqueue()` (7B.1, already committed) set `is_protected = true` for every manual backup, which would make the new deletion feature's own explicit "manual backups may be manually deleted unless protected" design impossible to satisfy — the user chose to fix the 7B.1 default (`is_protected = false` for manual, since retention already independently protects manual backups via its own `type === Manual` check). (2) **"Apply one focused correction before approving OMS Task 7B.2"**: the targeted permissions suite had one pre-existing failing test (`AuthorizationAcceptanceTest::test_permission_registry_contains_exactly_155_permissions`, confirmed via `git stash` to already fail at HEAD before any 7B.2 change) with a hardcoded permission-count literal that predated Task 7B.1's 6 `backups.*` permissions — replace it with a durable, `PermissionRegistry`-derived assertion (no duplicates, every registry name synced exactly once, no unexpected extra, `backups.*` explicitly covered) rather than swapping one magic number for another; run only the directly affected permission test files, not the full suite. (3) **This finalization**: update only the 5 CLAUDE.md-required docs, run `graphify update .` and validate its output, review the complete diff to confirm it contains only the approved implementation/tests/migration/docs/curated Graphify output (never `graphify-out/cache/**`, real backups/attachments, `.env`, credentials, or unrelated changes), stage only that, show the pre-commit diff and safety confirmations, commit as `add secure backup management page`, and report the hash and post-commit hook output — no push, no Task 7C.
-
-### Purpose
-Give a real Super Admin a safe, non-technical-friendly way to see backup health at a glance and trigger the three background operations (create, verify, delete) the 7B.1 foundation already supports, entirely through queued jobs and persistent notifications — never a synchronous web-request backup, never a raw storage path or secret surfaced in the UI, and never any Restore capability before its own dedicated, independently-designed engine (Task 7C) exists.
-
-### Result
-Implemented exactly as scoped, including the mid-task `is_protected` correction and the separate permission-test durability fix — see `docs/TASKS_LOG.md` (2026-07-23 "Task 7B.2" entry) for the full file list and `docs/DECISIONS_LOG.md` (2026-07-23 "Task 7B.2" entry) for the `BackupAuthorization`-centralization, `is_protected`-default, and durable-permission-count reasoning. Targeted backup tests: 238 total, 236 passed, 0 failed, 2 skipped (pre-existing 7B.1 OS-level symlink tests), 0 risky, 658 assertions. Corrected permission tests: 45 total, 45 passed, 0 failed, 0 skipped, 0 risky, 838 assertions. No real backup, `mysqldump`, migration, permission sync, or database/storage change at any point across all three turns. Committed as `add secure backup management page`.
-
----
-
-### Date
-2026-07-23 (OMS Task 7B.1 — encrypted backup core foundation)
-
-### Prompt
-A five-part sequence. (1) **"OMS Task 7A — Backup and Restore Read-Only Architecture Audit"**: a strictly read-only audit (no file modification, no package install, no migration, no real backup) covering existing capabilities, package-vs-custom-build comparison, backup archive/manifest design, encryption approach, database-dump design, file include/exclude rules, metadata schema, queue/concurrency design, restore architecture, Filament UI design, permission model, retention rules, scheduler design, testing strategy, Windows/Linux prerequisites, and a phased plan (7B backup foundation → 7C restore engine → 7D hardening) — answered in a single detailed report, no implementation. (2) **"Implement OMS Task 7B.1: BACKUP CORE FOUNDATION"**: build the approved architecture (libsodium XChaCha20-Poly1305 Secretstream envelope, mysqldump + ZipArchive, private `backups` disk, `backup_operations` table/model, `PermissionRegistry` module, queue jobs/commands/scheduler, secure download foundation) with 82 numbered required test cases, explicitly excluding Restore, the Filament page, and any real backup/mysqldump/migration execution; report and wait for approval. (3) **"Apply focused corrections to OMS Task 7B.1 before approval"**: full content verification before a backup is marked `completed` (not just a light self-check), database-enforced `deduplication_key` for scheduled backups (the app-level same-day check alone was race-prone), a per-backup file lock so download/verify/retention can never race each other, confirmation that `mysqldump` stdout is genuinely streamed (not buffered) with tests proving it, and deterministic (no-OS-privilege) symlink-rejection test coverage. (4) **"Apply one final focused correction"**: verify the `disableOutput()`+callback claim directly against the installed `symfony/process` source (not from memory), switch to `Process::getIterator()`-based streaming if warranted, add real-runner integration tests against actual child processes (never `mysqldump`), and replace the test-only subclassing of the (previously non-`final`) `BackupArchiveContentVerifier` with a narrow contract so the concrete class could be `final`. (5) **This finalization**: update only the 5 CLAUDE.md-required docs, run `graphify update .` and validate its output, review the complete diff to confirm it contains only the approved implementation/tests/docs/curated Graphify output (explicitly never `graphify-out/cache/**`, real backups/attachments, `.env`, credentials, or unrelated changes), stage only that, show the pre-commit diff and safety confirmations, commit as `add encrypted backup core foundation`, and report the hash and post-commit hook output — no push, no Task 7B.2.
-
-### Purpose
-Give the OMS a production-appropriate, encrypted, fully-verified backup foundation for its MySQL database and private financial attachments — designed first through a read-only audit so the encryption format, verification model, concurrency protection, and streaming behavior were deliberately chosen (and, in three follow-up passes, corrected against genuine gaps: publish-then-verify ordering, a race-prone dedup check, an unprotected download-vs-retention race, and an unverified claim about Symfony's Process internals) rather than assumed — before any of it could touch a real backup, a real database, or a real `mysqldump` invocation.
-
-### Result
-Implemented exactly as scoped across all four correction passes — see `docs/TASKS_LOG.md` (2026-07-23 entry) for the full file list and `docs/DECISIONS_LOG.md` (2026-07-23 entry) for the build-vs-package, verify-before-publish, database-enforced-dedup, and per-backup-lock reasoning. Final targeted run: 143 total, 141 passed, 0 failed, 2 skipped (OS-level symlink tests only), 0 risky, 411 assertions; directly-affected permission tests 16 passed, 429 assertions. No real backup, no real `mysqldump`, no real migration, no real database/storage change at any point across all five turns. Committed as `add encrypted backup core foundation`.
-
----
-
-### Date
-2026-07-22 (OMS-wide CRUD redirect standard)
-
-### Prompt
-"Implement an OMS-wide CRUD redirect standard for all current Filament resources." Business rule: after a successful full-page Create → the new record's View page; Edit → the updated record's View page; Delete → the resource Index/List page. Keep success notifications working; do not weaken permissions, add fake permissions, bypass View authorization, or change financial/accounting/validation/persistence behavior. Read-only audit first (clean tree/HEAD, CLAUDE.md + reference/memory docs + Graphify), inventory every full-page Create/Edit/View/Delete flow, prefer a centralized low-duplication solution that resolves URLs through the Resource (no hard-coded `/admin/...`), add a View page only where one is safely missing (none were), keep modal/RelationManager CRUD on the parent page, add focused genuine Livewire/HTTP + structural tests, run only targeted suites (new CRUD tests, affected resources, ResourceHttpAuthorizationTest, AuthorizationAcceptanceTest, affected financial), never touch real DB/storage/migrations/`.env`, and report fully before any staging/commit.
-
-### Purpose
-Give every full-page resource a consistent, predictable post-operation destination (View after Create/Edit, Index after Delete) without duplicating redirect logic across dozens of pages and without altering any authorization or financial behavior.
-
-### Result
-Implemented as documented in the 2026-07-22 `TASKS_LOG.md`/`DECISIONS_LOG.md` entries: one shared concern `App\Filament\Concerns\RedirectsToResourceView` adopted by all 22 editable resources' 44 Create/Edit page classes; page-level Delete left on Filament's correct stock Index redirect; RelationManager/modal CRUD and the four read-only resources unchanged; no View pages needed adding (all 22 editable resources already had a View route). Two focused test files added — `CrudRedirectStandardTest` (genuine Livewire/HTTP) and `CrudRedirectStandardStructureTest` (structural). Targeted run: 402 total, 399 passed, 0 failed, 3 skipped, 0 risky, 1242 assertions. Committed as `standardize CRUD redirects across resources` after approval.
-
----
-
-### Date
-2026-07-22 (test-suite cleanup)
-
-### Prompt
-User requested a minimal test-suite cleanup after the final full-suite run (967 total, 963 passed, 1 failed, 3 skipped, 1 risky): remove only the obsolete default `ExampleTest` failure and identify/fix the single risky Users test with the smallest safe change — do not change application routes or add a fake `/` route to satisfy the default Laravel test, do not modify production behavior, inspect only the two test targets and directly required helpers, run targeted tests only, and hold before staging/commit. After approval: update only the CLAUDE.md-required docs with a minimal factual entry (recording only actual results, not predicted final counts), run `graphify update .`, stage only the ExampleTest deletion + RoleAssignmentSafetyTest fix + docs + stable curated `graphify-out/**` (never cache/temp/source/routes/migrations/db/storage/.env/creds/backups/vendor), commit as `clean obsolete test scaffolding`, and report the hash + post-commit hook output; no push, no full suite yet, no new task.
-
-### Purpose
-Bring the test suite to a clean state at the close of Attachment Security Task 6 by removing a stock Laravel scaffolding test that can never pass in a Filament-only app (without distorting production routing to satisfy it) and by giving the one risky Users test a real assertion — so future runs are not muddied by a known-irrelevant failure and a "no assertions" risky flag.
-
-### Result
-Deleted `tests/Feature/ExampleTest.php`; added `assertArrayHasKey('roles', $e->errors())` to `RoleAssignmentSafetyTest::test_submitted_super_admin_role_is_rejected_server_side`. Targeted `tests/Feature/Users/`: 64 passed, 0 failed, 0 skipped, 0 risky, 134 assertions. No production code, route, migration, database, or storage file changed. Committed as `clean obsolete test scaffolding`.
-
----
-
-### Date
-2026-07-22 (OMS Task 6D — secure financial attachment registry)
-
-### Prompt
-User requested, across two linked turns: (1) "OMS Task 6D: SECURE FINANCIAL ATTACHMENT REGISTRY" — rebuild and re-enable the standalone `AttachmentResource` as a secure read-only registry (`النظام` → `سجل المرفقات`, singular `مرفق`) that lets authorized users browse/search/filter/view attachment metadata, preview images inline, and securely open/download files, while never allowing upload/create/edit/delete/restore/force-delete/bulk mutation or exposing a raw path/disk/URL. A detailed spec: opening requires `attachments.view_any`; every listed/viewed row additionally requires `attachments.view` plus the matching parent-module `.view` (an explicit five-type → permission map: ProjectCostReceipt→project_cost_receipts.view, ProjectCostBudget→project_cost_budgets_payments.view, ProjectCostBudgetsPayment→execution_payments.view, GeneralExpense→general_expenses.view, GeneralExchange→general_exchanges.view); a normal user sees only their allowed types, Super Admin sees all five, a direct View URL 403s without the parent permission, preview/download stay behind `attachments.show`, no global all-attachments permission, and authorization is re-enforced on the View page (not just by hiding rows) via a focused service centralizing the type→permission mapping. Only the five approved financial types listed; unsupported Project/Transaction/Partner rows excluded and reported separately, never deleted/modified; soft-deleted rows available via an optional `المحذوفة` filter for audit metadata with no active preview/download. A full table design (Arabic columns: file name, operation type, operation/transaction number resolved from the real parent field, project or `—`, operation date, amount+currency from approved denormalized fields never mixing currencies, MIME, human size, storage status `خاص`/`عام انتقالي`/safe-unknown, uploaded-by, created date, status `فعال`/`محذوف منطقيًا`/`ملف مفقود`), read-only row actions (`عرض التفاصيل`/`عرض المرفق`/`تنزيل`, hidden for missing/soft-deleted/invalid-disk), search/filters (with a file-availability filter only if not expensive — otherwise omit and report why), N+1-free polymorphic eager loading via morphTo/morphWith, a rebuilt secure View page, preserved-and-tested structural read-only guarantees, and 45 numbered required test cases; targeted tests only (new registry tests + `tests/Feature/Attachments/` + `ResourceHttpAuthorizationTest` + `AuthorizationAcceptanceTest`); explicitly forbidden: weakening the Task 6A–6C private-storage/parent-policy protections, creating/modifying real Attachment rows or files, running migrations or the full suite, touching real storage/public/symlink, updating docs or running Graphify, staging, or committing until reviewed. (2) After the implementation report: "OMS Task 6D implementation report and the current amount/currency choice are approved" — keep `final_amount`+`disbursementCurrency` for the two multi-currency operations; do not change registry authorization, table design, filters, eager loading, or read-only guarantees; update only the five CLAUDE.md-required docs; run `graphify update .`, validate the generated JSON, stage only the approved implementation/tests/docs/stable curated `graphify-out/**` (never `graphify-out/cache/**`, temporary files, vendor, `.env`, backups, storage, `public/storage`, or credentials); show the staged diff and no-collateral confirmations; commit as `add secure financial attachment registry`; report the commit hash and post-commit Graphify hook output separately; no push, no new task.
-
-### Purpose
-Complete the attachment-security phase (6A foundation → 6B live cutover → 6C orphan cleanup → 6D) by giving authorized users a single, safe place to find and open financial attachments — without reopening any of the guarantees the earlier phases established: files still stream only through the authenticated `attachments.show` route under the parent record's own Policy, the registry itself scopes and re-checks per parent module so it can never surface metadata for a record the actor could not otherwise view, and the resource stays structurally incapable of mutating or uploading anything even for a Super Admin.
-
-### Result
-Implemented exactly as scoped — see `docs/TASKS_LOG.md` (2026-07-22 "OMS Task 6D" entry) for the full file list, design, and counts, and `docs/DECISIONS_LOG.md` (2026-07-22 "Task 6D" entry) for the multi-currency-amount, two-layer-authorization, and omitted-file-availability-filter reasoning. New `FinancialAttachmentRegistry` service + rebuilt Resource/Table/View page; `AttachmentForm` (the only `FileUpload`) deleted; three existing tests updated only where the navigation/supported-type behavior genuinely changed. 42 new registry tests (101 assertions) plus the full targeted set 274 tests → 271 passed, 0 failed, 3 skipped, 0 risky, 856 assertions. All tests ran on SQLite `:memory:` with `Storage::fake` — no real DB record or attachment file changed; the real `attachments` table (read-only inspection) holds 3 rows, all supported `GeneralExpense` on the private disk, 0 unsupported, untouched. Committed as `add secure financial attachment registry`.
-
----
-
-### Date
-2026-07-22 (OMS Task 6C — obsolete orphan public-file cleanup)
-
-### Prompt
-User requested "OMS Task 6C: REMOVE OBSOLETE ORPHANED PUBLIC ATTACHMENTS" — confirming the old financial records were intentionally deleted and the six orphaned public files under `storage/app/public/{execution-payments,payments}` are no longer needed. Explicit constraints: do not quarantine/migrate/preserve/attach the six files; do not delete the public disk, the `public/storage` symlink, or unrelated public files; do not run the full test suite; do not stage/commit until review. A detailed pre-flight (confirm clean tree; read-only verify the `attachments` table has no active or trashed rows referencing the six files; enumerate the exact six files and record each path/size/SHA-256 before deletion; confirm no unexpected files beyond the six and harmless control files), a scoped deletion (only the six verified orphans; never the disk root, symlink, `.gitignore`, private attachments, or any DB row; keep empty directories), an 8-point post-deletion verification, targeted-tests-only (`tests/Feature/Attachments/`, `FinancialAttachmentCutoverTest`, `FinancialAttachmentViewFlowTest`), a CLAUDE.md documentation update, and a final pre-commit report (deleted paths, hashes, DB-reference check, URL results, test counts, `git status --short`, `git diff --stat`, and a no-collateral-change confirmation) — with an explicit stop-and-report instruction if any DB row referenced the files or any unexpected file was present.
-
-### Purpose
-Complete the attachment-security cleanup by removing the last public exposure surface (the six pre-existing orphan files with no DB row) after Task 6A built the private-serving foundation and Task 6B cut the five live financial workflows over to it — closing out the phase so no legacy public attachment content and no quarantine/migration debt remains.
-
-### Result
-Stop-and-report: the six files were found **already absent** from disk (only `.gitignore` remained under `storage/app/public`; neither orphan directory existed), so nothing was deleted and no pre-deletion hashes could be recorded (not fabricated). MySQL was initially down; after the user brought it up, read-only verification confirmed the `attachments` table is empty (0 rows referencing the paths active-or-trashed, 0 public/attachments-disk rows, 0 total). Old public URLs return HTTP 403 (serve no file; symlink intact — `/storage/.gitignore` → 200). Code posture from Task 6B re-confirmed (5 Forms → private `attachments` disk, 5 View pages → `attachments.show`, no `Storage::url()`/raw `/storage/`). Targeted tests 141/141 (400 assertions). Concluded no quarantine/legacy-migration tooling is necessary (empty table, private-only path). Documentation updated across all five CLAUDE.md-required docs; not staged, not committed — awaiting review. See `docs/TASKS_LOG.md` (2026-07-22 "OMS Task 6C" entry) and `docs/DECISIONS_LOG.md` (2026-07-22 entry) for full detail.
-
----
-
-### Date
-2026-07-21 (OMS Task 6B — financial Resource attachment cutover)
-
-### Prompt
-User requested, across two linked turns: (1) "OMS Task 6B: PRIVATE ATTACHMENT RESOURCE CUTOVER" — convert all five financial Resources' Create/Edit/View pages from the public-disk upload/display pattern to the private `attachments` infrastructure built in Task 6A, with a detailed spec: inspect the exact current attachment code in all 5 Forms/Create/Edit/View pages first and return a short implementation map before proceeding; build a central `AttachmentUploadService` that accepts only the saved parent model, temp path, an approved directory/prefix, transaction date, and amount (never a disk/directory/filename from request data), validates the temp path with the same principles as `AttachmentStorageService`, creates the Attachment row before generating the id-dependent final filename (never `MAX+1`), preserves the exact existing directory/prefix/filename-normalization scheme; implement the smallest safe filesystem-failure handling (never soft-delete the old attachment before a new one succeeds, clean up only a newly-created file/row on failure, never touch an old physical file); redesign the Edit form into three explicit concepts (secure current-attachment preview via the `attachments.show` route only, a clean non-prefilled replacement `FileUpload`, an explicit `remove_current_attachment` control) with defined precedence rules for keep/replace/remove/replace+remove; build one reusable secure preview Blade/schema component used on all 5 View and Edit pages (inline image, secure view/download links, safe non-image card, empty state, RTL, both themes, no raw path/URL); keep supporting transitional `disk = public` legacy rows through the existing protected controller; add parameterized tests under `tests/Feature/Attachments/` covering 41 specific numbered scenarios across create/edit/view/authorization/regression categories; run only a specified targeted test subset; explicitly forbidden: migrating legacy files, touching the six orphan files, running the new migration against the real database, creating/modifying real Attachment records, running the full suite, staging, committing, updating docs, or running Graphify until reviewed. (2) After reviewing the implementation report: "OMS Task 6B is approved. Perform the controlled local rollout, documentation update, Graphify refresh and commit" — verify the working tree contains only the approved Task 6B changes; create a full timestamped `mysqldump` backup of the real local MySQL database first (never printing the password, refusing to overwrite an existing backup, reporting only path/size/SHA-256); take a read-only pre-migration snapshot (row count, columns, migration status) plus record the six orphan files' paths/sizes/hashes without touching them; run only the one targeted `2026_07_21_000001_add_disk_to_attachments_table` migration (stop-and-report, no auto-restore, on any failure); verify post-migration state read-only (column type/default, row count still zero, orphan files byte-identical, no directory created under the real private disk, a focused Attachment model read check); run only the specified targeted test subset once; update only the docs `CLAUDE.md` requires with a specific list of facts to record and set `NEXT_STEPS` to Task 6C; run `graphify update .`; stage only the approved Task 6B code/tests/docs/graphify output (explicitly never the backup, `.env`, credentials, real storage files, or orphan files); commit as `move financial attachments to private storage`; report the commit hash and final state without re-running tests or starting Task 6C.
-
-### Purpose
-Close the second half of the vulnerability Task 6A's audit found and deliberately deferred: with the private-serving foundation already built, verified, and committed, the five live financial workflows themselves were still writing new uploads to the unauthenticated public disk and building raw public URLs on every View page. Task 6B makes the private disk the actual, live path for all new financial attachments — while keeping the change safely reversible (full backup before the one real schema change), keeping every legacy public-disk row still servable through the same secure route during the transition, and explicitly leaving the six pre-existing orphan files and any real legacy-file migration to a separate, later-approved Task 6C rather than acting on them opportunistically mid-task.
-
-### Result
-Implemented and verified exactly as scoped across both turns — see `docs/TASKS_LOG.md` (2026-07-21 "OMS Task 6B" entry) for the full file list, exact commands, and test counts, and `docs/DECISIONS_LOG.md` (three 2026-07-21 "Task 6B" entries) for the row-created-before-final-filename, replace-before-soft-delete, and shared-preview-component reasoning. One implementation-phase environment issue was found and fixed before the backup step could succeed (not scoped by the user, discovered during execution): the initial `mysqldump` invocation via PHP's `proc_open()` failed with a Windows Winsock socket-creation error because passing a partial `$_ENV`-derived array as the child process's environment dropped `SystemRoot`/`PATH` and other variables Winsock initialization needs on Windows — fixed by using `putenv('MYSQL_PWD=...')` in the parent process and passing `null` (inherit the full parent environment) to `proc_open()` instead. 77 new tests across 3 new files, all passing; targeted pre-commit suite (Attachments + the 5 financial Resource directories + `ResourceHttpAuthorizationTest` + `AuthorizationAcceptanceTest`) 300/303 (3 pre-existing unrelated skips, 0 failures). The real local MySQL database was backed up (150,837 bytes, SHA-256 recorded), the targeted migration ran successfully, and post-migration read-only verification confirmed the `disk` column matches the migration exactly, the Attachment row count remained 0, and all six orphan files were byte-for-byte unchanged before and after. No real Attachment record was ever created; no real attachment file was ever uploaded, moved, copied, renamed, or deleted. Committed as `move financial attachments to private storage`.
-
----
-
-### Date
-2026-07-21 (OMS Task 6A — private attachment security foundation)
-
-### Prompt
-User requested, across three linked turns: (1) a read-only "OMS Task 6" attachment security audit — covering the `Attachment` model/migration/relationships, every `FileUpload` field and attachment-handling code in the 5 financial workflows, storage disks/directories/URL generation, every display/preview/download/delete code path, existing public-storage files vs. their DB `file_path` format, whether attachments are reachable without authentication, existing permissions/policies, soft-delete behavior for both the `Attachment` record and its physical file, export/report exposure, and existing test coverage — followed by a smallest-safe-change implementation plan (architecture/risks, affected files, permissions, private disk design, secure controller/route design, legacy-migration strategy with backup/rollback, per-Resource changes, test plan, migration-vs-Artisan-command decision, risk/phasing), explicitly not to be implemented yet; (2) "OMS Task 6A": implement only the approved foundation (private disk, `disk` column migration, storage resolver/service, secure authenticated controller+route, parent-record authorization reusing existing policies, safe inline/download serving, focused tests) — explicitly excluding the five-financial-Resource cutover and the real legacy-file migration, with mandatory audit corrections (inspect the standalone `AttachmentResource` and real DB rather than assume it out of scope; do not assume a private-disk `FileUpload` can display existing files without checking Filament's actual API; treat legacy public files as unprotected until their public copies are actually removed later, with a full backup/verify/quarantine plan; never let a database `disk` value select an arbitrary Laravel disk; never trust the stored `file_type` blindly, with specific private/no-store/nosniff headers required); (3) five explicit security corrections before approval — harden `AttachmentResource` to structurally read-only without deleting it or its permissions; add focused stored-file-path validation rejecting absolute/UNC/drive-letter/traversal/null-byte/empty paths; sanitize response filenames against directory segments and CR/LF/control-character header injection with a safe deterministic fallback; fix the controller so a missing-or-soft-deleted parent returns 404 without ever calling `Gate::authorize()` on it; and document (without implementing) that the 6 pre-existing orphan public files need a later quarantine-manifest-and-manual-review migration step. Throughout: no real attachment file may ever be moved/copied/renamed/deleted/quarantined, no migration may run against the real database, no real `Attachment` record may be mutated, and nothing may be staged or committed until explicitly approved at each checkpoint. A final fourth turn approved everything and requested: an explicit pre-commit security-verification checklist (15 numbered points) re-confirming every property of the finished design, documentation updates limited to what `CLAUDE.md`'s Project Memory Rules require, a `graphify update .` run, a final full re-verification pass, staging scoped exactly to the approved Task 6A changes (explicitly excluding any financial-Resource cutover and any sensitive/real-attachment file), and the actual commit.
-
-### Purpose
-Close the specific vulnerability the audit surfaced — every financial attachment (receipt/payment/expense proof image) was reachable by a guessable public URL with zero authentication or authorization — while keeping the change reversible and minimally invasive: build and fully verify the private-serving foundation first, prove it secure against a Super Admin and against crafted/traversal/injection input, and deliberately defer the higher-blast-radius steps (cutting the 5 live financial forms over to the new disk, and migrating/deleting any real legacy file) to explicitly separate, later-approved phases.
-
-### Result
-Implemented and verified exactly as scoped across all three turns — see `docs/TASKS_LOG.md` (2026-07-21 "OMS Task 6A" entry) for the full file list, exact commands, and test counts, and `docs/DECISIONS_LOG.md` (three 2026-07-21 "Task 6A" entries) for the disk-allowlist, `AttachmentResource`-hardening, and soft-deleted-parent-before-authorize reasoning. One genuine platform-dependent defect was found and fixed during the pre-commit verification pass itself (not by the user): PHP's native `basename()` only treats `\` as a directory separator on Windows, so the original filename-sanitization code would have silently leaked Windows-style directory segments into `Content-Disposition` on a Linux server — replaced with a custom OS-independent path-segment splitter and a dedicated regression test before commit. 64 new tests across 4 new files, plus 2 pre-existing, unrelated Permissions test files updated to reflect `AttachmentResource`'s new (approved) hardened behavior. Full suite 844/848 passed, matching the same pre-existing unrelated `ExampleTest` failure and risky test recorded in every prior entry — neither touched. No real attachment file was ever moved, copied, renamed, deleted, or quarantined; the real `attachments` database table remained at 0 rows with no `disk` column throughout (the new migration never ran against it); the five financial Resources' upload/display code was not touched. Committed as `add private attachment security foundation`.
-
----
-
-### Date
-2026-07-21 (final OMS authorization acceptance testing — Tasks 1–5)
-
-### Prompt
-User requested the final OMS authorization acceptance test pass across Permissions Tasks 1–5, explicitly as a testing task: audit existing coverage first (no duplicate tests), add only the smallest focused acceptance test file(s) for genuine gaps, use the real `PermissionSyncService` for test data (create one active user per system role, assign exactly one role each), verify system role integrity (five roles, exactly 155 permissions, exact default sets, idempotent sync), Filament panel access, real rendered sidebar navigation per role, direct URL access (200/403/404) for named representative resources/reports/system pages, create/update/delete authorization including structural protections that survive Super Admin, report access, export authorization (including no-permanent-file-storage), Users/Roles/Permissions management (including the `users.assign_roles` requirement), and cross-module negative leakage tests — run in a specified order, stop and report (not fix) any genuine defect found, and produce a detailed final report. No production authorization redesign, no financial-logic/Resource/Policy/`PermissionRegistry` changes merely to pass a test, no staging/commit, no real database writes.
-
-### Purpose
-Close out the OMS Permissions phase (Tasks 1→2A→2B→3→4→5, all previously implemented but never jointly acceptance-tested) with one final, independent pass proving the whole authorization surface behaves as designed end-to-end, before the phase is considered complete and safe to build further features (e.g. attachment security) on top of.
-
-### Result
-Audited ~80 existing test methods across `tests/Feature/{Permissions,Roles,Users,Reports}` and found coverage was strong; added exactly one new file, `tests/Feature/Permissions/AuthorizationAcceptanceTest.php` (22 tests, 200 assertions, all passing), covering only the confirmed gaps (absolute permission count, real per-role rendered navigation, representative view/edit HTTP routes, 404-not-403 for nonexistent create routes, actually-assigned-role mutation proofs, generic cross-module negative pairs, crafted Users form Super-Admin-assignment attempt). **No authorization defect was found.** The acceptance spec's `users.assign_roles` permission does not exist in `PermissionRegistry` — confirmed as the approved design (role assignment via `users.create`/`users.update` + privilege-subset validation, `users.assign_super_admin` separately gating Super Admin assignment), not a gap; no registry change made. Full suite 782/785, matching the pre-existing unrelated `ExampleTest` failure and risky Task 3 test recorded in every prior task's log — neither touched. User approved the result and requested documentation-only updates plus staging/commit of the new test file and generated `graphify-out/**` output. See `docs/TASKS_LOG.md` (2026-07-21 entry) for exact commands/counts and `docs/DECISIONS_LOG.md` for the `users.assign_roles` non-defect reasoning.
-
----
-
-### Date
-2026-07-21 (OMS Permissions Task 5 — read-only permission management)
-
-### Prompt
-User requested implementation of "OMS Permissions Task 5": a structurally read-only Filament `PermissionResource` (`النظام` → `الصلاحيات`) letting authorized users list/search/filter (by module and guard)/view every permission — Arabic label, technical name, associated roles — while never allowing manual create/edit/delete/force-delete/bulk actions or direct role-permission assignment from this page, including for a real Super Admin. Detailed constraints: add one new permission `permissions.sync` (`مزامنة الصلاحيات`, group `النظام والصلاحيات`), treat it as protected (`permissions.*` prefix), default it to Super Admin only, update registry/sync tests for the new total count; use `Spatie\Permission\Models\Permission` (no custom model unless proven necessary), a dedicated `PermissionPolicy` explicitly registered in `AppServiceProvider` (model lives outside `App\Models`), and an explicit note that Policy denial alone is insufficient because `Gate::before` bypasses Policies for Super Admin — `PermissionResource` must structurally disable every mutation route/action regardless; register only list/view routes, no Create/Edit pages, hard-override all `canX()` mutation methods to `false`; add a confirmation-gated header sync action calling the existing `PermissionSyncService` through a new small `PermissionManagementService` (never an Artisan shell-out), requiring authenticated actor + exact `Super Admin` role + `permissions.sync` ability all together, rejecting a non-Super-Admin even if manually granted `permissions.sync`, proven via a genuinely crafted request rather than assuming the hidden button is sufficient, and leaving all authorization/user tables unchanged on rejection; show an Arabic completion notification with the service's actual result keys; keep custom/legacy permissions visible and untouched; verify RoleResource compatibility with zero redesign. 42 specific test scenarios requested across policy/resource-access, structural read-only protection, display behavior, synchronization-action authorization, and regression categories, run in a specified verification order. No migrations, no financial-logic/report/UserResource/RoleResource-behavior changes, no real database writes, no staging/commit until reviewed — with an explicit final report format (files changed, permission count, policy map, structural protections, test counts, git status/diff --stat).
-
-### Purpose
-Complete the last remaining item of the original OMS permissions-phase plan (Tasks 1 → 2A → 2B → 3 → 4 → 5): give authorized operators visibility into the full permission catalog (technical names, Arabic labels, module grouping, which roles use each permission) without opening any path to accidentally or maliciously mutate permission data outside the code-controlled `PermissionRegistry` → `PermissionSyncService` pipeline, and let an authorized Super Admin safely re-run synchronization from the UI after a registry change instead of needing shell/SSH access to the server.
-
-### Result
-Implemented exactly as scoped — see `docs/TASKS_LOG.md` (2026-07-21 "Task 5" entry) for the full file list, commands, and counts, and `docs/DECISIONS_LOG.md` (three 2026-07-21 entries) for the exact-Super-Admin-role-check, structural-mutation-override, and new-permission-group reasoning. `PermissionRegistry` grew by exactly one permission (154 → 155); `RoleManagementService`'s pre-existing `permissions.`-prefix protection covered the new permission automatically, requiring zero changes to `RoleResource`/`RoleManagementService`/`RoleForm`. 39 new tests across 5 new files plus 1 new test each in 2 existing files, run in the requested order; full suite 760/763 excluding the same 3 pre-existing, unrelated gaps recorded in every prior task's log (`ExampleTest`, 2 `ResourceHttpAuthorizationTest` read-only-resource skips, 1 `tests/Feature/Users` risky flag — confirmed via `git status --short` to be outside every file this task touched). Not staged, not committed — diff and full verification shown for approval first.
-
----
-
-### Date
-2026-07-19 (OMS Permissions Task 2A — Filament Resource/RelationManager authorization)
-
-### Prompt
-User requested implementation of "OMS Permissions Task 2A": wire the Task 1 permission foundation into authorization for all existing Filament Resources and RelationManagers (report/export authorization explicitly deferred to Task 2B). Detailed constraints: use native Laravel Policies with Spatie permission checks, prefer a small reusable base policy/trait over duplicating CRUD logic per policy, verify Laravel/Filament policy auto-discovery via tests rather than assuming it, follow the standard `<module>.view_any/view/create/update/delete/restore` permission-name convention, keep `deleteAny`/`restoreAny` following `delete`/`restore`, never introduce a normal `force_delete` permission (Super-Admin-only via the existing `Gate::before` bypass), preserve `TransactionResource`/`TransactionLineResource`'s existing hardcoded read-only `canX()` overrides unchanged, leave `UserResource`/`UserPolicy` untouched (Task 3's job), protect a named list of 23 resources across Financial/Projects/Partners/Settings-reference-data/System groups, protect the 5 existing RelationManagers using the *related* model's permissions (explicitly: viewing a Project must not grant `project_costs.create/update/delete`), keep the existing `withoutGlobalScopes([SoftDeletingScope::class])` route-binding calls but enforce soft-delete behavior at the authorization layer (trashed record not normally editable/re-deletable/openable, restore requires its own permission and only applies to a trashed record, force-delete stays Super-Admin-only), use genuine HTTP tests under normal `APP_ENV=testing` (no `app.env=local` workaround) for direct-URL protection, use data-driven tests rather than one duplicated class per resource, add a dedicated policy-discovery-verification test for the two intentionally swapped model↔permission-prefix pairs (`ProjectCostBudget`↔`project_cost_budgets_payments`, `ProjectCostBudgetsPayment`↔`execution_payments`, confirmed during the Task 2 discovery audit), and update only the project-memory docs required by CLAUDE.md afterward. No migrations, no financial-logic changes, no staging/commit until reviewed.
-
-### Purpose
-Close the gap the Task 2 discovery audit found: zero authorization was wired to any of these 23 Filament Resources despite `PermissionRegistry` already defining and assigning every relevant `<module>.*` permission — meaning any authenticated non-Super-Admin user could currently view/edit/delete/create across every financial and reference-data resource in the panel, regardless of role. Doing this as Task 2A (Resources/RelationManagers only) keeps the diff reviewable and defers the separate, differently-shaped problem of report-page/export authorization to Task 2B rather than conflating the two.
-
-### Result
-Implemented as described in `docs/TASKS_LOG.md` (2026-07-19 "OMS Permissions Task 2A" entry) and `docs/DECISIONS_LOG.md` (four 2026-07-19 "OMS Permissions Task 2A" entries: Policy-only architecture with no Resource-level `canX()` duplication, the uniform soft-delete rule with its read-only-audit exception, the deliberately-swapped permission-prefix pair, and the navigation-visibility test substitution). One reusable `App\Policies\Concerns\AuthorizesCrud` trait + 23 Policy classes were added — zero Resource, RelationManager, Page, Form, Table, or financial-service file was modified, confirmed by `git status --short`/`git diff --stat` showing every change as a new untracked file. Filament's RelationManager-authorizes-against-the-related-model behavior was verified empirically (read from vendor source, then proven via `Livewire::test()` against all 5 existing RelationManagers) rather than assumed, per instructions. One test category (cold/post-request static `canViewAny()`/`shouldRegisterNavigation()` calls) proved environment-flaky for reasons unrelated to permission correctness and was replaced with an equally rigorous but more reliable substitute — documented as its own decision rather than silently worked around. 285 new test assertions across 5 new test files (2 unit-level, 3 feature-level with real HTTP/Livewire round trips) all pass; the entire `tests/Feature/Permissions` namespace (new + pre-existing) is 273/275 (2 expected skips); full suite is 513/516 (the same single pre-existing unrelated `ExampleTest` failure recorded in every prior task's log since 2026-07-15), with all 5 financial-workflow test namespaces passing unmodified. Not staged, not committed — diff and full verification shown for approval first.
-
----
-
-### Date
-2026-07-19 (correction 3 — no hardcoded bootstrap credential + soft-delete-safe seeding)
-
-### Prompt
-Final focused security correction before Task 1 could be committed: user flagged that `DatabaseSeeder` still contained a hardcoded bootstrap administrator email/password (`superadmin@oms.com` / `password123`) — explicitly unacceptable in source control for a permissions/security task — plus a real soft-delete edge case (unique `users.email` constraint could cause a duplicate-email failure if the bootstrap email already existed as a soft-deleted user). Required: introduce configuration-backed bootstrap admin settings (email/name/password) reading environment variables through config rather than directly, with no real credential ever in source; when an active Super Admin already exists, skip entirely and touch nothing; when none exists, require the configured email+password (fail clearly with a `RuntimeException`, no password exposed, no partial user created on failure) and handle a `withTrashed()` lookup by that email across three cases — no row (create), active row (promote only, no credential overwrite), soft-deleted row (restore + reset password, never a duplicate). 12 specific tests requested, synthetic test credentials only, no migrations, no redesign, no staging/commit.
-
-### Purpose
-Eliminate a real credential-in-source-control risk (a fixed password checked into git is a leak the moment the repository is cloned anywhere, independent of whether it's ever run) and make the seeder's bootstrap logic correct against the database's actual unique-email constraint, rather than something that would only work by coincidence on a clean database.
-
-### Result
-Implemented exactly as scoped — see `docs/TASKS_LOG.md` (2026-07-19 "correction 3" entry) for the full file list and verification, and `docs/DECISIONS_LOG.md` (three 2026-07-19 "correction 3" entries) for the config design, the `withTrashed()` three-branch handling, and the reasoning behind resetting the password only on restore (never on an already-active existing user). New `config/oms.php` holds `bootstrap_admin.{email,name,password}`, all `env()`-sourced with no default password; `DatabaseSeeder::seedSuperAdmin()` reads only that config, never `env()` directly, and throws a `RuntimeException` (env var names only, never a value) if required config is missing when no Super Admin exists yet. `.env.example` documents the three new optional variables as blank placeholders. `DatabaseSeederSuperAdminTest` fully rewritten (13 tests, up from 8) around a synthetic test-only fixture, covering every required case including a dedicated "exception message never contains the password" test. `grep -rn "password123|superadmin@oms.com" app/ database/seeders/ config/` confirms zero matches — no hardcoded credential remains anywhere. All permissions tests together: 38/38 passed, 466 assertions; full suite: 247/248 (the same single pre-existing unrelated `ExampleTest` failure recorded since 2026-07-15). Post-run tinker re-check confirmed the real local database remained completely untouched. Not staged, not committed — diff and full verification shown for approval first.
-
----
-
-### Date
-2026-07-19 (correction 2 — FilamentUser panel access + duplicate-Super-Admin-safe seeder)
-
-### Prompt
-Following the prior correction (real admin account identification + completed real HTTP tests), user identified two remaining focused issues before Task 1 could be committed. (1) The real HTTP tests required a test-only `config(['app.env' => 'local'])`, which masks a genuine production risk: Filament rejects every user in any non-`local` environment unless the User model implements `Filament\Models\Contracts\FilamentUser`. Required implementing `canAccessPanel(Panel $panel): bool` on `User` — entry-only (no resource permission checks, no Super Admin grant, no hardcoded email/ID/role, leaving all real authorization to `Gate::before`/Policies/Resources/Pages), equivalent to `! $this->trashed()` — and removing the workaround, with the real HTTP tests passing under the suite's normal `APP_ENV=testing`. (2) `DatabaseSeeder` still targets `superadmin@oms.com` while the real admin is `oms@oms.com`; required the smallest safe fix — skip the bootstrap-user creation entirely when any non-soft-deleted user already holds the exact `Super Admin` role, never modify an existing administrator, preserve clean-install bootstrap behavior otherwise (same hashing, no new credentials), and keep `oms:sync-permissions` creating zero users while still warning on zero Super Admins. Ten specific tests requested, no migrations, no redesign, no staging/commit.
-
-### Purpose
-Close a real production authorization gap (silent panel lockout in any non-local environment) rather than paper over it with a test-only environment override, and make the seeder genuinely safe to run against a database that already has a real administrator under a different email than its hardcoded bootstrap default — without ever risking a duplicate admin account or touching the real one.
-
-### Result
-Implemented exactly as scoped — see `docs/TASKS_LOG.md` (2026-07-19 "correction 2" entry) for the full file list and verification, and `docs/DECISIONS_LOG.md` (two 2026-07-19 "correction 2" entries) for the reasoning behind `canAccessPanel()`'s minimal scope and the role-based (not email-based) duplicate-admin check. `User` now implements `FilamentUser`; the `app.env` workaround is gone from `UserResourceLockdownTest`, whose 4 real-HTTP tests (403/200 on list/create/view/edit) pass unmodified under normal `APP_ENV=testing`. `DatabaseSeeder::seedSuperAdmin()` now skips bootstrap creation whenever any active user already holds `Super Admin`, verified by 8 new tests including an explicit "existing admin is not modified" assertion (email/name/password hash/`updated_at`/role set all unchanged) and a soft-deleted-doesn't-block-recovery case. 12 new tests total; all permissions-related tests together: 33/33 passed, 444 assertions; full suite: 242/243 (the same single pre-existing unrelated `ExampleTest` failure recorded since 2026-07-15). Post-run tinker re-check confirmed the real local database remained completely untouched. Not staged, not committed — diff and full verification shown for approval first.
-
----
-
-### Date
-2026-07-19 (correction — real admin account + completed real HTTP authorization tests)
-
-### Prompt
-Following the Task 1 permissions-foundation pass, user corrected that the real administrator account is `oms@oms.com`, not `superadmin@oms.com` (the email the prior pass had searched for when reporting no seeded Super Admin user existed) — explicitly noting that negative result must not be treated as proof no Super Admin exists. Requested: a read-only re-check (existence, not-soft-deleted, exact `Super Admin` role, `Gate::before` recognition, `UserResource` access) of `oms@oms.com` against the real local DB with zero writes and no new admin account created; inspecting and reporting `DatabaseSeeder`'s current admin-seeding behavior without changing it unless clearly required (report the proposed change first if so); keeping/adding a useful `oms:sync-permissions` warning for zero Super-Admin-role users while never creating a user from that command; and — explicitly — completing the real HTTP-level 403/200 authorization tests for `UserResource` that the prior pass had substituted with direct `canX()` assertions after hitting an environment issue. No staging or committing.
-
-### Purpose
-Correct a factual error before it could propagate (searching the wrong email and concluding "no Super Admin exists"), get a genuine end-to-end proof that a normal user is HTTP-403'd and the real admin isn't — not just a proxy assertion at the authorization-method level — and get an explicit, honest report on a real seeder/admin-email mismatch rather than silently working around or ignoring it.
-
-### Result
-Read-only tinker check (zero writes — only `where()`/`hasRole()`/`Gate::allows()`/`canViewAny()`/`canCreate()`, plus in-memory-only `Auth::setUser()`/`forgetUser()`) confirmed all 4 requested facts for `oms@oms.com`. Found and reported the `DatabaseSeeder` mismatch (`seedSuperAdmin()` hardcodes `superadmin@oms.com`) without changing it, with a proposed fix left pending approval — see `docs/DECISIONS_LOG.md`. While completing the real HTTP tests, found the actual root cause of the earlier 403s was not a session/`actingAs()` problem as first assumed, but `Filament\Http\Middleware\Authenticate`'s hardcoded rule that a user model without `FilamentUser` can only access the panel when `config('app.env') === 'local'` — true even for an authenticated Super Admin under `APP_ENV=testing`. Fixed with a test-only `config(['app.env' => 'local'])`, no production file touched. `UserResourceLockdownTest` now performs genuine `$this->get()` requests (403 for a normal user on list/create/view/edit, 200 for Super Admin on all four). Added the requested sync-command warning as a read-only headcount (`super_admin_user_count`), verified by a test asserting the command creates zero users. 21/21 permission-foundation tests pass (2 new), full suite 230/231 (same single pre-existing unrelated `ExampleTest` failure). Post-run tinker re-check confirmed the real local DB was untouched (user/permission/role counts identical to before). Not staged, not committed — see `docs/TASKS_LOG.md` (2026-07-19 correction entry) for exact verification output.
-
----
-
-### Date
-2026-07-19 (OMS permissions foundation — Task 1)
-
-### Prompt
-Following the same-day read-only roles/permissions audit (see the entry below), user requested implementing "Task 1" only: the permissions foundation. Explicit scope: `Gate::before` Super Admin bypass (role name exact match, `null` for everyone else, never bypass guests, no recursion via `can()`), a central `PermissionRegistry` reusable by sync/seeding/labels/tests using `module.action` naming (with the exact confirmed-inventory module list, operation sets per module category, and 6 report pages), an idempotent `oms:sync-permissions` command/service (create-only for permissions, never delete, only touch the 5 named system roles, never modify custom roles), the exact default permission matrix for the 5 system roles (explicit inclusion/exclusion rules per role), and — flagged as the critical immediate risk — locking the currently wide-open `UserResource` down to Super Admin only via real authorization (not navigation hiding), as a temporary measure pending the full user-management safety phase (Task 3). Explicitly out of scope: RoleResource/PermissionResource, protecting the other 24 resources, Filament Shield, any migration, is_active field, last-Super-Admin logic. Required 20 specific tests, refactoring (not deleting) the old coarse `DatabaseSeeder` permissions, documentation updates, and running the sync command against the local DB after tests pass — explicitly no staging/commit, wait for approval.
-
-### Purpose
-Close the most urgent gap the audit found (any authenticated user could manage users and assign any role, including a future Super Admin) with the smallest safe, fully-tested foundation, before building the larger granular-permission/RoleResource/PermissionResource work on top of it in later tasks.
-
-### Result
-Implemented exactly as scoped — see TASKS_LOG.md (2026-07-19 entry) for the full file list and verification, and DECISIONS_LOG.md (five 2026-07-19 entries) for the judgment calls made where the instructions were ambiguous (Viewer's report-permission exclusion, `execution_payments`'s operation set, the `UserPolicy` hardcoded-lockdown vs. granular-permission choice, and the `UserResourceLockdownTest` assertion strategy). One real environment issue was found and worked around during test-writing: full HTTP requests against Filament panel routes lose `actingAs()` in this environment (pre-existing, unrelated to this change — confirmed the whole prior suite already avoids this) — resolved by asserting directly against `UserResource::canX()`, the same authorization decision Filament's own code uses to produce a 403. 19/19 new tests pass; full suite 228/229 (the same single pre-existing unrelated `ExampleTest` failure recorded in every prior task since 2026-07-15). `oms:sync-permissions` run against the real local database after tests passed (154 permissions created, 5 system roles already present, per-role counts recorded) and confirmed idempotent on a second run. Not committed — diff and full verification shown for approval first.
-
----
-
-### Date
-2026-07-19 (OMS roles and permissions — read-only discovery and design)
-
-### Prompt
-User requested a read-only discovery-and-design pass opening the OMS roles-and-permissions phase — explicitly no file edits, no migrations, no seeding, no package installs, no commits. Ten phases requested: audit current authorization (User/HasRoles, Spatie tables, Super Admin mechanism, Gate::before, policies, Filament Shield, menu-only vs. real enforcement, direct-URL/action/export protection, existing user/role/permission management pages); a focused Filament inventory (resources, pages, relation managers, actions, exports, nav groups) with required permission operations per item; a 5-role default matrix (Super Admin/Admin/Accountant/Project Manager/Viewer) based on actual modules found; management-page designs for Users/Roles/Permissions with explicit safety rules (no self-elevation, non-Super-Admin can't touch Super Admin, last-active-Super-Admin protections); an authorization architecture recommendation (native Policies + Spatie + Gate::before, preferring existing packages, not recommending Filament Shield unless clearly justified); a naming convention; a seeding/sync design; explicit Super-Admin safety-layer breakdown; a focused test plan; a phased implementation plan; and a 14-section Arabic report as the only output, using Graphify/targeted file reads only (no full repo scan) and reporting any uncertainty explicitly rather than guessing.
-
-### Purpose
-Establish ground truth on exactly how much (or how little) real authorization exists today before designing or building anything, so the eventual implementation is scoped against confirmed facts — not assumptions — about this specific codebase's Filament resources, models, and existing (non-existent) enforcement.
-
-### Result
-Audit found `spatie/laravel-permission` installed and `User::HasRoles` wired, Spatie tables present, and a `DatabaseSeeder` that seeds a coarse permission/role grid and one Super Admin user — but confirmed **zero actual enforcement** anywhere: no `Gate::before`, no Policies, no Filament Shield, no resource/page authorization overrides except two hardcoded-`false` read-only locks on `Transactions`/`TransactionLines` (a pre-existing business rule, not a permission system). `UserResource` existed but was completely open to any authenticated user, including unrestricted role assignment — flagged as the critical immediate risk. Delivered the full 14-section Arabic report covering all 10 phases, including a confirmed inventory of 25 Filament resources across 5 nav groups (already including a `النظام` group matching the requested sidebar structure), 5 relation managers, and 6 custom report pages with export actions, plus one explicitly-flagged uncertainty (`ExecutionPaymentResource`/`ProjectCostBudgetsPaymentResource` share the same underlying model with near-identical query scoping — flagged for clarification before full resource protection, not guessed). No files modified, no `graphify update` run (nothing changed), nothing staged or committed, per instructions.
-
----
-
-### Date
-2026-07-18 (financial transaction balance guard — automated verification completion)
-
-### Prompt
-User requested completing the missing automated verification for the previously-implemented `FinancialTransactionBalanceGuard` (approved structure, not yet committed) without changing the approved accounting implementation: unit tests for the guard directly (an extensive named list of COMMON PAYLOAD / SINGLE-CURRENCY / MULTI-CURRENCY cases), focused integration tests for all 5 workflows (valid Create/Edit succeed; invalid payload rejected before mutation; counts/balances unchanged; Edit rejection leaves old lines/balances unchanged; an explicit `EditProjectCostReceipt` update-in-place regression), a specified 6-step test-run order with exact reported counts, targeted-search confirmation of 6 specific invariants (no naive cross-currency sum, validate-before-transaction in all 10 paths, exact-payload insert/update with no recalculation, no `<= 0.01` tolerance, no formula change, no delete/reversal change), documentation updates required by CLAUDE.md only, and an explicit "do not stage, do not commit, wait for approval" constraint.
-
-### Purpose
-Turn the previously-approved-but-unverified guard implementation into a fully test-backed, independently-confirmed change before it is ever committed — closing the gap between "the design is approved" and "the code actually does what was approved, provably, with tests that could not have been satisfied by weakening production code."
-
-### Result
-Writing the requested unit tests surfaced that the guard (as implemented in the prior pass) did not yet check several things the test matrix required — see `docs/DECISIONS_LOG.md` for why closing those gaps by extending the guard (not the workflow files) was the correct call. Added 34 unit tests + 22 integration tests (all passing), ran the 6-step sequence exactly as specified (34/34 → 22/22 → 26/26 → 53/53 → 69/69 → 206/207, the 1 full-suite failure being the same pre-existing unrelated `ExampleTest` seen in every prior task), and confirmed all 6 targeted-search invariants hold. See `docs/TASKS_LOG.md` (2026-07-18, this entry's task) for the exact commands and `docs/AI_PROJECT_MEMORY.md` for the full guard description (this pass also backfilled memory/task documentation for the two prior undocumented passes — the read-only discovery/design and the initial guard implementation — since neither had been logged yet). Not staged, not committed at this point — diff and full test results shown for approval first.
-
-**Follow-up correction (same day, before commit):** the reviewer flagged that the guard let a *missing* `fx_rate` silently default to `1.0` — needed because `EditProjectCostReceipt`'s in-place update payload never set that key — as conflicting with the "no financial value silently assumed" requirement, and as capable of hiding a historically-corrupted stored `fx_rate`. Required correction: make `fx_rate` genuinely required everywhere with no fallback, and fix the one file with the actual gap (`EditProjectCostReceipt`) to explicitly write `fx_rate = 1`, plus tests proving the guard now rejects a missing `fx_rate`, proving a valid receipt Edit normalizes a corrupted stored `fx_rate` to `1`, and proving a rejected Edit still leaves it untouched. Implemented exactly as scoped — 2 more guard unit tests, 1 more integration test, both existing final counts re-verified (209/210, same 1 pre-existing unrelated failure) — approved, staged, and committed as `validate transaction balance with multi-currency support`. See `docs/DECISIONS_LOG.md` and `docs/TASKS_LOG.md` (both 2026-07-18 correction entries) for full detail.
-
----
-
-### Date
-2026-07-18 (server-side financial account validation)
-
-### Prompt
-User requested a focused read-only audit of server-side financial account validation across the 4 workflows that still relied mainly on Filament Select filtering (receipts, project cost budget payments, general expenses, general exchanges — execution payments already had a guard), asking for confirmed affected files, a per-field validation matrix, confirmed vulnerabilities with file/line references, business decisions needing confirmation, a minimal implementation plan, tests, and risk sizing — no changes yet. After reviewing the audit, user approved specific business rules (same account legally allowed on both sides of any operation, always; every account must exist/not-be-trashed/match type-bank-currency; Create requires every account active; Edit allows an unchanged historical account to stay inactive but requires a newly-selected replacement to be active; no historical data touched) and requested implementation: one reusable `FinancialAccountGuard` service with a focused `assertAccountMatches()` base method, wiring it into all 8 Create/Edit pages before any mutation, extending `ExecutionPaymentForm::validateCreditAccount()` only for active-account consistency, focused tests, and no staging/committing.
-
-### Purpose
-Close a real financial-integrity gap (a submitted account_id could bypass the rendered Select options entirely, and every balance-update call silently skipped on a missing/deleted account while still writing the transaction line) with the smallest safe, fully-tested change, in two phases (audit-then-approve) so the exact business rules — especially the Create-vs-Edit active-account split — were confirmed before any code changed.
-
-### Result
-Audit phase produced the affected-files/validation-matrix/vulnerabilities cited above (see `docs/TASKS_LOG.md` 2026-07-18 entry, not separately logged as its own task since no code changed in that phase). Implementation phase added `App\Services\Validation\FinancialAccountGuard` (`assertAccountMatches()`, batch `assertAccounts()`, `requireActiveOnChange()`), wired it into all 8 Create/Edit handlers before `DB::transaction()` (Edit pages restructured to fetch pre-mutation saved lines before the guard call, to compute per-role active requirements), replaced every `Account::find($data[...])?->increment/decrement()` with the guard-verified `Account` instance, and additively extended `ExecutionPaymentForm::validateCreditAccount()` with two optional active-account parameters. Added 60 new/targeted tests (150/151 full suite, 1 pre-existing unrelated failure), including a same-account-on-both-sides acceptance test per the approved rule. See `docs/TASKS_LOG.md`, `docs/AI_PROJECT_MEMORY.md`, and `docs/DECISIONS_LOG.md` (2026-07-18 entries) for full detail. Not committed, per instructions — diff shown for approval first.
-
----
-
-### Date
-2026-07-18 (positive-amount validation)
-
-### Prompt
-User requested a focused read-only audit of positive-amount validation across the 5 financial workflows (receipts, disbursements, execution payments, general expenses, general exchanges), asking for confirmed affected files, a per-field UI/server validation table, edge cases needing business decisions, a minimal implementation plan, tests, and risk sizing — no changes yet. After reviewing the plan, user approved specific business rules (amount ≥ 0.01; fx_rate > 0, no silent 0→1 fallback; percentages in [0,100] with combined < 100; derived amounts > 0; execution-payment over-budget behavior unchanged; other workflows' account/currency revalidation out of scope) and requested implementation: Filament form constraints, one reusable `FinancialAmountGuard` service, wiring it into all 10 Create/Edit pages before any mutation, removing the unsafe `fx_rate ?: 1` fallback in the two deduction/FX workflows only, focused tests, and a `git diff --stat` + summary before any commit (no commit without approval).
-
-### Purpose
-Close a real financial-integrity gap (zero/negative amounts, FX rates, and percentages could previously post into the double-entry ledger with no server-side check) with the smallest safe, fully-tested change, in two phases (audit-then-approve) so the exact business rules were confirmed before any code changed.
-
-### Result
-Audit phase produced the affected-files/validation table cited above (see `docs/TASKS_LOG.md` 2026-07-18 audit summary, not separately logged as a task since no code changed in that phase). Implementation phase added `App\Services\Validation\FinancialAmountGuard`, `minValue()`/`maxValue()` constraints on 5 Forms, guard calls in all 10 Create/Edit handlers before `DB::transaction()`, replaced the 4 unsafe `?: 1` fx_rate fallbacks on submitted data with `?? 1`, and added 33 new/targeted tests (104/105 full suite, 1 pre-existing unrelated failure). See `docs/TASKS_LOG.md`, `docs/AI_PROJECT_MEMORY.md`, and `docs/DECISIONS_LOG.md` (2026-07-18 entries) for full detail. Not committed, per instructions — diff shown for approval first.
-
----
+Reusable prompt patterns and short references to past prompts. What was done lives in TASKS_LOG; decisions in DECISIONS_LOG.
 
 ## Prompt Template
 
@@ -1149,772 +10,289 @@ Audit phase produced the affected-files/validation table cited above (see `docs/
 
 ### Purpose
 
-### Result
-
 ---
 
 ### Date
-2026-07-16 (General Exchange rearrangement)
+2026-10-11 (both financial reports: "SEPARATE DATA EXPORT FROM STATISTICS EXPORT" → "Word must ALSO become STATISTICS-ONLY" → "FINAL PRE-COMMIT — single-sheet statistics Excel + safe dead-code cleanup")
 
 ### Prompt
-User requested a UI-layout-only rearrangement of the General Exchange form (previously left unchanged by the general layout-standard task as a multi-account form): move "تفاصيل المعاملة" and "النسب والمبالغ" to a top row (تفاصيل المعاملة right, النسب والمبالغ left on desktop, تفاصيل المعاملة first on mobile), move the full "الحسابات" section underneath (full width, internal order/fields untouched), and keep "المرفقات" last. Explicit no-touch list (accounting logic, calculations, percentages, currencies, validation, live callbacks, account filtering, transaction lines, balances, descriptions, models, migrations, reports, exports) and explicit instruction not to modify `CreateGeneralExchange.php`/`EditGeneralExchange.php`.
+CSV = detail rows only (one plain CSV when enough, ZIP only when needed); Excel and Word = the same statistics only, Excel on one RTL worksheet; re-decide the Word limit from the statistics workload; Excel == Word with 0 differences; remove only proven-dead code.
 
 ### Purpose
-Fix the General Exchange form's visual imbalance (large accounts section previously sitting beside/between the transaction sections) using the same RTL-aware native-Grid approach already applied to the other financial forms, without touching any of its multi-account calculation/deduction/fx logic.
-
-### Result
-Wrapped "تفاصيل المعاملة" (first, renders right) and "النسب والمبالغ" (second, renders left) in a `Grid::make(['default' => 1, 'lg' => 2])`; moved the unchanged "الحسابات" section underneath, full width; "المرفقات" stays last. Every field, callback, option query, and helper method in `GeneralExchangeForm.php` is byte-identical to before — only the top-level component tree was rearranged. 70 relevant existing tests pass; no dedicated form test exists for this page. See TASKS_LOG.md and AI_PROJECT_MEMORY.md (2026-07-16 General Exchange entries) for full detail. Not committed, per instructions.
+- "If one CSV is enough, use one data CSV" → the user chose a plain CSV up to 100,000 rows and a ZIP above. "Before/after" on a noisy laptop → an interleaved A/B against an exact copy of the old code.
+- "Do NOT keep a too-many-movements refusal just because it existed before" and "Audit references FIRST" (code, routes, config, views, tests, database, Graphify) before deleting anything.
 
 ---
 
 ### Date
-2026-07-16 (UI layout standard)
+2026-10-10 ("NEXT TASK — ULTRA-FAST CSV EXPORT FOR COMPREHENSIVE FINANCIAL TRANSACTIONS")
 
 ### Prompt
-User requested implementation of an approved responsive UI layout standard for credit/debit account sections across the OMS financial forms: desktop shows creditor right / debtor left side by side with equal width, mobile stacks creditor above debtor, using native Filament v5 responsive Grid columns (no custom CSS unless unavoidable) and verified against real RTL rendering rather than source order alone. Named General Expenses as the primary page to fix (currently debit-before-credit and visually unbalanced), plus Project Cost Receipts and Execution Payments (preserving the just-implemented editable credit-account cascade exactly), with an explicit multi-account-forms rule for the disbursement and general-exchange forms (source/credit first, don't force a two-column split, leave unchanged and report the reason if restructuring would be risky). Required the same mandatory pre-read/git-check/Graphify-first workflow, no commit/push, and a full verification + visual checklist.
+The Account Statement CSV idea on the comprehensive report: applied filters, all lines from the real-time projection, 16 detail columns, consistent under concurrent writes, measured floors and matrix, independent 0-difference verification.
 
 ### Purpose
-Make the credit/debit account sections visually balanced and consistent across the financial forms without touching any accounting calculation, saved data, or field behavior.
-
-### Result
-Wrapped the credit and debit `Section`s of `GeneralExpenseForm.php` and `ProjectCostReceiptForm.php` in a shared `Grid::make(['default' => 1, 'lg' => 2])`, credit section reordered first (both were debit-first before); `ExecutionPaymentForm.php` only needed the `Grid` wrap since its credit section was already first. Multi-account forms (`ProjectCostBudgetsPaymentForm.php`, `GeneralExchangeForm.php`) were left unchanged with the reasoning documented, per the task's own escape hatch. 40 targeted tests + full suite (78/79, same pre-existing unrelated failure) confirm zero behavioral regression. See TASKS_LOG.md, AI_PROJECT_MEMORY.md, and DECISIONS_LOG.md (2026-07-16 layout entries) for full detail. Not committed, per instructions.
+- "If MySQL needs 12 seconds just to read the rows, say so clearly" → a per-column floor breakdown that exposed two avoidable costs before the physical floor.
+- "Do not deliver a mixed-time export" → the start-marker / re-verify protocol proving one instant.
 
 ---
 
 ### Date
-2026-07-16 (implementation)
+2026-10-08 ("NEXT TASK — ACCOUNT STATEMENT ULTRA-FAST CSV EXPORT")
 
 ### Prompt
-Following a read-only audit of the Execution Payment credit-account flow (same-day, prior prompt), user approved implementation with explicit constraints: smallest safe change set, mandatory pre-read of CLAUDE.md/Master Reference/memory docs, `git status`/`migrate:status` checks first, stop-and-ask if code differed materially from the audit, no commit/push, exact field names and behavior for the new credit-account cascade, mandatory server-side re-validation independent of Select options (with Arabic `ValidationException` messages), exact Create/Edit handler responsibilities, 7 named required test scenarios with a specific list of assertions each, and a full verification checklist (lint, new tests, existing description/financial tests, full suite with pre-existing-failure separation, route inspection, `optimize:clear`, `graphify update .`, explicit list of commands NOT to run).
+«تصدير CSV» on the Account Statement: streamed from the projection, exact per-account running balance, Excel-friendly and formula-safe, 1M rows in ≤ 5 s as a stretch target with an A–F floor test.
 
 ### Purpose
-Implement the approved future behavior for `/admin/execution-payments/create`: move "الحساب الدائن" above "الحساب المدين (المستفيد)", make the credit account a real editable same-currency cascade (still auto-defaulting from the budget's destination account), and fix the pre-existing Edit drift bug identified during the audit — without a migration and without touching any of the explicitly listed protected files (models/enum/builders/disbursement flow/reports/snapshots).
-
-### Result
-Implemented exactly as scoped in 3 files (`ExecutionPaymentForm.php`, `CreateExecutionPayment.php`, `EditExecutionPayment.php`), no migration, no protected file touched. 7 new tests added and passing; existing description/financial suites (70/70) and the full suite (78/79, 1 pre-existing unrelated failure) confirmed unaffected. Routes unchanged. `optimize:clear` and `graphify update .` run. See TASKS_LOG.md, AI_PROJECT_MEMORY.md, and DECISIONS_LOG.md (2026-07-16 entries) for full detail. Not committed, per instructions.
+- "If 5 seconds is physically impossible, report the real measured lower bound" and "Do not remove financially useful information just for speed".
 
 ---
 
 ### Date
-2026-07-16 (audit)
+2026-10-07 ("MAJOR TASK — REDESIGN THE ACCOUNT STATEMENT FOR MULTI-ACCOUNT REPORTING, EXTREME SPEED, AND HIGH FLEXIBILITY")
 
 ### Prompt
-User requested a read-only discovery and impact audit (no edits, no migrations, no commits, lowest-token-consumption, Graphify-first) of the Execution Payment (`صرف مبالغ التنفيذ`, `/admin/execution-payments/create`) credit/debit account flow, ahead of a planned change to move the credit-account section above the debit section and make the credit account user-editable (defaulting from the budget's destination account, same-currency only) while preserving balanced double-entry accounting and historical accuracy on Edit. Required a specific mandatory output format answering 27 numbered questions with direct code evidence, exact file paths, and a minimal-change recommendation — explicitly not to implement anything.
+Multi-account statement with per-account running balances, multi-value filters with server-searchable pickers, 50-row keyset paging, < 1 s at ~1M rows, no queue for browsing; audit and baseline first; verifier, rebuild, parity and benchmark matrix.
 
 ### Purpose
-Establish, with verified code evidence rather than assumptions, exactly where the credit account is currently auto-selected, where (if anywhere) it is authoritatively stored, whether a migration would be needed to make it editable, and the safest currency-restriction rule — before any implementation prompt was issued.
-
-### Result
-Delivered the 13-section audit report: confirmed the credit account is currently a display-only, non-dehydrated field recomputed from `ProjectCostBudget::LINE_DESTINATION` on every Create/Edit save (not stored on the domain record); confirmed no migration is required since `transaction_lines.account_id` on the `LINE_CREDIT`/`execution_source` line is already the authoritative, mutable store; discovered a pre-existing Edit drift bug (historical credit account silently recomputed from the budget's *current* destination on every edit); recommended same-currency-only for the replacement account. This audit directly informed the same-day approved implementation prompt above.
+- "Do NOT guess — ask only real business-semantics questions" produced the two questions that decided the design (actual vs filtered balance; empty Accounts = all matching).
+- "Do not rewrite a million rows on a backdated write" → exact checkpoint totals instead of stored running balances.
 
 ---
 
 ### Date
-2026-07-15
+2026-10-05 ("BUILD A COMPLETE, REALISTIC, FULL-SYSTEM OMS STRESS-TEST DATABASE")
 
 ### Prompt
-User requested a safe cleanup of the OMS development database: remove all operational/transactional/project/test data while preserving system configuration, donors, accounts (balances reset to 0), currencies, exchange-rate history, and users/roles/permissions. Explicit two-phase instructions: implement a dedicated `oms:clean-operational-data` Artisan command + service, run dry-run/audit only in this phase, and STOP for explicit approval before any `--apply` execution. Extensive mandatory safety rules: environment guard (local/development/testing only), confirmation-token + verified-backup-file requirements for apply, FK-safe explicit deletion order, soft-delete-aware (active+trashed) deletion, attachment file safety (only delete files deterministically linked to deleted DB rows, report orphans separately), no identity/AUTO_INCREMENT reset, and "stop and ask" if any relationship/classification is unclear rather than guessing.
+Audit first; separate `oms_stress` with hard guards; ≥ 500,000 lines from real line shapes only; deterministic seed; small smoke build before large; STOP on any integrity failure; then benchmark the real application.
 
 ### Purpose
-Prepare the dev database for clean real-data entry without risking donor, accounting-configuration, or historical exchange-rate data, and without ever touching production/staging.
-
-### Result
-Implemented `OperationalDataCleanupService` + `OperationalCleanupReport` DTO + `CleanOperationalData` console command, all schema relationships verified by reading actual migrations/models (not guessed), 20 new tests, full test suite run, dry-run executed against the real dev DB confirming zero writes. Apply was not run. See TASKS_LOG.md and DECISIONS_LOG.md (2026-07-15 entries) for full detail.
+- "STOP on any failure" mattered twice: a schema-parity abort exposed a missing plain index, and a fail-clean large build exposed a flush-order bug the small scale could not reach.
 
 ---
 
 ### Date
-2026-07-15 (execution)
+2026-10-05 ("APPROVED — COMMIT V2 FIRST, THEN AUDIT + IMPLEMENT THE FINAL REAL-TIME REPORTING PROJECTION" / "NO MySQL triggers" / "ZERO differences" / "DO NOT MIGRATE OR MODIFY THE NORMAL `oms` DATABASE")
 
 ### Prompt
-User approved execution of the previously-designed cleanup, restating the full mandatory-preservation list, attachment-safety rules, exact preconditions to check, the exact backup file path to use, the exact apply command, a 21-point post-apply verification checklist, a required second idempotence run, and full documentation/reporting requirements. When the specified backup file was found missing, a follow-up prompt explicitly chose "create a fresh mysqldump now" at that exact path, with explicit sub-requirements (create directory if missing, use the configured connection without exposing credentials, verify success and non-empty size, stop if verification fails, then continue with the approved apply).
+A synchronous projection of the comprehensive report maintained inside each business transaction; keyset pager; V2 snapshot kept for exports and fallback; the old report as oracle; one local commit only when every gate is green.
 
 ### Purpose
-Actually execute the approved, previously dry-run-only cleanup against the real dev database, with a fresh pre-cleanup backup and full independent verification.
-
-### Result
-Backup created and verified (120,266 bytes). Apply executed successfully; post-apply verification (both the command's own and an independent 21-point manual check) passed. Second apply run confirmed idempotence (zero additional changes). See TASKS_LOG.md and AI_PROJECT_MEMORY.md (2026-07-15 execution entries) for full detail.
+- "Benchmark direct aggregation first; add aggregate tables only if proven needed" and "the old report is the oracle" (a parity checker as part of the deliverable).
+- "DO NOT MIGRATE `oms`" turned a blocked step into a design fix: stress schema parity against a fresh-migration reference.
 
 ---
 
 ### Date
-2026-07-05
+2026-10-04 (comprehensive report scalability: "This is the FINAL architecture work" / "DO NOT GUESS" / "Do not fake an exact percentage" / "Do NOT silently start or install a production worker")
 
 ### Prompt
-User requested (in Plan Mode) implementation of Phase 1 of a new "ميزان المراجعة" (Trial Balance) Filament report page, following on from an earlier audit-only conversation. Key constraints specified: single required `currency_id` filter (no cross-currency blending, per the audit's finding on `debit_base`/`credit_base`), read-only, no exports, no opening/closing balance, reuse `AccountStatementPage`/`AccountStatementReportService` patterns, run `php artisan optimize:clear` after implementation (no migrations), and deliver a detailed verification report.
+Bounded keyset reading, an immutable owner-bound snapshot, snapshot paging, queued build with status polling, OpenSpout large Excel, a measured Word limit and a deployment checklist; every visible behaviour preserved.
 
 ### Purpose
-Give the accounting team a way to verify total debits equal total credits across all accounts of one currency for a given period.
-
-### Result
-Plan approved and implemented as described in TASKS_LOG.md (2026-07-05 entry) and DECISIONS_LOG.md (2026-07-05 entry). Full plan file: `C:\Users\laptop\.claude\plans\implement-phase-1-trial-wiggly-lark.md`.
+- Measure before and after with the same harness, against a frozen copy of the old code as oracle — the measurement caught two designs that passed every correctness test.
+- "Report every visible difference honestly" → a cell-by-cell comparison caught two real defects (14-digit rounding, "=" text becoming a formula).
 
 ---
 
 ### Date
-2026-07-05
+2026-09-26 (Muwakha 72-family import: implementation + dry run, then a separate execution authorization)
 
 ### Prompt
-User requested (in Plan Mode) Phase 2 of Trial Balance: professional Excel and Word exports mirroring the quality of `AccountStatementExcelExportService`/`AccountStatementWordExportService`/`ProjectFinancialDetailsWordExportService`. Constraints: exports must use only the applied/displayed result (never live filter state), no frozen panes but keep autofilter, real XLSX/DOCX (no CSV/HTML), verify PhpSpreadsheet/PhpWord were already installed before writing any code, no changes to `TrialBalanceReportService`'s calculations, and a detailed verification report.
+A one-time importer through the official write path only (`MuwakhaFamilyService::create()`), with approved source anomalies listed one by one; real execution authorized only in a third message, with the preflight re-run immediately before the write and before-counts / max ids recorded.
 
 ### Purpose
-Let accountants/managers download the on-screen Trial Balance as a shareable, print-ready file instead of only viewing it in the browser.
-
-### Result
-Plan approved and implemented as described in TASKS_LOG.md (2026-07-05, second entry). Same plan file, updated in place: `C:\Users\laptop\.claude\plans\implement-phase-1-trial-wiggly-lark.md`.
+- "Derive the payload field names from the real code, do not guess them from this prompt"; "Report ALL errors, not the first"; "Do NOT choose an actor yourself".
+- "Do not assume the audit_events delta" (+288 = 4 × 72) and a required post-import dry run proving duplicate protection.
 
 ---
 
 ### Date
-2026-07-06
+2026-09-26 (destructive operational-data reset — audit-only Phase 1, deletion forbidden until confirmed)
 
 ### Prompt
-User requested Phase 1 of "تقرير الحركات المالية الشامل": a read-only comprehensive financial transactions (general journal) Filament page under التقارير, one row per transaction line, date-range required filters plus optional currency (multi), category, type, account, account type, and project filters, "عرض"-gated loading, per-currency/category/type summaries, no exports, no writes, no migrations, no use of accounts.current_balance.
+Extend the existing cleanup service and command; explicit preserve / empty inventories; verified backup first; sixteen named test assertions; a pre-execution report, then STOP.
 
 ### Purpose
-Give accountants a full journal view of every accounting line in a period across all transaction sources, with balance status per currency.
-
-### Result
-Implemented directly (auto-agent mode, pre-approved) as described in TASKS_LOG.md (2026-07-06 entry) and DECISIONS_LOG.md (2026-07-06 entry).
+- "If anything differs from the audit below, STOP and ASK" — it caught omissions as well as contradictions.
+- "Do not disable foreign-key safety globally" and "do not pretend filesystem deletion can be rolled back by a DB transaction" became checkable invariants and a fail-closed guard.
 
 ---
 
 ### Date
-2026-07-06
+2026-09-28 (whole-application search: audit → Batches 0, A–G)
 
 ### Prompt
-User requested a small summary-section enhancement to "تقرير الحركات المالية الشامل": rename "عدد الأسطر" wording to "عدد بنود القيود", show "عدد المعاملات" as distinct transaction IDs (explicitly not line count ÷ 2), and make the category/type sections "إحصائيات حسب تصنيف المعاملة" / "إحصائيات حسب نوع المعاملة" show distinct transaction counts with line-based debit/credit totals still grouped per currency. No export, no accounting-logic changes, no migrations.
+An audit-only study, then one batch at a time: `ArabicSearch` proved on one page first with an explicit do-not-normalize list; master data; financial lists; display N+1; Muwakha; large lookup Selects ("the current selected value must always display"); remaining gaps. Batch G re-checked its four findings against the committed tree (`20ac78f`) before editing.
 
 ### Purpose
-Make the top statistics clearer for management/accounting: transactions counted once even when they have 2+ lines, with بنود القيود counted separately.
-
-### Result
-Implemented as described in TASKS_LOG.md (2026-07-06, second entry).
+- "Confirm the audit still matches the code" before each batch; "Do NOT mechanically make every field searchable"; "Measure the current query count first".
 
 ---
 
 ### Date
-2026-07-06
+2026-09-22 (small report / list changes fenced by an audit: debit/credit side filter, transaction-lines search, `نوع البنك` column, removing a field)
 
 ### Prompt
-User requested Phase 2 of "تقرير الحركات المالية الشامل": professional Excel (PhpSpreadsheet) and Word (PhpWord) exports mirroring the Trial Balance/Account Statement export quality. Constraints: export only the applied/displayed result (never live filter state), block export before "عرض" with a specific Arabic warning, real XLSX/DOCX, RTL, no frozen panes but keep autofilter, real numeric cells with #,##0.00, A4 portrait Tahoma Word document with footer/page numbers, per-currency separation everywhere, "الكل" for unset filters, sanitized filenames, no Maatwebsite Excel, verify packages in composer.json first.
+Each brief opened with "AUDIT CURRENT IMPLEMENTATION FIRST", named the files and facts to confirm rather than assume, and said "If the architecture differs: STOP AND ASK". The field removal was "DO NOT MODIFY ANY CODE YET" until a full impact audit (live schema, exact records) was reviewed.
 
 ### Purpose
-Let accountants/managers download the on-screen comprehensive journal as shareable, print-ready official files.
-
-### Result
-Implemented as described in TASKS_LOG.md (2026-07-06, third entry).
+- Name the forbidden inference sources (e.g. never infer the side from `line_role`) and pre-authorize the weaker option ("report a field that would make every search worse").
 
 ---
 
 ### Date
-2026-07-06
+2026-09-20 → 2026-09-21 (comprehensive report UI changes and the scroll-jitter diagnosis)
 
 ### Prompt
-User requested a full reset of operational/business data in the `oms` database to start entering clean real data, with an explicit keep list (system/auth/settings/lookup tables) and an explicit purge list (accounts, partners, projects, transactions, and related financial tables). Hard constraints: no `migrate:fresh`, no dropped tables, no migration/code changes, no deleting settings/lookup/system/auth data, no deleting storage files yet, stop and ask if any table is unclear, show KEEP/PURGE lists and wait for approval before deleting, back up first (or provide the exact `mysqldump` command), use `FOREIGN_KEY_CHECKS=0`/`1` around the purge, reset AUTO_INCREMENT, include soft-deleted rows, then run `optimize:clear` and `reports:refresh-projects-financial`, and finally show row counts to confirm.
+Audit-only first, then six approved UI / filter changes; expanded classification rendered "the SAME as the main table"; then "STOP guessing from code" — reproduce the jitter on the real authenticated page in Chrome and report evidence BEFORE modifying code.
 
 ### Purpose
-Let the user discard test/sample operational data and begin real production data entry without losing configuration, permissions, or historical schema.
-
-### Result
-Implemented as described in TASKS_LOG.md (2026-07-06, fourth entry) and DECISIONS_LOG.md (2026-07-06 entry). Backup taken at `storage/app/private/backups/oms_backup_2026-07-06.sql` before any deletion; user approved the lists via AskUserQuestion before the purge ran.
+- Specify the target by reference, not by attributes; keep a hard data / logic fence for presentation-only work.
+- Require BEFORE evidence on the real page (not a synthetic harness) and do not claim a fix until the user's exact sequence is reproduced.
 
 ---
 
 ### Date
-2026-07-06
+2026-08-19 (production bug: BUD / EXT zero percentages — diagnosis → impact audit → implementation)
 
 ### Prompt
-User requested proper accounting support for account opening balances on account creation: optional opening_balance / opening_balance_date / opening_balance_fx_rate fields on the create form only, auto-generating a balanced "قيد افتتاحي" transaction (`OPB-YYYY-XXXX`) against a clearing account "أرصدة افتتاحية", with `project_cost_id = null` so project reports are unaffected. Hard constraints: read-only impact report first then STOP for approval, no report-formula/snapshot/project-report changes, no unrelated files, reuse existing numbering/balance patterns, STOP and ASK if account nature doesn't exist or the clearing account can't be created cleanly, DB::transaction throughout, current_balance stays display-only.
+Three fenced turns: "DIAGNOSIS ONLY … Do NOT change any code yet … Do NOT guess the cause", then an impact audit, then the fix; "Do not weaken the guard".
 
 ### Purpose
-Let accountants enter real starting balances for accounts (post data-reset) through proper double-entry bookkeeping instead of hand-editing `current_balance`.
-
-### Result
-Impact report delivered; 4 decision points raised (no account nature exists → always-debit; fx_rate as metadata per existing own-currency base convention; new AccountType for clearing accounts; new super type "قيود افتتاحية") — user approved all recommended options. Implemented as described in TASKS_LOG.md (2026-07-06, fifth entry) and DECISIONS_LOG.md (2026-07-06, second entry).
+- The diagnosis-only fence showed the "device-specific" framing was wrong (the bug was input-specific).
 
 ---
 
 ### Date
-2026-07-14
+2026-08-18 (recovery after a power outage — Muwakha Family Account Statement)
 
 ### Prompt
-User requested automatic Arabic `transactions.description` generation across all 6 financial write flows (receipts, project disbursement, execution payments, general expenses, general exchanges, opening balance), with an exact stored format (`دائن: {credit} | مدين: {debit} | ملخص العملية: {summary}.`, credit before debit, `؛ ` for multiple accounts per side, English digits/2 decimals/thousands separators, currency from `transaction_lines.currency_id` not `accounts.currency_id`), one shared `TransactionDescriptionBuilder` service, per-flow Arabic summary templates with fallbacks, regeneration on edit, no second DB transaction, no migration, no historical backfill, and required a read-only impact report first (STOP for approval), then implementation with unit + targeted integration verification.
+"Do NOT assume the previous process completed cleanly"; "Do not trust prior terminal output unless reproducible from the current on-disk state"; do not recreate working code; resume from the smallest test scope.
+
+---
+
+### Date
+2026-08-16 → 2026-08-17 (Muwakha Families: read-only audit, implementation, then family-account currency, historical Account design and View-page refinements)
+
+### Prompt
+Audit whether `accounts` can represent beneficiary payment accounts before building; then tightly fenced refinements ("Do not redesign anything else … STOP AND ASK — DO NOT GUESS"), each with a numbered test list.
 
 ### Purpose
-Make every financial transaction human-readable at a glance (list/search/audit/exports) without changing any accounting calculation, balance, or currency-handling logic.
-
-### Result
-Impact report delivered and approved with clarifications (currency must come from the line not the account; exact `حساب`-prefix dedup rule; explicit validation requiring both sides non-empty or throw; summary normalization rules). Implemented as described in TASKS_LOG.md and DECISIONS_LOG.md (2026-07-14 entries). Mid-implementation, `RefreshDatabase`-based testing surfaced two unrelated pre-existing migration bugs; user was shown a full read-only investigation (exact files, error, historical batch evidence, safe-fix proposal) before approving a minimal fix for each, and approved leaving a third, MySQL-only-SQL migration incompatibility untouched. All 15 unit tests + 6 real create-flow + 5 real edit-regeneration tinker verifications passed against real dev-DB data with zero residue (rolled-back transaction).
+- "Do not guess from documentation if the actual code gives a different answer"; numbered test lists turn prose guarantees into checkable facts.
 
 ---
 
 ### Date
-2026-07-14
+2026-07-30 (roadmap cleanup — remove the obsolete PDF export roadmap)
 
 ### Prompt
-Follow-up: user asked to close the remaining manual-edit bypass on the raw `TransactionResource` form — make `description` read-only there before final approval. After that small fix, user requested a further read-only audit (6 specific questions: navigation visibility, direct create access, whether create also builds balanced lines, independent header editing, effect of the description fix on a raw create, and whether the raw CRUD is actively needed) before approving any further change. Based on that audit's findings, user approved converting the whole resource into a strictly read-only audit resource: remove create/edit routes and actions, harden authorization (`can*` → `false`, not just hidden buttons), keep list/view/lines fully visible for audit, delete now-unreachable page classes if safe, and add `defaultSort('id', 'desc')` to both the transactions list and the lines relation table.
+Documentation-only: remove stale PDF / mPDF plans, keep valid history marked CANCELLED or superseded; no next phase set.
+
+---
+
+### Date
+2026-07-28 → 2026-07-30 (Audit Log: Task 9A design audit, 9B.1 foundation, 9B.2–9B.6 integrations, 9B.7 read-only UI + compatibility correction, 9B.8 final acceptance)
+
+### Prompt
+Read-only design first; then a foundation in isolation; then one surface per task (general CRUD, financial, users / roles / auth, attachments / exports, backup / restore), a read-only Super Admin UI, and a final acceptance with a coverage matrix. 9B.8 started from the accepted state `358b7d8` / `6481bda`; a worktree at `6061a1d` proved one failure pre-existing.
 
 ### Purpose
-Prevent any path — form field, direct URL, or raw CRUD — from creating or mutating a `Transaction`/`TransactionLine` outside the 6 legitimate, balance-safe financial flows, while preserving 100% of this resource's genuine audit value (search, filter, view, inspect lines).
-
-### Result
-`description` made `disabled()->dehydrated(false)` on `TransactionForm` (same pattern as `current_balance` on `AccountForm`). Read-only audit answered all 6 questions directly from code (confirmed: bare/line-less/unbalanced create, independent header edits, no balance updates) — implemented as described in TASKS_LOG.md and DECISIONS_LOG.md (2026-07-14, second and third entries). `create`/`edit` routes removed, `CreateTransaction.php`/`EditTransaction.php` deleted (confirmed unreferenced), 8 `can*` methods hardcoded `false` on both `TransactionResource` and `LinesRelationManager`, all mutation actions removed from `ListTransactions`/`ViewTransaction`/`TransactionsTable`/`LinesRelationManager`, `defaultSort('id','desc')` added to both tables. Verified headlessly via reflection (real `Table` objects, `getFlatActions()`/`getDefaultSortColumn()`) rather than a full Livewire/HTTP mount, plus a full re-run of the six-flow tinker verification confirming zero impact on the 6 legitimate flows and `TransactionDescriptionBuilder`.
+- "Audit actual write paths, not model names assumed from documentation"; the audit insert must join the workflow's existing transaction.
+- "Classify every failure" and reproduce it before the change to prove whether it is pre-existing.
 
 ---
 
 ### Date
-2026-07-14
+2026-07-28 (Graphify hygiene: sensitive-path exclusion, cache untracking, dated snapshots and `.claude/**`)
 
 ### Prompt
-User requested the line-level counterpart of the transaction-description feature: add nullable system-generated `transaction_lines.description` (exact format `{مدين|دائن}: حساب {name} ({line currency}) — {posted amount} | الغرض: {purpose}.`) and `transaction_lines.line_role` (stable English machine value from one centralized vocabulary, assigned explicitly by the authoritative flow — never inferred from account/side/order/description/notes), across all 6 financial flows, preserving `transaction_lines.notes`/`LINE_*` tags untouched, no historical backfill, no report/export changes, plus a mandated read-only impact report first (delivered and approved), then implementation including hardening the standalone raw `TransactionLineResource` (a line-level CRUD bypass the audit surfaced) into a read-only audit resource.
+Audit the installed Graphify source first; exclude uploaded files and compiled caches; untrack `graphify-out/cache/**` and the dated snapshots by repository policy (no hand-redaction, no scrubber); two byte-identical from-scratch rebuilds.
+
+---
+
+### Date
+2026-07-27 → 2026-07-28 (Task 8 financial & database integrity review; 8.1–8.3 schema-drift reconciliation)
+
+### Prompt
+Read-only integrity audit first (never compare amounts across currencies; the balance rule comes from the real guard); then evidence-first classification of each drifted object (ACTIVE_REQUIRED / LEGACY_WITH_DATA / DEAD_UNUSED / AMBIGUOUS), backup first, exact SQL shown first, rollback safety for live data. 8.2 committed as `5aea136` with Graphify follow-up `5063b86`; 8.3 started from that HEAD.
 
 ### Purpose
-Make each individual ledger line self-explanatory for audit/search (which account moved and why) and give future reports a reliable machine-readable role instead of parsing Arabic notes tags — without touching any accounting amount, balance, or existing tag.
-
-### Result
-Implemented as described in TASKS_LOG.md and DECISIONS_LOG.md (2026-07-14 line-description entries). One mid-implementation deviation was raised and user-approved before proceeding: legitimately zero-amount deduction lines (0% admin/transfer) are skipped with NULL description instead of throwing, since the flows always create them and the literal "both sides zero → throw" rule would have rolled back every 0%-deduction disbursement/exchange. 33/33 unit tests passing; all 6 create + 5 edit flows verified against real dev data in a rolled-back transaction with zero residue.
+- "Do not assume either 'old and unused' or 'actively required'" — decide from code, git history and live data.
 
 ---
 
 ### Date
-2026-07-15
+2026-07-23 → 2026-07-27 (backup & restore: Task 7A audit, 7B.1–7B.2 backup core and page, 7C.1–7C.9 restore engine, UI and real local acceptance)
 
 ### Prompt
-User requested two things in one task: (1) safely backfill the existing historical (pre-2026-07-14) transactions/transaction lines so `description`/`line_role` show correctly in reports, via a dedicated `--dry-run`/`--apply` Artisan command, with an explicit classification priority (direct FK on the authoritative domain record first, `notes` `LINE_*` tags only as supporting evidence after the flow is known, never account name/type/description-parsing/line-order/amount-similarity), explicit zero-amount-line handling (assign role, keep description NULL), a mandatory integrity snapshot proving only the 3 metadata columns change, and idempotence proven by a second `--apply` run; (2) display the three approved, permanently-named Arabic labels (`وصف العملية المالية` / `دور سطر القيد` / `وصف سطر القيد`) in the detailed financial-movement sections of 4 named reports (Comprehensive Financial Transactions, Account Statement, Project Financial Details, Donor Financial Report) — screen, Excel, and Word wherever each export already exists — explicitly excluding Trial Balance, summary cards, dashboard totals, and any percentage/collection-rate calculation, plus standardizing the same 3 labels on the transaction/transaction-line audit resources. Workflow constraints: use the current session (no clean-tree requirement beyond the already-completed prior feature), run the standard git/migrate-status checks first, use Graphify before broad source browsing, STOP and ask on any accounting-meaning ambiguity, do not commit/push, and produce one detailed final report covering every phase.
+A read-only architecture audit, then one isolated layer per task (lock and signed progress, preflight / decrypt / stage, replay-safe launch, streamed import and reconciliation, attachment swap, orchestrator, Filament UI, real Windows / Laragon end-to-end), each followed by an "approved in principle, do not commit yet" correction pass.
 
 ### Purpose
-Close the historical-data gap left by the 2026-07-14 description/role feature (which deliberately excluded backfill pending an approved classification method) and make the new metadata actually visible where accountants read detailed financial movements, without risking any accounting figure, balance, or existing report calculation.
-
-### Result
-Implemented as described in TASKS_LOG.md and DECISIONS_LOG.md (2026-07-15 entries). No accounting-meaning ambiguity was hit — the 6 flows' authoritative domain-record FKs and the opening-balance transaction-type name were sufficient to classify all 10 dev-DB transactions deterministically (0 unclassified), so no STOP-and-ask was needed. `--dry-run`/`--apply`/idempotence-re-`--apply`/integrity-snapshot sequence all passed; 17 new backfill tests + 33 existing description/role-builder tests + full suite (52/52 relevant, 1 pre-existing unrelated failure) all passing; one real sample export per updated report/format (7 files) generated from live dev data and verified to re-open. Not committed, per instruction.
+- Build destructive capability layer by layer with nothing user-reachable until the end; zero tolerance for "passes on rerun"; prove against the real environment, not only mocks.
 
 ---
 
 ### Date
-2026-07-20
+2026-07-21 → 2026-07-22 (attachment security: Task 6A private foundation, 6B cutover, 6C orphan cleanup, 6D read-only registry; CRUD redirect standard; test-suite cleanup)
 
 ### Prompt
-"Implement OMS Permissions Task 2B: Custom Report Page and Export Authorization" — a structured task specifying: protect all 6 custom Filament report pages against unauthorized sidebar visibility, direct URL access, unauthorized Excel/Word export buttons, and direct Livewire/action invocation of export methods, using the pre-existing per-page `reports.<page>.view`/`reports.<page>.export` permissions already in `PermissionRegistry`; explicit page→permission map for all 6 pages; use the correct Filament v5 page-authorization method (not just `mount()`); export authorization must require both view and export permissions, protected in two layers (UI `visible()` + explicit server-side authorization inside the export method, "do not depend only on `visible()`"); preserve `ProjectFinancialDetailsPage`'s `shouldRegisterNavigation = false` and all existing export prerequisites/guard messages/snapshot behavior unchanged; a small reusable shared concern is acceptable but each page must explicitly declare its own permission names (no class-name-based magic mapping); data-driven real-HTTP + genuine Livewire/Filament action tests covering 14 numbered scenarios; verify the existing role permission matrix behaves as expected and report any discrepancy before changing it; explicit exclusions: no Resource Policy changes, no migrations, no package installs, no report calculation/query/filter/export-service/format changes; do not stage or commit, wait for approval; produce a detailed final report (files changed, permission map, exact protection mechanisms, test counts, git status/diff, confirmations).
+Audit first; build and verify the private-serving foundation before cutting the live forms over; delete only the confirmed orphan files; a structurally read-only registry. Redirects: View after Create / Edit, Index after Delete. Remove only the impossible stock test; no fake `/` route.
+
+---
+
+### Date
+2026-07-19 → 2026-07-21 (roles & permissions: read-only discovery, Tasks 1, 2A, 2B, 4, 5, three security corrections, final acceptance)
+
+### Prompt
+Discovery without edits first; then a foundation (`Gate::before` Super Admin, `PermissionRegistry`), Resource / RelationManager policies, report and export authorization, secure role management, read-only permission management, and an end-to-end acceptance pass.
 
 ### Purpose
-Close the report-page/export gap explicitly deferred by Task 2A (which only covered Filament Resources/RelationManagers), so every custom report page and its exports are gated the same way the rest of the panel already is, using permissions that were already registered and role-assigned in Task 1 but never actually enforced anywhere.
-
-### Result
-Implemented as described in TASKS_LOG.md and DECISIONS_LOG.md (2026-07-20 "Task 2B" entries). The existing permission matrix (`SystemRoleDefaultPermissionsTest`) already matched every assumption in the prompt exactly (Accountant gets the 4 financial reports' view+export, Project Manager gets project report views without export, Viewer gets none, Admin gets everything except users/roles/permissions) — no discrepancy found, so no registry change was needed or made. 58 new tests (30 page-access + 28 export-authorization) all pass; full suite 574/574 excluding the same 1 pre-existing unrelated `ExampleTest` failure recorded since 2026-07-15. Not staged, not committed, per instruction.
+- A negative search result is not proof (the real admin had a different email); never keep a hardcoded bootstrap credential in source control.
 
 ---
 
 ### Date
-2026-07-20 (OMS Permissions Task 4 — secure role management)
+2026-07-18 (financial validation: positive amounts, server-side account validation, balance-guard verification)
 
 ### Prompt
-"Implement OMS Permissions Task 4: Secure Role Management" — create a Filament `RoleResource` under nav group `النظام` (label `الأدوار`) letting authorized users view roles, create custom roles, view role details, update safe custom roles, assign permissions via grouped Arabic checkboxes, and delete safe unused custom roles — while the five system roles stay visible-but-protected (not renameable/editable/deletable through this resource, blocked on direct Edit/Delete requests including for Super Admin, since `oms:sync-permissions` remains their sole authority). Detailed constraints: use Spatie `Role`/`Permission` directly (no custom Role model unless proven necessary), a dedicated `RolePolicy` explicitly registered if auto-discovery can't find it, a dedicated `RoleManagementService` as the sole mutation path, reuse `PermissionRegistry` for Arabic labels/grouping, no Filament Shield, no `PermissionResource` yet; exact `RoleManagementService` method signatures and rules (`isSystemRole`, `canManageRole`, `assignablePermissionNames`, transactional `createRole`/`updateRole`/`deleteRole` with specific validation/rejection rules); exact `RolePolicy` ability map with an explicit warning that `Gate::before` bypasses it for Super Admin so system-role blocking must be structural elsewhere; detailed Filament Resource/Form/Table requirements (grouped checkboxes, technical names visible, no `guard_name` field, non-Super-Admin sees only assignable permissions, no bulk/force-delete/clone/hierarchy); 42 named test scenarios across 8 categories; an 11-step verification order; and a 14-point final report before commit. No migrations, no financial-logic changes, no staging/commit until reviewed.
-
-### Purpose
-Close the last piece of the User/Role/Permission management surface still pending after Task 3 (secure `UserResource`) — give administrators a safe way to create custom role combinations without touching the five system roles' `oms:sync-permissions`-managed defaults, and without opening a path for privilege escalation via crafted requests or a real Super Admin's own `Gate::before` bypass.
-
-### Result
-Implemented as described in `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md` (2026-07-20 "Task 4" entries): `App\Services\Roles\RoleManagementService`, `App\Policies\RolePolicy` (explicitly registered via `Gate::policy()`, since Spatie's `Role` model lives outside `App\Models` and Laravel's naming-convention auto-discovery never finds it there — traced `Gate::guessPolicyName()` directly to confirm), and a full `app/Filament/Resources/Roles/` resource (Resource/Form/Table/4 Pages) under `النظام` → `الأدوار`. System-role protection against a real Super Admin is structural (`RoleResource::canEdit()`/`canDelete()` call `RoleManagementService::canManageRole()` directly, bypassing Gate/Policy, and every action's `->visible()` calls those same overrides rather than Filament's default Gate-based action authorization) — documented as its own decision since it's the one rule `RolePolicy` alone can never enforce for Super Admin. Permission checkboxes are grouped one `CheckboxList` per `PermissionRegistry::groups()` module (Filament's `CheckboxList` has no built-in optgroup support, confirmed from its Blade source), with an additional `صلاحيات مخصصة` group for any DB `Permission` outside the registry, always merged into a role's options so an edit never silently drops an existing custom/unregistered permission. 80 new tests across 6 files (`RoleManagementServiceTest`, `RolePolicyTest`, `RoleResourceHttpTest`, `RoleResourceLivewireTest`, `SystemRoleProtectionTest`, `SyncCompatibilityTest`) all pass; full suite 711/714 excluding the same 1 pre-existing unrelated `ExampleTest` failure recorded since 2026-07-15 (confirmed identical on a clean `git stash`). No `PermissionResource` built (Task 5, still pending). Not staged, not committed, per instruction.
+Read-only audit with a per-field matrix and business decisions first; then the smallest server-side guards, tested so they cannot be satisfied by weakening production code.
 
 ---
 
 ### Date
-2026-07-26 (OMS Task 7C.7 — the real RestoreOrchestrator)
+2026-07-16 (UI layout standard for credit / debit sections; General Exchange rearrangement; Execution Payment credit-account audit and implementation)
 
 ### Prompt
-"OMS Task 7C.7: full secure restore orchestration, compensation, maintenance mode, safety backup, heartbeat/progress, stale detection, and recovery documentation" — a detailed, multi-section spec: (A) targeted reads only, no full codebase scan; (B) build `RestoreOrchestrator` that only ever runs from the already-claimed `RestoreCommand` under a live Exclusive `BackupSubsystemLockHandle`, never acquiring its own lock/the Cache lock/the DB queue, never accepting a password/key/path from its caller; (C) an exact end-to-end phase sequence (preflight → maintenance → mandatory FULL safety backup → reconciliation snapshot embedded in signed progress → stage → attachment activation → database import → reconciliation → attachment finalization → maintenance exit → terminal result) with explicit scope-dependent behavior for `database`/`files`/`full`; (D) a dedicated `RestoreMaintenanceMode` service with correct ownership tracking (never bring an already-down app back up); (E) progress/heartbeat rules (pre-destructive write failure aborts, post-DB-import write failure becomes RestorePartial); (F) mandatory FULL safety backup regardless of scope, via `runWithLockAlreadyHeld()`, never a queue dispatch; (G) resolving the open "where does the attachment manifest come from" question from 7C.6 safely, in-process, never from progress.json or the UI; (H) an exhaustive 10-case failure/compensation matrix; (I) a precise `RestorePartial` policy (only when a destructive boundary was crossed and the outcome can't be honestly called clean); (J) explicit handling for the database row possibly disappearing/being replaced mid-restore (never reuse a stale Eloquent instance after the import boundary); (K) `RestoreCommand` integration replacing only the fail-closed seam; (L) centralized terminal-result writing; (M) a detection-only stale-restore watchdog (never retry/resume/mutate/rollback/lock); (N) a full operator recovery runbook (`docs/RESTORE_RECOVERY.md`) covering 14 specific scenarios; (O) a detailed targeted test matrix; (P) an explicit "do not implement yet" list (Filament UI, confirmation modal, progress polling, production deployment, real destructive MySQL test); and required verification/reporting steps before commit. Preceded by a mandatory pre-step: confirm and clean up only the expected untracked Graphify AST-cache artifacts, never touching tracked Graphify output, before starting. No migrations unless a real blocker is found and reported first; no full-suite run; no commit; no `graphify update .` until approved.
-
-### Purpose
-Complete the Restore engine (OMS Task 7C) with its actual execution engine — every prior 7C.1–7C.6 phase built only standalone, independently-tested primitives (locking, signed progress, preflight/decrypt/stage, launch/command shell, database restore/reconciliation, attachment activate/rollback/finalize); this phase is what actually wires them together into a real, destructive-capable restore, and is explicitly called out across multiple prior `NEXT_STEPS.md` entries as "should not be started without a fresh explicit request" given its risk.
-
-### Result
-See `docs/AI_PROJECT_MEMORY.md`/`docs/TASKS_LOG.md`/`docs/DECISIONS_LOG.md` (2026-07-26, "OMS Task 7C.7") for full technical detail. Implemented `RestoreOrchestrator`, `RestoreMaintenanceMode`, `RestoreTerminalResultWriter`, `RestoreStaleDetector`/`oms:restore-watchdog`, and `docs/RESTORE_RECOVERY.md`; wired into `RestoreCommand` without touching its permanent Task 7C.4 shape; closed two small, justified 7C.6 integration gaps (the never-bound `AttachmentMoveRunner` container binding, and `PreparedRestore` never carrying the verified attachment manifest forward) additively rather than rewriting anything. 44 targeted tests, all passing; broader `Restore|Backup` regression run in both default and randomized order (see the final report for exact totals). Not committed — awaiting review, per instructions.
+Layout only, verified against real RTL rendering; for the credit account, a read-only audit first, then the approved change without a migration and without touching the listed protected files.
 
 ---
 
 ### Date
-2026-07-27 (OMS Task 7C.7 final acceptance/hardening pass)
+2026-07-14 → 2026-07-15 (system-generated transaction and line descriptions, `line_role`, read-only raw transactions, historical backfill)
 
 ### Prompt
-"Task 7C.7 is architecturally approved, but do NOT commit yet. Perform one final focused acceptance/hardening pass only." Six required sections: (1) implement TRUE long-phase heartbeats — not just phase-transition writes — including an honest, non-stdout-reliant timer mechanism specifically for the mysql import, with required tests proving a simulated long import stays healthy, throttling works, and pre/post-import heartbeat failures compensate exactly like existing progress-write failures; (2) add a real, deterministic RestoreOrchestrator test for finalization failure (introducing the smallest justified interface seam if the final 7C.6 service can't be failed deterministically); (3) properly fix (not just rerun until green) the pre-existing random-order hardcoded-UUID flake, verified via 10x repeats of the specific test plus default/randomized regression twice; (4) review and harden watchdog behavior under database/cache unavailability with focused tests, no schema change; (5) clean Graphify contamination before the main commit, refresh it only after; (6) final acceptance verification then commit main 7C.7 and Graphify separately with specified messages. Explicit "do not"s: no weakened assertions, no retries-as-a-fix, no skipped tests, no full application suite, no starting 7C.8.
-
-### Purpose
-Close every gap the initial 7C.7 implementation's own report had flagged as incomplete or merely "logically reviewed" before allowing the highest-risk phase of the Restore engine to be committed — true heartbeat honesty (not a documented limitation), a real deterministic proof for the one previously-untested failure branch, and zero tolerance for "passes on rerun" as an acceptable resolution for a flaky test.
-
-### Result
-See `docs/AI_PROJECT_MEMORY.md`/`docs/TASKS_LOG.md`/`docs/DECISIONS_LOG.md` (2026-07-27 entries) for full technical detail. All six sections implemented; a SECOND real flake (Windows `RestoreProgressWriter` rename failures under the new higher heartbeat-write frequency) was discovered via this pass's own stress-testing and fixed with a bounded retry mirroring an existing approved pattern — not something the prompt anticipated, but caught because "0 failures in every acceptance run" was taken literally rather than accepting an intermittent pass. Final acceptance: 112 targeted tests passed; broader regression 785/782/0 failed/3 skipped in default order and two randomized-seed runs, all identical.
+Exact Arabic description formats on all six financial flows; `line_role` from one vocabulary, assigned by the authoritative flow and never inferred; close the raw-CRUD bypass; backfill history with `--dry-run` / `--apply` and an explicit classification priority.
 
 ---
 
 ### Date
-2026-07-27 (OMS Task 7C.9 — real local Windows/Laragon end-to-end backup/restore acceptance)
+2026-07-06 → 2026-07-15 (operational data resets and the `oms:clean-operational-data` command)
 
 ### Prompt
-"Implement OMS Task 7C.9 only: REAL LOCAL END-TO-END BACKUP / RESTORE ACCEPTANCE on Windows + Laragon" — the final acceptance phase for Task 7C, following the already-completed 7C.1–7C.7 restore backend and 7C.8 secure Filament restore management UI (854 tests, 851 passed, 0 failed, 0 errors, 3 skipped at that point). A detailed, multi-section (A–P) specification covering: pre-flight safety checks (confirm local/non-production environment, inspect the two latest commits for non-Graphify contamination, create an independent emergency baseline outside the OMS backup/restore system entirely); create controlled, clearly-labeled local-only E2E fixtures (DB record + attachment); a real manual full backup through the real pipeline; database-only, files-only, and full restore cycles each with explicit BEFORE/AFTER database and attachment markers, SHA-256 hash verification, and a detailed expected-outcome checklist per scope; a safe controlled failure test before the irreversible DB-import boundary (never destroying the only known-good backup); a documented decision on post-DB-import/partial failure coverage (accept existing 7C.7 automated coverage if no safe local injection seam exists, never introduce a new production-only failure hook or an uncontrolled destructive crash); a safe stale/crash drill using the existing deterministic detection/acknowledgment mechanism (never killing a real process); a post-restore application smoke check; a financial-integrity sanity check using only existing guards; cleanup of every temporary fixture while keeping legitimate backup/restore history as acceptance evidence; exactly one final full application test-suite run (only rerun if a real defect requires a code fix); and a detailed 17-point final report before ever committing. Explicit "do not"s: no feature expansion, no Hostinger deployment, no push, no git tag, no schema change unless a proven blocker exists, do not run Graphify yet, do not push, stop before committing.
-
-### Purpose
-Prove, against the real local Windows/Laragon environment (not `Storage::fake()`/mocked collaborators, which is all every prior 7C.1–7C.8 phase was ever verified against), that the entire backup/restore engine actually works end to end for a real Super Admin performing a real destructive restore — the one category of defect that 854 passing mocked tests can never rule out on its own.
-
-### Result
-See `docs/AI_PROJECT_MEMORY.md`/`docs/TASKS_LOG.md`/`docs/DECISIONS_LOG.md` (2026-07-27, "OMS Task 7C.9" entries) for full technical detail. Exactly this kind of defect was found on the very first real restore attempt: `RestoreMaintenanceMode::enter()` called the real Artisan `down` command with a `--message` option that does not exist in this Laravel version, causing 100% of real restores to fail at preflight — completely invisible to the mocked test suite. Fixed narrowly (option removed, no new feature/view added), verified via its focused test, and every subsequent real restore across all three scopes (database-only, files-only, full) then succeeded end to end, each independently verified via before/after markers and SHA-256 hashes. A real, pre-existing Windows/Laragon operational limitation (the detached restore-process launcher not reliably surviving independently of the launching web request) was confirmed and documented, with a safe verified workaround (foreground `oms:restore` execution of the same already-claimed row). Both required failure/recovery drills (pre-irreversible-boundary corrupted-archive, and stale/crash acknowledgment) were completed safely without touching any real backup or killing any real process; post-DB-import/partial coverage was accepted as already proven by existing 7C.7 tests, per the prompt's own explicit fallback instruction. Post-restore smoke check and financial-integrity check both passed cleanly using only existing application surfaces/guards. All temporary fixtures were cleaned up via real application services/UI; genuine backup/restore history from real UI actions was kept as acceptance evidence. Final full application suite: **1875 tests, 1869 passed, 0 failed, 0 errors, 6 skipped, 5659 assertions** — the one required run, not repeated (no further defect was found after the one fix). Not committed, per instructions — awaiting review.
+Explicit keep / purge lists; no `migrate:fresh`, no dropped tables; dry run / audit first, STOP before execution; a fresh backup and a numbered post-apply verification checklist.
 
 ---
 
 ### Date
-2026-07-27 (OMS Task 8 — Financial & Database Integrity + Trial Balance Correctness Review)
+2026-07-06 (account opening balances)
 
 ### Prompt
-A very large, high-risk instruction set covering: (A) a mandatory read-only audit first, reading only the files actually needed, using Graphify/targeted searches rather than broad scanning; (B) a detailed integrity audit across foreign keys, unique/duplicate prevention, transaction-number generation, indexes, and — critically — the multi-currency accounting rule, with explicit, repeated warnings not to compare raw amounts across different currencies (e.g. "1000 USD != 3000 ILS is not an imbalance") and to determine the authoritative balance formula from the real code (`FinancialTransactionBalanceGuard`), not to assume a hypothetical base-currency-conversion model; (C) a focused Trial Balance correctness review distinguishing "global transaction balance" from "selected-currency report" semantics, covering opening/period/closing balances, currency filtering, exchange-transaction handling, zero-balance/account-type/soft-delete behavior, and export consistency; explicit STOP conditions before any risky change (historical unbalanced transactions, real duplicates before adding UNIQUE, data requiring modification); (D) data-safety preflight before any migration; (E–J) implementation architecture (`app/Services/Integrity/`), the `oms:check-financial-integrity` command (read-only, bounded output, exit 0/1/2, optional `--json`), database constraint hardening only where preflight is proven clean, write-time hardening reusing existing guards, and a real read-only scan against the current local DB; (K–N) required test coverage, real-DB constraint preflight before any migration, full-suite policy (run once, at the end only), and a performance boundary (no N+1, chunked, bounded); (S) a very detailed final report structure; explicit instructions never to auto-repair historical financial data, never to run Graphify mid-task, never to commit or push.
-
-### Result
-See `docs/AI_PROJECT_MEMORY.md`/`docs/TASKS_LOG.md`/`docs/DECISIONS_LOG.md` (2026-07-27, "OMS Task 8" entries) for full technical detail. After the read-only audit surfaced the multi-currency `debit_base`/`credit_base` semantics, three real schema-drift/scope questions, and the audit findings, the audit was presented to the user with three explicit `AskUserQuestion` decisions before any code was written (migration-drift handling, hardening scope, Trial Balance test scope) — all three answered with the recommended option. Implementation then proceeded in the approved scope only: the integrity checker/command, two supporting indexes, transaction-numbering retry hardening, and the Trial Balance test suite. No historical unbalanced transaction, duplicate, or orphan was found in the real local DB, so no STOP condition was triggered. Final full application suite: **1919 tests, 1913 passed, 0 failed, 0 errors, 6 skipped, 5767 assertions** — exactly the 44 new tests added on top of the prior 1875/1869 baseline. Not committed, per instructions — awaiting review.
+Optional opening-balance fields on create only, posting a balanced «قيد افتتاحي» (`OPB-YYYY-XXXX`) against a «أرصدة افتتاحية» clearing account; read-only impact report first.
 
 ---
 
 ### Date
-2026-07-28 (OMS Task 8.1 — Schema Drift + Dead Schema Reconciliation)
+2026-07-05 → 2026-07-06 (Trial Balance and تقرير الحركات المالية الشامل: phase 1 pages, summary wording, phase 2 Excel / Word exports)
 
 ### Prompt
-A large, detailed instruction set focused on resolving the exact schema/migration-history drift Task 8 deferred: `bank_accounts`, `accounts.parent_id`, `transactions.bank_account_id` exist live with no migration file. Explicit: do not assume either "old and unused" or "actively required" — determine from evidence whether each object is ACTIVE_REQUIRED, LEGACY_WITH_DATA, DEAD_UNUSED, or AMBIGUOUS. Sections covered: (1) safety preflight (env/DB/git/no-running-PHP, preserve existing backups, fresh `mysqldump` outside the project directory, never print credentials, no push/tag/Audit Log/Graphify); (2) targeted read-only audit (code, migrations, seeders, factories, tests, config, docs, Blade/Filament, exports, commands) — no broad scanning; (3) git history audit for deleted/renamed migration files; (4) live database audit (columns, indexes, FKs, row/non-null counts, references) for each object; (5) a classification table with defined decision rules per classification; (6) classification-specific action rules — ACTIVE_REQUIRED restores/creates a migration, LEGACY_WITH_DATA and AMBIGUOUS both require a STOP-and-report before any change, DEAD_UNUSED is authorized for removal subject to safeguards (proof of zero counts/references, backup, exact SQL shown first, dependent-FK-then-column/table removal order, stale migration-row cleanup only when the file is genuinely absent); (7) narrow repository cleanup only for confirmed-dead references; (8) a migration strategy requiring `migrate:fresh` on an isolated test database (never the real local DB) to produce the intended current schema; (9) a fresh-vs-local schema comparison for `accounts`/`accounts_type`/`transactions`/`transaction_lines`/`bank_accounts` with "no unexplained difference" required; (10) focused tests only (Accounts, Transactions, GeneralExchange, ProjectCostBudgetsPayment, Trial Balance, Account Statement, Financial Integrity — not the full suite unless a high-risk change requires it); (11) real local verification (`migrate:status`, `oms:check-financial-integrity` expected exit 0, app boot, `/admin/login`, Accounts page, reports, clean git status); (12) documentation updates; (13) explicit restrictions (no touching historical financial values/balances/backup-restore/FX-clearing design, no Audit Log, no push, no pre-review commit, no Graphify); (14) an 18-point final report. Explicit: **STOP BEFORE COMMIT.**
-
-### Purpose
-Close the exact gap Task 8 itself flagged and deliberately left open — the business owner suspected these three objects were "old, unused, and should not exist," but the task explicitly forbids assuming that conclusion (or its opposite) without evidence, requiring the same rigor (real code/git/DB audit before any destructive action, backup-first, exact-SQL-shown-first, STOP conditions for anything ambiguous) that governed Task 8's own financial-integrity work.
-
-### Result
-See `docs/AI_PROJECT_MEMORY.md`/`docs/TASKS_LOG.md`/`docs/DECISIONS_LOG.md` (2026-07-28, "OMS Task 8.1" entries) for full technical detail. The read-only audit found unanimous, non-conflicting evidence for all three objects (zero code usage anywhere, zero live/historical data, no design intent in any doc) — classified DEAD_UNUSED, which the task's own action rules explicitly authorize for direct removal (unlike LEGACY_WITH_DATA/AMBIGUOUS) subject to safeguards, so no `AskUserQuestion` stop was required before implementation. A pre-task backup was created outside the project directory; the exact planned `ALTER TABLE`/`DROP TABLE` SQL was compiled and shown before execution; a new guarded migration applied the removal to the real local DB; the orphaned `migrations` row for the never-committed `create_bank_accounts_table` file was cleaned up; the two now-dead relationship checks and an unnecessary test shim were removed from the integrity-checker codebase; one stale documentation claim was corrected. Fresh-install parity was proven via an isolated scratch MySQL database (created and dropped on the same server, real `oms` database never targeted by `migrate:fresh`). Two unrelated, pre-existing schema drifts (`accounts.account_code` nullability, `accounts_type`'s undocumented `nature`/audit columns) were discovered as a side effect of the required fresh-vs-local comparison and explicitly left untouched, per the task's own scope restriction — reported as recommended future follow-ups instead. Focused regression (511/513 passed, 2 pre-existing skips) + report-authorization suite (58/58) + real local `oms:check-financial-integrity` (**Result: OK, exit code 0**) + real read-only smoke checks (Trial Balance, Account Statement, Account/Transaction Eloquent loads, `/admin/login` HTTP 200) all passed. Not committed, per instructions — awaiting review.
-
----
-
-### Date
-2026-07-28 (OMS Task 8.2 — Final Schema Drift Reconciliation)
-
-### Prompt
-A follow-up, evidence-first instruction set resolving the two schema differences named as out of scope in the Task 8.1 acceptance: `accounts.account_code` (`NOT NULL` live vs. nullable fresh) and `accounts_type` (live `nature`/`created_by`/`updated_by` with no reproducing migration). Sections covered: (1) safety preflight (env/DB/clean-tree/no-PHPUnit, preserve backups, fresh `mysqldump` outside the project, no credential exposure); (2) read-only audit (Account/AccountType model/resource/forms, relevant migrations, seeders, financial write paths, tests) — no editing until complete; (3) git-history search for account_code nullability changes and the origin of `nature`/`created_by`/`updated_by`; (4) classification (ACTIVE_REQUIRED / DEAD_UNUSED / AMBIGUOUS — three buckets this time, no LEGACY_WITH_DATA carve-out) with an explicit warning not to assume either the live DB or fresh migrations are automatically correct; (5) an `account_code` decision framework (A. required NOT NULL / B. nullable by design / C. required only for certain types), with an explicit ban on adding a UNIQUE constraint unless data/business rule prove it; (6) a `nature` decision framework asking whether it drives debit/credit behavior, report display, balance sign, creation, or validation — explicit "do not redesign account nature"; (7) a `created_by`/`updated_by` decision framework distinguishing "current approved audit metadata" from "unused/dead," with an explicit "do not start the full Audit Log task here"; (8) migration strategy (smallest, additive/guarded, correct `down()`, no resurrection of obsolete schema — carrying forward the rollback-safety lesson from the prior review); (9) isolated fresh-install comparison on a dedicated scratch database, never the real `oms` DB; (10) focused tests only, never full suite without objective justification, never concurrent PHPUnit; (11) real local verification (`migrate:status`, `oms:check-financial-integrity` exit 0, `/admin/login`, Accounts/Account Types pages, no missing-column errors, no historical data changed); (12) documentation updates; (13) a 16-point final report. Explicit: **STOP BEFORE COMMIT**, no Graphify, no push, no Audit Log.
-
-### Purpose
-Close the exact two gaps the previous task's own final report flagged as discovered-but-out-of-scope, applying the identical evidence-first discipline (git history + live data + code usage + documented design intent, never assumption in either direction) to determine whether each difference reflects an approved design the live DB should be fixed to match, an approved design the fresh migrations are missing, or genuinely dead schema — completing the migration-history/live-schema parity work that Task 8.1 began.
-
-### Result
-See `docs/AI_PROJECT_MEMORY.md`/`docs/TASKS_LOG.md`/`docs/DECISIONS_LOG.md` (2026-07-28, "OMS Task 8.2" entries) for full technical detail. `account_code`: the original migration and current form both already say nullable, and every one of ~20 read sites codes defensively for a missing value — the live `NOT NULL` was the drift; relaxed to match. `nature`: zero code usage anywhere, and an existing, dated (2026-07-06, predating this audit) documentation entry already states the system has no account-nature concept — classified DEAD_UNUSED and dropped. `created_by`/`updated_by`: match the active, systemwide `HasUserTracking` audit-column convention used by 20 other models and carry real historical data — classified ACTIVE_REQUIRED and reproduced as schema only, without wiring `AccountType` to the trait (that would start the Audit Log task). A real bug was caught mid-task: the first draft's idempotency guard used MySQL-only raw SQL and broke 173/178 focused tests under the project's SQLite test connection — fixed with Laravel's driver-agnostic `Schema::getColumns()`. Fresh-vs-local comparison on an isolated scratch database (dropped after use, real `oms` DB never targeted by `migrate:fresh`) confirmed exact parity on both named differences, and a rollback-safety check confirmed neither new migration resurrects dead schema or a never-existed constraint. A previously-unflagged instance of the same drift class was caught honestly during this task's comparison and reported rather than silently fixed: `accounts.created_by`/`updated_by` (the sibling table) are also live-only, out of this task's named scope, left untouched. Zero financial/historical data modified — verified byte-identical row/balance counts before and after. Focused regression 178/178 + 158/158 passed; real local `oms:check-financial-integrity` — Result: OK, exit code 0. Not committed, per instructions — awaiting review.
-
----
-
-### Date
-2026-07-28 (OMS Task 8.2 — post-acceptance rollback-safety correction, before commit)
-
-### Prompt
-Task 8.2 accepted in principle, not yet committed. One final rollback-safety review requested: the accepted `2026_07_28_110001_reconcile_accounts_type_schema_drift.php`'s `down()` unconditionally dropped `created_by`/`updated_by` — safe on a fresh install, but wrong on the real local database, where those columns already existed as live drift *before* the migration ever ran, so a rollback there would delete pre-existing schema/data the migration never created. Requested: make the entire `down()` explicitly irreversible/no-op (not marker tables or migration-state tracking), re-verify `up()` safety (guarded, no data mutation, no FK/index name collisions), and prove the fix with two isolated-database scenarios — a fresh install (rollback causes no error, no obsolete `nature` resurrected) and a simulated historical live drift (pre-existing `nature`/`created_by`/`updated_by` plus a harmless tracked row; running the reconciliation preserves the row's values; rollback afterward still preserves them because `down()` is now no-op). Then reconfirm the diff scope, commit as "reconcile final account schema drift", run `graphify update .`, review, and commit Graphify separately as "refresh graphify after final account schema reconciliation" — no push, no Audit Log, no full suite rerun.
-
-### Purpose
-The accepted implementation's rollback safety had a real, undetected gap: it only protected the already-flagged `nature` column from resurrection, but never applied the identical protection to `created_by`/`updated_by`, which — unlike `nature` — genuinely carry real live data on the actual local database. This closes that gap with proof before the commit that would have shipped it.
-
-### Result
-Fixed `down()` to a full no-op for the whole migration, with a docblock explaining why (the migration cannot distinguish "I added these columns" from "these already existed as live drift"). Both scratch-DB scenarios passed exactly as specified — the drift scenario in particular confirmed a harmless row's real `created_by`/`updated_by` values survived both the reconciliation and a subsequent rollback byte-identical. Real local DB reconfirmed unchanged (never rolled back), `oms:check-financial-integrity` — Result: OK, exit code 0; 9/9 directly relevant migration tests passed; `git diff --check` clean. Diff reconfirmed as exactly the 8 intended Task 8.2 files, no graphify-out changes. Committed as `5aea136` "reconcile final account schema drift"; the post-commit hook auto-launched a Graphify rebuild, reviewed and committed separately as `5063b86` "refresh graphify after final account schema reconciliation". Not pushed; Audit Log not started; the `accounts.created_by`/`updated_by` follow-up (deliberately) not started — see the 2026-07-28 "OMS Task 8.3" entry below for that work.
-
----
-
-### Date
-2026-07-28 (OMS Task 8.3 — Accounts User-Tracking Schema Reconciliation)
-
-### Prompt
-The final schema-drift task before Audit Log, resolving the one remaining named difference: `accounts.created_by`/`updated_by` exist live with no reproducing migration. Sections covered: (1) safety preflight (env/DB/HEAD-includes-5aea136-and-5063b86/clean-tree/no-PHPUnit, preserve backups, fresh `mysqldump` outside the repo, no credential exposure, no push/tag/Audit-Log/Graphify-during-implementation, no historical financial modification); (2) targeted read-only audit (Account model, AccountResource+form+pages, AccountPolicy, user-tracking traits/conventions already used elsewhere, create/edit paths, migrations, tests) — targeted grep/Graphify only, no full-codebase scan; (3) git-history audit for any missing migration, deleted trait/relationship, or sibling-column precedent; (4) live-database audit (type, nullable, default, indexes, FKs, ON DELETE behavior, non-null counts, invalid/soft-deleted user references, whether any write path populates them); (5) classification (ACTIVE_REQUIRED / DEAD_UNUSED / AMBIGUOUS, STOP-and-report if AMBIGUOUS); (6) detailed action rules — for ACTIVE_REQUIRED, determine whether Account should adopt the existing convention, with an explicit option to wire a small existing-safe trait only if minimal/non-controversial, otherwise reconcile schema only and defer behavior to Task 9; (7) migration safety — `up()` must handle both "columns pre-exist as drift" and "migration creates them fresh," `down()` explicitly irreversible, documented; (8) isolated two-scenario database tests (fresh install; simulated drifted live schema with a harmless tracked row), scratch DBs only, real `oms` never targeted; (9) focused tests only, with explicit required assertions (valid user reference accepted, user deletion sets reference to null, null values accepted, existing values preserved, no duplicate FK/index on repeated execution, no financial/balance changes) — no full suite without justification, never concurrent PHPUnit; (10) real local application + verification (migrate status, integrity exit 0, smoke checks); (11) fresh-vs-live parity for the full Account schema, documenting but not expanding scope for any other drift found; (12) documentation updates; (13) explicit restrictions (no Audit Log table/page, no event-level old/new value recording, no backfilling creator/updater values, no transaction/balance changes, no Backup/Restore, no multi-currency, no push, no pre-review commit, no Graphify); (14) a 20-point final report. Explicit: **STOP BEFORE COMMIT.**
-
-### Purpose
-Close the last item on Task 8.2's own out-of-scope list before any Audit Log work can begin cleanly, applying the same evidence-first discipline (code + git history + live/historical data, never assumption) — and specifically test whether the `accounts_type` precedent (ACTIVE_REQUIRED despite the trait being unwired) still holds when, unlike `accounts_type`, the column has zero historical data at all.
-
-### Result
-See `docs/AI_PROJECT_MEMORY.md`/`docs/TASKS_LOG.md`/`docs/DECISIONS_LOG.md` (2026-07-28, "OMS Task 8.3" entries) for full technical detail. Zero code usage confirmed (the `created_by`/`updated_by` writes inside `CreateAccount.php` are for the opening-balance `Transaction`/`TransactionLine` rows, never the `Account` row), and zero non-null values both currently and in the earliest historical backup — a materially weaker data case than `accounts_type`'s. Classified ACTIVE_REQUIRED anyway on architectural-consistency grounds (identical convention shape, sibling-table precedent, and this task's own "before Audit Log" framing), not DEAD_UNUSED. Reconciled schema only via a guarded migration that repairs a missing column or a missing FK independently (never duplicating either) — a complete no-op on the real local DB, since both already existed correctly. `down()` was written irreversible from the start, directly applying the lesson from the same-day Task 8.2 rollback-safety correction above. `Account` was deliberately not wired to `HasUserTracking`. Two isolated scratch-DB scenarios plus a third direct FK-behavior check all passed, including proof that deleting a referenced user correctly nulls both tracking columns. Fresh-vs-live parity for `accounts` is now exact — no remaining named Account/AccountType schema drift. Zero data modified; focused regression 178/178 passed (unchanged, no application code touched); real local `oms:check-financial-integrity` — Result: OK, exit code 0. Not committed, per instructions — awaiting review.
-
----
-
-### Date
-2026-07-28 (OMS Task 9A — Audit Log design audit)
-
-### Prompt
-A read-only design and scope-definition instruction set for a production-ready, immutable, searchable Audit Log covering who/what/when/old-new-values/reason/IP-device/success-failure. Explicit: **do not implement**, no code/database/migration changes, no Graphify, no commit/push, no starting Monitoring/Performance/Security work. Sections covered: (A) targeted reads only (CLAUDE.md, master reference, project-memory docs, `composer.json` for package discovery, User model, permission registry, Gate/policies, `HasUserTracking`, key financial models, Role/Permission management, attachment controller, Backup/Restore services, existing notifications/events, logging config) plus targeted grep/Graphify for created_by/updated_by/observers/activity-log patterns — no full-codebase scan; (B) determine existing audit capabilities, verified not assumed; (C) compare three architecture options (adopt a package / custom table / hybrid) across 14 named criteria and recommend one; (D) define the exact event taxonomy across 7 categories, each event classified MUST_AUDIT/OPTIONAL/DO_NOT_AUDIT; (E) propose the exact schema/fields/indexes; (F) define immutability (no DB triggers unless justified); (G) define old/new-value handling and a central redaction policy with an explicit secret denylist; (H) financial-record payload policy (bounded snapshot, not a full line dump); (I) clarify `created_by`/`updated_by` vs. Audit Log and recommend whether `Account`/`AccountType` should gain `HasUserTracking` in this task; (J) background/system actor design; (K) IP/device metadata policy; (L) Filament UI design (`النظام` → `سجل التدقيق`); (M) authorization policy; (N) export/retention recommendation; (O) performance/failure policy; (P) backup/restore interaction; (Q) test strategy; (R) implementation phase split; (S) explicit stop conditions. A 22-point final report required, ending with **STOP after the design report.**
-
-### Purpose
-Establish an evidence-based, review-ready design for OMS's first real Audit Log before any implementation begins — applying the same rigor already established for prior infrastructure work (Task 7A's backup-package audit, Task 8's schema-drift audits): verify what exists rather than assume, compare real options against the project's actual constraints, and produce a phased plan small enough to implement and review safely one piece at a time.
-
-### Result
-See `docs/AI_PROJECT_MEMORY.md`/`docs/TASKS_LOG.md` (2026-07-28, "OMS Task 9A" entries) for full technical detail. No audit/activity-log package installed (confirmed against `composer.json`); `HasUserTracking` wired to 21 models, not `Account`/`AccountType`; zero old/new-value or security/attachment/backup-restore/export logging anywhere. Recommended a first-party hybrid architecture over any Composer package, mirroring the Task 7B backup engine's own in-house rationale. Delivered the full 22-point report including the event taxonomy, proposed schema, immutability/redaction/financial-payload/actor/UI/authorization designs, and an 8-phase rollout plan (9B.1–9B.8). No code, schema, or data changed; no Graphify run; no commit/push.
-
----
-
-### Date
-2026-07-28 (OMS Task 9B.1 — Audit Log foundation)
-
-### Prompt
-A focused implementation instruction set for the first Audit Log phase only: schema, immutable model, centralized redaction, payload bounding, actor/request context, strict (REQUIRED) vs. best-effort (BEST_EFFORT) persistence modes, and focused tests. Explicit: **do not** integrate into any existing model/controller/command/financial workflow/user-role-permission action/attachment/backup-restore/report/Filament UI yet. Sections covered: (A) approved architecture decisions (one first-party `audit_events` table; Super-Admin-only UI deferred; exact payload limits — 8 KiB old/new values, 1000-Unicode-character strings, explicit truncation marker; exact REQUIRED-vs-BEST_EFFORT failure-mode contract); (B) targeted reads only; (C) exact conceptual schema (with explicit "stable alias, not raw FQCN" requirement for `subject_type`); (D) controlled enums/value objects (`AuditActorType`, `AuditStatus`, `AuditFailureMode`, plus focused DTOs) — explicit "avoid over-abstraction"; (E) the `AuditEvent` model's exact immutability requirements (no DB triggers); (F) central redaction requirements (hard denylist + pattern-based fail-closed matching + explicit safe-exception mechanism, e.g. `encryption_key_id`); (G) deterministic payload-bounding requirements (never `substr()` on encoded JSON, explicit `_truncated` marker, safe DateTime/BackedEnum conversion, money strings never coerced to floats); (H) actor/request context design (interactive vs. non-interactive, no fabricated metadata, explicit initiating-user-snapshot support for future queued operations); (I) the `AuditLogger::record()` contract, explicitly forbidding an independent transaction so a future REQUIRED call can participate in an existing financial `DB::transaction()`; (J) service binding (minimal, interfaces only where genuinely useful); (K) the login-failure policy foundation (document/test the rule now, wire it in 9B.4); (L) the required minimum test coverage across 6 named categories; (M) real local database steps (env/DB confirmation, pre-task backup outside the repo, apply migration, verify empty table + integrity check + `/admin/login`); (N) documentation updates across all 6 required docs; (O) explicit restrictions (no package install, no existing-model wiring, no `HasUserTracking` activation, no auth listeners, no UI/permissions, no full suite, no Graphify, no commit/push, no starting 9B.2); (P) an 19-point final report. Explicit: **STOP BEFORE COMMIT.**
-
-### Purpose
-Implement exactly the foundation layer Task 9A's design audit recommended building first — the schema, the immutable model, and the three supporting services (redaction, bounding, actor context) plus the single write-gateway (`AuditLogger`) — in complete isolation from the rest of the application, so the foundation itself can be reviewed and accepted on its own merits before any real financial/security/attachment/backup event ever gets wired into it.
-
-### Result
-See `docs/AI_PROJECT_MEMORY.md`/`docs/TASKS_LOG.md`/`docs/DECISIONS_LOG.md` (2026-07-28, "OMS Task 9B.1" entries) for full technical detail. Built the `audit_events` migration, `App\Models\AuditEvent` (application-level immutable via model-event hooks, no DB triggers), `AuditRedactor` (whole-segment-matched denylist, one narrowly-scoped safe exception), `AuditPayloadBounder` (1000-char string cap, independent 8192-byte cap per old/new values via deterministic key-dropping, `_truncated` marker, safe type normalization), `AuditActorContext` (typed factories, structurally enforcing the login-failure email rule), `AuditLogger::record()` (REQUIRED throws `AuditPersistenceException` and preserves the original exception; BEST_EFFORT logs sanitized and returns null; never opens its own transaction — proven by a dedicated transaction test). No AppServiceProvider binding was needed (every class is concrete/autowireable). Two test-file bugs (not production bugs) were found and fixed during the first focused-suite run. 53/53 focused tests passed, 197 assertions. Real local DB: pre-task backup taken outside the repo, migration applied and verified empty, `oms:check-financial-integrity` — Result: OK, exit code 0, `/admin/login` → HTTP 200. Nothing wired into any existing application operation. Not committed, per instructions — awaiting review.
-
----
-
-### Date
-2026-07-28 (Graphify hygiene — project-local sensitive-path exclusion)
-
-### Prompt
-A focused Graphify hygiene task ahead of Task 9B.2, triggered by a pre-existing issue surfaced during the Task 9B.1 lineage/Graphify-state check: the generated graph indexes `storage/app/public/**` (uploaded attachment filenames) and `storage/framework/views/**` (compiled Blade cache). Sections covered: (1) read-only discovery of the project-local Graphify exclusion mechanism the installed version actually supports (config files, `.graphify_root`, CLI help, `.gitignore` for comparison only, the post-commit hook, current manifest/report references) — explicit: do not modify the installed package or global Python environment; (2) required exclusions at minimum `storage/**`, `bootstrap/cache/**`, `public/storage/**`, `vendor/**`, `node_modules/**`, `.git/**`, `graphify-out/**`, `.env`, `.env.*`, `*.sql`, plus any in-repo backup dirs — while explicitly preserving `app/**`, `database/migrations/**`, `tests/**`, `resources/views/**` including `resources/views/vendor/**` (never excluded merely for containing "vendor"), `config/**`, `routes/**`; explicit "narrowest project-local configuration, do not rely only on .gitignore unless Graphify explicitly documents that it respects it"; (3) safety check before rebuilding (git status, no rebuild process running, nothing outside graphify-out deleted, storage/uploads/.env untouched); (4) one deterministic full rebuild (`PYTHONHASHSEED=0 graphify update .`), run twice, SHA-256-compared for `graph.json`/`manifest.json`/`GRAPH_REPORT.md`; (5) content verification — Task 9B.1 nodes present, zero references to every named sensitive path/pattern, legitimate source still indexed; (6) minimal documentation updates across 5 docs (`OMS_Master_Reference.md` only if it already documents Graphify); (7) testing restricted to hash checks/sensitive-path search/`git diff --check`/`oms:check-financial-integrity` — no PHPUnit; (8) a 12-point report. Explicit: **STOP BEFORE COMMIT**, no further post-commit action, no push, no starting 9B.2.
-
-### Purpose
-Close a real, if narrow, hygiene gap before any further Audit Log work: the graph an AI assistant queries for "how does this codebase work" should never surface uploaded-file names or compiled runtime cache as if they were architecturally meaningful source, and should never become a second copy of anything the project's own attachment-security work (Task 6A–6D) already treats as private.
-
-### Result
-See `docs/AI_PROJECT_MEMORY.md`/`docs/TASKS_LOG.md`/`docs/DECISIONS_LOG.md` (2026-07-28, "Graphify hygiene" entries) for full technical detail. Confirmed via the installed package's own source that `.graphifyignore` (gitignore syntax, merged with `.gitignore`, honored identically by `graphify update` and the post-commit hook) is the correct mechanism; added it with the exact required exclusion list, preserving `resources/views/vendor/filament-panels/**`. Discovered and worked around a real `graphify update`/`--force` limitation (stale nodes for newly-excluded files survive both a plain update and a forced one against an existing graph; a genuinely clean rebuild required removing the output files first) and a second-order copy of the same staleness in Graphify's own dated "curated backup" snapshot folder, manually synced to the final clean state. Verified deterministic (byte-identical SHA-256 across two independent from-scratch rebuilds) and confirmed zero sensitive-path references with full legitimate-source and Task 9B.1-node retention. `oms:check-financial-integrity` — Result: OK, exit code 0. No application code changed. Not committed, per instructions — awaiting review.
-
----
-
-### Date
-2026-09-20 (تقرير الحركات المالية الشامل — six approved UI/filter/data-display changes, implemented after a prior impact audit)
-
-### Prompt
-A two-phase task. **Phase 1 (audit only, no edits):** identify the exact pages/services/views/exports behind `تقرير الحركات المالي الشامل` and `التقرير المالي الشامل`, and audit five requested changes — expandable classification rows, the `تفاصيل الحركات المالية` scroll area (with an explicit instruction **not to guess the scrollbar direction before inspecting the real layout**), a single → multiple account filter, adding `نوع البنك`, and displaying **all** notes — reporting query/performance impact, export impact and any ambiguity, with a standing "if unclear, STOP AND ASK" rule. **Phase 2 (implement):** execute six changes on `ComprehensiveFinancialTransactionsPage` — the five above plus fixing the `transactions.description` double-render the audit had surfaced — with detailed constraints: no migration, no schema change, no change to accounting or currency logic, no `deferLoading()`, no N+1, preserve soft-delete rules, Filament v5 + RTL, verify git status first and report unrelated uncommitted changes, update affected tests, run `php artisan optimize:clear` but **not** `config:cache`/`route:cache`, refresh Graphify, and **do not commit or push**. Phase 2 specified the notes pre-fetch strategy explicitly (bounded `whereIn()` per source table, never five `LEFT JOIN`s, because those would fan out and duplicate debit/credit lines), required source labels to be preserved and duplicate-looking notes from different records kept distinct, required the top/bottom scrollbars to be bidirectionally synchronized without hardcoding positive-only `scrollLeft`, and listed 18 specific verification points.
-
-### Purpose
-Widen what a read-only financial journal actually shows — more filter reach, the bank dimension, and every note that can be reliably linked to a movement — without letting a presentation change move a single number. The prior audit existed precisely so the risky parts (the one-to-many source tables, the RTL scroll semantics, the name-vs-id aggregation key) were identified before any code was written rather than discovered mid-edit.
-
-### Result
-See `docs/AI_PROJECT_MEMORY.md`/`docs/TASKS_LOG.md`/`docs/DECISIONS_LOG.md` (2026-09-20 entries) for full technical detail. The audit's one genuine ambiguity — that **no report is actually titled `التقرير المالي الشامل`** — was raised as a blocking question rather than guessed, and Phase 2 resolved it by naming `ComprehensiveFinancialTransactionsPage` explicitly. Scrollbar direction was determined from CSS (`overflow-x: auto`, no `overflow-y`, no height constraint, `min-width: 1250px`) rather than assumed. All six changes implemented across 5 files with 2 new test files (28 tests, 76 assertions); `tests/Feature/Reports` + `tests/Feature/Audit/Reports` green at 122 passed / 375 assertions. Accounting safety shown by diff (`0` changed lines containing `+=`). Two findings reported rather than silently worked around: Pint already failed on all four production files **before** any edit (so formatting was left alone), and `optimize:clear` cannot complete locally because its `cache:clear` step needs a MySQL that is not running. Not committed, per instructions — awaiting review.
-
----
-
-### Date
-2026-09-20 (Expanded classification detail — presentation-only refinement with a hard data/logic fence)
-
-### Prompt
-A fifteen-section brief for `ComprehensiveFinancialTransactionsPage` that opened by declaring itself *"a PRESENTATION / UX refinement only"* and then enumerated fourteen things not to change — report data, queries, accounting calculations, filters, exports, notes collection, category grouping, category IDs/keys, scrollbar synchronization, totals, currency logic, service aggregation — each followed by *"If you discover that any requested UI change would require changing business/data logic, STOP AND ASK before doing it."* Targets were given as numbers rather than adjectives (*"approximately 12px"*, *"vertical: 7–9px, horizontal: 8–10px"*, *"line-height approximately 1.4–1.5"*). Section 10 asked for the spinner to be scoped to the clicked row and named the mechanism as a preference, not a mandate: *"Prefer Livewire parameter-specific targeting if supported by the current code/version … If Livewire cannot reliably target the parameterized action in the current setup, use a small local loading-key state."* Section 14 restated the permanent project rule: no full suite, no full Feature suite.
-
-### Purpose
-**Numeric targets are what made this a one-pass change.** "More compact" is unfalsifiable and would have produced a round of adjustment; `12px` body, `7–9px` vertical padding and `1.4–1.5` line-height are checkable against the file. They also exposed the actual defect, which was not a missing style but an *inherited* one: the sub-table's rules only overrode `padding`, so the parent table's `font-size`, zebra and hover tints were still cascading in through descendant selectors. A brief phrased as "make it smaller" invites adding another `font-size`; a brief with a number forces the question of why the existing one was not taking effect.
-
-**Naming the preferred mechanism while leaving an escape hatch was the right shape for section 10.** It pointed at `wire:target` with parameters without asserting it works, and explicitly authorised a local loading key if it did not. That turned the first step into verification rather than assumption — reading `getTargets()` and `containsTargets()` in `livewire.esm.js` and confirming that v4.3.1 hashes parsed params and compares them to the request's call params. It does, so no PHP state was needed and `toggleCategory()` stayed untouched. Had the brief simply mandated `wire:target`, a version that did not support it would have produced a spinner on every row with no error; had it simply mandated a loading key, the page would have gained UI-only state it does not need.
-
-**The most useful constraint was the one about not adding queries.** Section 12 spelled out "no new ledger queries, no new N+1, no new note queries" for what is nominally a CSS task — which sounds redundant until you notice that the obvious way to show a per-row loading state *is* to track it server-side, and that the obvious way to make notes "cleaner" is to truncate them and fetch the rest on demand. Both were pre-emptively closed off, along with truncation explicitly (*"do NOT truncate the full notes shown inside expanded details"*), leaving font-size and gap as the only levers for the notes hierarchy — which is what the hierarchy actually needed.
-
-**One instruction proved load-bearing in an unexpected way: "escaped Blade output only; no raw arbitrary HTML."** The notes work is purely typographic, so it never came near unescaped output — but stating it kept `white-space: pre-wrap` as the mechanism for preserving the author's line breaks, rather than the far more tempting route of converting newlines to `<br>` and rendering with `{!! !!}`, which would have satisfied every visual requirement in the brief while turning a note containing `<b>x</b>` into markup.
-
----
-
-### Date
-2026-09-22 ("DO NOT MODIFY ANY CODE YET" — a full impact audit demanded before the change it was proposing)
-
-### Prompt
-Two prompts, deliberately separated. The first opened with *"We are considering removing the field"* and *"DO NOT MODIFY ANY CODE YET. I want a complete impact audit first"*, then specified eight search terms (including the exact Arabic label and its two halves), nine audit areas, and a twelve-item deliverable. It repeated *"Do not assume. Inspect the CURRENT codebase and database structure"* and asked for the schema to be confirmed *"not historical assumptions"*. Section 8 required comparing NULL against auto-filling the organization across accounting correctness, semantic correctness, reports, partner statistics, auditability, historical data and future maintenance, with the instruction *"Do not choose based on convenience."* Section 9 added: *"If choosing auto-fill, verify the exact Partner record exists and do NOT hardcode an ID without a stable lookup strategy."* Section 7 scoped the data inspection to read-only counts and *"do not expose sensitive partner data unnecessarily."* The second prompt approved the audit's recommendation and specified the implementation section by section, including the exact expression to use on edit and an explicit prohibition on `$data['partner_id'] ?? null`, closing with *"If current code differs materially from the audit, STOP AND ASK."*
-
-### Purpose
-**Separating the audit from the implementation is what made the decision correct rather than merely defensible.** The proposed change — delete a form field — looks like a five-minute edit, and treating it as one would have produced working code with a silent defect: both create writes used bare `$data['partner_id']`, which Laravel's error handler turns into a thrown exception, so the crash would at least have been loud; but the obvious fix for that, applying the same `?? null` on edit, would have silently erased the beneficiary of every historical expense on the next amount change. The audit surfaced that trap before any code was written, and the second prompt then named it explicitly as forbidden.
-
-**"Verify the exact Partner record exists" was the single highest-value instruction.** The proposed alternative was to auto-fill `جمعية غياث الإنسانية`. That record does not exist — the `partners` table holds exactly one row, an individual donor — so an implementation that had assumed it was there would have failed at runtime or, worse, quietly created it. Being told to verify rather than to hardcode turned a plausible-sounding option into a demonstrably unavailable one, and shifted the argument from taste to fact.
-
-**Demanding the live schema rather than the migration files mattered more than it sounds.** The answer happened to agree with the migrations — both columns nullable since creation — but that agreement was only knowable by checking. The audit's headline conclusion (no migration required) rests entirely on `information_schema`, and a grep confirming that no later migration had altered nullability was the second, independent leg of the same claim.
-
-**"Do not choose based on convenience" pre-empted the wrong kind of reasoning.** NULL is also the *easier* option, which is precisely why it needed to be argued on other grounds: that `partners` models external counterparties and the organization is not its own counterparty; that a constant org-partner would corrupt future partner statistics and add contentless noise to every audit payload; and that nothing in the system reads the column anyway. Convenience and correctness pointing the same way is a coincidence worth stating, not a justification.
-
-**Scoping the data check to counts kept a read-only instruction genuinely read-only.** The useful findings — zero general expenses, one partner, perfect `partner_id` sync — are all counts. The one place a name was needed (does the organization exist as a Partner?) was authorised by section 9's verification requirement, and nothing beyond that was read out.
-
-### Result
-See `docs/AI_PROJECT_MEMORY.md` / `docs/TASKS_LOG.md` / `docs/DECISIONS_LOG.md` (2026-09-22 entries). Audit delivered across all twelve requested sections, then implemented across 5 production files and 2 test files with 10 new tests. Targeted runs: 10/10 new, 4/4 `GeneralExpenseAuditTest`, 28/28 `tests/Feature/GeneralExpenses`, 11/11 `FinancialAuditRegressionTest`, plus 53 more across the three other suites that exercise the changed pages — 96 tests, all green. No migration, no accounting change, no report change, no partner data created. One pre-existing test asserted the removed behavior and was inverted to prove the new guarantee rather than deleted. Not committed, per instructions.
-
----
-
-### Date
-2026-09-28 (whole-application search audit → Batch 0, with "confirm the audit still matches the code" before editing)
-
-### Prompt
-Two prompts.
-
-The first asked for an **audit/study only**. It set 13 audit areas: search surfaces, per-page state, field classification, a real-collation Arabic test, a normalization design, SQL and performance, indexes, filters, form selects, abstraction choice and multi-word behaviour. It named a 13-section report. It forbade any file, data, migration, commit or Graphify change, and required database work to be read-only.
-
-The second approved **Batch 0 only**. It said: *"Before editing, re-open the REAL current files and confirm the audit still matches the code. If anything materially differs, STOP AND ASK."* It also required the wildcard question to be audited first, and said a temporary escaping implementation must not be duplicated if it belongs in the future shared helper.
-
-### Purpose
-**The re-verification instruction caught a wrong audit finding.** Re-reading `HasGlobalSearch` before editing showed that Filament already drops results the user cannot `canView()`, so the audit's headline security gap did not exist. Stopping to ask, instead of shipping a "security fix" for a non-issue, led to a correctly described change. The two real, smaller gaps (trashed parents, and the result limit being used up by unviewable rows) were found and tested. A test was written that fails on the old code for the right reason.
-
-**Requiring the real collation, not an assumed one, produced the audit's most useful facts:**
-- diacritics compare equal with `=` but not with `LIKE`;
-- Arabic digits already match ASCII digits in MySQL;
-- alef variants are distinct in every candidate collation.
-
-A normalizer designed from assumptions would have got all three wrong.
-
-**"Audit the wildcard question first"** prevented a stop-gap implementation that Batch A would have replaced.
-
-### Result
-See the 2026-09-28 entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md`. The audit changed nothing. Batch 0 touched 3 production files and added 2 test files (16 tests), plus the 49 existing attachment tests as regression, all green. Not committed.
-
----
-
-### Date
-2026-09-28 (search Batch A: "prove it first on one page", with an explicit do-not-normalize list)
-
-### Prompt
-Approved **Batch A only**. It required:
-- create one small helper, `app/Support/Search/ArabicSearch.php`, and prove it on `/admin/transaction-lines` before any rollout;
-- an exact safe-normalization list, with plain `ا` as the canonical alef (*"Do NOT implement the audit report's accidentally reversed REPLACE direction"*);
-- an explicit **do-not-normalize** list: ى/ي, ة/ه, ؤ/و, ئ/ي, ک/ك, ی/ي;
-- *"report [another mark] before expanding the range"*;
-- column-side folding only for human text, never for identifiers;
-- literal `%`/`_` *"on both SQLite … and MySQL read-only"*, being *"explicit about Laravel/MySQL ESCAPE semantics"*;
-- keeping word-splitting;
-- grouping same-relation EXISTS only if result equivalence is proven;
-- a read-only MySQL check, because the suite runs on SQLite.
-
-### Purpose
-**The do-not-normalize list, with its reasons, removed the riskiest guesswork.** Without it, a "helpful" helper could have folded ى/ي and made `علي` (a name) match `على` (a preposition) in every description.
-
-**"Report before expanding the range" mattered in practice.** The obvious extension, combining hamza U+0654, would have silently folded a decomposed ؤ into و. That violates the do-not-normalize list even though it looks like "just another mark".
-
-**Demanding explicit ESCAPE semantics on both engines found a real portability gap.** SQLite has no default LIKE escape at all, so an approach that relied on MySQL's backslash default would have passed on MySQL and failed in the test suite, or the other way round.
-
-**The equivalence requirement turned a refactor into a provable one.** A 42-term before/after MySQL snapshot showed identical row-ID sets for every term normalization does not touch. The only four differences are the intended ones, and each is explained down to the row.
-
-### Result
-See the 2026-09-28 Batch A entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md`. 2 production files (1 new), 2 test files (1 new): 51 + 44 targeted tests green, and the 13 new behaviour tests fail on the old code. Not committed.
-
-**Follow-up correction prompt (same day):** *"Before Batch A can be approved for commit, perform a focused CORRECTION / VERIFICATION PASS"*. It flagged an apparent reversed alef direction and swapped SQL counts in the report, and demanded:
-- *"FIRST inspect the actual current code … If the REPORT was wrong but the CODE is correct … correct the documentation"*;
-- *"Do not accept a test that merely applies the same flawed transform to both the expected and actual values"*.
-
-**Why it mattered:** the contradiction turned out to be a rendering artifact. Arabic letters next to an arrow get bidi-reordered in left-to-right text. The code-point dump settled it in one step, and independent literal-code-point assertions now prove the direction regardless of how text renders. The same prompt converted two open Batch A questions into decisions: NFC (applied, after checking both runtimes for intl) and the `line_role` Latin-letter guard. It also required regenerating Graphify from the final tree rather than keeping hook output from a stashed state.
-
----
-
-### Date
-2026-09-28 (search Batch B: master data, "do not mechanically rewrite every tiny table")
-
-### Prompt
-Approved **Batch B only**: accounts, projects, partners, project supers, project costs, lookups where search already exists, and account/project global search.
-
-Rules it set:
-- reuse `ArabicSearch` without changing Batch A semantics;
-- IBAN space-insensitivity only *"as a reusable, conservative identifier behavior"*;
-- phone search that accepts Arabic/Persian digits and ignores harmless formatting, *"Do NOT use numeric() for phone numbers"* and *"Do not parse or reinterpret country codes"*;
-- lookups changed only where alef folding *"materially improves its existing behavior"*;
-- global search through *"Filament's supported global-search extension points"*;
-- no ي/ى folding even for person names;
-- *"Avoid git stash because this repo's Graphify hook reacts to checkout/stash operations"*.
-
-### Purpose
-**"Do not use numeric() for phone numbers" drew a type boundary into the helper.** Phones became their own identifier kind, with a strict shape check. That check is what stops a code like `X-562` from quietly turning into a digits-only phone match.
-
-**"Materially improves" was first read as an evidence question about current data.** Four lookups were changed, each with a named stored or typed hamza miss, and four were left alone. The follow-up below corrected that reading.
-
-**Follow-up consistency prompt (same day):** *"Search behavior must be based on FIELD SEMANTICS, not whether today's small dataset happens to expose the bug."* The first cut had skipped four lookups because their current rows showed no miss, which is exactly the data-dependence a standard must avoid. The prompt also required auditing FiscalYears' real field rather than assuming it was a year code, and kept sorting out of scope: *"Search work and sorting work must stay separate."* The form showed a free-text Arabic label, so all eight name lookups now share one behaviour.
-
-**Banning `git stash` forced a better before/after technique.** The files were backed up, overwritten with `git show HEAD:<file>`, tested, restored, and verified by SHA-1. It proves the tests discriminate (23/30 fail or error on the old code) without firing the Graphify hook.
-
-### Result
-See the 2026-09-28 Batch B entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md`. 16 production files, 2 test files (1 new). 78 unit and 34 feature tests green. Not committed.
-
----
-
-### Date
-2026-09-28 (search Batch C1: "useful search, not maximal field count")
-
-### Prompt
-Approved **Batch C1 only**: search and the project/partner lookup filters on the five financial lists.
-
-Rules it set:
-- audit each page separately (*"Do not assume all five pages have identical semantics"*);
-- reuse `ArabicSearch`;
-- search only user-visible data, with an explicit do-not-search list (`fx_rate`, percentages, derived balances, IDs, dates by LIKE, mechanically every debit/credit column);
-- exact amounts from `numeric()`, never `CAST … LIKE`;
-- donor, partner and beneficiary must keep their page meaning;
-- no C2/N+1 work, and no financial logic (*"If a search implementation appears to require touching financial business logic: STOP AND ASK"*).
-
-### Purpose
-**"Do not assume identical semantics" paid off concretely.**
-- The budget list has no type or account columns.
-- The general operations display `partner ?? transaction.partner`, so both must be searched.
-- The receipts' partner filter is donors-only.
-- Each page reaches its project through a different path.
-
-A single generic pattern would have missed or misapplied each of these.
-
-**The do-not-search list gave the amount choice a clear rule:** only the page's own visible figures. That excluded the execution list's budget/cost amounts, which belong to another record.
-
-**Requiring filter semantics to stay page-specific led to passing each page's existing apply closure through unchanged.** Only option loading moved to the server. A side effect was caught: Filament's default indicator reads a static option list, so it needed its own label resolver.
-
-### Result
-See the 2026-09-28 Batch C1 entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md`. 7 production files (2 new), 1 new test file: 27 feature + 78 unit tests green, 17 of the 27 failing on the old code. No financial logic touched. Not committed.
-
----
-
-### Date
-2026-09-28 (search Batch C2: "performance / query-count only", with before/after proof)
-
-### Prompt
-Approved **Batch C2 only**: remove the display N+1 on the five financial lists (`has_attachment`) and on the receipt debit/credit account columns, plus the receipts relation manager if it repeats the pattern.
-
-Rules it set:
-- *"Measure the current query count first"* and stop if the code differs;
-- `withExists` at the query source; *"never call a relationship query from inside the table column closure"*;
-- *"Do NOT guess which line represents debit or credit"*;
-- keep every visible value, including fallbacks and soft-deleted historical accounts;
-- robust scaling assertions (*"queries(N rows) - queries(1 row) does not scale linearly"*) instead of fragile totals;
-- report, don't fix, any other N+1.
-
-### Purpose
-**"Measure first" corrected the earlier estimate.**
-- The C1 report had said the receipt account columns cost 2 queries per row. The real figure is 4: a lines query plus an account query, per column. Together with the badge, receipts grew by 5 per row.
-- The same pattern turned out to exist verbatim in the ProjectCosts receipts relation manager, which had no eager loading at all.
-
-**Asking for scaling rather than totals made the tests stable.** Framework queries (auth, permissions, filters) are identical on the 1-row and 10-row renders, so the difference isolates exactly the per-row cost.
-
-**Keeping the old selection rule explicit avoided a silent behaviour change.** The old SQL had no ORDER BY. The loaded-collection version sorts by `id` to match its effective order, and correctness tests pin the missing-line and soft-deleted-account fallbacks.
-
-### Result
-See the 2026-09-28 Batch C2 entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md`.
-- Every list and the relation manager now render in a constant query count (for example receipts 17/37/62 → 14/14/14 for 1/5/10 rows).
-- 6 query-count and correctness tests, plus regression runs of `FinancialListsSearchTest` and `RelationManagerAuthorizationTest`, all green.
-
-Not committed.
-
----
-
-### Date
-2026-09-28 (search Batch D: Muwakha families, "Do NOT assume card_code is directly on the family model")
-
-### Prompt
-Approved **Batch D only**: Muwakha family list search and topbar global search.
-
-Rules it set:
-- audit where every value really lives, with two explicit warnings: *"Do NOT assume card_code is directly on the family model"* and *"Do NOT assume every family has only one project/account relation"*;
-- add a small explicit person-name ى/ي fold *"Do NOT change ArabicSearch::normalize() default semantics"* and prove it does not leak into non-person fields;
-- *"Do not make a family appear in ordinary list search solely because of an old soft-deleted historical account"*;
-- IDs and phones as identifiers, never amounts;
-- a card code-aware global search that preserves authorization.
-
-### Purpose
-**The two "do not assume" warnings matched the real model exactly.**
-- `card_code` lives on the `muwakha_family_projects` link, one per project, with several links possible per family.
-- The family has both a CURRENT account (`account_id`, withTrashed) and an account-history table.
-
-Searching the history would have been the easy mistake. The audit showed the list renders only the current account, and a test now proves an old account code no longer finds the family after a re-point.
-
-**Requiring the fold to be explicit and field-scoped kept `normalize()` stable for every earlier batch.** The leak test (bank `الهدى`, project `الرضى`) proves the ى/ي fold stays on person names. The MySQL check shows both bindings side by side (`%علي%` for names, `%على%` for other text).
-
-**"Measure, don't assume" also exposed a test-design error in my own work:** quoted grouping is a table-search feature, not a global-search feature. The global test now reflects real topbar behaviour.
-
-### Result
-See the 2026-09-28 Batch D entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md`.
-- 3 production files, 2 test files (1 new).
-- 83 unit + 22 feature + 21 existing Muwakha resource tests green; 15 of the 22 fail on the old code.
-
-Not committed.
-
----
-
-### Date
-2026-09-28 (search Batch E: "the current selected value must always display")
-
-### Prompt
-Approved **Batch E only**: large lookup Selects on three reports and three financial forms.
-
-Rules it set:
-- audit each Select's source, scope, dependency and hydration *"Do NOT assume these selects are interchangeable"*;
-- server-side search, at most 50 results, no preload;
-- *"CURRENT SELECTED VALUE MUST ALWAYS DISPLAY … This is mandatory"*;
-- cascading pickers must use the *"CURRENT live parent state"*;
-- no `withTrashed()` added globally;
-- only option retrieval changes on the financial forms, never `buildLines()`, posting or persistence;
-- old-versus-new proof without `git stash`.
-
-### Purpose
-**Auditing validation, not just display, found the real risk.** A Select with static `->options()` gets Filament's automatic `in` rule for free. Moving to dynamic search replaces that with *"is there a label for this value?"*, so an unscoped label resolver would have let a forged non-donor id through the receipt form. Scoping every resolver exactly like the old option list kept validation equivalent. Tests assert the `in` values directly (null = valid, [] = rejected).
-
-**The "must always display" rule and bounded search were solved by the same resolver.** It also covers multi-select restoration (`getOptionLabelsUsing`) for the comprehensive report's accounts, tested with a selection outside the first 50 results.
-
-**"Live parent state" was checked explicitly on the donor report.** The project search reads `$get('donor_id')` at search time, the donor change still clears the project, and a stale project of the previous donor fails validation.
-
-### Result
-See the 2026-09-28 Batch E entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md`.
-- 7 production files and 1 new test file (18 tests, 15 failing on the old code).
-- Plus 6 directly affected existing test files, all green.
-
-Not committed.
-
----
-
-### Date
-2026-09-28 (search Batch F: "Do NOT mechanically make every field searchable")
-
-### Prompt
-Approved **Batch F only**, the final implementation batch of the search project. It covered:
-- the Transactions list search;
-- noisy topbar global search;
-- Arabic-aware search on the remaining Arabic free-text fields;
-- consistent placeholders.
-
-Rules it set:
-- *"Do NOT mechanically make every field searchable"*;
-- decide Keep/Improve/Disable per global-search resource with a reason;
-- prove the intended key finds the record, unauthorized users get nothing, and SoftDeletes stay excluded;
-- report the sorting inventory without changing it;
-- no change to transaction creation, lines, posting, balances, FX, deductions, guards or reports;
-- no `git stash`.
-
-### Purpose
-**The per-resource decision table, not a blanket change, drove the result.**
-- Four resources lost topbar search entirely, because their keys were dates, UUIDs or machine names.
-- Fourteen were re-keyed through one trait with explicit text/identifier semantics.
-- Accounts, Projects and Muwakha were left alone.
-
-**The notes decision was made from the data flow**, not assumed: user-entered ملاحظات, already searched on سطور المعاملات.
-
-### Result
-See the 2026-09-28 Batch F entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md`.
-- 25 modified production files and 1 new trait.
-- 1 new test file (17 tests; 15 fail on the old code).
-
-Not committed. A separate final read-only search audit follows.
-
----
-
-### Date
-2026-09-28 (search Batch G: "CLOSE THE FOUR REMAINING SEARCH GAPS ONLY")
-
-### Prompt
-After the final read-only search audit, approved **Batch G only**, *"NOT a new broad redesign"*: fix exactly the four audit findings.
-- the general projects report table search;
-- the budget-payment `partner_id` Select;
-- the attachments project filter;
-- the permissions `roles.name` search.
-
-Rules it set:
-- re-audit the committed source first and *"STOP AND REPORT"* if a target differs;
-- reuse `FinancialLookupFilters`;
-- keep scopes, validation, filter conditions, sorting and report calculations;
-- give each change a test that fails on the old code;
-- no `git stash`;
-- explicitly leave the sorting convention, the beneficiary-account cascade, small-lookup placeholders, relation managers and backup search alone.
-
-### Purpose
-To finish the search project with the smallest possible diff. The pre-edit check confirmed all four findings against the committed tree (`20ac78f`) before any edit.
-
-### Result
-See the 2026-09-28 Batch G entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md` and `docs/DECISIONS_LOG.md`.
-- 4 production files.
-- 1 new test file (12 tests).
-
-Not committed.
-
----
-
-### Date
-2026-10-05
-
-### Prompt
-"BUILD A COMPLETE, REALISTIC, FULL-SYSTEM OMS STRESS-TEST DATABASE" — audit first, separate `oms_stress`, hard guards, no production access, ≥ 500,000 transaction lines from real line shapes only, full audit history, deterministic seed, small smoke build before large, STOP on any integrity failure, then benchmark the real application. Follow-up authorized automatic completion on this dev machine: create `.env.stress` without printing secrets, generate a stress-only password, no commit, no push.
-
-### Purpose
-A trustworthy performance baseline for OMS at mature-organization scale.
-
-### Result
-See the 2026-10-05 entries in `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`, `docs/DECISIONS_LOG.md` and `docs/STRESS_ENVIRONMENT.md`. "STOP on any failure" mattered twice: a schema-parity abort exposed the missing plain index, and a fail-clean large build exposed a flush-order bug that the small scale could not reach.
+Read-only report pages with a required currency (no cross-currency blending); exports use only the applied / displayed result, blocked before «عرض».
