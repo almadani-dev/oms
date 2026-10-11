@@ -8,13 +8,16 @@ namespace App\Services\Audit\Reports;
  *
  *  - Xlsx  PhpOffice\PhpSpreadsheet\Writer\Xlsx  -> .xlsx  ("تصدير Excel")
  *  - Docx  PhpOffice\PhpWord IOFactory Word2007  -> .docx  ("تصدير Word")
+ *  - Csv   AccountStatementCsvExport             -> .zip of UTF-8 CSVs
+ *          ("تصدير CSV", تقرير كشف الحساب, 2026-10-08)
  *
- * CSV and PDF are deliberately NOT cases here. No export service in this
- * codebase produces either, so adding them would be speculative vocabulary in
- * a table that is supposed to record only what happened.
+ * PDF is deliberately NOT a case here. No export service in this codebase
+ * produces it, so adding it would be speculative vocabulary in a table that
+ * is supposed to record only what happened.
  */
 enum ReportExportFormat: string
 {
     case Xlsx = 'xlsx';
     case Docx = 'docx';
+    case Csv = 'csv';
 }

@@ -2,6 +2,7 @@
 
 namespace App\Services\Reports\ComprehensiveFinancialTransactions\Projection;
 
+use App\Services\Reports\AccountStatement\AccountStatementProjector;
 use Illuminate\Support\Facades\DB;
 use LogicException;
 
@@ -22,11 +23,22 @@ use LogicException;
  * writes, can never double-count.
  *
  * Amounts are handled as exact decimal strings (bcmath) end to end.
+ *
+ * Also the single entry point of the "تقرير كشف الحساب" projection: every
+ * live sync/remove here is forwarded, in the same DB transaction, to
+ * AccountStatementProjector, so both read models move atomically with the
+ * ledger. (This projection's own rebuild pass — $maintainAggregates false —
+ * and the account-type re-derivation do not touch the statement projection,
+ * which stores no account attribute and has its own rebuild.)
  */
 final class ComprehensiveReportProjector
 {
     /** Transactions re-derived per statement batch. */
     public const CHUNK = 500;
+
+    public function __construct(
+        private readonly AccountStatementProjector $accountStatement = new AccountStatementProjector,
+    ) {}
 
     public function syncTransaction(int $transactionId): void
     {
@@ -42,6 +54,7 @@ final class ComprehensiveReportProjector
     {
         $this->assertInTransaction();
         $this->apply([$transactionId], []);
+        $this->accountStatement->removeTransaction($transactionId);
     }
 
     /**
@@ -52,6 +65,20 @@ final class ComprehensiveReportProjector
      * @return int number of transactions whose projection actually changed
      */
     public function syncTransactions(array $transactionIds, bool $maintainAggregates = true): int
+    {
+        $changed = $this->syncComprehensive($transactionIds, $maintainAggregates);
+
+        if ($maintainAggregates) {
+            $this->accountStatement->syncTransactions($transactionIds);
+        }
+
+        return $changed;
+    }
+
+    /**
+     * @param  array<int, int>  $transactionIds
+     */
+    private function syncComprehensive(array $transactionIds, bool $maintainAggregates): int
     {
         $this->assertInTransaction();
 
@@ -81,7 +108,7 @@ final class ComprehensiveReportProjector
             ->map(fn ($id) => (int) $id)
             ->all();
 
-        return $this->syncTransactions($transactionIds);
+        return $this->syncComprehensive($transactionIds, true);
     }
 
     /**

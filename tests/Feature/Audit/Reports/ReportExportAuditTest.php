@@ -293,6 +293,7 @@ class ReportExportAuditTest extends TestCase
     {
         return [
             'account_statement' => [AccountStatementPage::class, 'reports.account_statement.view', 'exportExcel'],
+            'account_statement_csv' => [AccountStatementPage::class, 'reports.account_statement.view', 'exportCsv'],
             'trial_balance' => [TrialBalancePage::class, 'reports.trial_balance.view', 'exportWord'],
             'donor' => [DonorFinancialReportPage::class, 'reports.donor_financial_report.view', 'exportExcel'],
             'comprehensive' => [ComprehensiveFinancialTransactionsPage::class, 'reports.comprehensive_financial_transactions.view', 'exportWord'],
@@ -357,10 +358,10 @@ class ReportExportAuditTest extends TestCase
         $this->actingAsSuperAdmin();
 
         return Livewire::test(AccountStatementPage::class)
-            ->set('data.account_type_id', $account->account_type_id)
-            ->set('data.bank_type_id', $account->bank_type_id)
-            ->set('data.currency_id', $account->currency_id)
-            ->set('data.account_id', $account->id)
+            ->set('data.account_type_ids', [(string) $account->account_type_id])
+            ->set('data.bank_type_ids', [(string) $account->bank_type_id])
+            ->set('data.currency_ids', [(string) $account->currency_id])
+            ->set('data.account_ids', [(string) $account->id])
             ->set('data.date_from', '2026-01-01')
             ->set('data.date_to', '2026-12-31')
             ->call('showReport');

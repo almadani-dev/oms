@@ -1,6 +1,55 @@
 # Prompts Log
 
 ### Date
+2026-10-08 ("NEXT TASK — ACCOUNT STATEMENT ULTRA-FAST CSV EXPORT")
+
+### Prompt
+Add «تصدير CSV» beside «تصدير Excel» on the Account Statement only:
+- the applied filters;
+- straight from the projection, streamed (no Livewire rows or Eloquent per movement, no OFFSET);
+- the exact running balance per account;
+- a summary CSV;
+- a ZIP, split around 1M rows per file;
+- UTF-8 + BOM, numeric money, formula-injection safety;
+- audit and authorization like Excel;
+- a 1M-in-≤ 5 s stretch target with an A–F floor test and a 50k–1.2M matrix;
+- independent 0-difference verification;
+- browser check on the stress site;
+- targeted tests only;
+- no commit, no runtime change.
+
+### Purpose
+- **"Measure actual end-to-end … If 5 seconds is physically impossible, report the real measured lower bound":** led to the A–F floor measured with the same 8-way parallelism. It showed the ledger-text read (11.5 s per 1M), not PHP, is the bound.
+- **"Do not remove financially useful information just for speed":** kept the descriptions and notes, which are exactly that bound.
+
+---
+
+### Date
+2026-10-07 ("MAJOR TASK — REDESIGN THE ACCOUNT STATEMENT FOR MULTI-ACCOUNT REPORTING, EXTREME SPEED, AND HIGH FLEXIBILITY")
+
+### Prompt
+Redesign تقرير كشف الحساب:
+- several accounts in one statement with per-account/currency running balances;
+- every select filter multi-value, with server-searchable pickers;
+- 50-row keyset First/Previous/Next/Last;
+- under 1 s at ~1M rows;
+- immediate freshness, no queue for browsing, bounded Livewire state;
+- exact exports.
+
+Requirements and guardrails:
+- audit and baseline first;
+- independent verifier, rebuild command, old/new and multi-account parity, benchmark matrix A–L;
+- targeted tests only;
+- `oms_stress` only;
+- no commit, no push, no production.
+
+### Purpose
+- **"Do NOT guess — ask only real business-semantics questions"** produced the two questions that decided the design: actual vs filtered balance under dimension filters, and whether empty Accounts means all matching accounts.
+- **"Do not choose an approximate method / do not rewrite a million rows on a backdated write"** led to exact checkpoint totals (daily, monthly, all-time) instead of stored running balances.
+
+---
+
+### Date
 2026-10-05 ("APPROVED — COMMIT V2 FIRST, THEN AUDIT + IMPLEMENT THE FINAL REAL-TIME REPORTING PROJECTION" / "NO MySQL triggers" / "The ledger stays authoritative" / "ZERO differences" / "DO NOT MIGRATE OR MODIFY THE NORMAL `oms` DATABASE")
 
 ### Prompt

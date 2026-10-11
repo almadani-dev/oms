@@ -4,6 +4,50 @@
 
 ## Recent Changes
 
+- **2026-10-08 — تقرير كشف الحساب «تصدير CSV» (NOT committed):**
+  - **What:** a new button beside «تصدير Excel» exports the APPLIED report as a ZIP holding a summary CSV and the movement CSV(s) (≤ 1,000,000 rows each).
+  - **Encoding:** UTF-8 + BOM, numeric money, formula-guarded text.
+  - **Code:** `app/Services/Reports/AccountStatement/Csv/`.
+  - **Speed:** day-aligned segments stream the projection joined to the ledger texts, with integer-cents running balances from checkpoint openings. The queued job runs up to 8 parallel CLI workers (`oms:account-statement-csv-segment`, hidden). Pieces are deflated in parallel and joined by a streaming ZIP writer.
+  - **Safety:** every export proves the segment chain and the account summary before delivery.
+  - **Measured on `oms_stress`:** 1M rows in 11.3 s, which equals the DB read floor (ledger text I/O, 128 MB buffer pool). The ≤ 5 s target is NOT met.
+  - **Correctness:** 0 differences against the ledger up to 1.22M rows.
+  - **Downloads:** the package can be re-fetched until it expires and is audited once (format `csv`).
+  - **Excel and Word unchanged.**
+  - Details: `docs/ACCOUNT_STATEMENT_ARCHITECTURE.md` §5.1, TASKS_LOG 2026-10-08.
+
+- **2026-10-07 — تقرير كشف الحساب pre-commit polish (NOT committed):**
+  - **Balance colours:** now on an inner span; the cell stays neutral.
+  - **Export mode:** decided by work units, `movements + 0.5 × accounts + currencies` (`AccountStatementExportPlan`).
+  - **Styled workbook:** applies number formats by range; the 276-row / 1,767-account export went from 22 s to 3.4 s, Word from 10 s to 2.4 s.
+  - **Background-export polling:** uses a 53-byte owner-scoped JSON endpoint instead of a ~440 KB Livewire re-render.
+  - **UI:** single-line type/classification cells with tooltip; no duplicated currency in labels; search debounce 350 ms.
+  - **Livewire 404 root cause:** thread-safe mod_php with runtime `.env` reading lets concurrent requests boot with an empty `APP_KEY`, which changes Livewire's endpoint hash (also causing `MissingAppKeyException` 500s, and once a wrong DB driver). App-wide and pre-existing. Not fixed: it needs a server decision (see NEXT_STEPS).
+
+- **2026-10-07 — تقرير كشف الحساب redesigned: several accounts in one statement, every select filter multi-value, real-time projection with exact balance checkpoints. Verified on `oms_stress` (1.22M active lines). NOT committed (awaiting approval). No accounting formula, numbering, `current_balance`, FX, fiscal-year, GEN-renumber, audit-semantics or comprehensive-report rule changed.**
+  - **Why:**
+    - The old page loaded the whole period into PHP and stored every row in Livewire state (115 MB JSON for the busiest account).
+    - It also ran two full-history ledger scans: busiest account, one month took ~20 s.
+    - The user required multi-account statements, multi-select filters, 50-row keyset pages, under 1 s per interaction at ~1M rows, immediate freshness and no queue for browsing.
+  - **Business rules (approved by the user on 2026-10-07):**
+    - Balances stay the account's ACTUAL balance; classification / type / project filters only choose the listed lines (option A).
+    - An empty Accounts filter means every non-deleted account matching the account types / bank types / currencies; at least one account-level filter is required.
+    - Original semantics are kept: `amount_currency`, debit when `debit_base > 0`; period from 00:00:00 to 23:59:59; order `(transaction_time, line id)`; soft-deleted lines and transactions excluded; soft-deleted accounts not selectable; mixed-currency warning.
+    - The project filter includes lines of soft-deleted cost items (new filter; history is never hidden).
+  - **Projection** (migration `2026_10_07_100000`, additive, no FKs):
+    - `account_statement_lines` has PK `(account_id, transaction_time, line_id)`, plus a global-order index and a project index.
+    - Checkpoints: `account_statement_daily_totals`, `account_statement_monthly_totals` (with type, plus a covering type index) and `account_statement_account_totals` (all-time).
+    - `account_statement_projection_state` gates reading: only `ready` is read.
+  - **Maintenance:** `AccountStatementProjector`, reached from `ComprehensiveReportProjector::syncTransactions()` / `removeTransaction()`.
+    - Every financial write path already calls these inside its own `DB::transaction()`, so one hook covers all write sites.
+    - It is atomic with the ledger; a failure rolls everything back.
+    - Backdating touches only the affected checkpoint rows.
+  - **Reading:** `app/Services/Reports/AccountStatement/*` (Filters, Scope, Balances, Rows, Report, ExportLayout).
+  - **Page:** applied filters, cursors and the summary are kept in state; rows are never stored; Word, styled Excel, streaming Excel and the background Excel job all read the same rows.
+  - **Ops commands:** `oms:rebuild-account-statement-projection [--verify]`, `oms:verify-account-statement-projection`.
+  - **Docs:** `docs/ACCOUNT_STATEMENT_ARCHITECTURE.md` describes the full design. Results are in TASKS_LOG 2026-10-07.
+  - Applied to `oms_stress` only. The normal `oms` and production were NOT migrated; until migrated, the page there shows an initialization notice. The projector skips silently while its tables do not exist.
+
 - **2026-10-05 — تقرير الحركات المالية الشامل: real-time reporting projection (live mode) + stress schema parity against fresh migrations. Verified at 1.22M active lines; committed locally. No accounting formula, guard, currency rule, SoftDelete semantic or report calculation changed; the ledger stays the only source of truth.**
   - **Why:** "عرض" had to build a snapshot of the whole period in a worker (≈100 s for the full range). The user required an interactive, exact report:
     - immediately current after every commit;

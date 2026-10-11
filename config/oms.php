@@ -100,6 +100,51 @@ return [
             'export_temp_max_age_minutes' => 60,
             'export_url_ttl_minutes' => 10,
         ],
+
+        // "تقرير كشف الحساب": browsing reads the real-time projection
+        // (no queue). Only exports above the inline limits wait for the
+        // 'reports' queue worker. Limits are in WORK UNITS = movements +
+        // summary_row_weight × covered accounts + currencies, measured on
+        // oms_stress (see AccountStatementExportPlan / TASKS_LOG 2026-10-07).
+        'account_statement' => [
+            'summary_row_weight' => 0.5,
+            'styled_excel_max_units' => (int) env('OMS_AS_STYLED_EXCEL_MAX_UNITS', 2000),
+            'word_max_units' => (int) env('OMS_AS_WORD_MAX_UNITS', 2000),
+            // Streaming workbook written inside the request up to here
+            // (≈ 4 s measured); above it, prepared in the background.
+            'inline_streaming_excel_max_units' => (int) env('OMS_AS_INLINE_STREAMING_EXCEL_MAX_UNITS', 8000),
+            'export_disk' => env('OMS_AS_EXPORT_DISK', 'report_snapshots'),
+            'queue' => env('OMS_AS_QUEUE', 'reports'),
+            'job_timeout' => (int) env('OMS_AS_JOB_TIMEOUT', 1800),
+            'pending_stale_minutes' => 30,
+            'export_temp_max_age_minutes' => 60,
+            'export_url_ttl_minutes' => 10,
+
+            // «تصدير CSV» (AccountStatementCsvExport): a ZIP of a summary
+            // CSV and the movement CSV(s), read straight from the projection.
+            'csv' => [
+                // Generated inside the click request (then downloaded) up to
+                // this many work units (movements + 5 × covered accounts) —
+                // ≤ ~3 s measured on oms_stress; above it, built by a
+                // 'reports' queue job (TASKS_LOG 2026-10-08).
+                'inline_max_units' => (int) env('OMS_AS_CSV_INLINE_MAX_UNITS', 25000),
+                // Parallel segment workers (separate CLI processes, one
+                // database connection each) used by the queued build. 1 =
+                // in-process, one consistent snapshot.
+                'workers' => (int) env('OMS_AS_CSV_WORKERS', 8),
+                'min_rows_per_worker' => 40000,
+                // Movement rows per CSV inside the ZIP (Excel's sheet limit
+                // is 1,048,576 rows including the header).
+                'max_rows_per_file' => 1000000,
+                // 'deflate' (level 1, done by each segment writer in
+                // parallel; ~11× smaller and measured no slower, since it
+                // writes far fewer bytes) or 'store' (no compression).
+                'zip_compression' => env('OMS_AS_CSV_ZIP_COMPRESSION', 'deflate'),
+                // Retries when a concurrent ledger write made the parallel
+                // segments disagree (each attempt re-reads everything).
+                'attempts' => 2,
+            ],
+        ],
     ],
 
     'backup' => [

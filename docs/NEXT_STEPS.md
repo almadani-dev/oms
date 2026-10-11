@@ -1,5 +1,62 @@
 # Next Steps
 
+## Recommended Next Step (2026-10-08, Account Statement «تصدير CSV» implemented and verified on `oms_stress` — NOT committed)
+
+**1. User browser check of the download itself.** The agent's browser automation intercepts download navigations, so the agent could not see the file land, although Apache served the full ZIP every time.
+- On `http://172.16.0.100/oms/public/admin/account-statement`: show a small report, click «تصدير CSV», and confirm the ZIP opens.
+- Then try a large report (e.g. account type حساب الجمعية, from 2022). This needs `php artisan --env=stress queue:work database --queue=reports --timeout=1900`.
+- Optionally confirm double-click opening in Excel on a PC whose Windows list separator is `;` (only `,` / en-US was tested here).
+
+**2. Decisions for the user:**
+- keep both Excel and CSV, make CSV the default for large reports, or replace the old large Excel;
+- whether failed CSV builds should get an audit event (today, as for all exports, only deliveries are audited);
+- whether a sparse dimension-filtered export over many accounts (e.g. 1,811 rows across 3,432 accounts: 13.6 s) deserves a checkpoint-per-row path.
+
+**3. Production speed:** the 1M floor is ledger-text I/O (11.5 s here with a 128 MB InnoDB buffer pool). Check the production server's `innodb_buffer_pool_size` and core count before setting `OMS_AS_CSV_WORKERS`. Parallel workers need `proc_open` and the CLI `php` on the queue worker.
+
+**4. Then:** approve and commit the account statement change set. Production rollout needs the persistent `reports` worker (Supervisor/systemd, auto-start, restart on failure, `timeout` / `retry_after`) and the scheduler for `oms:purge-report-snapshots`.
+
+---
+
+## Recommended Next Step (2026-10-07, account statement polish done — one environment issue needs a decision)
+
+**1. Decide how to fix the concurrent-request environment race. This is a server/runtime change, so nothing was changed.**
+- Under thread-safe Apache mod_php, concurrent requests occasionally see a partially missing environment: an empty `APP_KEY` and, once, a missing `DB_CONNECTION`. Symptoms are Livewire 404s, `MissingAppKeyException` 500s and a wrong DB driver.
+- This affects every page on this machine, including the earlier August 404s. It is not specific to the account statement.
+- **Options, from least to most invasive:**
+  - (a) Cache the config per environment with `APP_CONFIG_CACHE`, e.g. `SetEnv APP_CONFIG_CACHE …/bootstrap/cache/config-stress.php` for the stress alias, plus `config:cache` per environment, so `.env` is not read per request.
+  - (b) Run PHP non-thread-safe through FastCGI (mod_fcgid / php-cgi) instead of mod_php.
+  - (c) Stop serving two environments from one Apache process.
+- Confirm whether production runs on the same stack before rolling out anything that relies on concurrent polling.
+
+**2. Then:** review and approve the account statement change set and commit it separately from the earlier uncommitted work.
+
+---
+
+## Recommended Next Step (2026-10-07, account statement redesign implemented and verified on `oms_stress` — NOT committed)
+
+**1. Browser check by the user.** It is blocked for the agent at the login page: no session exists, and the stress password is not stored in clear text.
+- Open `http://172.16.0.100/oms/public/admin/account-statement`.
+- Check the multi-select tags and the searchable account / project pickers.
+- Press "عرض" with account types 4+6+13 (~1.07M lines).
+- Use First / Previous / Next / Last.
+- Use the per-account summary pager.
+- Export Word / Excel on a small selection.
+- Export a large Excel; this needs `php artisan --env=stress queue:work database --queue=reports --timeout=1900`.
+
+**2. Review and approve the change set, then commit it.**
+- Keep it a separate commit from the earlier uncommitted comprehensive / General Expense work.
+- The file split is listed in TASKS_LOG 2026-10-07.
+
+**3. Development `oms` and production (each needs explicit approval):**
+- Run `php artisan migrate`, then `php artisan oms:rebuild-account-statement-projection --verify`.
+- Until then, the page shows the "قيد التهيئة" notice. Financial writes keep working, because the projector skips while its tables do not exist.
+- Consider a scheduled `oms:verify-account-statement-projection`, as for the comprehensive projection.
+
+**4. Optional later optimisation (measured, not required):** Filament re-evaluates the form's option lists on every render, about 100 ms per request.
+
+---
+
 ## Recommended Next Step (2026-10-05, real-time comprehensive report projection committed locally — browser check, then decide on the dev DB and production rollout)
 
 **1. Browser check on the stress data** (`$env:APP_ENV='stress'; php artisan serve --host=127.0.0.1 --port=8081`, login `stress.super_admin@stress-oms.invalid`):

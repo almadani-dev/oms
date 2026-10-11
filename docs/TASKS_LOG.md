@@ -15,6 +15,392 @@
 
 ---
 
+### Date
+2026-10-08 (Account Statement «تصدير CSV» — implemented and verified on `oms_stress`; NOT committed)
+
+### Task
+Add «تصدير CSV» beside «تصدير Excel» on `/admin/account-statement`: an ultra-fast, exact, Excel-friendly export of the APPLIED filters, read straight from the projection, with a 1M movements in ≤ 5 s stretch target.
+
+### Result
+**Architecture.** See `docs/ACCOUNT_STATEMENT_ARCHITECTURE.md` §5.1.
+- ZIP = summary CSV + movement CSV(s), max 1,000,000 rows each.
+- Day-aligned segments, each one unbuffered streamed query over the projection joined to the ledger texts.
+- Integer-cents running balance from checkpoint openings.
+- Up to 8 parallel CLI segment workers in the queued job.
+- Each worker writes deflate-encoded pieces; a streaming ZIP writer concatenates them (CRC combine, ZIP64 when needed).
+- Per-export proof: segment chain + summary.
+- Inline ≤ 25,000 units; otherwise the `reports` job.
+- Signed, owner-scoped download, audited once.
+
+**Raw floor** (`oms_stress`, 8 parallel connections, ~1.0M movements, 3 runs, median):
+
+| | Wall | Rows/s |
+|---|---|---|
+| A. DB read, projection + ledger text, discarded | 11.54 s | 86.7k |
+| B. Minimal CSV, projection only (id/date/debit/credit) | 3.62 s | 276k |
+| C. Full-width CSV, no balances | 12.35 s | 81.0k |
+| D–F. Real export: + exact balances, summary, proof, deflate ZIP | 11.28 s | 88.7k |
+
+- **Single connection:** projection walk 13.5 s per 1.22M; with the ledger join 52–56 s; PDO native vs text vs mysqli all equal.
+- **InnoDB:** 0.07 % buffer-pool misses on the projection, but every export re-reads ~810 MB of ledger text (`transaction_lines` 394 MB, `transactions` 272 MB) through the 128 MB buffer pool. Raising the worker count above 8 does not help.
+- **CPU, one core, per 1M rows:** custom encoder 2.4 s (`fputcsv` 10.5 s); bcmath or integer-cents balance ≈ 1.9 s.
+- **Disk:** write ~760 MB/s.
+- **ZIP of 565 MB:** ZipArchive store 1.3 s, deflate1 1.7 s, deflate6 3.3 s. Per-worker deflate is ~0.2–0.4 s in total and ~11× smaller, so deflate is now the default.
+
+**Matrix** (all 4,997 accounts from 2022-01-01, 8 workers, deflate, 3 runs, median):
+
+| Movements | Wall | Rows/s | Segments | Summary (concurrent) | Package | CSV | ZIP | Files | Parent memory |
+|---|---|---|---|---|---|---|---|---|---|
+| 50,273 | 2.77 s | 18k | 2.45 s | 1.72 s | 0.10 s | 37 MB | 3.6 MB | 1 | 76 MB |
+| 100,368 | 3.06 s | 33k | 2.54 s | 2.35 s | 0.15 s | 74 MB | 7.1 MB | 1 | 76 MB |
+| 250,079 | 4.39 s | 57k | 3.91 s | 2.62 s | 0.14 s | 189 MB | 17.3 MB | 1 | 78 MB |
+| 500,526 | 7.36 s | 68k | 6.64 s | 3.07 s | 0.24 s | 380 MB | 34.4 MB | 1 | 80 MB |
+| 1,000,293 | **11.28 s** | 89k | 10.40 s | 2.96 s | 0.22 s | 763 MB | 68.2 MB | 2 | 80 MB |
+| 1,221,151 | 17.28 s (12.6–22.8) | 71k | 16.29 s | 1.99 s | 0.42 s | 934 MB | 82.9 MB | 2 | 80 MB |
+
+- Planning took 0.2–0.5 s; the checks took ≤ 0.08 s.
+- Worker processes stay flat: memory grows with accounts, not with movements.
+
+**Inline (one process) samples:**
+
+| Case | Rows | Accounts | Wall |
+|---|---|---|---|
+| 1 account, 1 month | 1,701 | 1 | 0.2–0.4 s |
+| 1 account, 1 year | 16,491 | 1 | 1.9 s |
+| Account type 13, 1 month | 4,096 | 3,385 | 1.9–2.7 s |
+| All accounts, 1 month | 35,287 | 4,997 | 3.2–4.0 s |
+| Busiest account, full history (scattered ledger pages) | 58,900 | 1 | 6.1–7.9 s |
+
+Hence the inline cap is 25,000 units.
+
+**≤ 5 s for 1M: NO.** The physical bottleneck is MySQL reading the ledger texts (floor A = 11.5 s). The export matches that floor. A projection-only export (floor B, 3.6 s) would meet the target, but only by dropping the financially required descriptions and notes.
+
+**Independent correctness** (scratch verifier: ledger SQL only, never the projection or report code; every cell of every row, running balances by bcmath replay, every summary row):
+
+| Case | Rows | Accounts | Differences |
+|---|---|---|---|
+| Busiest account, partial range | 30,011 | 1 | 0 |
+| Account types 4 + 6 + two transaction types | 35,588 | 502 | 0 |
+| Account types 4 + 13 + 40 projects | 1,811 | 3,432 | 0 |
+| Full range | 1,221,151 | 4,997 | 0 |
+
+- The full-range case had 2 files (983,302 + 237,849 rows); listed debit 3,588,071,671.80, credit 3,140,594,720.13.
+- First, last and 20 random rows were reported for each case.
+
+**Excel (real Excel 16, opened like a double-click, `Local:=True`):**
+- 14 columns, Arabic headers correct (BOM honoured), no import wizard.
+- 6,447 / 6,447 money cells numeric; Excel's SUM equals the summary.
+- Machine list separator `,` (en-US).
+- .NET `ZipFile` extracts the Arabic entry names.
+
+**Browser** (`http://172.16.0.100/oms/public/admin/account-statement`, stress site):
+- The CSV button sits right beside Excel; Arabic RTL is clean.
+- 522-row direct export: Apache served 200 / 37,296 bytes.
+- 756,123-row background export: job 8 s; the JSON status poll returned 56 B (pending) and 267 B (ready); Apache served 200 / 59.7 MB.
+- No console errors, no Livewire 404 / 500. Paging Next / Last kept working.
+- The browser-automation extension intercepts the download navigation (it reported 503/204 for requests Apache served with 200), so the file reaching the Downloads folder was not confirmed by the agent.
+- First try: the browser requests one download URL up to 4 times, which broke a strictly one-time link. Fixed: the CSV stays downloadable by its owner until it expires and is audited once.
+- The queue worker started by the agent consumed the stale job 13 (`BuildAccountStatementExcelExportJob` of 2026-10-07 13:37): a 33 ms no-op, because its export had expired.
+- One synthetic audit row tagged `kernel-test` was written on stress by an in-process download test.
+
+### Changed Files
+**New:**
+- `app/Services/Reports/AccountStatement/Csv/` — `AccountStatementCsvExport`, `AccountStatementCsvSegment`, `AccountStatementCsvLabels`, `AccountStatementCsvFormat`, `AccountStatementCsvPart`, `AccountStatementCsvZip`, `AccountStatementCsvSnapshot`, `AccountStatementCsvMismatch`
+- `app/Console/Commands/Reports/AccountStatementCsvSegmentCommand.php`
+- `app/Jobs/BuildAccountStatementCsvExportJob.php`
+- `tests/Feature/Reports/AccountStatementCsvExportTest.php`
+- `tests/Unit/Services/Reports/AccountStatementCsvPackageTest.php`
+- `tests/Support/Reports/AccountStatementLedgerFixture.php`
+
+**Modified:**
+- `app/Filament/Pages/AccountStatementPage.php`: CSV action, direct and background paths, lock, status URL, `forgetCsvExport`.
+- `resources/views/filament/pages/account-statement-page.blade.php`: the background poller now loops over Excel and CSV; Excel markup unchanged.
+- `app/Http/Controllers/Reports/AccountStatementExcelDownloadController.php`: CSV route, format-aware status, audit once.
+- `app/Services/Reports/AccountStatement/AccountStatementExcelExports.php`: format, move-on-complete, stats.
+- `app/Services/Reports/AccountStatement/AccountStatementExportPlan.php`: `csvInline`.
+- `app/Services/Reports/AccountStatement/AccountStatementRows.php`: `linesInPeriod` made public.
+- `app/Services/Audit/Reports/ReportExportFormat.php`: `Csv`.
+- `app/Console/Commands/PurgeReportSnapshotsCommand.php`: also purges account statement exports and CSV work directories.
+- `config/oms.php`: `reports.account_statement.csv`.
+- `routes/web.php`: `reports.account-statement.csv`.
+- `tests/Feature/Audit/Reports/ReportExportAuditTest.php`: unauthorized CSV case.
+- `docs/ACCOUNT_STATEMENT_ARCHITECTURE.md`
+
+### Verification
+**Targeted tests only (no full suite):**
+
+| Test file | Result |
+|---|---|
+| `AccountStatementCsvExportTest` | 20/20 |
+| `AccountStatementCsvPackageTest` (unit) | 21/21 |
+| `AccountStatementReportTest` | 48/48 |
+| `ReportExportAuditTest` | 23/23 |
+| `ComprehensiveFinancialTransactionsLargeExportTest` | 15/15 |
+| `AccountStatementWritePathsTest` | 8/8 |
+| `ComprehensiveFinancialTransactionsSnapshotTest --filter purge` | 3/3 |
+
+Benchmarks and independent verification were run outside PHPUnit on `oms_stress` (scratch scripts, not committed).
+
+---
+
+
+### Date
+2026-10-07 (تقرير كشف الحساب — pre-commit polish after browser validation; NOT committed)
+
+### Task
+Fix the issues found in browser validation:
+- balance colours rendering on the table cell;
+- slow exports for broad account scopes;
+- heavy full-page export polling;
+- the intermittent Livewire 404;
+- tall rows;
+- "USD (USD)" labels;
+- Arabic account search speed.
+
+Analyse "no activity" accounts without changing that rule.
+
+### Result
+**Balance styling:**
+- **Cause:** the sign classes sat on the `<td>`. That made the cell `display:block` (dark blocks), and `.acct-stmt-table td {color}` overrode red/green.
+- **Fix:** the cell stays neutral and the value is wrapped in a coloured span. Verified in the browser: 0 cells carry the classes; red `#f87171` / green `#4ade80`; cells are `table-cell` with no background.
+
+**Exports:**
+- **Not N+1:** 1,767 account summaries took 27 queries / 0.54 s.
+- **Real cause:** the styled workbook styled every summary money cell individually: build 13.0 s, save 5.5 s.
+- **Range styling:** build 1.0 s, save 1.0 s.
+- **Mode:** now chosen from work units (movements + 0.5 × accounts + currencies) with measured caps.
+
+**Before / after** (real page, `oms_stress`):
+
+| Case | Rows | Accounts | Excel | Word |
+|---|---|---|---|---|
+| A | 1,460 | 1 | styled 2.98 s, file has all rows | 2.2 s |
+| B (browser case) | 276 | 1,767 | 22 s → **3.4 s**, styled, file has all rows | 10 s → **2.4 s** |
+| C | 5,369 | 1 | streaming 3.0 s, all rows | refused in 124 ms |
+| D | 58,900 | 1 | background in 141 ms; job 34.7 s, flat memory, completed | refused |
+
+**No-activity accounts** (B scope, 1,767 accounts) — rule NOT changed:
+
+| Group | Accounts |
+|---|---|
+| No activity in the period, zero opening and closing | 803 |
+| No activity, non-zero opening/closing | 950 |
+| Activity in the period | 14 |
+
+- The old page covered exactly one picked account and always showed it, zeros included.
+
+**Polling:**
+- **Old:** a full Livewire re-render every 2 s, ~440 KB and ~300 ms server each.
+- **New:** a JSON status endpoint, owner-scoped, both permissions required. It returns 53 bytes (pending) and 105–305 ms server time, runs no report query, and never triggers a Livewire request.
+- When the export is ready, the download starts and a renderless `forgetExcelExport()` clears the state; when it fails, an inline notice appears.
+
+**Livewire 404 — root cause found; NO server change made (STOP rule):**
+- A concurrent request occasionally boots with a partially missing environment.
+- With an empty `APP_KEY`, Livewire 4 registers its update route under a different hash: `'/livewire-'.substr(sha256(app.key.'livewire-endpoint'),0,8)`. A valid POST to `/livewire-0e06790f/update` then returns 404.
+- Other effects of the same race:
+  - `MissingAppKeyException` 500s (29 logged);
+  - one request booted on `Connection: sqlite, Database: oms_stress` because `DB_CONNECTION` was missing.
+- **Proof:**
+  - 180 concurrent status calls: 12 × 500;
+  - 60 sequential calls: 0 failures;
+  - 40 parallel loads of the untouched `/admin/projects` page: 2 × 500;
+  - the same 404 on the login page on Aug 1, before this work.
+- **Cause:** thread-safe mod_php (`mpm_winnt`, 64 threads) plus runtime `.env` / `SetEnv` reading without a config cache. Process-wide getenv/putenv is not thread-safe.
+- The old heavy polling did not reproduce it in 84 steps; the new polling stress did, because it adds concurrency.
+
+**Other fixes:**
+- **Rows:** type and classification are one line with ellipsis (max 11 rem), and the full value is in the `title`.
+- **Labels:** one `accountDisplayLabel()` helper appends the currency only if the name does not already end with it.
+- **Search:** the server query takes 27–74 ms (full scan of 5,043 accounts; a `%term%` match cannot use an index). Most of the felt delay was Filament's 1,000 ms debounce plus the hidden tab, so the debounce is now 350 ms on the account and project pickers. No index or schema added.
+
+**Performance** (warm, per process):
+
+| Case | "عرض" | Navigation |
+|---|---|---|
+| C 1 account, full | 192 ms | 111–166 ms |
+| D 3 accounts, full | 388 ms | 115–169 ms |
+| F 1.07M rows | 591–608 ms | 172–367 ms |
+| H (+ 2 projects) | 825–829 ms | 194–314 ms |
+| L2 (all accounts + rare type) | 804–947 ms | 171–299 ms |
+
+- Livewire state is unchanged at 2.9–13.4 KB.
+
+### Changed Files
+- **New:** `app/Services/Reports/AccountStatement/AccountStatementExportPlan.php`.
+- **Edited:**
+  - `app/Filament/Pages/AccountStatementPage.php`
+  - `resources/views/filament/pages/account-statement-page.blade.php`
+  - `app/Services/Reports/AccountStatement/AccountStatementReport.php`
+  - `app/Services/Reports/AccountStatementExcelExportService.php`
+  - `app/Services/Reports/AccountStatementWordExportService.php` (docblock only)
+  - `app/Http/Controllers/Reports/AccountStatementExcelDownloadController.php`
+  - `routes/web.php`
+  - `config/oms.php` (account_statement block only)
+  - `tests/Feature/Reports/AccountStatementReportTest.php`
+  - `docs/*`
+
+### Verification
+Targeted tests only:
+
+| Files | Tests | Assertions |
+|---|---|---|
+| AccountStatementReport + AccountStatementWritePaths + ReportExportAudit + ReportExportAuthorization + ReportPageAccess | 136 | 2,468 |
+| ComprehensiveReportProjectionPage + AccountStatementReport | 78 | 2,348 |
+
+All pass. In the browser: styling, labels, rows and the new polling were checked. The concurrency run surfaced the environment race described above. Test export jobs and files were removed from `oms_stress`.
+
+---
+
+
+### Date
+2026-10-07 (تقرير كشف الحساب — multi-account, multi-select, real-time projection; verified on `oms_stress`, 1.22M active lines; NOT committed)
+
+### Task
+Redesign the Account Statement:
+- several accounts in one statement, each row with its own account's exact running balance;
+- every applicable select filter multi-value, with server-searchable account / project pickers;
+- 50-row keyset First/Previous/Next/Last;
+- under 1 s at ~1M rows;
+- immediate freshness, no queue for browsing, bounded Livewire state;
+- exact exports;
+- independent verifier, rebuild, parity, benchmark matrix.
+
+### Result
+**Implemented. Every gate green except the human browser check, which is blocked at the LAN login (no session; password not available to the agent).**
+
+**Baseline (old page, `oms_stress`):**
+
+| Scenario | Time | Breakdown / payload |
+|---|---|---|
+| small account, 1 month | 0.35 s | — |
+| small account, full | 17 ms | — |
+| medium account (4.9k), full | 4.5 s | 8 MB of rows in Livewire state |
+| busiest account (#8), 1 month | 20.1 s | opening query 10.2 s, mixed-currency scan 9.2 s |
+| busiest account (#8), 12 months | 30.5 s | 41 MB state |
+| busiest account (#8), full | 16.0 s | 174 MB PHP, 115 MB rows JSON in Livewire state |
+
+- **Root causes:**
+  - No `(account, time)` access path: `transaction_time` lives on `transactions`.
+  - The whole period was loaded into PHP and stored in public `$rows`, which the exports re-used.
+  - Two full-history scans per run.
+
+**Projection rebuild:** 476 s on the first schema; with the final schema, the rebuild (8 min) was followed by verification.
+- 550,319 active transactions.
+- Lines: 1,276k rows (statistics estimate; 1,221,321 checked), 133 MB data + 189 MB indexes.
+- Checkpoints: daily 392k rows (28 MB), monthly 102k rows (12 MB), all-time 3,224 rows.
+
+**Independent verifier (final code and data):**
+- 1,221,321 lines; daily, monthly and all-time totals.
+- **0 differences**; 1,084 s.
+- Plus 600 whole-history balance samples (running / opening / closing boundaries): **0 differences**.
+
+**Old/new parity** (unchanged `AccountStatementReportService` as the oracle):
+- 151 single-account statements: 31 accounts (busiest USD/ILS/EUR, medium, small, 26 random) × 5 ranges (full, year, month, mid-history, single leap day).
+- 89,745 rows compared on date, number, type, description, notes, debit, credit, running balance, currency, line role and line description.
+- Opening, closing, totals, count, currency and mixed flag also compared.
+- **0 mismatches.**
+
+**Multi-account parity:**
+- Groups: [14,18,55] full (28,914 rows); [4,8,14] one month (3,141); 10 random accounts full (3,598); [1,4,8] one year (44,767).
+- Every row appears once, in global order, with the same balance as the account's legacy single statement.
+- **4/4 PASS.**
+
+**Benchmark** — real Livewire component on `oms_stress`, one PHP process per case, warm. All times in ms (show = "عرض").
+
+| Case | Matched | Accounts | show | next | prev | last | first | State |
+|---|---|---|---|---|---|---|---|---|
+| A 1 acct / 1 month | 1,460 | 1 | 180 | 117 | 141 | 117 | 101 | 2.9 KB |
+| B 1 acct / 12 months | 21,211 | 1 | 232 | 109 | 106 | 148 | 134 | 2.9 KB |
+| C 1 acct / full | 58,900 | 1 | 131 | 106 | 103 | 154 | 114 | 2.9 KB |
+| C' small acct / full | 48 | 1 | 227 | 135 | 184 | 126 | 208 | 2.5 KB |
+| D 3 accts / full | 163,626 | 3 | 220 | 242 | 140 | 132 | 113 | 4.3 KB |
+| E 10 accts / full | 365,720 | 10 | 191 | 126 | 113 | 171 | 132 | 8.7 KB |
+| F types 4+6+13 / full | 1,067,022 | 3,887 | 638 | 174 | 280 | 153 | 167 | 12.9 KB |
+| G 5 accts + 2 types | 114,643 | 5 | 202 | 172 | 187 | 181 | 205 | 5.8 KB |
+| H 3,887 accts + 2 projects | 615 | 3,887 | 605 | 289 | 223 | 138 | 173 | 13.1 KB |
+| I type 4 + USD,ILS | 669,939 | 40 | 173 | 91 | 98 | 100 | 98 | 12.2 KB |
+| J type 4 + classification | 229,461 | 47 | 266 | 105 | 140 | 99 | 93 | 12.3 KB |
+| K types+currencies+classes+3 types | 483,578 | 3,798 | 863 | 170 | 202 | 204 | 164 | 13.4 KB |
+| L1 all accounts / full | 1,221,151 | 4,997 | 756 | 250 | 223 | 188 | 240 | 13.4 KB |
+| L2 all accounts + rare type | 40,268 | 4,997 | 980 | 256 | 272 | 228 | 278 | 13.2 KB |
+| L3 3,887 accts, mid-history 12 months | 225,134 | 3,887 | 889 | 165 | 186 | 201 | 185 | 13.0 KB |
+
+- **Per request:**
+  - 18–24 SQL queries per navigation, 31–49 per "عرض".
+  - Slowest single query ≤ 175 ms (one of 251 ms in L3).
+  - PHP peak 2–4 MB.
+  - HTML 155–353 KB, the form included.
+  - About 100 ms of every request is Filament re-evaluating the form's option lists.
+- **Worst legitimate case:** L2 "عرض", all 4,997 accounts with a rare type over the full history: 980 ms. It is dominated by type-filtered monthly sums across all accounts (~230 ms), the account summaries and the render.
+- **Optimisations made after measuring:**
+  - literal account-ID lists instead of a sub-select (the NL plan read every month: 600 ms → range reads);
+  - all-time checkpoint with min-side prefix;
+  - project-index hint (679 → 37 ms);
+  - covering type/month index and a global-index hint for edge months (183 → 40 ms);
+  - one account read for ids + currencies.
+- **Harness note:** several `Livewire::test()` instances in one PHP process inflate later timings (~1 s); separate processes match real requests.
+
+**Indexes (EXPLAIN ANALYZE):**
+
+| Query | Plan | Time |
+|---|---|---|
+| SCAN page | covering range scan on `asl_global_order_index`, no filesort | 1.2 ms |
+| MERGE branch | PK range `(account, time, line)` | — |
+| monthly prefix | PK range, 272 rows | 0.4 ms |
+| daily prefix | PK range, 16 rows | 0.06 ms |
+| project page | `asl_project_cost_index` range + small sort | 0.2 ms |
+
+**Synchronous write overhead** (statement projector only, real stress transactions, rolled back; two samples of 60 per workflow):
+
+| Workflow | Create median | Delete median | Worst |
+|---|---|---|---|
+| receipts (REC) | 12–29 ms | 30–34 ms | ≤ 73 ms |
+| expenses (GEN) | 16–39 ms | 32–44 ms | ≤ 71 ms |
+| payments (PAY) | 17–18 ms | 33–38 ms | ≤ 122 ms |
+| disbursements (BUD) | 15–42 ms | 27–43 ms | ≤ 97 ms |
+| executions (EXT) | 18–42 ms | 31–45 ms | ≤ 128 ms |
+| opening (OPB) | 7–30 ms | 25–29 ms | ≤ 85 ms |
+
+One 2.1 s outlier in the first sample did not reproduce. The second sample overlapped a heavy parity run.
+
+**Exports (stress):**
+- Styled Excel, 1,460 rows: 11.7 s / 39 MB.
+- Streaming Excel: 58,900 rows 43.5 s / 5 MB peak; 44,767 rows 18.2 s / 4 MB.
+- Limits: Word ≤ 2,000 rows (refused above, not audited); styled Excel ≤ 2,000; inline streaming ≤ 20,000; above that, a queued job (`reports`) with polling and a signed one-time download, audited at delivery.
+
+**Migrations:** applied ONLY to `oms_stress` (`--path`, then `migrate:rollback` / `migrate` of this single migration while the schema was finalised; the covering monthly index was added on stress with the identical ALTER). The normal `oms` was not touched; production was not touched.
+
+**Browser:** not done by the agent. `http://172.16.0.100/oms/public/admin` redirected to the login page and no session existed. The page was validated through real Livewire requests instead (render, state, pager, exports).
+
+### Changed Files
+**Account Statement (this task):**
+- New:
+  - `database/migrations/2026_10_07_100000_create_account_statement_projection_tables.php`;
+  - `app/Services/Reports/AccountStatement/{AccountStatementProjection, AccountStatementProjectionState, AccountStatementProjector, AccountStatementProjectionRebuilder, AccountStatementProjectionVerifier, AccountStatementFilters, AccountStatementScope, AccountStatementBalances, AccountStatementRows, AccountStatementReport, AccountStatementExportLayout, AccountStatementExcelExports}.php`;
+  - `app/Services/Reports/AccountStatementStreamingExcelExportService.php`;
+  - `app/Jobs/BuildAccountStatementExcelExportJob.php`;
+  - `app/Http/Controllers/Reports/AccountStatementExcelDownloadController.php`;
+  - `app/Console/Commands/Reports/{Rebuild,Verify}AccountStatementProjectionCommand.php`;
+  - `tests/Feature/Reports/{AccountStatementReportTest, AccountStatementWritePathsTest}.php`;
+  - `docs/ACCOUNT_STATEMENT_ARCHITECTURE.md`.
+- Rewritten: `app/Filament/Pages/AccountStatementPage.php`; `resources/views/filament/pages/account-statement-page.blade.php`; `app/Services/Reports/AccountStatement{Excel,Word}ExportService.php`.
+- Edited:
+  - `app/Services/Reports/ComprehensiveFinancialTransactions/Projection/ComprehensiveReportProjector.php`: hook only; comprehensive behaviour identical, its 41 tests pass;
+  - `routes/web.php`: download route;
+  - `config/oms.php`: new `reports.account_statement` block only;
+  - `tests/Feature/Audit/Reports/ReportExportAuditTest.php`: fixture uses the multi-select keys.
+- Unchanged and kept as the legacy oracle: `app/Services/Reports/AccountStatementReportService.php`.
+
+### Verification
+Targeted tests only (never the full suite):
+- `AccountStatementReportTest` + `AccountStatementWritePathsTest`: 49 tests / 2,107 assertions, pass.
+- `ReportExportAuditTest` + `ReportExportAuthorizationTest` + `ReportPageAccessTest`: 80 / 260, pass.
+- `ComprehensiveReportProjectionWritePathsTest` + `ComprehensiveReportProjectionPageTest`: 41 / 248, pass.
+
+On stress: verifier 0 differences; 600-sample balance check 0; parity 0 mismatches (151 statements) and 4/4 multi-account; benchmark matrix as above. No commit.
+
+---
+
 
 ### Date
 2026-10-05 (تقرير الحركات المالية الشامل — real-time reporting projection; V2 committed first as `1d9d6a2`; stress schema parity moved to a fresh-migration reference; verified at 1.22M active lines)

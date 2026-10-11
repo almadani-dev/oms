@@ -4,6 +4,8 @@ namespace App\Console\Commands;
 
 use App\Services\Reports\ComprehensiveFinancialTransactions\ComprehensiveFinancialTransactionsExcelExports;
 use App\Services\Reports\ComprehensiveFinancialTransactions\Contracts\ComprehensiveFinancialTransactionsSnapshotRepository;
+use App\Services\Reports\AccountStatement\AccountStatementExcelExports;
+use App\Services\Reports\AccountStatement\Csv\AccountStatementCsvExport;
 use App\Services\Reports\ComprehensiveFinancialTransactions\ExportTemporaryFiles;
 use Illuminate\Console\Command;
 
@@ -29,8 +31,10 @@ class PurgeReportSnapshotsCommand extends Command
         ExportTemporaryFiles $temporaryFiles,
     ): int {
         $removed = $repository->purge(now());
-        $exports = $workbooks->purge(now());
-        $files = $temporaryFiles->purge(now());
+        // Account statement exports (workbooks never downloaded, CSV
+        // packages after their download window) and crashed CSV builds.
+        $exports = $workbooks->purge(now()) + app(AccountStatementExcelExports::class)->purge(now());
+        $files = $temporaryFiles->purge(now()) + AccountStatementCsvExport::purge(now());
 
         $this->info("Removed {$removed} report snapshot(s), {$exports} prepared export(s) and {$files} stale temporary file(s).");
 

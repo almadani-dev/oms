@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Attachments\AttachmentController;
 use App\Http\Controllers\Backups\BackupDownloadController;
+use App\Http\Controllers\Reports\AccountStatementExcelDownloadController;
 use App\Http\Controllers\Reports\ComprehensiveFinancialTransactionsExcelDownloadController;
 use App\Http\Controllers\Restores\RestoreLaunchController;
 use App\Http\Controllers\Restores\RestoreProgressPollController;
@@ -72,6 +73,32 @@ Route::get('/reports/comprehensive-financial-transactions/exports/{export}/xlsx'
     ->where('export', '[0-9a-hjkmnp-tv-z]{26}')
     ->middleware([\Filament\Http\Middleware\Authenticate::class, 'signed'])
     ->name('reports.comprehensive-financial-transactions.xlsx');
+
+// Large-report Excel download for "تقرير كشف الحساب" — same shape and
+// guarantees as the route above (opaque ULID, Filament auth + signature;
+// the controller re-checks both report permissions and ownership, and
+// audits before sending a byte).
+Route::get('/reports/account-statement/exports/{export}/xlsx', [AccountStatementExcelDownloadController::class, 'show'])
+    ->where('export', '[0-9a-hjkmnp-tv-z]{26}')
+    ->middleware([\Filament\Http\Middleware\Authenticate::class, 'signed'])
+    ->name('reports.account-statement.xlsx');
+
+// «تصدير CSV» package (ZIP of UTF-8 CSVs) of "تقرير كشف الحساب" — same
+// shape and guarantees as the workbook route above; the export must be a CSV
+// export of the CURRENT user.
+Route::get('/reports/account-statement/exports/{export}/csv', [AccountStatementExcelDownloadController::class, 'csv'])
+    ->where('export', '[0-9a-hjkmnp-tv-z]{26}')
+    ->middleware([\Filament\Http\Middleware\Authenticate::class, 'signed'])
+    ->name('reports.account-statement.csv');
+
+// Lightweight JSON status of that background export, polled by the page
+// (instead of re-rendering the whole Livewire page every 2 s). Owner-scoped
+// and permission-checked in the controller; not signed — it never serves
+// the file, only the state and (when ready) a fresh signed download URL.
+Route::get('/reports/account-statement/exports/{export}/status', [AccountStatementExcelDownloadController::class, 'status'])
+    ->where('export', '[0-9a-hjkmnp-tv-z]{26}')
+    ->middleware(\Filament\Http\Middleware\Authenticate::class)
+    ->name('reports.account-statement.export-status');
 
 // OMS Task 7C.4 — signed launch endpoint for an already-created, fully
 // validated queued restore operation. {uuid} is the restore's own

@@ -14,6 +14,100 @@
 
 
 ### Date
+2026-10-08 (Account Statement «تصدير CSV»)
+
+### Decision
+- **Package:** a ZIP of `ملخص_كشف_الحساب.csv` plus `حركات_كشف_الحساب.csv`, or `حركات_001.csv`… when above 1,000,000 rows. Files are UTF-8 with BOM, comma, CRLF.
+- **Running-balance identity = the ACCOUNT**, exactly as on the screen. An account has one currency; a line in another currency is the screen's flagged mixed-currency case. This keeps the approved balance rule, read as the spec's `balance[account][currency]`.
+- **Compression:** DEFLATE level 1 by default, done by each parallel writer. Measured no slower than STORE (often faster, since fewer bytes are written) and ~11× smaller (1M rows: 68 MB vs 763 MB).
+- **Delivery threshold:** in the click request up to 25,000 units (movements + 5 × accounts). Above that, the `reports` job with 8 parallel CLI segment workers.
+- **Downloads:** the CSV can be fetched again until it expires and is audited once, at its first delivery. Excel's one-time delivery is unchanged.
+- **Failures:** not audited, as for every other export. They are reported to the log, and the page or status shows «تعذر تجهيز ملف CSV».
+- **Purge:** `oms:purge-report-snapshots` now also purges the account statement export store (it existed but was never called) and abandoned CSV work directories.
+
+### Reason
+- **Measured floor:** reading the ledger texts costs 11.5 s per 1M movements with 8 parallel connections on this laptop (128 MB InnoDB buffer pool). The export reaches that floor; dropping texts to reach 5 s would remove financially useful information.
+- **Re-fetchable downloads:** on the real stress site the browser requested one download URL up to 4 times within a second; a strictly one-time link 404'd the real download.
+- **Account identity:** the user required the CSV to keep the EXACT approved running balance.
+
+### Impact
+- 1M movements: 11.3 s end-to-end. The full 1.22M case: 12.6–22.8 s (median 17.3 s).
+- 0 differences against the ledger in 4 independent checks, up to 1.22M rows.
+- No change to Excel, Word, the screen, financial semantics, or the comprehensive report.
+
+---
+
+
+### Date
+2026-10-07 (تقرير كشف الحساب — export mode from measured work units; status polling via a JSON endpoint)
+
+### Decision
+- **Export mode** comes from `units = movements + ceil(0.5 × accounts) + currencies`, never from movements alone.
+  - Styled Excel and Word: ≤ 2,000 units.
+  - Streaming Excel inline: ≤ 8,000 units.
+  - Above 8,000: background Excel; Word is refused.
+- **Background-export status** is polled from a small owner-scoped JSON endpoint instead of a Livewire `wire:poll`.
+- **No-activity accounts** stay in summaries and exports (unchanged; analysis only).
+- **The environment race behind the Livewire 404 is NOT fixed in the application**; it needs a server/runtime decision.
+
+### Reason
+- **Export mode:** the browser case (276 movements, 1,767 accounts) blocked requests for 10–22 s. Benchmarks showed summary rows cost 0.25–0.45× a movement row, and per-cell styling was the real slowness.
+- **Polling:** the poll re-sent ~440 KB of page every 2 s.
+- **No-activity accounts:** 950 of the 1,753 no-activity accounts in the measured scope carry non-zero balances.
+- **Environment race:** it is caused by thread-safe mod_php with runtime `.env` reading. The user's instruction was to stop before broad server changes.
+
+### Impact
+- The browser-case exports now finish in 2.4–3.4 s.
+- Polling costs 53 bytes per request.
+- Concurrency-related 404s and 500s can still occur on this dev machine until the runtime is fixed.
+
+---
+
+
+### Date
+2026-10-07 (تقرير كشف الحساب — multi-account semantics, approved by the user in this session)
+
+### Decision
+- **Balance meaning under dimension filters:** opening, running and closing balances are the account's ACTUAL balance over all its lines. Classification / transaction type / project filters only choose which lines are listed and totalled (option A).
+- **Empty Accounts filter:** means every non-deleted account matching the selected account types / bank types / currencies. At least one account-level filter is required.
+- **Balance identity:** the account. Totals are per account and per account currency, never mixed. A line whose currency differs from its account's keeps the original "mixed currencies" warning.
+- **Project filter (new):** includes lines of the project's soft-deleted cost items.
+- **Filter algebra:** values of one filter are combined with OR (IN); different filters are combined with AND.
+
+### Reason
+- The user chose option A and "empty = all matching" when asked.
+- The project rule follows the instruction that historical statements must not lose transactions because a lookup was deleted later.
+
+### Impact
+- With a dimension filter, opening + debit − credit ≠ closing. The page and every export show an explicit note.
+
+---
+
+
+### Date
+2026-10-07 (تقرير كشف الحساب — dedicated real-time projection with exact balance checkpoints)
+
+### Decision
+- **Architecture chosen:** a dedicated projection, `account_statement_lines`, clustered by `(account_id, transaction_time, line_id)`, plus exact daily, monthly(×type) and all-time checkpoint totals.
+- **Maintenance:** done synchronously by `AccountStatementProjector`, reached through `ComprehensiveReportProjector::syncTransactions()` / `removeTransaction()`.
+- **Running balance:** each row's running balance = monthly prefix + daily prefix + that day's lines (bounded work).
+- **Pagination:** keyset pages using a MERGE / SCAN / PROJECT plan chosen from exact counts.
+
+### Reason (alternatives measured or rejected)
+- **A. Optimised ledger queries:** rejected. `transaction_time` lives on `transactions`, so no `(account, time)` access path exists on `transaction_lines`. The opening-balance query alone took 10 s for the busiest month on stress, and running balances would need a full-history replay.
+- **C. Reusing `comprehensive_report_lines`:** rejected. It stores `debit_base` / `credit_base`, not `amount_currency`. Its order is `(time, transaction, line)`, not `(time, line)`. It has no balance checkpoints, and changing it would touch the comprehensive report's verified structures.
+- **Per-row stored running balances:** rejected. One backdated line would rewrite every later row of the account (up to 58,900 on stress). Checkpoints limit a backdated write to the affected account × day / month / all-time rows.
+- **One hook in the existing projector:** chosen over 17 new call sites. Every write path already reaches it, so the existing static guard covers the statement too.
+
+### Impact
+- **Write overhead:** about 20–45 ms median extra per financial transaction on stress, worst observed 121 ms (TASKS_LOG).
+- **Storage:** about 360 MB at 1.22M lines.
+- **Deployment:** needs migrate + rebuild before the page works on an existing database. The projector skips while its tables do not exist, so unmigrated databases keep working.
+
+---
+
+
+### Date
 2026-10-05 (تقرير الحركات المالية الشامل — real-time reporting projection, maintained synchronously by one explicit service)
 
 ### Decision
