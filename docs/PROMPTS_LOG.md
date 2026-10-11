@@ -1,6 +1,26 @@
 # Prompts Log
 
 ### Date
+2026-10-10 ("NEXT TASK — ULTRA-FAST CSV EXPORT FOR COMPREHENSIVE FINANCIAL TRANSACTIONS")
+
+### Prompt
+Add «تصدير CSV» beside «تصدير Excel» on `/admin/comprehensive-financial-transactions` only, the same product idea as the Account Statement CSV:
+- the applied filters (Transaction Type multi-select included), all lines, never the 50-row page;
+- straight from the real-time projection, streamed (no Livewire rows, Eloquent per line, snapshot JSON or OFFSET), exact canonical order;
+- the 16 Excel / Word detail columns; a summary CSV; a ZIP split near 1M rows; UTF-8 + BOM, formula guard;
+- reuse the proven CSV core; keep report semantics separate;
+- consistency under concurrent writes (bounded retry), live projection vs snapshot fallback decision;
+- floors A–E, a 50k–1.22M matrix, worker counts, filtered cases, STORE vs DEFLATE;
+- independent 0-difference verification; browser validation; targeted tests only;
+- no commit, no push, no production, `oms_stress` only, preserve all uncommitted work.
+
+### Purpose
+- **"If MySQL needs 12 seconds just to read the full text-heavy rows, say so clearly":** led to the per-text-column floor breakdown (`t.description` per line, source notes by time join), which exposed two avoidable costs (repeated transaction texts, the source-notes join) before measuring the remaining physical floor.
+- **"Do not deliver a mixed-time export":** led to the start-marker / re-verify protocol, which proves a single instant without one connection re-reading the whole period.
+
+---
+
+### Date
 2026-10-08 ("NEXT TASK — ACCOUNT STATEMENT ULTRA-FAST CSV EXPORT")
 
 ### Prompt

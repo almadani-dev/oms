@@ -3,6 +3,7 @@
 use App\Http\Controllers\Attachments\AttachmentController;
 use App\Http\Controllers\Backups\BackupDownloadController;
 use App\Http\Controllers\Reports\AccountStatementExcelDownloadController;
+use App\Http\Controllers\Reports\ComprehensiveFinancialTransactionsCsvDownloadController;
 use App\Http\Controllers\Reports\ComprehensiveFinancialTransactionsExcelDownloadController;
 use App\Http\Controllers\Restores\RestoreLaunchController;
 use App\Http\Controllers\Restores\RestoreProgressPollController;
@@ -73,6 +74,23 @@ Route::get('/reports/comprehensive-financial-transactions/exports/{export}/xlsx'
     ->where('export', '[0-9a-hjkmnp-tv-z]{26}')
     ->middleware([\Filament\Http\Middleware\Authenticate::class, 'signed'])
     ->name('reports.comprehensive-financial-transactions.xlsx');
+
+// «تصدير CSV» package (ZIP of UTF-8 CSVs) of "تقرير الحركات المالية الشامل" —
+// same shape and guarantees as the account statement's CSV routes: opaque
+// ULID, Filament auth + signature on the download; the controller re-checks
+// both report permissions and ownership, and audits the first delivery.
+Route::get('/reports/comprehensive-financial-transactions/exports/{export}/csv', [ComprehensiveFinancialTransactionsCsvDownloadController::class, 'show'])
+    ->where('export', '[0-9a-hjkmnp-tv-z]{26}')
+    ->middleware([\Filament\Http\Middleware\Authenticate::class, 'signed'])
+    ->name('reports.comprehensive-financial-transactions.csv');
+
+// Lightweight JSON status of a background CSV package, polled by the page
+// (never a Livewire re-render). Owner-scoped and permission-checked in the
+// controller; not signed — it never serves the file.
+Route::get('/reports/comprehensive-financial-transactions/exports/{export}/csv-status', [ComprehensiveFinancialTransactionsCsvDownloadController::class, 'status'])
+    ->where('export', '[0-9a-hjkmnp-tv-z]{26}')
+    ->middleware(\Filament\Http\Middleware\Authenticate::class)
+    ->name('reports.comprehensive-financial-transactions.csv-status');
 
 // Large-report Excel download for "تقرير كشف الحساب" — same shape and
 // guarantees as the route above (opaque ULID, Filament auth + signature;

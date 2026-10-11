@@ -592,6 +592,50 @@
                 </section>
             @endif
 
+            @if ($csvExportId !== null)
+                {{-- «تصدير CSV» package being prepared by a queued job: polls a small owner-scoped JSON
+                     status endpoint, never this Livewire page. Ready → the signed download starts and
+                     the page forgets the export (renderless call); failed → an inline notice. Polling
+                     stops either way. --}}
+                <section
+                    class="cft-card"
+                    wire:key="cft-csv-export-{{ $csvExportId }}"
+                    x-data="{
+                        url: @js($this->csvExportStatusUrl()),
+                        state: 'pending',
+                        visible: true,
+                        timer: null,
+                        init() { this.timer = setTimeout(() => this.check(), 1500) },
+                        destroy() { clearTimeout(this.timer) },
+                        async check() {
+                            try {
+                                const response = await fetch(this.url, { headers: { Accept: 'application/json' }, credentials: 'same-origin', cache: 'no-store' })
+                                if (response.status === 200) {
+                                    const status = await response.json()
+                                    this.state = status.state
+                                    if (status.state === 'ready' && status.download_url) { window.location.href = status.download_url; return this.finish(false) }
+                                    if (status.state === 'failed') { return this.finish(true) }
+                                } else if ([401, 403, 404].includes(response.status)) {
+                                    this.state = 'failed'
+                                    return this.finish(true)
+                                }
+                            } catch (e) {}
+                            this.timer = setTimeout(() => this.check(), 2000)
+                        },
+                        finish(keepVisible) { this.visible = keepVisible; $wire.forgetCsvExport() },
+                    }"
+                    x-show="visible"
+                >
+                    <div class="cft-empty cft-building" role="status" aria-live="polite" x-show="state !== 'failed'">
+                        <span class="cft-building-title">
+                            <span class="cft-spinner" aria-hidden="true"></span>
+                            <span>جاري تجهيز ملف CSV في الخلفية؛ سيبدأ التنزيل تلقائياً عند اكتماله. يمكنك متابعة تصفح التقرير.</span>
+                        </span>
+                    </div>
+                    <div class="cft-empty cft-build-error" role="alert" x-show="state === 'failed'" x-cloak>{{ \App\Filament\Pages\ComprehensiveFinancialTransactionsPage::CSV_EXPORT_FAILED_NOTICE }}</div>
+                </section>
+            @endif
+
             @if ($buildId !== null)
                 {{-- Background build in progress. Polls one small status file (never the ledger);
                      the report appears only once its snapshot is completed and published. Progress is

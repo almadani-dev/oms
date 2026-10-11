@@ -14,6 +14,32 @@
 
 
 ### Date
+2026-10-10 (Comprehensive Financial Transactions «تصدير CSV»)
+
+### Decision
+- **Columns:** exactly the 16 detail columns of the Excel / Word exports (same order, same values; money as exact decimals), so CSV and Excel compare cell by cell. No reduced "fast" format.
+- **Source:** the real-time projection only. While it is not READY, CSV is refused with an explicit notice; Excel / Word keep the snapshot path. No snapshot-based CSV: production cutover requires the projection READY first (deployment checklist P2).
+- **Consistency:** per-segment fingerprints written vs re-read in a fresh snapshot opened only after EVERY segment had started (one common instant), plus rows = the report's own summaries; bounded rebuild (3 attempts). Display texts are not fingerprinted.
+- **Text reads:** each transaction's fields and its source notes read ONCE per window by id ranges (gap 4 for `transactions`, 64 for the source tables' `transaction_id` indexes) instead of joined per line / by time.
+- **Delivery and parallelism by work units** = lines × min(8, max(1, 0.5 / density)): inline ≤ 25,000 units (≈ ≤ 2 s), otherwise the `reports` job; one segment per 40,000 units, ≤ 8 workers (8 measured fastest: 4/8/12/16 → 41.4/30.0/30.6/33.2 s).
+- **ZIP:** DEFLATE level 1 by default (full range: 101 MB vs 1.18 GB, and faster than STORE: 31.3 s vs 43.2 s).
+- **Reuse:** the Account Statement CSV encoder, piece writer, ZIP64 writer, snapshot helper and export store are reused unchanged in behaviour; the store gained base-directory / config-prefix constructor parameters (defaults = Account Statement).
+- **Downloads:** re-fetchable by the owner until expiry, audited ONCE at first delivery (`format = csv`, `report = comprehensive_financial_transactions`), like the Account Statement CSV.
+
+### Reason
+- **Measured floors** (8 connections, 1.22M lines): projection only 1.8–2.6 s; + ledger texts 14–16 s; the first design (texts joined per line, notes joined by time, one-connection reference scan) took 98.8 s.
+- **Mixed-time exports** are excluded by proof, not by locking writers.
+- **Sparse exports** (an account, a project, a rare type) cost ~8–10× more per line; weighting by density keeps click requests short and spreads sparse work over more workers.
+
+### Impact
+- 1M lines: 12.6 s (earlier state) / 27.9 s (later state); full 1.22M: 15.2–31.3 s. ≤ 5 s NOT met.
+- 0 differences against the ledger report in every verified case.
+- No change to Excel, Word, the screen, the projection, financial data or the Account Statement CSV behaviour.
+
+---
+
+
+### Date
 2026-10-08 (Account Statement «تصدير CSV»)
 
 ### Decision

@@ -16,6 +16,139 @@
 ---
 
 ### Date
+2026-10-10 (تقرير الحركات المالية الشامل «تصدير CSV» — implemented and verified on `oms_stress`; NOT committed)
+
+### Task
+Add «تصدير CSV» beside «تصدير Excel» on `/admin/comprehensive-financial-transactions`: the same product idea as the Account Statement CSV — the APPLIED filters, every line, read from the real-time projection, exact, Excel-friendly; 1M lines as fast as physically practical (stretch ≤ 5 s), no column dropped to win a benchmark.
+
+### Result
+**Architecture** (`app/Services/Reports/ComprehensiveFinancialTransactions/Csv/`):
+- `ComprehensiveCsvExport` — plan, workers, proof, package. ZIP = `ملخص_الحركات_المالية_الشاملة.csv` + `الحركات_001.csv`, `الحركات_002.csv` … (≤ 1,000,000 rows each, cut on day boundaries, never truncated).
+- `ComprehensiveCsvSegment` — one time segment, in contiguous windows (whole months, else days, ≤ `window_max_rows`). Per window, in ONE snapshot: distinct transaction ids of the filtered projection lines → each transaction's fields/texts read once by id ranges (`transactions` PK) → source-record notes once by id ranges (each source table's `transaction_id` index) → ONE unbuffered stream of projection lines ⋈ their own `transaction_lines` row. Values rendered exactly as `rowsForLines()` renders the screen; every row checked against its projection row (drift aborts, never retried).
+- `ComprehensiveCsvLabels` — master-data labels loaded once per process, pre-encoded (no N+1).
+- `ComprehensiveCsvFormat` — names, the 16 Excel/Word detail columns, summary helpers.
+- Reused from the Account Statement CSV unchanged: `AccountStatementCsvFormat` (BOM/CRLF/quoting/formula guard), `AccountStatementCsvPart` (per-piece DEFLATE + CRC), `AccountStatementCsvZip` (ZIP64, CRC combine), `AccountStatementCsvSnapshot` (consistent snapshot), and the export store `AccountStatementExcelExports` (now parameterized by base directory + config prefix; Account Statement defaults unchanged).
+- Filters are resolved ONCE by `ComprehensiveReportProjectionQuery::resolve()` and passed to every worker; lines are selected with the screen's own `lines()` builder (as a derived table). With an account selection (and no project) the account index is pinned.
+- **Work units** = lines × min(8, max(1, 0.5 / density)), density = lines ÷ the period's projection lines. Decides inline (≤ 25,000 units, in the click request) vs the `reports` job, and the number of parallel segments (one per 40,000 units, ≤ 8). Measured: dense ~20k lines/s and 5–8 % dense ~2k lines/s on one connection.
+- **Consistency:** every segment returns a fingerprint (per type × currency: lines, debit, credit, CRC-32 over identity/time/account/cost item/amounts; per-type distinct transactions). Parallel: each worker announces its open snapshot, writes, waits until ALL segments announced, then re-reads its own fingerprint in a NEW snapshot → one instant lies inside every [write, verify] interval; equal fingerprints = the file is the ledger at that instant. All rows must also add up to `ComprehensiveReportSummaries` (lines, transactions, per-currency debit/credit, lines and transactions per type). Mismatch → rebuild (`attempts` = 3), never delivered.
+- **Projection not READY →** CSV refused with an explicit notice (no snapshot fallback; Excel/Word keep the snapshot path).
+
+**DB floors** (`oms_stress`, 1,221,321 projection lines, full range):
+
+| Floor | 1 conn | 2 | 4 | 8 |
+|---|---|---|---|---|
+| A. projection only | 11.0–13.5 s | 4.0–4.9 s | 2.3 s | 1.8–2.0 s |
+| B. + own ledger line & transaction, short columns | 47.7–52.2 s | 23.6–26.1 s | 14.7 s | 8.2 s |
+| C. + every text column + source notes joined by time | 76–80 s | 50 s | 34 s | 27.5–31.6 s |
+
+Text breakdown at 8 connections: line texts 12.8 s; `t.description` joined per line 13.5 s (re-read once per line); transactions read once each 3.9 s; source notes joined by time 19.2 s (8.6 s with a forced time index; a plain scan of all notes 3 s on one connection); all texts per line, no notes 14.4 s.
+
+**Design changes driven by the measurements** (full range, 8 workers): first version 98.8 s → transactions/notes read once by id + worker-side verification 18.7 s → PHP-streamed verification instead of SQL `CRC32 … WITH ROLLUP` (5.9 s → ~1 s per worker). Sparse filters: density-weighted segments (one account 24 s → 5.3–5.6 s), no account-index pin with a project filter (42 lines: 5.4 s → 0.5 s).
+
+**Matrix** (from 2022-01-01, 8 workers, DEFLATE level 1, 3 runs, median; every run proved on the first attempt). This laptop's speed drifted ~2× during the day (MySQL 128 MB buffer pool → the Windows file cache decides); both states are reported:
+
+| Lines | Earlier state | Later state (final code) | Full-column DB floor (CM, later) | CSV | ZIP | Files |
+|---|---|---|---|---|---|---|
+| 50,553 | 2.74 s | 2.79 s | 1.35 s | 47.4 MB | 4.3 MB | 1 |
+| 99,980 | 3.35 s | 4.11 s | 1.62 s | 94.5 MB | 8.5 MB | 1 |
+| 250,079 | 4.60 s | 7.67 s | 2.74 s | 238.9 MB | 21.1 MB | 1 |
+| 498,456 | 7.61 s | 13.48 s | 5.32 s | 477.8 MB | 41.7 MB | 1 |
+| 1,002,837 | 12.58 s | 27.87 s | 10.91 s | 964.2 MB | 83.2 MB | 2 (983,302 + 19,535) |
+| 1,221,151 | 15.2–29.2 s | 31.33 s | 13.95 s | 1,177.1 MB | 101.0 MB | 2 (983,302 + 237,849) |
+
+- Earlier state CM floor: 1M 7.25 s, full 16.05 s.
+- Per worker at 1M (later state): boot 1.1 s, labels 0.5 s, ids 1.2 s, transactions 2.9 s, notes 2.4 s, line stream 15.3 s, verification 3.6 s. Parent: plan ≤ 0.2 s, summaries 0.6 s (concurrent), checks < 0.05 s, ZIP 0.3–0.5 s.
+- **STORE vs DEFLATE 1:** 1M 32.1 s vs 27.9 s; full 43.2 s vs 31.3 s (STORE writes 1.2 GB) → DEFLATE stays the default.
+- **Workers 4 / 8 / 12 / 16** (full, median): 41.4 / 30.0 / 30.6 / 33.2 s → 8.
+- **Memory:** parent 46 MB; each worker 72–96 MB; in-process exports 60–88 MB. Flat in the number of lines.
+- **In-process (click request) samples:** 3,446 lines 1.0 s; 10,810 1.0 s; 23,437 1.7 s; 42,652 dense 2.3 s; one account 1 year 16,491 lines 8.4 s (→ weighted 131,928 units → background).
+
+**Filtered cases** (full range, 8 workers, median, later state):
+
+| Case | Lines | Units | Path | Wall |
+|---|---|---|---|---|
+| One account (busiest) | 58,900 | 471,200 | background, 8 segments | 5.3–5.6 s (24.8–26.7 s in the slowest cache state) |
+| Three accounts | 163,626 | 610,661 | background | 15.4 s |
+| Three accounts, debit side | 61,333 | 490,664 | background | 9.3 s |
+| One project | 367 | 2,936 | direct | 0.5–1.0 s |
+| Account + project | 42 | 336 | direct | 0.4–0.5 s |
+| Two transaction types | 100,774 | 610,661 | background | 6.0–6.5 s |
+| Classification | 100,774 | 610,661 | background | 6.2 s |
+| Currency ILS | 535,004 | 610,661 | background | 23.3–23.9 s |
+| Currency + 3 types + account type | 54,861 | 438,888 | background | 10.9–11.1 s |
+
+Sparse cases are bound by point reads (transactions, notes, ledger lines scattered through the 1.1 GB working set).
+
+**≤ 5 s for 1M: NO.** Measured physical bottleneck: MySQL reading the ledger text through a 128 MB InnoDB buffer pool — the projection alone reads in 1.7 s, but the full-column read of the same 1M lines (descriptions, notes, ledger joins) is 7.3–10.9 s on 8 connections before any CSV work; the export is ~1.7–2.6× that floor (verification re-read, per-transaction text and note reads, encoding, DEFLATE).
+
+**Independent correctness** (scratch verifiers; never the projection or the CSV code: the report service's LEDGER reader `batches()` with its Totals, or for the unfiltered full range plain ledger SQL for order + identity and the service's ledger renderer `rowsForLines()`; every cell of every row, summary sections, file row counts):
+
+| Case | Lines | Row diffs | Summary diffs |
+|---|---|---|---|
+| One account | 58,900 | 0 | 0 |
+| Account + project | 42 | 0 | 0 |
+| One project | 367 | 0 | 0 |
+| Two types + classification | 100,774 | 0 | 0 |
+| Currency + 3 types + account type | 54,861 | 0 | 0 |
+| One dense month | 42,652 | 0 | 0 |
+| Full range (ledger SQL order + service renderer) | 1,221,151 | 0 (identity / order 0) | 0 |
+
+- Full range: files 983,302 + 237,849; 550,319 transactions; listed debit / credit USD 895,203,710.22 / 1,012,517,316.21, ILS 2,546,393,687.33 / 1,909,211,605.56, EUR 146,474,274.25 / 218,865,798.36 (per currency, never blended).
+- First, last and 20 random rows were reported for every case.
+
+**Excel (real Excel 16, opened like a double-click, `Local:=True`, list separator `,`):** 16 columns with Arabic headers (BOM honoured), no import wizard; 4,172 / 4,172 debit and credit cells numeric; 1,162 notes cells keep their line breaks inside one cell; Excel's per-currency SUMs equal the summary file exactly; the date column becomes a real date.
+
+**Stress-site validation** (no browser automation available in this session; the REAL page, job, worker and routes driven in-process on `oms_stress` as the synthetic `stress.super_admin`; HTTP checks against `http://172.16.0.100/oms/public`):
+- Declared header order: «تصدير Excel» → «تصدير CSV» → «تصدير Word» (PHPUnit also asserts the rendered order).
+- Transaction Type multi-select [3, 4, 5] + account + project: live mode, 42 lines on screen, 42 in the CSV, direct download 200 (ZIP: summary + `الحركات_001.csv`), re-fetch 200, one audit event with the full type list.
+- A filter changed without «عرض»: refused, nothing created.
+- Full range (1,221,151 lines): three clicks → ONE `reports` job; status JSON 53 B (pending) / 273 B (ready); First/Next/Last paging answered (1.4 s for 3 moves) while the job waited; real `queue:work --queue=reports` built it in 35 s; 101 MB ZIP (990,981,091 + 243,282,325 raw bytes); one audit event (`delivery = background`, `exported_lines = 1221151`, 2 files).
+- Another user: status and download 404; a user without the report permission: 403; unsigned URL: 403.
+- HTTP: login 200; the page 302 → login when unauthenticated; no environment leak (only the intended stress banner). Pre-existing, not caused by this change: an unauthenticated `Accept: application/json` request to ANY Filament-authenticated route answers 500 instead of 401 (the existing Excel and Account Statement routes do the same).
+- Synthetic data written on stress: 3 `report_export` audit events (user 1); every export file created was removed.
+
+### Changed Files
+**New:**
+- `app/Services/Reports/ComprehensiveFinancialTransactions/Csv/` — `ComprehensiveCsvExport`, `ComprehensiveCsvSegment`, `ComprehensiveCsvLabels`, `ComprehensiveCsvFormat`, `ComprehensiveCsvMismatch`, `ComprehensiveCsvDrift`, `ComprehensiveCsvUnavailable`
+- `app/Console/Commands/Reports/ComprehensiveCsvSegmentCommand.php` (`oms:comprehensive-csv-segment`, hidden, internal)
+- `app/Jobs/BuildComprehensiveFinancialTransactionsCsvExportJob.php`
+- `app/Http/Controllers/Reports/ComprehensiveFinancialTransactionsCsvDownloadController.php`
+- `tests/Feature/Reports/ComprehensiveFinancialTransactionsCsvExportTest.php`
+
+**Modified:**
+- `app/Filament/Pages/ComprehensiveFinancialTransactionsPage.php`: CSV action, direct/background paths, per-user lock, status URL, `forgetCsvExport`, `auditFiltersFor()` (shared by `exportAuditFilters()`, same output).
+- `resources/views/filament/pages/comprehensive-financial-transactions-page.blade.php`: lightweight JSON poller card for the background CSV (Excel markup unchanged).
+- `routes/web.php`: `reports.comprehensive-financial-transactions.csv` (signed) and `.csv-status`.
+- `app/Services/Reports/AccountStatement/AccountStatementExcelExports.php`: base directory + config prefix as constructor parameters (Account Statement defaults unchanged).
+- `app/Console/Commands/PurgeReportSnapshotsCommand.php`: also purges the comprehensive CSV store and work directories.
+- `app/Services/Audit/Reports/ReportExportFormat.php`: docblock.
+- `config/oms.php`: `reports.comprehensive_financial_transactions.csv`.
+- `docs/COMPREHENSIVE_REPORT_DEPLOYMENT_CHECKLIST.md`: addendum C1–C3.
+- `graphify-out/*` (graphify update).
+
+### Verification
+**Targeted tests only (no full suite):**
+
+| Test file | Result |
+|---|---|
+| `ComprehensiveFinancialTransactionsCsvExportTest` (new) | 29/29 |
+| `AccountStatementCsvExportTest` | 20/20 |
+| `tests/Unit/Services/Reports` | 21/21 |
+| `ComprehensiveReportProjectionPageTest` | 30/30 |
+| `ComprehensiveFinancialTransactionsPageTest` | 33/33 |
+| `ComprehensiveTransactionTypeMultiSelectTest` | 13/13 |
+| `ComprehensiveFinancialTransactionsLargeExportTest` | 15/15 |
+| `ReportExportAuthorizationTest` | 28/28 |
+| `ReportPageAccessTest` | 30/30 |
+| `tests/Feature/Audit/Reports` | 23/23 |
+| `AccountStatementReportTest` | 48/48 |
+
+Commit: none (not committed, by instruction).
+
+---
+
+
+### Date
 2026-10-08 (Account Statement «تصدير CSV» — implemented and verified on `oms_stress`; NOT committed)
 
 ### Task

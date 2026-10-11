@@ -99,6 +99,49 @@ return [
             'export_temp_dir' => storage_path('app/private/report-exports'),
             'export_temp_max_age_minutes' => 60,
             'export_url_ttl_minutes' => 10,
+
+            // «تصدير CSV» (ComprehensiveCsvExport): a ZIP of a summary CSV
+            // and the movement CSV(s) of the APPLIED filters, read straight
+            // from the projection (READY only — never the snapshot path).
+            'csv' => [
+                // Built inside the click request (then downloaded) up to this
+                // many work units — lines weighted by how sparse the export
+                // is in its period (ComprehensiveCsvExport::units()): ≈ 1.7 s
+                // measured on oms_stress; above it, by a 'reports' queue job
+                // with parallel segment workers (TASKS_LOG 2026-10-10).
+                'inline_max_units' => (int) env('OMS_CFT_CSV_INLINE_MAX_UNITS', 25000),
+                // Parallel segment workers (separate CLI processes, one
+                // database connection each) used by the queued build.
+                'workers' => (int) env('OMS_CFT_CSV_WORKERS', 8),
+                'min_units_per_worker' => 40000,
+                // Movement rows per CSV inside the ZIP (Excel's sheet limit
+                // is 1,048,576 rows including the header).
+                'max_rows_per_file' => 1000000,
+                // A segment streams its period in windows of at most about
+                // this many lines (whole months, else days), loading the
+                // source-record notes of one window at a time: memory stays
+                // bounded whatever the size of the export.
+                'window_max_rows' => 100000,
+                // Transaction ids at most this far apart are read as one
+                // range: of `transactions` (wide rows) and of each source
+                // table's transaction_id index (ComprehensiveCsvSegment).
+                'transaction_id_gap' => (int) env('OMS_CFT_CSV_TRANSACTION_ID_GAP', 4),
+                'note_id_gap' => (int) env('OMS_CFT_CSV_NOTE_ID_GAP', 64),
+                // 'deflate' (level 1, done by each segment writer in
+                // parallel) or 'store' (no compression).
+                'zip_compression' => env('OMS_CFT_CSV_ZIP_COMPRESSION', 'deflate'),
+                // Rebuilds when a concurrent ledger write made the parallel
+                // segments disagree with the export's own consistent read.
+                'attempts' => 3,
+                // Export store (AccountStatementExcelExports with this
+                // prefix): same disk, queue and lifecycle as the Excel ones.
+                'export_disk' => env('OMS_CFT_SNAPSHOT_DISK', 'report_snapshots'),
+                'queue' => env('OMS_CFT_QUEUE', 'reports'),
+                'job_timeout' => (int) env('OMS_CFT_JOB_TIMEOUT', 1800),
+                'pending_stale_minutes' => 30,
+                'export_temp_max_age_minutes' => 60,
+                'export_url_ttl_minutes' => 10,
+            ],
         ],
 
         // "تقرير كشف الحساب": browsing reads the real-time projection

@@ -1,5 +1,23 @@
 # Next Steps
 
+## Recommended Next Step (2026-10-10, Comprehensive «تصدير CSV» implemented and verified on `oms_stress` — NOT committed)
+
+**1. User browser check.** No browser automation was available to the agent; the page, job, worker and routes were validated in-process on `oms_stress`. On `http://172.16.0.100/oms/public/admin/comprehensive-financial-transactions`:
+- show a short period, click «تصدير CSV» (between Excel and Word) → the ZIP downloads at once;
+- show the full period → «جاري تجهيز ملف CSV في الخلفية…», keep paging (First / Next / Last), the download starts by itself. Needs `php artisan --env=stress queue:work database --queue=reports --timeout=1900`;
+- pick several transaction types + an account + a project, «عرض», «تصدير CSV» → the summary file's «نوع المعاملة» lists every selected type.
+
+**2. Decisions for the user:**
+- keep both Excel and CSV, make CSV the default for large reports, remove or redesign the large Excel path;
+- whether a «التاريخ» column with the time of day is wanted (today the CSV mirrors Excel: date only);
+- the pre-existing 500 (instead of 401) for unauthenticated JSON requests to any Filament-authenticated route — a separate fix if wanted.
+
+**3. Production speed:** the bottleneck is ledger-text I/O through MySQL's buffer pool (128 MB here). Check production `innodb_buffer_pool_size`, cores, `max_connections` (+9 per large export) and `proc_open` for the worker's PHP CLI before setting `OMS_CFT_CSV_WORKERS`.
+
+**4. Then:** approve and commit the change sets (Account Statement + Comprehensive). Production rollout needs the persistent `reports` worker (Supervisor/systemd: boot auto-start, restart on failure, `timeout` / `retry_after`) and the scheduler (`oms:purge-report-snapshots`).
+
+---
+
 ## Recommended Next Step (2026-10-08, Account Statement «تصدير CSV» implemented and verified on `oms_stress` — NOT committed)
 
 **1. User browser check of the download itself.** The agent's browser automation intercepts download navigations, so the agent could not see the file land, although Apache served the full ZIP every time.

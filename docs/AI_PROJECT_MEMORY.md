@@ -4,6 +4,15 @@
 
 ## Recent Changes
 
+- **2026-10-10 — تقرير الحركات المالية الشامل «تصدير CSV» (NOT committed):**
+  - **What:** a button between «تصدير Excel» and «تصدير Word» exports the APPLIED report (every line, the 16 Excel/Word detail columns) as a ZIP: `ملخص_الحركات_المالية_الشاملة.csv` + `الحركات_001.csv`… (≤ 1,000,000 rows each).
+  - **Code:** `app/Services/Reports/ComprehensiveFinancialTransactions/Csv/`, internal worker `oms:comprehensive-csv-segment`, job `BuildComprehensiveFinancialTransactionsCsvExportJob` (queue `reports`). Reuses the Account Statement CSV encoder / ZIP / snapshot classes and its export store (now parameterized).
+  - **Source:** the real-time projection only (READY), filters resolved once; texts read once per transaction by id ranges; sparse exports get more parallel segments (density-weighted work units).
+  - **Safety:** segment fingerprints re-read after all workers started + rows = report summaries; mismatch → rebuild, drift → abort. Projection not READY → refused (no snapshot fallback).
+  - **Measured on `oms_stress`:** 1M lines 12.6 s (earlier machine state) / 27.9 s (later state); the full-column DB read alone is 7.3 / 10.9 s. The ≤ 5 s target is NOT met — ledger-text I/O through a 128 MB buffer pool.
+  - **Correctness:** 0 differences against the ledger report in every verified case (up to the full range); real Excel opens it with numeric money cells.
+  - **Excel and Word unchanged.** Details: TASKS_LOG 2026-10-10, `docs/COMPREHENSIVE_REPORT_DEPLOYMENT_CHECKLIST.md` addendum C.
+
 - **2026-10-08 — تقرير كشف الحساب «تصدير CSV» (NOT committed):**
   - **What:** a new button beside «تصدير Excel» exports the APPLIED report as a ZIP holding a summary CSV and the movement CSV(s) (≤ 1,000,000 rows each).
   - **Encoding:** UTF-8 + BOM, numeric money, formula-guarded text.

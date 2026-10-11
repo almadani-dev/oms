@@ -10,6 +10,8 @@ namespace App\Services\Audit\Reports;
  *  - Docx  PhpOffice\PhpWord IOFactory Word2007  -> .docx  ("تصدير Word")
  *  - Csv   AccountStatementCsvExport             -> .zip of UTF-8 CSVs
  *          ("تصدير CSV", تقرير كشف الحساب, 2026-10-08)
+ *          ComprehensiveCsvExport                -> .zip of UTF-8 CSVs
+ *          ("تصدير CSV", تقرير الحركات المالية الشامل, 2026-10-10)
  *
  * PDF is deliberately NOT a case here. No export service in this codebase
  * produces it, so adding it would be speculative vocabulary in a table that

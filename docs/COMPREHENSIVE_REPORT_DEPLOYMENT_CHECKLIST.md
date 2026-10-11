@@ -223,3 +223,26 @@ An empty key changes Livewire 4's endpoint hash, so valid Livewire requests get 
 - Whether production caches its config (`bootstrap/cache/config.php`). A cached config does not read `.env` per request.
 - Whether one PHP process serves more than one Laravel environment. It must not.
 
+---
+
+# Addendum (2026-10-10) — «تصدير CSV» (not committed yet)
+
+## C1. What it needs in production
+
+- **The report projection READY.** CSV reads only the projection; while it is missing, rebuilding or invalid, the button answers «تصدير CSV غير متاح حالياً…» and Excel / Word keep working through the snapshot path. There is no snapshot fallback for CSV, so the projection must be built and verified before cutover (P2 above).
+- **The `reports` worker** (section 1). Exports above `OMS_CFT_CSV_INLINE_MAX_UNITS` (default 25,000 work units) are built by `BuildComprehensiveFinancialTransactionsCsvExportJob` on queue `reports`, timeout `OMS_CFT_JOB_TIMEOUT` (1800 s). Smaller ones are built inside the click request (≈ ≤ 2 s measured).
+- **`proc_open` enabled for the PHP CLI** that runs the worker. The job starts up to `OMS_CFT_CSV_WORKERS` (default 8) child processes `php artisan oms:comprehensive-csv-segment` with the SAME PHP binary and `--env`. Without `proc_open` (or on a non-MySQL connection) it falls back to one process — correct, but slower.
+- **MySQL connections:** one large export uses up to 1 + 8 connections at once. Keep `max_connections` headroom for that.
+- **`innodb_buffer_pool_size`:** the measured bottleneck on the dev laptop (128 MB pool vs ~1.1 GB of ledger + projection pages). A pool that holds `transaction_lines`, `transactions` and the projection is the single biggest speed lever. Do not change it without the DBA.
+- **Disk:** the work directory lives under `export_temp_dir` (`storage/app/private/report-exports/cftcsv-*`); a full 1.22M-line export needs ≈ 100 MB (DEFLATE level 1) while it is built, then the package moves to the export disk (`report_snapshots`, `comprehensive-financial-transactions-csv-exports/{owner}/{id}/package.zip`).
+- **Scheduler:** `oms:purge-report-snapshots` (section 2) also removes CSV packages after `export_temp_max_age_minutes` (60) and abandoned work directories.
+
+## C2. Verification after deploy (no financial writes)
+
+1. As a user with view + export permission: "عرض" a short period, click «تصدير CSV» → a ZIP (`ملخص_الحركات_المالية_الشاملة.csv`, `الحركات_001.csv`) downloads immediately.
+2. "عرض" a long period → the page shows «جاري تجهيز ملف CSV في الخلفية…», `queue-reports.log` shows the job, the download starts by itself.
+3. One `report_export.export_requested` audit event per package, `format = csv`, `report = comprehensive_financial_transactions`.
+
+## C3. Rollback
+
+Hide or remove the button (code rollback). The job, routes and store are additive: no schema change, no financial table touched.

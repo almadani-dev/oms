@@ -4,6 +4,8 @@ namespace App\Filament\Pages;
 
 use App\Filament\Pages\Concerns\AuthorizesReportAccess;
 use App\Filament\Tables\FinancialLookupFilters;
+use App\Http\Controllers\Reports\ComprehensiveFinancialTransactionsCsvDownloadController;
+use App\Jobs\BuildComprehensiveFinancialTransactionsCsvExportJob;
 use App\Jobs\BuildComprehensiveFinancialTransactionsExcelExportJob;
 use App\Jobs\BuildComprehensiveFinancialTransactionsSnapshotJob;
 use App\Models\Account;
@@ -20,7 +22,9 @@ use App\Services\Reports\ComprehensiveFinancialTransactions\ComprehensiveFinanci
 use App\Services\Reports\ComprehensiveFinancialTransactions\ComprehensiveFinancialTransactionsSnapshot;
 use App\Services\Reports\ComprehensiveFinancialTransactions\ComprehensiveFinancialTransactionsSnapshotBuilder;
 use App\Services\Reports\ComprehensiveFinancialTransactions\ComprehensiveFinancialTransactionsSnapshotUnreadable;
+use App\Services\Reports\AccountStatement\AccountStatementExcelExports;
 use App\Services\Reports\ComprehensiveFinancialTransactions\Contracts\ComprehensiveFinancialTransactionsSnapshotRepository;
+use App\Services\Reports\ComprehensiveFinancialTransactions\Csv\ComprehensiveCsvExport;
 use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportProjectionQuery;
 use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportProjectionState;
 use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportResolvedFilters;
@@ -41,9 +45,12 @@ use Filament\Schemas\Concerns\InteractsWithSchemas;
 use Filament\Schemas\Contracts\HasSchemas;
 use Filament\Schemas\Schema;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Js;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\Renderless;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -113,6 +120,13 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
 
     public const EXCEL_EXPORT_FAILED_NOTICE = 'تعذر تجهيز ملف Excel لهذا التقرير. يرجى المحاولة مرة أخرى.';
 
+    public const PREPARING_CSV_NOTICE = 'جاري تجهيز ملف CSV؛ سيبدأ التنزيل تلقائياً عند اكتماله.';
+
+    public const CSV_EXPORT_FAILED_NOTICE = 'تعذر تجهيز ملف CSV. يرجى المحاولة مرة أخرى.';
+
+    /** CSV reads only the real-time projection: while it is not READY, CSV is refused — never built another way. */
+    public const CSV_UNAVAILABLE_NOTICE = 'تصدير CSV غير متاح حالياً لأن فهرس التقرير السريع قيد التحديث؛ يرجى المحاولة لاحقاً أو استخدام تصدير Excel.';
+
     /** Shown above a report produced by the fallback (snapshot) path. */
     public const PROJECTION_FALLBACK_NOTICE = 'تم إعداد هذا التقرير بالطريقة الاحتياطية لأن فهرس التقرير السريع قيد التحديث حاليًا؛ النتائج دقيقة لكن قد يستغرق إعدادها وقتًا أطول.';
 
@@ -176,6 +190,14 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
      */
     #[Locked]
     public ?string $excelExportId = null;
+
+    /**
+     * Id of the «تصدير CSV» package a queued job is preparing for this tab,
+     * or null. The page polls its small JSON status endpoint (owner-scoped),
+     * never this component.
+     */
+    #[Locked]
+    public ?string $csvExportId = null;
 
     /**
      * Current page of the main detail table, of the open classification's
@@ -363,6 +385,12 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
                 ->icon('heroicon-o-arrow-down-tray')
                 ->visible(fn (): bool => $this->canExportReport())
                 ->action(fn () => $this->exportExcel()),
+
+            Action::make('exportCsv')
+                ->label('تصدير CSV')
+                ->icon('heroicon-o-table-cells')
+                ->visible(fn (): bool => $this->canExportReport())
+                ->action(fn () => $this->exportCsv()),
 
             Action::make('exportWord')
                 ->label('تصدير Word')
@@ -1389,6 +1417,172 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
         }
 
         $this->excelExportId = null;
+    }
+
+    /**
+     * «تصدير CSV»: a ZIP of a summary CSV and the movement CSV(s) of the
+     * APPLIED report (every line, never the page on screen), read straight
+     * from the real-time projection (ComprehensiveCsvExport). Small reports
+     * are built inside this request and the browser is sent to the signed
+     * download; large ones by a queued job (parallel workers) while the page
+     * polls a small JSON status endpoint. Either way the delivery is audited
+     * at download.
+     *
+     * Live mode only: while the projection is not READY (the page shows the
+     * fallback snapshot) CSV is refused — never built from another source.
+     * One CSV export at a time per user (cache lock) and per tab.
+     */
+    public function exportCsv(): void
+    {
+        $this->authorizeReportExport();
+
+        if (! $this->canExport()) {
+            return;
+        }
+
+        if ($this->reportMode !== self::MODE_LIVE || ! app(ComprehensiveReportProjectionState::class)->isReady()) {
+            Notification::make()->title(self::CSV_UNAVAILABLE_NOTICE)->warning()->send();
+
+            return;
+        }
+
+        if ($this->csvExportId !== null) {
+            Notification::make()->title(self::PREPARING_CSV_NOTICE)->info()->send();
+
+            return;
+        }
+
+        $lock = Cache::lock('comprehensive-csv-export:'.$this->ownerId(), 600);
+
+        if (! $lock->get()) {
+            Notification::make()->title(self::PREPARING_CSV_NOTICE)->info()->send();
+
+            return;
+        }
+
+        try {
+            $this->csvInline() ? $this->buildCsvNow() : $this->startLargeCsvExport();
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * Built inside the click request up to inline_max_units work units
+     * (lines weighted by sparseness — ComprehensiveCsvExport::units()).
+     */
+    private function csvInline(): bool
+    {
+        $units = app(ComprehensiveCsvExport::class)->units($this->liveFilters(), $this->lineCount);
+
+        return $units <= max(0, (int) config(ComprehensiveCsvExport::CONFIG.'.inline_max_units', 25000));
+    }
+
+    private function buildCsvNow(): void
+    {
+        $exports = ComprehensiveCsvExport::store();
+        $exportId = $exports->create($this->ownerId(), $this->csvExportPayload());
+        $package = null;
+
+        try {
+            $package = app(ComprehensiveCsvExport::class)->build($this->liveFilters);
+            $exports->complete($this->ownerId(), $exportId, $package['path'], $package['filename'], move: true, stats: BuildComprehensiveFinancialTransactionsCsvExportJob::auditStats($package['stats'], 'direct'));
+        } catch (\Throwable $e) {
+            report($e);
+            $exports->markFailed($this->ownerId(), $exportId);
+            $exports->discard($this->ownerId(), $exportId);
+            Notification::make()->title(self::CSV_EXPORT_FAILED_NOTICE)->danger()->send();
+
+            return;
+        } finally {
+            if ($package !== null) {
+                ComprehensiveCsvExport::discard($package['path']);
+            }
+        }
+
+        // An ordinary download of the stored file (never base64 through
+        // Livewire); the page itself stays where it is.
+        $this->js('window.location.href = '.Js::from(ComprehensiveFinancialTransactionsCsvDownloadController::downloadUrl($exportId)));
+    }
+
+    private function startLargeCsvExport(): void
+    {
+        $exports = ComprehensiveCsvExport::store();
+        $this->csvExportId = $exports->create($this->ownerId(), $this->csvExportPayload());
+
+        Notification::make()
+            ->title('التقرير كبير ('.number_format($this->lineCount).' بند)؛ جاري تجهيز ملف CSV في الخلفية وسيبدأ التنزيل تلقائياً عند اكتماله.')
+            ->info()
+            ->send();
+
+        try {
+            Bus::dispatch(new BuildComprehensiveFinancialTransactionsCsvExportJob($this->ownerId(), $this->csvExportId));
+        } catch (\Throwable $e) {
+            // Dispatch failed (or a sync driver ran the job inline and it
+            // failed): say so now instead of polling a dead export.
+            report($e);
+            $exports->markFailed($this->ownerId(), $this->csvExportId);
+            $exports->discard($this->ownerId(), $this->csvExportId);
+            $this->csvExportId = null;
+
+            Notification::make()->title(self::CSV_EXPORT_FAILED_NOTICE)->danger()->send();
+        }
+    }
+
+    /**
+     * What the export store keeps: the APPLIED filters the package exports
+     * (ComprehensiveFinancialTransactionsFilters::toArray(), frozen at "عرض")
+     * and the audit payload of its download.
+     *
+     * @return array<string, mixed>
+     */
+    private function csvExportPayload(): array
+    {
+        return [
+            'format' => 'csv',
+            'filters' => $this->liveFilters,
+            'audit' => self::auditFiltersFor(
+                ComprehensiveFinancialTransactionsFilters::fromArray($this->liveFilters),
+                $this->appliedFilterLabels,
+                $this->transactionCount,
+                $this->lineCount,
+                $this->currenciesCount,
+                $this->hasSubmitted,
+            ),
+        ];
+    }
+
+    /**
+     * The JSON status URL the page polls while a CSV package is prepared.
+     */
+    public function csvExportStatusUrl(): ?string
+    {
+        return $this->csvExportId === null
+            ? null
+            : route('reports.comprehensive-financial-transactions.csv-status', ['export' => $this->csvExportId]);
+    }
+
+    /**
+     * Called once by the status poller when the package is ready (its
+     * download has started) or failed: forgets it without re-rendering the
+     * report. A failed / expired export's files are removed here; a ready
+     * one stays downloadable by its owner until it expires (then purged).
+     */
+    #[Renderless]
+    public function forgetCsvExport(): void
+    {
+        if ($this->csvExportId === null) {
+            return;
+        }
+
+        $exports = ComprehensiveCsvExport::store();
+        $state = $exports->status($this->ownerId(), $this->csvExportId)['state'] ?? AccountStatementExcelExports::EXPIRED;
+
+        if (in_array($state, [AccountStatementExcelExports::FAILED, AccountStatementExcelExports::EXPIRED], true)) {
+            $exports->discard($this->ownerId(), $this->csvExportId);
+        }
+
+        $this->csvExportId = null;
     }
 
     /**
