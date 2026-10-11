@@ -39,6 +39,51 @@
 
 
 ### Date
+2026-10-07 (normal oms.test also served by its own FastCGI pool)
+
+### Decision
+- **`oms.test`:** served by `sites-enabled/05-oms-test-fcgid.conf`, a mod_fcgid `php-cgi` pool with no injected environment, so the normal `.env` applies.
+- **Precedence:** this file loads before Laragon's auto-generated `auto.oms.test.conf`, which keeps being regenerated and stays shadowed.
+- **Pool separation:** a distinct wrapper command line keeps this pool separate from the stress pool.
+- **Export jobs:** `$timeout` is declared as `public ?int $timeout = null;`.
+
+### Reason
+- **Same race, same fix:** the same threaded `mod_php` race affected `oms.test` on its own (563 / 7,500). One-request-per-process removes it, using the pattern already proven for stress.
+- **Why a separate file:** editing the auto file would be overwritten by Laragon.
+- **Why that declaration:** Laravel reads the property only when it is set and differs from its default, so the effective timeout is unchanged.
+
+### Impact
+- Both sites: 0 identity errors in 20,000 concurrent probes, and 0 runtime 404s / 500s in 3,600 real requests.
+- Rollback: delete one file, then Stop and Start Apache.
+
+---
+
+
+### Date
+2026-10-07 (local stress site isolated in its own FastCGI PHP processes)
+
+### Decision
+- The LAN stress URL is served by a Host-matched vhost (`ServerName 172.16.0.100`).
+- Within `oms\public`, that vhost hands `.php` to mod_fcgid `php-cgi.exe` workers.
+- The worker process environment carries `APP_ENV=stress`, `DB_DATABASE=oms_stress` and `LARAVEL_STORAGE_PATH`, as do the per-request FastCGI params.
+- `oms.test` keeps `mod_php`. The URL is preserved, and no application code changed.
+
+### Reason (alternatives rejected)
+- **`config:cache`:** rejected by the user. One shared cache file cannot isolate two environments of one codebase, and it makes development caches stale.
+- **A separate port or hostname:** not needed. The Host-matched vhost isolates cleanly without any URL hack.
+- **`php artisan serve` for stress:** single-threaded and not a persistent service, so it doesn't survive a restart.
+- **mod_proxy_fcgi to a `php-cgi -b` pool:** needs a separately started and supervised process on Windows. mod_fcgid is already shipped with Laragon and is supervised by Apache.
+- **Moving `oms.test` too:** outside the requested scope; recommended separately.
+
+### Impact
+- Stress requests now run one-per-process with a fixed environment: 0 identity errors under load.
+- Startup is unchanged: Apache spawns the workers on demand.
+- Rollback: rename two files and Stop + Start Apache.
+
+---
+
+
+### Date
 2026-10-07 (تقرير كشف الحساب — export mode from measured work units; status polling via a JSON endpoint)
 
 ### Decision

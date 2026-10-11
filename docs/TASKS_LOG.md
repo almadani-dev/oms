@@ -145,6 +145,121 @@ Benchmarks and independent verification were run outside PHPUnit on `oms_stress`
 
 
 ### Date
+2026-10-07 (normal oms.test isolated in its own FastCGI pool; export-job `$timeout` deprecation fixed; NOT committed)
+
+### Task
+Move `http://oms.test/admin` off threaded `mod_php` to the same FastCGI isolation as stress, prove both sites under concurrency, and fix the undeclared `$timeout` in the two export jobs.
+
+### Result
+**Runtime:**
+
+| | `oms.test` |
+|---|---|
+| Before | `apache2handler`, the shared threaded process; 563 / 7,500 probes had a missing key or `production`/sqlite fallbacks |
+| After | `cgi-fcgi`, its own pool (`sites-enabled/05-oms-test-fcgid.conf`) |
+
+- `05-oms-test-fcgid.conf` loads before Laragon's regenerated `auto.oms.test.conf`; first match wins.
+- It injects no environment, so `.env` gives `local`, `oms`, `storage\`.
+- The stress config is unchanged (sha `9647c869`).
+
+**Concurrency:**
+
+| Test | Volume | Result |
+|---|---|---|
+| Identity probes | 20,000 (10,000 per site), up to 96 concurrent | 0 missing key; 0 wrong environment, database, driver, storage or Livewire hash; 0 cross-environment leaks; 0 shared PIDs |
+| Real requests (both sites, alongside probes) | 3,600: login pages, Livewire update POSTs, guest `/admin` redirects | all 200/302; endpoint `0e06790f`; banner on 600/600 stress and 0/600 normal pages |
+| Logs, 14:16:28 onward | 11,791 × 200, 2,584 × 302 | 0 × 404, 0 × 5xx, 0 Laravel errors |
+
+- **Artifacts:** a runaway loop in my load script caused 224 Windows ephemeral-port-exhaustion 500s (13:59–14:16).
+- **View race:** 7 transient Blade compile `rename()` races happened on the first concurrent compile of changed views (Windows-specific).
+
+**Databases:**
+- Ledger fingerprints identical on both (counts, max ids, `CHECKSUM TABLE` for transactions, lines and accounts).
+- The test-created guest sessions (1,203 per database) were removed afterwards: stress is back to 144.
+- `oms` is at 1: Laravel's own session lottery expired 2 old sessions during the test.
+
+**Deprecation:**
+- **Cause:** both export jobs assigned `$this->timeout` without declaring it; `Queueable` does not declare it, so PHP 8.2+ treats it as a dynamic property.
+- **Fix:** declare `public ?int $timeout = null;`, Laravel's convention.
+- The payload still carries `timeout=1800`, `maxTries=1`, `failOnTimeout=true`, queue `reports`.
+
+### Changed Files
+- **Server (outside git):** new `C:\laragon\etc\apache2\sites-enabled\05-oms-test-fcgid.conf`; backups in `C:\laragon\etc\apache2\_backup_2026-10-07_oms-test-isolation\`.
+- **App:** `app/Jobs/BuildAccountStatementExcelExportJob.php`, `app/Jobs/BuildComprehensiveFinancialTransactionsExcelExportJob.php` (property declaration only).
+- **Docs:** `docs/LOCAL_STRESS_RUNTIME.md` (rewritten for both sites), `docs/NEXT_STEPS.md`, `docs/DECISIONS_LOG.md`, `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`.
+
+### Verification
+- Apache: `httpd -t` returned Syntax OK, and `httpd -S` showed the expected precedence.
+- **Tests:** AccountStatementReport + ComprehensiveFinancialTransactionsLargeExport + ComprehensiveFinancialTransactionsSnapshotFormat + ComprehensiveReportProjectionPage + ComprehensiveTransactionTypeMultiSelect — 129 tests / 13,633 assertions, all pass.
+- Pint clean.
+- The temporary probe was deleted (404 on both hosts).
+
+---
+
+
+### Date
+2026-10-07 (local stress runtime isolation — server config only; NOT committed)
+
+### Task
+Isolate the LAN stress site from normal `oms` at the PHP process level, so that no request can resolve the other environment's key, database or storage, and prove it under concurrency.
+
+### Result
+**Done for stress.**
+
+**Before:**
+- Apache 2.4.62 (Apache Lounge, Win64), WinNT MPM, threaded; PHP 8.3.28 TS as `mod_php` for every site.
+- The stress environment was applied by a global `<Location "/oms/public"> SetEnv …` in `alias/oms-stress-dev.conf`.
+- One PID served both environments.
+- **Baseline, 600 parallel probes:**
+
+| | Stress | Normal |
+|---|---|---|
+| Missing key | 6 | 6 |
+| sqlite driver | 13 | 7 |
+| `env=production` | — | 10 |
+| wrong database | — | 6 |
+| Livewire hash `/livewire-4aeeedbb` | 6 | 6 |
+
+**After:**
+- Stress is served by mod_fcgid `php-cgi` workers (`sapi=cgi-fcgi`, separate PIDs); normal stays on `apache2handler`.
+- Stress identity across 1,200 + 7,500 probes, including during browser load: **0** wrong environment, database, driver, storage or Livewire hash, and **0** missing key.
+- **Browser load, all HTTP 200:**
+  - 495 status polls;
+  - 60 parallel `/admin/projects` loads;
+  - 60 login and 30 `/admin` loads;
+  - 5 "عرض" requests;
+  - 120 paging steps overlapped with polling.
+- Livewire 132/132 returned 200, 0 malformed, no error dialog.
+- Background export: built, polled to ready, and the download returned 200 (7,024,606 bytes) with its audit event.
+- Stress log: 0 errors since the switch (29 `MissingAppKeyException` earlier that day).
+- **Normal `oms.test`:** 0 leaks of stress values, but its own `mod_php` race remains (563 / 7,500 missing key).
+
+**Databases:**
+- `oms` fingerprint identical before and after: counts, max ids, `CHECKSUM TABLE` for transactions, lines and accounts.
+- `oms_stress` ledger checksums identical. Audit +3 (exports); sessions +62 (anonymous login-page probes).
+
+**Mistake:** I deleted stress queued jobs 8 and 9, assuming they were my test exports. They were browser exports (account 17 from 2024-10-01; account 1 from 2020-10-01) and need to be re-run. Job 13 and the three status files were left untouched.
+
+**Production runtime:** not inspected (no access). Added as prerequisite R1 in `docs/COMPREHENSIVE_REPORT_DEPLOYMENT_CHECKLIST.md`.
+
+### Changed Files
+- **Server (outside git):**
+  - new `C:\laragon\etc\apache2\sites-enabled\10-oms-stress-lan-fcgid.conf`;
+  - renamed `alias\oms-stress-dev.conf` → `.conf.off`;
+  - backups in `C:\laragon\etc\apache2\_backup_2026-10-07_stress-isolation\`.
+- **Docs:**
+  - new `docs/LOCAL_STRESS_RUNTIME.md`;
+  - `docs/STRESS_ENVIRONMENT.md`, `docs/COMPREHENSIVE_REPORT_DEPLOYMENT_CHECKLIST.md`, `docs/NEXT_STEPS.md`, `docs/DECISIONS_LOG.md`, `docs/AI_PROJECT_MEMORY.md`, `docs/TASKS_LOG.md`.
+- A temporary probe `public/__runtime_probe_7f3c9a.php` was used for the tests and deleted (verified 404).
+
+### Verification
+- `httpd -t` returned Syntax OK, and `httpd -S` showed the expected vhost map.
+- The identity load tests, browser tests and fingerprints are listed above. No PHPUnit run was needed: no application code changed.
+
+---
+
+
+### Date
 2026-10-07 (تقرير كشف الحساب — pre-commit polish after browser validation; NOT committed)
 
 ### Task

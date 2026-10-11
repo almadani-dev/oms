@@ -200,3 +200,26 @@ Prepared 2026-10-05. **Nothing here has been executed against production.** This
 - Redeploy the previous release. The new tables are then simply unused; leaving them is harmless.
 - To remove them: `php artisan migrate:rollback --step=1`, from the release that contains the migration, before switching code.
 - No financial data is touched either way.
+
+---
+
+# Addendum (2026-10-07) — PHP runtime prerequisite (both report changes)
+
+## R1. Confirm the production PHP SAPI before deploying the report changes
+
+**Not inspected yet:** there is no read-only access to production from the dev machine.
+
+**Why it matters.** On the dev machine (Apache 2.4 WinNT MPM, threaded, PHP 8.3 TS as `mod_php`, config not cached), concurrent requests sometimes booted Laravel with a partially missing environment. Measured over 1,200 parallel probes:
+- empty `APP_KEY`;
+- `APP_ENV=production` fallback;
+- sqlite driver instead of MySQL.
+
+An empty key changes Livewire 4's endpoint hash, so valid Livewire requests get 404, and `MissingAppKeyException` produces 500s. Both new report pages poll or page concurrently, which makes this visible.
+
+**Checks (read-only):**
+- `php -r "echo PHP_SAPI;"` on the web runtime, or `phpinfo()` "Server API" from an admin-only check.
+  - Must be **fpm-fcgi** or **cgi-fcgi**, i.e. one request per PHP process.
+  - If it is **apache2handler** under a threaded MPM (WinNT / worker / event), stop and fix the runtime first.
+- Whether production caches its config (`bootstrap/cache/config.php`). A cached config does not read `.env` per request.
+- Whether one PHP process serves more than one Laravel environment. It must not.
+

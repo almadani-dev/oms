@@ -16,6 +16,20 @@
   - **Excel and Word unchanged.**
   - Details: `docs/ACCOUNT_STATEMENT_ARCHITECTURE.md` §5.1, TASKS_LOG 2026-10-08.
 
+- **2026-10-07 — `oms.test` also isolated:**
+  - It is served by its own FastCGI pool (`C:\laragon\etc\apache2\sites-enabled\05-oms-test-fcgid.conf`), which shadows Laragon's regenerated `auto.oms.test.conf`.
+  - Both local sites are now off threaded `mod_php`: 0 identity errors in 20,000 concurrent probes and 0 runtime 404s / 500s in 3,600 real requests.
+  - Export jobs now declare `public ?int $timeout = null;` (PHP 8.2+ deprecation fixed, timeout unchanged at 1800).
+  - NOT committed. The next requested task is «تصدير CSV» for the Account Statement.
+
+- **2026-10-07 — local stress runtime isolated (server config only, no application change):**
+  - The LAN stress site `http://172.16.0.100/oms/public/admin` now runs in FastCGI `php-cgi` workers through mod_fcgid, configured in `C:\laragon\etc\apache2\sites-enabled\10-oms-stress-lan-fcgid.conf` (Host-matched vhost).
+  - The old `mod_php` `SetEnv` alias is disabled (`alias\oms-stress-dev.conf.off`). Backups are in `C:\laragon\etc\apache2\_backup_2026-10-07_stress-isolation\`.
+  - **Result:** 0 identity errors over 8,100 concurrent stress probes plus browser load; Livewire 404s and key 500s are gone for stress.
+  - `oms.test` remains `mod_php` and keeps its own race (no cross-environment leak).
+  - Laragon "Reload" did not restart the Apache child; Stop + Start did.
+  - Details: `docs/LOCAL_STRESS_RUNTIME.md`.
+
 - **2026-10-07 — تقرير كشف الحساب pre-commit polish (NOT committed):**
   - **Balance colours:** now on an inner span; the cell stays neutral.
   - **Export mode:** decided by work units, `movements + 0.5 × accounts + currencies` (`AccountStatementExportPlan`).

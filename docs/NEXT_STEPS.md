@@ -18,6 +18,42 @@
 
 ---
 
+## Recommended Next Step (2026-10-07, both local sites process-isolated; export-job deprecation fixed — still NOT committed)
+
+**1. Next task (requested by the user):** implement and validate the Account Statement «تصدير CSV» button beside «تصدير Excel». Keep the whole working tree intact until then.
+
+**2. Optional, not requested:** four other jobs assign the same undeclared `$timeout`:
+- `BuildComprehensiveFinancialTransactionsSnapshotJob`
+- `CreateBackupJob`
+- `RetentionCleanupJob`
+- `VerifyBackupIntegrityJob`
+
+The same one-line declaration would silence their PHP 8.2+ deprecation.
+
+**3. Before production:** checklist addendum R1 (production PHP SAPI must be one request per process; no shared environment).
+
+The two items in the entry below are superseded:
+- `oms.test` is now isolated too.
+- The two lost stress exports are to be re-run by the user only if needed.
+
+---
+
+## Recommended Next Step (2026-10-07, stress runtime isolated — two decisions before committing)
+
+**1. Normal `oms.test` still runs on threaded `mod_php`, and its own concurrency race remains.** 563 of 7,500 concurrent probes had a missing `APP_KEY`, with `production`/sqlite fallbacks. It never leaked stress values.
+- Moving `oms.test` to the same FastCGI pattern would fix it; this needs approval.
+- Until then, expect occasional Livewire 404s or 500s on `oms.test` under parallel requests.
+
+**2. Re-run the two stress exports that were lost.** On 2026-10-07 the agent deleted queued `BuildAccountStatementExcelExportJob`s 8 and 9 (13:15 / 13:16), wrongly assuming they were its own test jobs. They were browser exports:
+- account 17, from 2024-10-01;
+- account 1, from 2020-10-01.
+
+**3. Then:** approve and commit the account statement change set. Before deploying, do the production runtime check (`docs/COMPREHENSIVE_REPORT_DEPLOYMENT_CHECKLIST.md`, addendum R1).
+
+**Minor, pre-existing pattern:** both background export jobs assign an undeclared `$timeout` property, which PHP 8.2+ reports as a deprecation. A one-line fix each, not applied.
+
+---
+
 ## Recommended Next Step (2026-10-07, account statement polish done — one environment issue needs a decision)
 
 **1. Decide how to fix the concurrent-request environment race. This is a server/runtime change, so nothing was changed.**

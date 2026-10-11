@@ -75,6 +75,7 @@ All through the current production code paths where they exist:
 ## Switching the app to the stress database and back
 
 - CLI (commands, queue worker): add `--env=stress`, e.g. `php artisan --env=stress queue:work database --queue=reports`. Without `--env=stress` the app uses the normal `.env` and `oms`.
+- Browser on the LAN (since 2026-10-07): `http://172.16.0.100/oms/public/admin` runs the stress profile in isolated FastCGI workers. See `docs/LOCAL_STRESS_RUNTIME.md` for the setup, restart and rollback.
 - Browser — **no machine-level change needed**: start a separate local server under the stress profile (PowerShell):
 
   ```powershell
