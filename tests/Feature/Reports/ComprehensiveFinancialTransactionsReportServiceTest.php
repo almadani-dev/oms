@@ -86,7 +86,7 @@ class ComprehensiveFinancialTransactionsReportServiceTest extends TestCase
     {
         ['debitAccount' => $debitAccount] = $this->twoBankTypeFixture();
 
-        $result = $this->service()->generate('2026-07-01', '2026-07-31', [], null, null, [$debitAccount->id]);
+        $result = $this->service()->generate('2026-07-01', '2026-07-31', [], null, [], [$debitAccount->id]);
 
         $this->assertCount(1, $result['rows']);
         $this->assertStringContainsString('حساب البنك الأول', $result['rows'][0]['account']);
@@ -106,7 +106,7 @@ class ComprehensiveFinancialTransactionsReportServiceTest extends TestCase
             '2026-07-31',
             [],
             null,
-            null,
+            [],
             [$debitAccount->id, $creditAccount->id],
         );
 
@@ -129,7 +129,7 @@ class ComprehensiveFinancialTransactionsReportServiceTest extends TestCase
             '2026-07-31',
             [],
             null,
-            null,
+            [],
             [$debitAccount->id, $creditAccount->id],
         );
 
@@ -151,7 +151,7 @@ class ComprehensiveFinancialTransactionsReportServiceTest extends TestCase
             '2026-07-31',
             [],
             null,
-            null,
+            [],
             [$debitAccount->id, $creditAccount->id],
         );
 
@@ -755,7 +755,7 @@ class ComprehensiveFinancialTransactionsReportServiceTest extends TestCase
             '2026-07-31',
             [],
             null,
-            null,
+            [],
             $accountIds,
             null,
             null,

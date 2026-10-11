@@ -84,6 +84,7 @@ class ComprehensiveFinancialTransactionsReportService
      * by ComprehensiveFinancialTransactionsSnapshotBuilder instead.
      *
      * @param array<int, int> $currencyIds empty array = all currencies
+     * @param array<int, int> $transactionTypeIds empty array = all types ("كل الأنواع")
      * @param array<int, int> $accountIds empty array = all accounts ("كل الحسابات")
      * @param string $accountSide self::SIDE_* — narrows the selected accounts to
      *        their debit or credit appearances; meaningless (and forced back to
@@ -95,7 +96,7 @@ class ComprehensiveFinancialTransactionsReportService
         string $dateTo,
         array $currencyIds = [],
         ?int $transactionSuperTypeId = null,
-        ?int $transactionTypeId = null,
+        array $transactionTypeIds = [],
         array $accountIds = [],
         ?int $accountTypeId = null,
         ?int $projectId = null,
@@ -106,7 +107,7 @@ class ComprehensiveFinancialTransactionsReportService
             $dateTo,
             $currencyIds,
             $transactionSuperTypeId,
-            $transactionTypeId,
+            $transactionTypeIds,
             $accountIds,
             $accountTypeId,
             $projectId,
@@ -352,12 +353,12 @@ class ComprehensiveFinancialTransactionsReportService
      */
     private function transactionsQuery(ComprehensiveFinancialTransactionsFilters $filters, ?array $typeIdsOfSuperType): Builder
     {
-        $transactionTypeId = $filters->transactionTypeId;
+        $transactionTypeIds = $filters->transactionTypeIds;
 
         return DB::table('transactions as t')
             ->whereNull('t.deleted_at')
             ->whereBetween('t.transaction_time', $this->period($filters))
-            ->when($transactionTypeId, fn ($q) => $q->where('t.transaction_type_id', $transactionTypeId))
+            ->when($transactionTypeIds !== [], fn ($q) => $q->whereIn('t.transaction_type_id', $transactionTypeIds))
             ->when($typeIdsOfSuperType !== null, fn ($q) => $q->whereIn('t.transaction_type_id', $typeIdsOfSuperType));
     }
 
@@ -424,12 +425,12 @@ class ComprehensiveFinancialTransactionsReportService
     private function linesQuery(ComprehensiveFinancialTransactionsFilters $filters): Builder
     {
         $transactionSuperTypeId = $filters->transactionSuperTypeId;
-        $transactionTypeId = $filters->transactionTypeId;
+        $transactionTypeIds = $filters->transactionTypeIds;
 
         $query = $this->joinedLinesQuery()
             ->whereBetween('t.transaction_time', $this->period($filters))
             ->when($transactionSuperTypeId, fn ($q) => $q->where('tt.transaction_super_type_id', $transactionSuperTypeId))
-            ->when($transactionTypeId, fn ($q) => $q->where('t.transaction_type_id', $transactionTypeId));
+            ->when($transactionTypeIds !== [], fn ($q) => $q->whereIn('t.transaction_type_id', $transactionTypeIds));
 
         $this->applyLineFilters($query, $filters);
 
@@ -734,7 +735,7 @@ class ComprehensiveFinancialTransactionsReportService
         return $this->labelsFor(
             $filters->currencyIds,
             $filters->transactionSuperTypeId,
-            $filters->transactionTypeId,
+            $filters->transactionTypeIds,
             $filters->accountIds,
             $filters->accountTypeId,
             $filters->projectId,
@@ -744,6 +745,7 @@ class ComprehensiveFinancialTransactionsReportService
 
     /**
      * @param array<int, int> $currencyIds
+     * @param array<int, int> $transactionTypeIds
      * @param array<int, int> $accountIds
      * @param string $accountSide already normalized by the filters object
      * @return array<string, string>
@@ -751,7 +753,7 @@ class ComprehensiveFinancialTransactionsReportService
     private function labelsFor(
         array $currencyIds,
         ?int $transactionSuperTypeId,
-        ?int $transactionTypeId,
+        array $transactionTypeIds,
         array $accountIds,
         ?int $accountTypeId,
         ?int $projectId,
@@ -771,8 +773,16 @@ class ComprehensiveFinancialTransactionsReportService
             $labels['تصنيف المعاملة'] = TransactionSuperType::withTrashed()->find($transactionSuperTypeId)?->name ?? '-';
         }
 
-        if ($transactionTypeId) {
-            $labels['نوع المعاملة'] = TransactionType::withTrashed()->find($transactionTypeId)?->name ?? '-';
+        // One type reads exactly as before; several are listed by name, like
+        // العملات. Soft-deleted types still label historical selections.
+        if ($transactionTypeIds !== []) {
+            $names = TransactionType::withTrashed()
+                ->whereIn('id', $transactionTypeIds)
+                ->orderBy('name')
+                ->orderBy('id')
+                ->pluck('name');
+
+            $labels['نوع المعاملة'] = $names->isEmpty() ? '-' : $names->implode('، ');
         }
 
         if ($accountIds !== []) {

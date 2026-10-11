@@ -19,6 +19,8 @@ final class ComprehensiveFinancialTransactionsFilters
 {
     /**
      * @param  array<int, int>  $currencyIds  empty = all currencies
+     * @param  array<int, int>  $transactionTypeIds  empty = all types ("كل الأنواع");
+     *         otherwise positive, unique and ascending (see normalizeIds())
      * @param  array<int, int>  $accountIds  empty = all accounts ("كل الحسابات")
      */
     private function __construct(
@@ -26,7 +28,7 @@ final class ComprehensiveFinancialTransactionsFilters
         public readonly string $dateTo,
         public readonly array $currencyIds,
         public readonly ?int $transactionSuperTypeId,
-        public readonly ?int $transactionTypeId,
+        public readonly array $transactionTypeIds,
         public readonly array $accountIds,
         public readonly ?int $accountTypeId,
         public readonly ?int $projectId,
@@ -35,6 +37,7 @@ final class ComprehensiveFinancialTransactionsFilters
 
     /**
      * @param  array<int, int|string>  $currencyIds
+     * @param  array<int, int|string|null>  $transactionTypeIds
      * @param  array<int, int|string>  $accountIds
      */
     public static function make(
@@ -42,7 +45,7 @@ final class ComprehensiveFinancialTransactionsFilters
         string $dateTo,
         array $currencyIds = [],
         ?int $transactionSuperTypeId = null,
-        ?int $transactionTypeId = null,
+        array $transactionTypeIds = [],
         array $accountIds = [],
         ?int $accountTypeId = null,
         ?int $projectId = null,
@@ -56,12 +59,31 @@ final class ComprehensiveFinancialTransactionsFilters
             $dateTo,
             $currencyIds,
             $transactionSuperTypeId,
-            $transactionTypeId,
+            self::normalizeIds($transactionTypeIds),
             $accountIds,
             $accountTypeId,
             $projectId,
             ComprehensiveFinancialTransactionsReportService::normalizeAccountSide($accountSide, $accountIds),
         );
+    }
+
+    /**
+     * Positive, unique, ascending ids: the order a user picked them in, a
+     * repeated id or a blank entry can never yield a different filter (or a
+     * different snapshot/export audit) for the same selection.
+     *
+     * @param  array<int, int|string|null>  $ids
+     * @return array<int, int>
+     */
+    public static function normalizeIds(array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter(
+            array_map('intval', array_filter($ids, 'is_scalar')),
+            fn (int $id): bool => $id > 0,
+        )));
+        sort($ids);
+
+        return $ids;
     }
 
     /**
@@ -74,7 +96,7 @@ final class ComprehensiveFinancialTransactionsFilters
             'date_to' => $this->dateTo,
             'currency_ids' => $this->currencyIds,
             'transaction_super_type_id' => $this->transactionSuperTypeId,
-            'transaction_type_id' => $this->transactionTypeId,
+            'transaction_type_ids' => $this->transactionTypeIds,
             'account_ids' => $this->accountIds,
             'account_type_id' => $this->accountTypeId,
             'project_id' => $this->projectId,
@@ -92,7 +114,9 @@ final class ComprehensiveFinancialTransactionsFilters
             (string) $data['date_to'],
             (array) ($data['currency_ids'] ?? []),
             isset($data['transaction_super_type_id']) ? (int) $data['transaction_super_type_id'] : null,
-            isset($data['transaction_type_id']) ? (int) $data['transaction_type_id'] : null,
+            // A snapshot manifest or queued job written before the type filter
+            // became a list carries the old single `transaction_type_id`.
+            (array) ($data['transaction_type_ids'] ?? (isset($data['transaction_type_id']) ? [$data['transaction_type_id']] : [])),
             (array) ($data['account_ids'] ?? []),
             isset($data['account_type_id']) ? (int) $data['account_type_id'] : null,
             isset($data['project_id']) ? (int) $data['project_id'] : null,

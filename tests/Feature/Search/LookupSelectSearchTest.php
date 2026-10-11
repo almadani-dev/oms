@@ -5,6 +5,7 @@ namespace Tests\Feature\Search;
 use App\Filament\Pages\ComprehensiveFinancialTransactionsPage;
 use App\Filament\Pages\DonorFinancialReportPage;
 use App\Filament\Pages\ProjectsGeneralFinancialPage;
+use App\Filament\Tables\FinancialLookupFilters;
 use App\Filament\Resources\ExecutionPayments\Pages\CreateExecutionPayment;
 use App\Filament\Resources\ExecutionPayments\Pages\EditExecutionPayment;
 use App\Filament\Resources\GeneralExchanges\Pages\CreateGeneralExchange;
@@ -121,6 +122,17 @@ class LookupSelectSearchTest extends TestCase
         $this->assertTrue($select->hasDynamicSearchResults());
     }
 
+    /**
+     * The comprehensive report's pickers list a bounded first page on opening
+     * (never the whole table, never preloaded) and still search the server.
+     */
+    private function assertBoundedInitialOptions(Select $select): void
+    {
+        $this->assertLessThanOrEqual(50, count($select->getOptions()), 'at most 50 initial options');
+        $this->assertFalse($select->isPreloaded());
+        $this->assertTrue($select->hasDynamicSearchResults());
+    }
+
     private function account(string $code, string $name, ?string $iban = null): Account
     {
         return $this->makeAccount($this->currency, ['account_code' => $code, 'name' => $name, 'iban' => $iban]);
@@ -155,7 +167,7 @@ class LookupSelectSearchTest extends TestCase
 
         $select = $this->select(Livewire::test(ComprehensiveFinancialTransactionsPage::class), 'account_ids');
 
-        $this->assertNoPreload($select);
+        $this->assertBoundedInitialOptions($select);
         $this->assertSame([$orphans->id => 'BNK-7788 - '.$orphans->name], $select->getSearchResults('BNK-7788'));
         $this->assertSame([$orphans->id => 'BNK-7788 - '.$orphans->name], $select->getSearchResults('الايتام'));
         $this->assertSame([$orphans->id => 'BNK-7788 - '.$orphans->name], $select->getSearchResults('PS92PALS'));
@@ -206,7 +218,7 @@ class LookupSelectSearchTest extends TestCase
         $component = Livewire::test(ComprehensiveFinancialTransactionsPage::class);
         $select = $this->select($component, 'project_id');
 
-        $this->assertNoPreload($select);
+        $this->assertBoundedInitialOptions($select);
         $expected = [$this->relief->id => "{$this->relief->code} - {$this->relief->name}"];
         $this->assertSame($expected, $select->getSearchResults('اغاثة'));
         $this->assertSame($expected, $select->getSearchResults($this->relief->code));
@@ -222,6 +234,84 @@ class LookupSelectSearchTest extends TestCase
         }
 
         $this->assertCount(50, $this->select(Livewire::test(ComprehensiveFinancialTransactionsPage::class), 'project_id')->getSearchResults('رقم'));
+    }
+
+    public function test_comprehensive_pickers_open_with_a_bounded_first_page_and_resolve_labels_beyond_it(): void
+    {
+        foreach (range(1, 55) as $i) {
+            $this->account(sprintf('ACC-%03d', $i), "حساب رقم {$i}");
+            Project::create(['name' => "مشروع رقم {$i}", 'project_super_id' => $this->relief->project_super_id, 'project_status_id' => $this->relief->project_status_id]);
+        }
+        $this->account('AAA-000', 'حساب محذوف')->delete();
+        $lastAccount = Account::where('account_code', 'ACC-055')->firstOrFail();
+        $lastProject = Project::orderByDesc('code')->firstOrFail();
+
+        $component = Livewire::test(ComprehensiveFinancialTransactionsPage::class);
+        $accounts = $this->select($component, 'account_ids');
+        $projects = $this->select($component, 'project_id');
+
+        // Opening, before typing: the first 50 in code order, deleted ones excluded.
+        $initialAccounts = $accounts->getOptions();
+        $this->assertCount(50, $initialAccounts);
+        $this->assertSame('ACC-001 - حساب رقم 1', reset($initialAccounts));
+        $this->assertNotContains('AAA-000 - حساب محذوف', $initialAccounts);
+        $this->assertArrayNotHasKey($lastAccount->id, $initialAccounts);
+        $this->assertSame($initialAccounts, $accounts->getSearchResults(''), 'the same rule as an empty search');
+
+        $initialProjects = $projects->getOptions();
+        $this->assertCount(50, $initialProjects);
+        $this->assertSame(FinancialLookupFilters::projectOptions(''), $initialProjects);
+        $this->assertArrayNotHasKey($lastProject->id, $initialProjects);
+
+        // Typing reaches beyond the first page.
+        $this->assertSame([$lastAccount->id => 'ACC-055 - حساب رقم 55'], $accounts->getSearchResults('ACC-055'));
+        $this->assertArrayHasKey($lastProject->id, $projects->getSearchResults($lastProject->code));
+
+        // Selected outside the first page: label shown and the value stays valid.
+        $component->set('data.account_ids', [$lastAccount->id])->set('data.project_id', $lastProject->id);
+        $this->assertSame([$lastAccount->id => 'ACC-055 - حساب رقم 55'], $this->select($component, 'account_ids')->getOptionLabels(withDefaults: false));
+        $this->assertNull($this->select($component, 'account_ids')->getInValidationRuleValues());
+        $this->assertSame("{$lastProject->code} - {$lastProject->name}", $this->select($component, 'project_id')->getOptionLabel(withDefault: false));
+        $this->assertNull($this->select($component, 'project_id')->getInValidationRuleValues());
+
+        // The option lists are rendered, never carried in Livewire state.
+        $state = json_encode($component->snapshot, JSON_UNESCAPED_UNICODE);
+        $this->assertStringNotContainsString('حساب رقم 1"', $state);
+        $this->assertStringNotContainsString('مشروع رقم 1"', $state);
+        $this->assertLessThan(16 * 1024, strlen($state));
+    }
+
+    public function test_comprehensive_empty_pickers_mean_all_and_account_plus_project_narrow_together(): void
+    {
+        $fiscalYear = FiscalYear::create(['name' => 'سنة الاختبار', 'start_date' => '2026-01-01', 'end_date' => '2026-12-31', 'is_active' => true]);
+        $type = TransactionType::create(['name' => 'نوع الاختبار']);
+        $cost = ProjectCost::create(['project_id' => $this->relief->id, 'account_type_id' => \App\Models\AccountType::create(['name' => 'نوع'])->id, 'amount' => 1000, 'currency_id' => $this->currency->id]);
+        $cash = $this->account('CSH-1', 'الصندوق');
+        $bank = $this->account('BNK-1', 'البنك');
+
+        // Two transactions: one with the project on both lines, one without.
+        foreach ([[$cost->id, '2026-07-10 10:00:00'], [null, '2026-07-11 10:00:00']] as [$costId, $time]) {
+            $tx = Transaction::create(['fiscal_year_id' => $fiscalYear->id, 'transaction_type_id' => $type->id, 'transaction_number' => 'T-'.uniqid(), 'transaction_time' => $time]);
+            $this->makeLine($tx, $cash, $this->currency, ['debit_base' => 10, 'credit_base' => 0, 'project_cost_id' => $costId]);
+            $this->makeLine($tx, $bank, $this->currency, ['debit_base' => 0, 'credit_base' => 10, 'project_cost_id' => $costId]);
+        }
+
+        $run = fn (array $accounts, ?int $project) => Livewire::test(ComprehensiveFinancialTransactionsPage::class)
+            ->set('data.date_from', '2026-07-01')
+            ->set('data.date_to', '2026-07-31')
+            ->set('data.account_ids', $accounts)
+            ->set('data.project_id', $project)
+            ->call('showReport')
+            ->assertHasNoErrors();
+
+        $run([], null)->assertSet('lineCount', 4)->assertSet('appliedAccountIds', [])->assertSet('appliedProjectId', null);
+        $run([$cash->id], null)->assertSet('lineCount', 2);
+        $run([], $this->relief->id)->assertSet('lineCount', 2);
+
+        $both = $run([$cash->id], $this->relief->id)->assertSet('lineCount', 1);
+        $labels = $both->get('appliedFilterLabels');
+        $this->assertSame('CSH-1 - الصندوق', $labels['الحساب']);
+        $this->assertArrayHasKey('المشروع', $labels);
     }
 
     // =====================================================================

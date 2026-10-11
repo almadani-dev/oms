@@ -208,8 +208,11 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
     #[Locked]
     public ?int $appliedTransactionSuperTypeId = null;
 
+    /**
+     * @var array<int, int> empty = all types ("كل الأنواع")
+     */
     #[Locked]
-    public ?int $appliedTransactionTypeId = null;
+    public array $appliedTransactionTypeIds = [];
 
     /**
      * @var array<int, int>
@@ -344,7 +347,7 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
             'date_to' => now()->toDateString(),
             'currency_ids' => [],
             'transaction_super_type_id' => null,
-            'transaction_type_id' => null,
+            'transaction_type_ids' => [],
             'account_ids' => [],
             'account_side' => ComprehensiveFinancialTransactionsReportService::SIDE_ALL,
             'account_type_id' => null,
@@ -414,8 +417,13 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
                     ->live()
                     ->afterStateUpdated(fn () => $this->clearResults()),
 
-                Select::make('transaction_type_id')
+                // Several types at once (rows of ANY selected type); none
+                // selected = every type. Filament's `in` rule rejects an id
+                // that is not one of these options, as for العملات.
+                Select::make('transaction_type_ids')
                     ->label('نوع المعاملة')
+                    ->multiple()
+                    ->searchable()
                     ->options(fn () => TransactionType::query()->orderBy('name')->pluck('name', 'id'))
                     ->placeholder('كل الأنواع')
                     ->live()
@@ -423,17 +431,19 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
 
                 // Searched on the server (Muwakha family accounts make this a
                 // large table): code, name or IBAN, at most 50 results, never
-                // the whole table in the page. The labels of the selected
-                // accounts are resolved on their own, so a choice outside the
-                // current result window still reads "code - name" — and an id
-                // with no label fails Filament's `in` validation, as before.
+                // the whole table in the page. On opening, before any typing,
+                // the first 50 of those same accounts (code order) are listed,
+                // so the dropdown is never an empty "start typing" prompt. The
+                // labels of the selected accounts are resolved on their own,
+                // so a choice outside the current result window still reads
+                // "code - name" — and validation (Filament's `in` rule) goes
+                // through that resolver, never through the initial 50.
                 Select::make('account_ids')
                     ->label('الحساب')
                     ->multiple()
                     ->searchable()
-                    ->getSearchResultsUsing(fn (?string $search): array => self::accountLabels(
-                        self::accountSearchQuery($search ?? '')->limit(FinancialLookupFilters::OPTIONS_LIMIT)->get(['id', 'account_code', 'name']),
-                    ))
+                    ->options(fn (): array => self::accountOptions(''))
+                    ->getSearchResultsUsing(fn (?string $search): array => self::accountOptions($search ?? ''))
                     ->getOptionLabelsUsing(fn (array $values): array => self::accountLabels(
                         Account::query()->whereKey($values)->get(['id', 'account_code', 'name']),
                     ))
@@ -472,11 +482,13 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
                     ->afterStateUpdated(fn () => $this->clearResults()),
 
                 // Searched on the server by code or name, "code - name" labels,
-                // at most 50 results; the selected project's label resolves on
-                // its own.
+                // at most 50 results; the first 50 (code order) are listed on
+                // opening. The selected project's label (and its validation)
+                // resolves on its own.
                 Select::make('project_id')
                     ->label('المشروع')
                     ->searchable()
+                    ->options(fn (): array => FinancialLookupFilters::projectOptions(''))
                     ->getSearchResultsUsing(fn (?string $search): array => FinancialLookupFilters::projectOptions($search ?? ''))
                     ->getOptionLabelUsing(fn (mixed $value): ?string => blank($value) ? null : FinancialLookupFilters::projectLabel($value))
                     ->optionsLimit(FinancialLookupFilters::OPTIONS_LIMIT)
@@ -512,7 +524,8 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
             $state['date_to'],
             $currencyIds,
             $state['transaction_super_type_id'] ? (int) $state['transaction_super_type_id'] : null,
-            $state['transaction_type_id'] ? (int) $state['transaction_type_id'] : null,
+            // Empty = "كل الأنواع"; the filters object dedupes and sorts.
+            (array) ($state['transaction_type_ids'] ?? []),
             $accountIds,
             $state['account_type_id'] ? (int) $state['account_type_id'] : null,
             $state['project_id'] ? (int) $state['project_id'] : null,
@@ -661,7 +674,7 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
         $this->appliedDateTo = $filters->dateTo;
         $this->appliedCurrencyIds = $filters->currencyIds;
         $this->appliedTransactionSuperTypeId = $filters->transactionSuperTypeId;
-        $this->appliedTransactionTypeId = $filters->transactionTypeId;
+        $this->appliedTransactionTypeIds = $filters->transactionTypeIds;
         $this->appliedAccountIds = $filters->accountIds;
         $this->appliedAccountSide = $filters->accountSide;
         $this->appliedAccountTypeId = $filters->accountTypeId;
@@ -1142,7 +1155,7 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
 
     public static function pageSize(): int
     {
-        return max(1, (int) config('oms.reports.comprehensive_financial_transactions.page_size', 100));
+        return max(1, (int) config('oms.reports.comprehensive_financial_transactions.page_size', 50));
     }
 
     private function openGroupLineCount(string $dimension, ?string $key): int
@@ -1490,18 +1503,41 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
      */
     public static function exportAuditFilters(ComprehensiveFinancialTransactionsSnapshot $snapshot, bool $submitted): array
     {
-        $filters = $snapshot->filters();
-        $labels = $snapshot->filterLabels();
+        return self::auditFiltersFor(
+            $snapshot->filters(),
+            $snapshot->filterLabels(),
+            $snapshot->transactionCount(),
+            $snapshot->lineCount(),
+            $snapshot->currenciesCount(),
+            $submitted,
+        );
+    }
 
+    /**
+     * The export audit payload of any applied report — a snapshot's (above)
+     * or a live report's applied filters and counts («تصدير CSV»).
+     *
+     * @param  array<string, string>  $labels
+     * @return array<string, mixed>
+     */
+    public static function auditFiltersFor(
+        ComprehensiveFinancialTransactionsFilters $filters,
+        array $labels,
+        int $transactionCount,
+        int $lineCount,
+        int $currenciesCount,
+        bool $submitted,
+    ): array {
         return [
             'report_submitted' => $submitted,
             'date_from' => $filters->dateFrom,
             'date_to' => $filters->dateTo,
             'currency_ids' => $filters->currencyIds,
             'transaction_super_type_id' => $filters->transactionSuperTypeId,
-            'transaction_type_id' => $filters->transactionTypeId,
-            // Flat list of scalars, exactly like currency_ids. Historical
-            // events keep whatever key they were written with.
+            // Flat lists of scalars, exactly like currency_ids. Historical
+            // events keep whatever key they were written with (the single
+            // `transaction_type_id` before the type filter became a list).
+            'transaction_type_ids' => $filters->transactionTypeIds,
             'account_ids' => $filters->accountIds,
             'account_side' => $filters->accountSide,
             'account_type_id' => $filters->accountTypeId,
@@ -1511,9 +1547,9 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
                 array_keys($labels),
                 array_values($labels),
             ),
-            'transaction_count' => $snapshot->transactionCount(),
-            'line_count' => $snapshot->lineCount(),
-            'currencies_count' => $snapshot->currenciesCount(),
+            'transaction_count' => $transactionCount,
+            'line_count' => $lineCount,
+            'currencies_count' => $currenciesCount,
         ];
     }
 
@@ -1595,7 +1631,7 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
         $this->appliedDateTo = null;
         $this->appliedCurrencyIds = [];
         $this->appliedTransactionSuperTypeId = null;
-        $this->appliedTransactionTypeId = null;
+        $this->appliedTransactionTypeIds = [];
         $this->appliedAccountIds = [];
         $this->appliedAccountSide = ComprehensiveFinancialTransactionsReportService::SIDE_ALL;
         $this->appliedAccountTypeId = null;
@@ -1623,6 +1659,19 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
             })
             ->orderBy('account_code')
             ->orderBy('name');
+    }
+
+    /**
+     * Up to OPTIONS_LIMIT picker options matching $search ('' = the first
+     * ones in code order).
+     *
+     * @return array<int, string>
+     */
+    protected static function accountOptions(string $search): array
+    {
+        return self::accountLabels(
+            self::accountSearchQuery($search)->limit(FinancialLookupFilters::OPTIONS_LIMIT)->get(['id', 'account_code', 'name']),
+        );
     }
 
     /**

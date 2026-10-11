@@ -348,7 +348,7 @@ class ComprehensiveReportProjectionWritePathsTest extends FinancialAuditTestCase
             DB::table(ComprehensiveReportProjection::LINES)->where('account_id', $fx['debitAccount']->id)->pluck('account_type_id')->map(fn ($v) => (int) $v)->all(),
         );
 
-        $byNewType = app(ComprehensiveReportSummaries::class)->compute(ComprehensiveFinancialTransactionsFilters::make('2026-01-01', '2026-12-31', [], null, null, [], $newType->id));
+        $byNewType = app(ComprehensiveReportSummaries::class)->compute(ComprehensiveFinancialTransactionsFilters::make('2026-01-01', '2026-12-31', [], null, [], [], $newType->id));
         $this->assertSame(1, $byNewType['line_count']);
         $this->assertSame(1, $byNewType['transaction_count']);
         $this->assertNotNull($receipt);

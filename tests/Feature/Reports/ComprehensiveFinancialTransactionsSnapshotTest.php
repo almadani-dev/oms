@@ -44,6 +44,13 @@ class ComprehensiveFinancialTransactionsSnapshotTest extends TestCase
 
     private function legacy(array $args = []): array
     {
+        // The frozen legacy oracle filters by at most ONE type.
+        if (array_key_exists('transactionTypeIds', $args)) {
+            $this->assertLessThanOrEqual(1, count($args['transactionTypeIds']));
+            $args['transactionTypeId'] = $args['transactionTypeIds'][0] ?? null;
+            unset($args['transactionTypeIds']);
+        }
+
         return app(LegacyComprehensiveFinancialTransactionsReportService::class)->generate(...$this->args($args));
     }
 
@@ -87,7 +94,7 @@ class ComprehensiveFinancialTransactionsSnapshotTest extends TestCase
             'no filters' => [],
             'one currency' => ['currencyIds' => [$ledger['ils']->id]],
             'classification' => ['transactionSuperTypeId' => $ledger['spend']],
-            'type' => ['transactionTypeId' => $ledger['typeA']],
+            'type' => ['transactionTypeIds' => [$ledger['typeA']]],
             'accounts' => ['accountIds' => [$ledger['cash']->id, $ledger['bankUsd']->id]],
             'account debit side' => ['accountIds' => [$ledger['cash']->id], 'accountSide' => 'debit'],
             'account credit side' => ['accountIds' => [$ledger['bankUsd']->id], 'accountSide' => 'credit'],

@@ -43,10 +43,12 @@ final class ComprehensiveReportProjectionQuery
                 ->all();
         }
 
-        if ($filters->transactionTypeId) {
+        // Selected types (empty = all). With a classification too, only the
+        // selected types under it remain — possibly none, i.e. no rows.
+        if ($filters->transactionTypeIds !== []) {
             $typeIds = $typeIds === null
-                ? [(int) $filters->transactionTypeId]
-                : array_values(array_intersect($typeIds, [(int) $filters->transactionTypeId]));
+                ? $filters->transactionTypeIds
+                : array_values(array_intersect($typeIds, $filters->transactionTypeIds));
         }
 
         $projectCostIds = null;

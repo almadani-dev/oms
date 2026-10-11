@@ -65,11 +65,14 @@ return [
             // batch's source-note whereIn()).
             'batch_size' => (int) env('OMS_CFT_BATCH_SIZE', 1000),
 
-            // Rows per stored chunk, ordinals per stored group-index chunk,
-            // and rows per rendered page.
+            // Rows per stored chunk and ordinals per stored group-index chunk.
             'row_chunk_size' => 100,
             'index_chunk_size' => 1000,
-            'page_size' => 100,
+
+            // Rows per rendered page — the main table and every open
+            // classification/type table alike. Display only: independent of
+            // the stored chunk sizes above and of the exports.
+            'page_size' => 50,
 
             // Background build. A dedicated queue, so a report build never
             // waits behind (or blocks) a backup on the 'backups' queue, and

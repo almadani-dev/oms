@@ -475,11 +475,14 @@
 
            Only rendered when a table has more than one page, so a report that
            fits on one page looks exactly as it always did. Built from the same
-           tokens as everything else here, so dark mode needs no extra rule. */
+           tokens as everything else here, so dark mode needs no extra rule.
+           Centered under its table; when it wraps on a narrow screen, every
+           line stays centered too. */
 
         .cft-pager {
             display: flex;
             flex-wrap: wrap;
+            justify-content: center;
             align-items: center;
             gap: 0.5rem;
             margin-top: 0.75rem;
