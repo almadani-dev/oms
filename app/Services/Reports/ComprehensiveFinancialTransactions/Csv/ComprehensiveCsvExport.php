@@ -13,7 +13,6 @@ use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\Comprehen
 use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportProjectionState;
 use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportResolvedFilters;
 use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportSummaries;
-use App\Services\Reports\ComprehensiveFinancialTransactionsReportService;
 use Illuminate\Contracts\Filesystem\Factory as FilesystemFactory;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -21,14 +20,16 @@ use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
- * «تصدير CSV» of "تقرير الحركات المالية الشامل": a ZIP holding
+ * «تصدير البيانات CSV» of "تقرير الحركات المالية الشامل": the detailed
+ * lines of the APPLIED filters ONLY — every line, canonical order, the 16
+ * detail columns; no summary or statistics (those are «تصدير الإحصائيات
+ * Excel») — read from the real-time projection only (READY; otherwise
+ * refused — never another source with other semantics):
  *
- *     ملخص_الحركات_المالية_الشاملة.csv   the report's summaries
- *     الحركات_001.csv, الحركات_002.csv …  every line, canonical order,
- *                                          ≤ max_rows_per_file rows each
- *
- * of the APPLIED filters, read from the real-time projection only (READY;
- * otherwise refused — never another source with other semantics).
+ *  - one plain الحركات_المالية_الشاملة_<timestamp>.csv when the export fits
+ *    in one file of at most csv.plain_max_rows planned lines;
+ *  - otherwise a ZIP of الحركات_001.csv, الحركات_002.csv …
+ *    (≤ max_rows_per_file rows each).
  *
  * The filters are resolved ONCE (classification → types, project → live
  * cost items, soft-deleted accounts) and handed to every reader, so every
@@ -41,7 +42,7 @@ use RuntimeException;
  * so a transaction never straddles two segments. Each segment writes its
  * piece already ZIP-encoded (AccountStatementCsvPart); the proven ZIP writer
  * of the account statement CSV concatenates the pieces of a movement file
- * into one entry.
+ * into one entry (a plain CSV: stored pieces concatenated into the file).
  *
  * Correctness is PROVEN per export before anything is delivered:
  *  - every segment returns the FINGERPRINT of what it wrote — per type ×
@@ -56,7 +57,8 @@ use RuntimeException;
  *    never a mix of moments (one process: a single snapshot already is);
  *  - all rows together must add up to the report's own summaries
  *    (ComprehensiveReportSummaries, the screen's — line and transaction
- *    counts, per-currency debit / credit, lines and transactions per type).
+ *    counts, per-currency debit / credit, lines and transactions per type),
+ *    read as the proof's expectations and never written to the export.
  * A financial write landing during the export therefore shows up as a
  * difference and the export is rebuilt (`attempts`), never delivered.
  * Display texts (descriptions, notes, labels) are read with their segment
@@ -78,7 +80,6 @@ final class ComprehensiveCsvExport
         private readonly ComprehensiveReportSummaries $summaries,
         private readonly ComprehensiveCsvSegment $segments,
         private readonly ComprehensiveReportProjectionState $state,
-        private readonly ComprehensiveFinancialTransactionsReportService $service,
     ) {}
 
     /**
@@ -123,12 +124,12 @@ final class ComprehensiveCsvExport
     }
 
     /**
-     * Deletes the work directory of a finished export (the ZIP included,
-     * unless it was moved away first).
+     * Deletes the work directory of a finished export (the package
+     * included, unless it was moved away first).
      */
-    public static function discard(string $zipPath): void
+    public static function discard(string $packagePath): void
     {
-        self::removeWorkDir(dirname($zipPath));
+        self::removeWorkDir(dirname($packagePath));
     }
 
     /**
@@ -206,13 +207,14 @@ final class ComprehensiveCsvExport
 
         $applied = ComprehensiveFinancialTransactionsFilters::fromArray($filters);
         $resolved = $this->query->resolve($applied);
-        $filterLabels = $this->service->filterLabels($applied);
         $parallel = $workers > 1 && self::canRunWorkers();
         $timings = [];
 
         $files = $this->plan($resolved, $parallel ? $workers : 1);
         $timings['plan'] = microtime(true) - $t0;
-        $deflate = config(self::CONFIG.'.zip_compression', 'deflate') === 'deflate';
+        // Decided BEFORE writing: a plain CSV is written as stored pieces.
+        $plain = count($files) === 1 && $files[0]['rows'] <= max(0, (int) config(self::CONFIG.'.plain_max_rows', 100000));
+        $deflate = ! $plain && config(self::CONFIG.'.zip_compression', 'deflate') === 'deflate';
         $segmentCount = array_sum(array_map(fn (array $file): int => count($file['segments']), $files));
         $labels = null;
 
@@ -269,10 +271,9 @@ final class ComprehensiveCsvExport
 
         $t = microtime(true);
         $at = Carbon::now();
-        $zipPath = $workDir.DIRECTORY_SEPARATOR.'package.zip';
-        $zip = new AccountStatementCsvZip($zipPath, $at);
+        $packagePath = $workDir.DIRECTORY_SEPARATOR.($plain ? 'package.csv' : 'package.zip');
+        $zip = $plain ? null : new AccountStatementCsvZip($packagePath, $at);
         $fileStats = [];
-        $movementParts = [];
         $index = 0;
 
         foreach ($files as $f => $file) {
@@ -280,25 +281,21 @@ final class ComprehensiveCsvExport
             $index += count($file['segments']);
             $header = new AccountStatementCsvPart($workDir.DIRECTORY_SEPARATOR.sprintf('header-%03d.csv', $f), $deflate);
             $header->write(AccountStatementCsvFormat::header(ComprehensiveCsvFormat::MOVEMENT_HEADERS));
-            $movementParts[$f] = [$header->close(), ...array_column($fileResults, 'part')];
+            $parts = [$header->close(), ...array_column($fileResults, 'part')];
+            $name = $plain ? ComprehensiveCsvFormat::packageName($at, 'csv') : ComprehensiveCsvFormat::movementsFile($f + 1);
+            $zip === null ? AccountStatementCsvPart::concatenate($packagePath, $parts) : $zip->add($name, $parts);
             $fileStats[] = [
-                'name' => ComprehensiveCsvFormat::movementsFile($f + 1),
+                'name' => $name,
                 'rows' => array_sum(array_column($fileResults, 'rows')),
-                'bytes' => array_sum(array_column($movementParts[$f], 'raw')),
+                'bytes' => array_sum(array_column($parts, 'raw')),
             ];
         }
 
-        $zip->add(ComprehensiveCsvFormat::SUMMARY_FILE, [$this->writeSummary($workDir, $applied, $filterLabels, $summary, $fileStats, $at, $deflate)]);
-
-        foreach ($movementParts as $f => $parts) {
-            $zip->add($fileStats[$f]['name'], $parts);
-        }
-
-        $zip->close();
+        $zip?->close();
         $timings['package'] = microtime(true) - $t;
 
         foreach (glob($workDir.DIRECTORY_SEPARATOR.'*') ?: [] as $leftover) {
-            if ($leftover !== $zipPath) {
+            if ($leftover !== $packagePath) {
                 @unlink($leftover);
             }
         }
@@ -306,9 +303,9 @@ final class ComprehensiveCsvExport
         $timings['total'] = microtime(true) - $t0;
 
         return [
-            'path' => $zipPath,
-            'filename' => ComprehensiveCsvFormat::packageName($at),
-            'fallback_filename' => ComprehensiveCsvFormat::packageFallbackName($at),
+            'path' => $packagePath,
+            'filename' => ComprehensiveCsvFormat::packageName($at, $plain ? 'csv' : 'zip'),
+            'fallback_filename' => ComprehensiveCsvFormat::packageFallbackName($at, $plain ? 'csv' : 'zip'),
             'stats' => [
                 'mode' => $mode,
                 'workers' => $mode === 'parallel' ? count($results) : 1,
@@ -316,9 +313,10 @@ final class ComprehensiveCsvExport
                 'lines' => array_sum(array_column($results, 'rows')),
                 'transactions' => (int) $summary['transaction_count'],
                 'files' => $fileStats,
+                'package' => $plain ? 'csv' : 'zip',
                 'compression' => $deflate ? 'deflate' : 'store',
                 'csv_bytes' => array_sum(array_column($fileStats, 'bytes')),
-                'zip_bytes' => filesize($zipPath),
+                'package_bytes' => filesize($packagePath),
                 'segment_seconds' => array_map(fn (array $r): array => ['rows' => $r['rows'], 'peak_memory_mb' => $r['peak_memory_mb'] ?? null] + $r['seconds'], $results),
                 'seconds' => array_map(fn (float $s): float => round($s, 3), $timings),
                 'peak_memory_mb' => round(memory_get_peak_usage(true) / 1048576, 1),
@@ -813,98 +811,6 @@ final class ComprehensiveCsvExport
     // ---------------------------------------------------------------------
     // Files
     // ---------------------------------------------------------------------
-
-    /**
-     * The report's summary sections, as the Excel export lays them out
-     * (report information and every applied filter, general summary, per
-     * currency, per classification, per type), plus the list of movement
-     * files. Totals stay per currency — never one blended total.
-     *
-     * @param  array<string, string>  $filterLabels
-     * @param  array<string, mixed>  $summary
-     * @param  array<int, array{name: string, rows: int, bytes: int}>  $files
-     * @return array{path: string, crc: int, raw: int, stored: int, deflate: bool}
-     */
-    private function writeSummary(string $workDir, ComprehensiveFinancialTransactionsFilters $filters, array $filterLabels, array $summary, array $files, \DateTimeInterface $at, bool $deflate): array
-    {
-        $out = AccountStatementCsvFormat::BOM;
-        $section = function (string $title, array $headers) use (&$out): void {
-            $out .= ComprehensiveCsvFormat::textRecord([$title]).ComprehensiveCsvFormat::textRecord($headers);
-        };
-        $blank = AccountStatementCsvFormat::EOL;
-
-        $section('بيانات التقرير', ['البند', 'القيمة']);
-        $out .= ComprehensiveCsvFormat::textRecord(['من تاريخ', Carbon::parse($filters->dateFrom)->format('Y-m-d')]);
-        $out .= ComprehensiveCsvFormat::textRecord(['إلى تاريخ', Carbon::parse($filters->dateTo)->format('Y-m-d')]);
-        $out .= ComprehensiveCsvFormat::textRecord(['تاريخ ووقت التصدير', Carbon::instance($at)->format('Y-m-d H:i')]);
-
-        foreach (ComprehensiveCsvFormat::FILTER_KEYS as $key) {
-            $out .= ComprehensiveCsvFormat::textRecord([$key, (string) ($filterLabels[$key] ?? 'الكل')]);
-        }
-
-        $out .= $blank;
-        $section('الملخص العام', ['البند', 'القيمة']);
-
-        foreach ([
-            'عدد المعاملات' => $summary['transaction_count'],
-            'عدد بنود القيود' => $summary['line_count'],
-            'عدد العملات الظاهرة' => $summary['currencies_count'],
-        ] as $label => $value) {
-            $out .= ComprehensiveCsvFormat::record([AccountStatementCsvFormat::text($label), (string) (int) $value]);
-        }
-
-        $out .= $blank;
-        $section('الملخص حسب العملة', ['العملة', 'إجمالي المدين', 'إجمالي الدائن', 'الفرق', 'الحالة']);
-
-        foreach ($summary['currency_summaries'] as $row) {
-            $debit = ComprehensiveCsvFormat::amount((float) $row['total_debit']);
-            $credit = ComprehensiveCsvFormat::amount((float) $row['total_credit']);
-            $out .= ComprehensiveCsvFormat::record([
-                AccountStatementCsvFormat::text((string) $row['currency']),
-                $debit,
-                $credit,
-                bcsub($debit, $credit, 2),
-                AccountStatementCsvFormat::text($row['is_balanced'] ? 'متوازن' : 'غير متوازن'),
-            ]);
-        }
-
-        foreach ([
-            ['إحصائيات حسب تصنيف المعاملة', 'تصنيف المعاملة', $summary['category_summaries']],
-            ['إحصائيات حسب نوع المعاملة', 'نوع المعاملة', $summary['type_summaries']],
-        ] as [$title, $nameHeader, $groups]) {
-            $out .= $blank;
-            $section($title, [$nameHeader, 'عدد المعاملات', 'العملة', 'إجمالي المدين', 'إجمالي الدائن']);
-
-            foreach ($groups as $group) {
-                $first = true;
-
-                // عدد المعاملات on a bucket's first row only, exactly as the
-                // Excel export, so it is never read as a per-currency figure.
-                foreach ($group['currencies'] as $currency) {
-                    $out .= ComprehensiveCsvFormat::record([
-                        AccountStatementCsvFormat::text((string) $group['name']),
-                        $first ? (string) (int) $group['transaction_count'] : '',
-                        AccountStatementCsvFormat::text((string) $currency['currency']),
-                        ComprehensiveCsvFormat::amount((float) $currency['total_debit']),
-                        ComprehensiveCsvFormat::amount((float) $currency['total_credit']),
-                    ]);
-                    $first = false;
-                }
-            }
-        }
-
-        $out .= $blank;
-        $section('ملفات الحركات', ['الملف', 'عدد الحركات']);
-
-        foreach ($files as $file) {
-            $out .= ComprehensiveCsvFormat::record([AccountStatementCsvFormat::text($file['name']), (string) $file['rows']]);
-        }
-
-        $part = new AccountStatementCsvPart($workDir.DIRECTORY_SEPARATOR.'summary.csv', $deflate);
-        $part->write($out);
-
-        return $part->close();
-    }
 
     private static function partPath(string $workDir, int $file, int $segment): string
     {

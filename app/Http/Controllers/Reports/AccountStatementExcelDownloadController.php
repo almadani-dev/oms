@@ -6,6 +6,7 @@ use App\Filament\Pages\AccountStatementPage;
 use App\Http\Controllers\Controller;
 use App\Services\Audit\Reports\ReportExportAuditRecorder;
 use App\Services\Audit\Reports\ReportExportFormat;
+use App\Services\Audit\Reports\ReportExportPurpose;
 use App\Services\Audit\Reports\ReportExportSubject;
 use App\Services\Reports\AccountStatement\AccountStatementExcelExports;
 use Illuminate\Http\JsonResponse;
@@ -16,15 +17,16 @@ use Symfony\Component\HttpFoundation\HeaderUtils;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * Delivers a large "تقرير كشف الحساب" workbook a queued job already
- * prepared — an ordinary streamed download, never generated here.
+ * Delivers a "تقرير كشف الحساب" «تصدير البيانات CSV» file (or a large
+ * detail workbook a queued job of the former Excel export prepared) — an
+ * ordinary streamed download, never generated here.
  *
  * Reached only through a short-lived signed URL the page hands out, and
  * still re-checks: an authenticated user holding BOTH report permissions; a
  * COMPLETED export owned by THIS user (anything else is a plain 404 and is
  * not audited); then the Required export audit, with the page's own payload,
- * before a byte is sent. A workbook is removed once streamed; a «تصدير CSV»
- * package stays downloadable by its owner until it expires (a browser may
+ * before a byte is sent. A workbook is removed once streamed; a CSV export
+ * stays downloadable by its owner until it expires (a browser may
  * request one download several times) and is audited on first delivery.
  */
 class AccountStatementExcelDownloadController extends Controller
@@ -83,7 +85,8 @@ class AccountStatementExcelDownloadController extends Controller
     }
 
     /**
-     * «تصدير CSV» package (ZIP). Same guarantees as the workbook.
+     * «تصدير البيانات CSV» (one .csv, or a ZIP of several). Same guarantees
+     * as the workbook.
      */
     public function csv(
         Request $request,
@@ -126,6 +129,7 @@ class AccountStatementExcelDownloadController extends Controller
                         ReportExportSubject::AccountStatement,
                         ReportExportFormat::Csv,
                         (array) ($status['payload']['audit'] ?? []) + ['status' => 'completed'] + $status['stats'],
+                        ReportExportPurpose::DetailData,
                     );
                 }
             } catch (\Throwable $e) {
@@ -144,6 +148,8 @@ class AccountStatementExcelDownloadController extends Controller
 
         $size = $exports->size($ownerId, $export);
         $filename = (string) $status['filename'];
+        // «تصدير البيانات CSV»: one plain .csv, or a .zip of several.
+        $extension = str_ends_with($filename, '.csv') ? 'csv' : 'zip';
 
         return new StreamedResponse(function () use ($stream, $exports, $ownerId, $export, $format): void {
             try {
@@ -158,9 +164,11 @@ class AccountStatementExcelDownloadController extends Controller
                 }
             }
         }, 200, array_filter([
-            'Content-Type' => $format === 'csv' ? 'application/zip' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Type' => $format !== 'csv'
+                ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                : ($extension === 'csv' ? 'text/csv; charset=UTF-8' : 'application/zip'),
             'Content-Disposition' => $format === 'csv'
-                ? HeaderUtils::makeDisposition(HeaderUtils::DISPOSITION_ATTACHMENT, $filename, preg_match('/\d{8}_\d{6}/', $filename, $m) === 1 ? "account-statement-{$m[0]}.zip" : 'account-statement.zip')
+                ? HeaderUtils::makeDisposition(HeaderUtils::DISPOSITION_ATTACHMENT, $filename, preg_match('/\d{8}_\d{6}/', $filename, $m) === 1 ? "account-statement-{$m[0]}.{$extension}" : "account-statement.{$extension}")
                 : HeaderUtils::makeDisposition(HeaderUtils::DISPOSITION_ATTACHMENT, $filename),
             'Content-Length' => $size !== null ? (string) $size : null,
             'Cache-Control' => $format === 'csv' ? 'no-store' : null,

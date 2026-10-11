@@ -19,7 +19,10 @@ use Illuminate\Support\Str;
  *
  *   account-statement-exports/{owner}/{id}/status.json
  *   account-statement-exports/{owner}/{id}/workbook.xlsx   (Excel)
- *   account-statement-exports/{owner}/{id}/package.zip     (CSV)
+ *   account-statement-exports/{owner}/{id}/package.zip     (CSV — the delivered
+ *                                                           .csv or .zip bytes;
+ *                                                           status.json's filename
+ *                                                           says which)
  *
  * status.json carries the APPLIED filters (and their audit payload) the
  * page exported, so the job writes exactly what was on screen. Same

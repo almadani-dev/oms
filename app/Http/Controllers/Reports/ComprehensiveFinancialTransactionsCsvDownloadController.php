@@ -6,6 +6,7 @@ use App\Filament\Pages\ComprehensiveFinancialTransactionsPage;
 use App\Http\Controllers\Controller;
 use App\Services\Audit\Reports\ReportExportAuditRecorder;
 use App\Services\Audit\Reports\ReportExportFormat;
+use App\Services\Audit\Reports\ReportExportPurpose;
 use App\Services\Audit\Reports\ReportExportSubject;
 use App\Services\Reports\AccountStatement\AccountStatementExcelExports;
 use App\Services\Reports\ComprehensiveFinancialTransactions\Csv\ComprehensiveCsvExport;
@@ -17,9 +18,9 @@ use Symfony\Component\HttpFoundation\HeaderUtils;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * «تصدير CSV» of "تقرير الحركات المالية الشامل": the lightweight status of a
- * background package and the download of a prepared one — never generated
- * here. Same guarantees as the account statement's CSV delivery:
+ * «تصدير البيانات CSV» of "تقرير الحركات المالية الشامل": the lightweight
+ * status of a background export and the download of a prepared one (one
+ * .csv, or a ZIP of several) — never generated here. Same guarantees as the account statement's CSV delivery:
  *
  *  - an authenticated user holding BOTH report permissions (view + export);
  *  - only the CURRENT user's own CSV export — anything else is a plain 404,
@@ -84,6 +85,7 @@ class ComprehensiveFinancialTransactionsCsvDownloadController extends Controller
                     ReportExportSubject::ComprehensiveFinancialTransactions,
                     ReportExportFormat::Csv,
                     (array) ($status['payload']['audit'] ?? []) + ['status' => 'completed'] + $status['stats'],
+                    ReportExportPurpose::DetailData,
                 );
             }
         } catch (\Throwable $e) {
@@ -95,6 +97,7 @@ class ComprehensiveFinancialTransactionsCsvDownloadController extends Controller
 
         $size = $exports->size($ownerId, $export);
         $filename = (string) $status['filename'];
+        $extension = str_ends_with($filename, '.csv') ? 'csv' : 'zip';
 
         return new StreamedResponse(function () use ($stream): void {
             try {
@@ -105,11 +108,11 @@ class ComprehensiveFinancialTransactionsCsvDownloadController extends Controller
                 }
             }
         }, 200, array_filter([
-            'Content-Type' => 'application/zip',
+            'Content-Type' => $extension === 'csv' ? 'text/csv; charset=UTF-8' : 'application/zip',
             'Content-Disposition' => HeaderUtils::makeDisposition(
                 HeaderUtils::DISPOSITION_ATTACHMENT,
                 $filename,
-                preg_match('/\d{8}_\d{6}/', $filename, $m) === 1 ? "comprehensive-financial-transactions-{$m[0]}.zip" : 'comprehensive-financial-transactions.zip',
+                preg_match('/\d{8}_\d{6}/', $filename, $m) === 1 ? "comprehensive-financial-transactions-{$m[0]}.{$extension}" : "comprehensive-financial-transactions.{$extension}",
             ),
             'Content-Length' => $size !== null ? (string) $size : null,
             'Cache-Control' => 'no-store',

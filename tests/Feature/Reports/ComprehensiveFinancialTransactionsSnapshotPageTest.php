@@ -422,9 +422,10 @@ class ComprehensiveFinancialTransactionsSnapshotPageTest extends TestCase
         $text = implode("\n", array_map(fn ($row) => implode(' | ', array_map('strval', $row)), IOFactory::load($path)->getActiveSheet()->toArray()));
         @unlink($path);
 
+        // Statistics only: the snapshot's counts, never a detail line.
         $this->assertStringContainsString('عدد بنود القيود | 14', $text);
-        $this->assertStringContainsString('ملاحظات المبلغ المستلم: ملاحظة الإيصال الأول', $text);
-        $this->assertStringContainsString('بنك فلسطين', $text);
+        $this->assertStringNotContainsString('ملاحظات المبلغ المستلم: ملاحظة الإيصال الأول', $text);
+        $this->assertSame('statistics', AuditEvent::query()->latest('id')->first()->new_values['purpose']);
 
         // Audit unchanged in shape and still describes the applied report.
         $event = AuditEvent::query()->latest('id')->first();
@@ -434,29 +435,32 @@ class ComprehensiveFinancialTransactionsSnapshotPageTest extends TestCase
         $this->assertArrayNotHasKey('rows', $event->new_values);
     }
 
-    public function test_excel_and_word_exports_match_the_legacy_report_content(): void
+    public function test_excel_statistics_and_word_exports_match_the_legacy_report_content(): void
     {
         $this->seedAwkwardLedger();
         $legacy = $this->legacy();
         $test = $this->page();
 
-        $excel = app(\App\Services\Reports\ComprehensiveFinancialTransactionsExcelExportService::class);
-
-        // Same exporter fed the legacy array vs the page's snapshot export:
-        // identical cell content (the export time stamp aside).
-        $fromLegacy = $this->sheetText($excel->stream(
-            '2026-07-01', '2026-07-31', $legacy['filter_labels'], $legacy['rows'], $legacy['currency_summaries'],
+        // The statistics workbook fed the legacy report's statistics vs the
+        // page's export: identical cell content (the export time stamp aside).
+        $legacyPath = tempnam(sys_get_temp_dir(), 'cft').'.xlsx';
+        app(\App\Services\Reports\ComprehensiveFinancialTransactionsStatisticsExcelExportService::class)->writeTo(
+            $legacyPath, '2026-07-01', '2026-07-31', $legacy['filter_labels'], $legacy['currency_summaries'],
             $legacy['category_summaries'], $legacy['type_summaries'], $legacy['transaction_count'], $legacy['line_count'], $legacy['currencies_count'],
-        ));
+        );
+        $fromLegacy = $this->sheetText(response()->streamDownload(fn () => readfile($legacyPath), 'x.xlsx'));
+        @unlink($legacyPath);
         $fromSnapshot = $this->sheetText($test->instance()->exportExcel());
 
         $this->assertSame($fromLegacy, $fromSnapshot);
 
-        $word = app(\App\Services\Reports\ComprehensiveFinancialTransactionsWordExportService::class);
-        $legacyDoc = $this->docText($word->stream(
-            '2026-07-01', '2026-07-31', $legacy['filter_labels'], $legacy['rows'], $legacy['currency_summaries'],
+        $legacyPath = tempnam(sys_get_temp_dir(), 'cft').'.docx';
+        app(\App\Services\Reports\ComprehensiveFinancialTransactionsStatisticsWordExportService::class)->writeTo(
+            $legacyPath, '2026-07-01', '2026-07-31', $legacy['filter_labels'], $legacy['currency_summaries'],
             $legacy['category_summaries'], $legacy['type_summaries'], $legacy['transaction_count'], $legacy['line_count'], $legacy['currencies_count'],
-        ));
+        );
+        $legacyDoc = $this->docText(response()->streamDownload(fn () => readfile($legacyPath), 'x.docx'));
+        @unlink($legacyPath);
         $snapshotDoc = $this->docText($test->instance()->exportWord());
 
         $this->assertSame($legacyDoc, $snapshotDoc);

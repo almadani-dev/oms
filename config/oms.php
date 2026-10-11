@@ -100,10 +100,15 @@ return [
             'export_temp_max_age_minutes' => 60,
             'export_url_ttl_minutes' => 10,
 
-            // «تصدير CSV» (ComprehensiveCsvExport): a ZIP of a summary CSV
-            // and the movement CSV(s) of the APPLIED filters, read straight
-            // from the projection (READY only — never the snapshot path).
+            // «تصدير البيانات CSV» (ComprehensiveCsvExport): the detailed
+            // lines ONLY of the APPLIED filters (no summary — statistics are
+            // «تصدير الإحصائيات Excel»), read straight from the projection
+            // (READY only — never the snapshot path).
             'csv' => [
+                // One plain .csv (no ZIP) when the export fits in one file of
+                // at most this many planned lines (≈ 0.95 KB per line raw);
+                // above it, a ZIP (~11× smaller) of الحركات_NNN.csv.
+                'plain_max_rows' => (int) env('OMS_CFT_CSV_PLAIN_MAX_ROWS', 100000),
                 // Built inside the click request (then downloaded) up to this
                 // many work units — lines weighted by how sparse the export
                 // is in its period (ComprehensiveCsvExport::units()): ≈ 1.7 s
@@ -153,6 +158,11 @@ return [
             'summary_row_weight' => 0.5,
             'styled_excel_max_units' => (int) env('OMS_AS_STYLED_EXCEL_MAX_UNITS', 2000),
             'word_max_units' => (int) env('OMS_AS_WORD_MAX_UNITS', 2000),
+            // «تصدير الإحصائيات Word» (statistics only): refused above this
+            // many summary rows (covered accounts + currencies) — never on
+            // the number of movements. 2,000 rows ≈ 1.3 s / ~105 MB peak
+            // (AccountStatementExportPlan::wordAllowed()).
+            'word_max_summary_rows' => (int) env('OMS_AS_WORD_MAX_SUMMARY_ROWS', 2000),
             // Streaming workbook written inside the request up to here
             // (≈ 4 s measured); above it, prepared in the background.
             'inline_streaming_excel_max_units' => (int) env('OMS_AS_INLINE_STREAMING_EXCEL_MAX_UNITS', 8000),
@@ -163,9 +173,14 @@ return [
             'export_temp_max_age_minutes' => 60,
             'export_url_ttl_minutes' => 10,
 
-            // «تصدير CSV» (AccountStatementCsvExport): a ZIP of a summary
-            // CSV and the movement CSV(s), read straight from the projection.
+            // «تصدير البيانات CSV» (AccountStatementCsvExport): the detailed
+            // movements ONLY (no summary — statistics are «تصدير الإحصائيات
+            // Excel»), read straight from the projection.
             'csv' => [
+                // One plain .csv (no ZIP) when the export fits in one file of
+                // at most this many planned movements (≈ 0.8 KB per row raw);
+                // above it, a ZIP (~11× smaller) of the movement CSV(s).
+                'plain_max_rows' => (int) env('OMS_AS_CSV_PLAIN_MAX_ROWS', 100000),
                 // Generated inside the click request (then downloaded) up to
                 // this many work units (movements + 5 × covered accounts) —
                 // ≤ ~3 s measured on oms_stress; above it, built by a

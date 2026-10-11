@@ -11,7 +11,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Throwable;
 
 /**
- * Builds a large «تصدير CSV» package of "تقرير كشف الحساب" in the
+ * Builds a large «تصدير البيانات CSV» export of "تقرير كشف الحساب" in the
  * background, from the APPLIED filters the page stored with the export,
  * with up to `csv.workers` parallel segment workers (CLI processes).
  *
@@ -85,7 +85,8 @@ class BuildAccountStatementCsvExportJob implements ShouldQueue
             'exported_movements' => (int) $stats['movements'],
             'exported_accounts' => (int) $stats['accounts'],
             'movement_files' => count($stats['files']),
-            'package_bytes' => (int) $stats['zip_bytes'],
+            'package_type' => (string) $stats['package'],
+            'package_bytes' => (int) $stats['package_bytes'],
             'generation_seconds' => (string) $stats['seconds']['total'],
         ];
     }

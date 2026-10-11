@@ -469,19 +469,20 @@ class ComprehensiveTransactionTypeMultiSelectTest extends TestCase
         }
     }
 
-    public function test_a_large_excel_export_job_builds_the_selected_types_only(): void
+    public function test_a_former_queued_excel_export_job_builds_the_selected_types_only(): void
     {
-        config(['oms.reports.comprehensive_financial_transactions.styled_excel_max_lines' => 2]);
         $fx = $this->seedLedger();
         $this->rebuild();
         $typeIds = $this->ids($fx, 'typeA', 'typeC');
         $user = $this->superAdmin();
         $test = $this->page($user, $typeIds);
 
-        Queue::fake();
-        $test->call('exportExcel');
-        $exportId = $test->get('excelExportId');
-        $this->assertNotNull($exportId);
+        // Queued by the FORMER detail «تصدير Excel» (the page no longer does).
+        $exportId = app(ComprehensiveFinancialTransactionsExcelExports::class)->create(
+            $user->id,
+            app(ComprehensiveFinancialTransactionsSnapshotRepository::class)->reserve($user->id),
+            $test->get('liveFilters'),
+        );
 
         app()->call([new BuildComprehensiveFinancialTransactionsExcelExportJob($user->id, $exportId), 'handle']);
 

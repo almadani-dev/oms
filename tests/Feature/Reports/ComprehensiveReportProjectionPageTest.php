@@ -403,7 +403,7 @@ class ComprehensiveReportProjectionPageTest extends TestCase
         $this->assertSame([], array_values(array_filter(Storage::disk('report_snapshots')->allFiles(), fn ($f) => str_ends_with($f, 'manifest.json'))));
     }
 
-    public function test_a_large_live_export_builds_its_snapshot_through_the_projection_in_the_job(): void
+    public function test_a_former_queued_live_export_builds_its_snapshot_through_the_projection_in_the_job(): void
     {
         config(['oms.reports.comprehensive_financial_transactions.styled_excel_max_lines' => 5]);
         $this->seedLedger();
@@ -411,12 +411,17 @@ class ComprehensiveReportProjectionPageTest extends TestCase
         $user = $this->superAdmin();
         $test = $this->page($user);
 
+        // The page's Excel is statistics now: written at once, no queue.
         Queue::fake();
-        $test->call('exportExcel');
-        $exportId = $test->get('excelExportId');
-        $this->assertNotNull($exportId);
-        Queue::assertPushedOn('reports', BuildComprehensiveFinancialTransactionsExcelExportJob::class);
-        Queue::assertNotPushed(BuildComprehensiveFinancialTransactionsSnapshotJob::class);
+        $this->assertInstanceOf(StreamedResponse::class, $test->instance()->exportExcel());
+        Queue::assertNothingPushed();
+
+        // A live-mode workbook queued by the FORMER detail «تصدير Excel».
+        $exportId = app(ComprehensiveFinancialTransactionsExcelExports::class)->create(
+            $user->id,
+            app(ComprehensiveFinancialTransactionsSnapshotRepository::class)->reserve($user->id),
+            $test->get('liveFilters'),
+        );
 
         app()->call([new BuildComprehensiveFinancialTransactionsExcelExportJob($user->id, $exportId), 'handle']);
 
@@ -426,8 +431,6 @@ class ComprehensiveReportProjectionPageTest extends TestCase
         $snapshot = app(ComprehensiveFinancialTransactionsSnapshotRepository::class)->find($user->id, $status['snapshot_id']);
         $this->assertSame($this->legacy()['rows'], iterator_to_array($snapshot->rows(), false), 'Exported rows are exactly the report rows.');
         $this->assertSame($test->get('lineCount'), $snapshot->lineCount());
-
-        $test->call('refreshExcelExport')->assertRedirectContains('/exports/'.$exportId.'/xlsx');
     }
 
     // =========================================================

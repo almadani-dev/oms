@@ -5,8 +5,8 @@ namespace App\Services\Reports\AccountStatement\Csv;
 use App\Services\Reports\AccountStatement\AccountStatementProjection;
 
 /**
- * The bytes of the "تقرير كشف الحساب" CSV package: file names, headers and
- * cell encoding — one place, so every segment writer encodes identically.
+ * The bytes of the "تقرير كشف الحساب" «تصدير البيانات CSV»: file names,
+ * the movement header and cell encoding — one place, so every segment writer encodes identically.
  *
  * Excel on Windows (no import wizard): UTF-8 with a BOM, comma delimiter,
  * CRLF records, RFC 4180 quoting (a field holding a comma, quote or line
@@ -25,8 +25,6 @@ final class AccountStatementCsvFormat
     public const BOM = "\xEF\xBB\xBF";
 
     public const EOL = "\r\n";
-
-    public const SUMMARY_FILE = 'ملخص_كشف_الحساب.csv';
 
     public const SINGLE_MOVEMENTS_FILE = 'حركات_كشف_الحساب.csv';
 
@@ -47,8 +45,6 @@ final class AccountStatementCsvFormat
         'الرصيد الجاري',
     ];
 
-    public const SUMMARY_HEADERS = ['الحساب', 'العملة', 'الرصيد الافتتاحي', 'إجمالي المدين', 'إجمالي الدائن', 'الرصيد الختامي', 'عدد الحركات'];
-
     /** |cents| above this aborts the export rather than risk an integer overflow (9 × 10^15 currency units). */
     public const CENTS_LIMIT = 900_000_000_000_000_000;
 
@@ -57,15 +53,18 @@ final class AccountStatementCsvFormat
         return $files === 1 ? self::SINGLE_MOVEMENTS_FILE : sprintf('حركات_%03d.csv', $index);
     }
 
-    public static function packageName(\DateTimeInterface $at): string
+    /**
+     * The delivered file: a plain .csv (one movement file) or a .zip.
+     */
+    public static function packageName(\DateTimeInterface $at, string $extension = 'zip'): string
     {
-        return 'كشف_الحساب_'.$at->format('Ymd_His').'.zip';
+        return 'كشف_الحساب_'.$at->format('Ymd_His').'.'.$extension;
     }
 
     /** ASCII fallback for clients that ignore RFC 5987 filenames. */
-    public static function packageFallbackName(\DateTimeInterface $at): string
+    public static function packageFallbackName(\DateTimeInterface $at, string $extension = 'zip'): string
     {
-        return 'account-statement-'.$at->format('Ymd_His').'.zip';
+        return 'account-statement-'.$at->format('Ymd_His').'.'.$extension;
     }
 
     /**

@@ -358,18 +358,16 @@ class ComprehensiveFinancialTransactionsSnapshotFormatTest extends TestCase
         $this->assertSame(0, AuditEvent::count(), 'Nothing is audited for a report that cannot be read.');
     }
 
-    public function test_inline_exports_refuse_damaged_storage_before_auditing_or_streaming(): void
+    public function test_the_statistics_exports_read_only_the_manifest_never_the_damaged_rows(): void
     {
         $user = $this->superAdmin();
+        [$test] = $this->damagedPage($user);
+        AuditEvent::query()->delete();
 
-        foreach (['exportWord', 'exportExcel'] as $i => $method) {
-            [$test] = $this->damagedPage($user, seed: $i === 0);
-            AuditEvent::query()->delete();
-
-            $this->assertNull($test->instance()->{$method}(), $method);
-            $test->assertNotified(ComprehensiveFinancialTransactionsPage::EXPIRED_NOTICE);
-            $this->assertSame(0, AuditEvent::count(), $method.' must not audit an unreadable report.');
-        }
+        // Statistics come from the snapshot's manifest; no row file is read.
+        $this->assertNotNull($test->instance()->exportExcel());
+        $this->assertNotNull($test->instance()->exportWord());
+        $this->assertSame(['statistics', 'statistics'], AuditEvent::orderBy('id')->get()->map(fn ($e) => $e->new_values['purpose'])->all());
     }
 
     public function test_a_queued_workbook_of_damaged_storage_is_marked_failed(): void

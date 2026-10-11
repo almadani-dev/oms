@@ -2,7 +2,6 @@
 
 namespace App\Services\Reports\AccountStatement\Csv;
 
-use App\Services\Reports\AccountStatement\AccountStatementExportLayout;
 use App\Services\Reports\AccountStatement\AccountStatementFilters;
 use App\Services\Reports\AccountStatement\AccountStatementProjection;
 use App\Services\Reports\AccountStatement\AccountStatementReport;
@@ -14,13 +13,15 @@ use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
- * «تصدير CSV» of "تقرير كشف الحساب": a ZIP holding
+ * «تصدير البيانات CSV» of "تقرير كشف الحساب": the detailed movements of the
+ * APPLIED filters ONLY — every listed movement, canonical order, with its
+ * own account's running balance; no summary or statistics (those are
+ * «تصدير الإحصائيات Excel») — read straight from the projection:
  *
- *     ملخص_كشف_الحساب.csv     one row per covered account (the screen's summary)
- *     حركات_كشف_الحساب.csv    every listed movement, canonical order
- *  or حركات_001.csv, حركات_002.csv … above max_rows_per_file movements.
- *
- * of the APPLIED filters, read straight from the projection.
+ *  - one plain كشف_الحساب_<timestamp>.csv when the export fits in one file
+ *    of at most csv.plain_max_rows planned movements;
+ *  - otherwise a ZIP holding حركات_كشف_الحساب.csv, or حركات_001.csv,
+ *    حركات_002.csv … above max_rows_per_file movements.
  *
  * The period is cut at day boundaries into segments of similar size
  * (planned from the checkpoint totals). Each segment is written by
@@ -30,7 +31,11 @@ use RuntimeException;
  * segment starts from its own exact checkpoint opening balances, so the
  * segments are independent. Each writes its piece already ZIP-encoded
  * (AccountStatementCsvPart); AccountStatementCsvZip concatenates the pieces
- * of a movement file into one entry, copying each byte once.
+ * of a movement file into one entry, copying each byte once (a plain CSV:
+ * stored pieces concatenated into the file).
+ *
+ * The covered accounts' summaries are still read — never written — as the
+ * expectations of the proof below.
  *
  * Correctness is PROVEN per export before anything is delivered:
  *  - segment k's closing balance of every account = segment k+1's opening;
@@ -84,12 +89,12 @@ final class AccountStatementCsvExport
     }
 
     /**
-     * Deletes the work directory of a finished export (the ZIP included,
-     * unless it was moved away first).
+     * Deletes the work directory of a finished export (the package
+     * included, unless it was moved away first).
      */
-    public static function discard(string $zipPath): void
+    public static function discard(string $packagePath): void
     {
-        self::removeWorkDir(dirname($zipPath));
+        self::removeWorkDir(dirname($packagePath));
     }
 
     /**
@@ -141,7 +146,9 @@ final class AccountStatementCsvExport
 
         $files = $this->plan($scope, $parallel ? $workers : 1);
         $timings['plan'] = microtime(true) - $t0;
-        $deflate = config('oms.reports.account_statement.csv.zip_compression', 'deflate') === 'deflate';
+        // Decided BEFORE writing: a plain CSV is written as stored pieces.
+        $plain = self::isPlain($files);
+        $deflate = ! $plain && config('oms.reports.account_statement.csv.zip_compression', 'deflate') === 'deflate';
         $segmentCount = array_sum(array_map(fn (array $file): int => count($file['segments']), $files));
 
         if ($parallel && $segmentCount > 1) {
@@ -188,9 +195,8 @@ final class AccountStatementCsvExport
 
         $t = microtime(true);
         $at = Carbon::now();
-        $zipPath = $workDir.DIRECTORY_SEPARATOR.'package.zip';
-        $zip = new AccountStatementCsvZip($zipPath, $at);
-        $zip->add(AccountStatementCsvFormat::SUMMARY_FILE, [$this->writeSummary($workDir, $summaries, $deflate)]);
+        $packagePath = $workDir.DIRECTORY_SEPARATOR.($plain ? 'package.csv' : 'package.zip');
+        $zip = $plain ? null : new AccountStatementCsvZip($packagePath, $at);
         $fileStats = [];
         $index = 0;
 
@@ -200,16 +206,16 @@ final class AccountStatementCsvExport
             $fileResults = array_slice($results, $index, count($file['segments']));
             $index += count($file['segments']);
             $parts = [$header->close(), ...array_column($fileResults, 'part')];
-            $name = AccountStatementCsvFormat::movementsFile($f + 1, count($files));
-            $zip->add($name, $parts);
+            $name = $plain ? AccountStatementCsvFormat::packageName($at, 'csv') : AccountStatementCsvFormat::movementsFile($f + 1, count($files));
+            $zip === null ? AccountStatementCsvPart::concatenate($packagePath, $parts) : $zip->add($name, $parts);
             $fileStats[] = ['name' => $name, 'rows' => array_sum(array_column($fileResults, 'rows')), 'bytes' => array_sum(array_column($parts, 'raw'))];
         }
 
-        $zip->close();
+        $zip?->close();
         $timings['package'] = microtime(true) - $t;
 
         foreach (glob($workDir.DIRECTORY_SEPARATOR.'*') ?: [] as $leftover) {
-            if ($leftover !== $zipPath) {
+            if ($leftover !== $packagePath) {
                 @unlink($leftover);
             }
         }
@@ -217,9 +223,9 @@ final class AccountStatementCsvExport
         $timings['total'] = microtime(true) - $t0;
 
         return [
-            'path' => $zipPath,
-            'filename' => AccountStatementCsvFormat::packageName($at),
-            'fallback_filename' => AccountStatementCsvFormat::packageFallbackName($at),
+            'path' => $packagePath,
+            'filename' => AccountStatementCsvFormat::packageName($at, $plain ? 'csv' : 'zip'),
+            'fallback_filename' => AccountStatementCsvFormat::packageFallbackName($at, $plain ? 'csv' : 'zip'),
             'stats' => [
                 'mode' => $mode,
                 'workers' => $mode === 'parallel' ? min($workers, count($results)) : 1,
@@ -227,8 +233,9 @@ final class AccountStatementCsvExport
                 'movements' => array_sum(array_column($results, 'rows')),
                 'accounts' => count($summaries),
                 'files' => $fileStats,
+                'package' => $plain ? 'csv' : 'zip',
                 'compression' => $deflate ? 'deflate' : 'store',
-                'zip_bytes' => filesize($zipPath),
+                'package_bytes' => filesize($packagePath),
                 'missing_details' => array_sum(array_column($results, 'missing_details')),
                 'segment_seconds' => array_map(fn (array $r): array => ['rows' => $r['rows']] + $r['seconds'], $results),
                 'seconds' => array_map(fn (float $s): float => round($s, 3), $timings),
@@ -239,7 +246,7 @@ final class AccountStatementCsvExport
 
     /**
      * Every covered account's summary (the screen's account summary list,
-     * account code order) — the summary CSV and the proof's expectations.
+     * account code order) — the proof's expectations (never written).
      *
      * @return array<int, array<string, mixed>>
      */
@@ -253,6 +260,18 @@ final class AccountStatementCsvExport
         }
 
         return $rows;
+    }
+
+    /**
+     * One movement file of at most csv.plain_max_rows planned movements:
+     * delivered as that plain CSV, without a ZIP.
+     *
+     * @param  array<int, array{rows: int}>  $files
+     */
+    private static function isPlain(array $files): bool
+    {
+        return count($files) === 1
+            && $files[0]['rows'] <= max(0, (int) config('oms.reports.account_statement.csv.plain_max_rows', 100000));
     }
 
     // ---------------------------------------------------------------------
@@ -610,31 +629,6 @@ final class AccountStatementCsvExport
     // ---------------------------------------------------------------------
     // Files
     // ---------------------------------------------------------------------
-
-    /**
-     * @param  array<int, array<string, mixed>>  $summaries
-     * @return array{path: string, crc: int, raw: int, stored: int, deflate: bool}
-     */
-    private function writeSummary(string $workDir, array $summaries, bool $deflate): array
-    {
-        $part = new AccountStatementCsvPart($workDir.DIRECTORY_SEPARATOR.'summary.csv', $deflate);
-        $buffer = AccountStatementCsvFormat::header(AccountStatementCsvFormat::SUMMARY_HEADERS);
-
-        foreach (AccountStatementExportLayout::accountRows(['accounts' => $summaries]) as [$account, $currency, $opening, $debit, $credit, $closing, $lines]) {
-            $buffer .= AccountStatementCsvFormat::text((string) $account)
-                .','.AccountStatementCsvFormat::text($currency === '-' ? '' : (string) $currency)
-                .','.$opening.','.$debit.','.$credit.','.$closing.','.$lines.AccountStatementCsvFormat::EOL;
-
-            if (strlen($buffer) > 1 << 20) {
-                $part->write($buffer);
-                $buffer = '';
-            }
-        }
-
-        $part->write($buffer);
-
-        return $part->close();
-    }
 
     private static function partPath(string $workDir, int $file, int $segment): string
     {

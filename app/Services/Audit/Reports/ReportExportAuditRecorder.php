@@ -91,16 +91,23 @@ final class ReportExportAuditRecorder
     /**
      * @param  array<string, mixed>  $filters  the filters actually applied to
      *         the exported snapshot — ids and short labels only
+     * @param  ReportExportPurpose|null  $purpose  what the file holds (detail
+     *         data or statistics), for reports that split the two
      */
     public function exportRequested(
         ReportExportSubject $subject,
         ReportExportFormat $format,
         array $filters = [],
+        ?ReportExportPurpose $purpose = null,
     ): void {
         $payload = [
             'report' => $subject->value,
             'report_label' => $subject->label(),
             'format' => $format->value,
+        ] + ($purpose === null ? [] : [
+            'purpose' => $purpose->value,
+            'purpose_label' => $purpose->label(),
+        ]) + [
             'exported_at' => Carbon::now()->toIso8601String(),
         ] + $this->boundFilters($filters);
 

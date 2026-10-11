@@ -246,3 +246,19 @@ An empty key changes Livewire 4's endpoint hash, so valid Livewire requests get 
 ## C3. Rollback
 
 Hide or remove the button (code rollback). The job, routes and store are additive: no schema change, no financial table touched.
+
+---
+
+## D. Data CSV vs statistics Excel (2026-10-11, both reports)
+
+- **D1. Users see:**
+  - «تصدير البيانات CSV»: detail rows only; one `.csv` up to 100,000 rows, otherwise a ZIP of detail files;
+  - «تصدير الإحصائيات Excel» and «تصدير الإحصائيات Word»: the same statistics only, generated immediately.
+
+  The Account Statement Word is refused above 2,000 summary rows. Check the production PHP `memory_limit` (~105 MB peak at that cap).
+- **D2. Deploy:** no migration and no new queue. Restart every `reports` worker after deploying (`php artisan queue:restart`): a worker started before the deploy still runs the old CSV code (the one with the summary file).
+- **D3. Verify after deploy (no financial writes):**
+  - one small and one large CSV per report: no `ملخص_*.csv`, the expected file type;
+  - one statistics workbook per report: no detail rows, the filters listed;
+  - `report_export` events carry `purpose`.
+- **D4. Rollback:** reverting the code restores the old buttons and exports; there is no data to undo.

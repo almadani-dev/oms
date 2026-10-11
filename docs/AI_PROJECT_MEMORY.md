@@ -4,6 +4,21 @@
 
 ## Recent Changes
 
+- **2026-10-11 (addendum) — «تصدير الإحصائيات Word» on both reports (NOT committed):**
+  - Word now holds the same statistics as Excel. Both render one model (`Statistics\StatisticsReport`): `Excel\StatisticsWorkbook` and the new `Word\StatisticsDocument` (PhpWord, RTL tables).
+  - No detail rows in Excel or Word; CSV stays detail-only.
+  - **Word limit:** no longer movement-based. Account Statement refuses only above 2,000 summary rows (accounts + currencies; 2,000 rows ≈ 1.3 s, ~105 MB). Comprehensive has no limit (49 rows for the full range, 0.05 s).
+  - **Parity:** Excel == Word with 0 differences (stress script, tests, browser). 360 targeted tests pass.
+  - The old detail Word services and helpers are kept but unused (TASKS_LOG 2026-10-11 addendum).
+
+- **2026-10-11 — Both financial reports: «تصدير البيانات CSV» (detail rows only) vs «تصدير الإحصائيات Excel» (statistics only) (NOT committed):**
+  - **What:** the two buttons were renamed and reordered (CSV, Excel, then Word unchanged) on `/admin/account-statement` and `/admin/comprehensive-financial-transactions`.
+  - **CSV:** the summary CSV files are gone. A single file of ≤ 100,000 planned rows is delivered as a plain `.csv`; anything larger is a ZIP of detail files only. Columns, ordering, filters, workers and the proof are unchanged; the summaries are still read for the proof.
+  - **Excel:** new OpenSpout statistics workbooks (`StatisticsWorkbook` + one service per report), written at once in the request (≤ 2 s at 4,997 accounts). They hold no detail rows. Comprehensive reads the statistics already held since «عرض» (live state / snapshot manifest).
+  - **Audit:** `purpose` = `detail_data` / `statistics` (+ `purpose_label`, `package_type`, summary counts).
+  - **Verified on `oms_stress`:** CSV data byte-identical to the previous export in 7 cases, plus an independent running-balance / totals replay. Statistics = services in 7 cases. Browser OK. 356 targeted tests pass.
+  - **The old detailed Excel infrastructure is kept but unwired** (list in TASKS_LOG 2026-10-11); removal awaits the user's decision.
+
 - **2026-10-10 — تقرير الحركات المالية الشامل «تصدير CSV» (NOT committed):**
   - **What:** a button between «تصدير Excel» and «تصدير Word» exports the APPLIED report (every line, the 16 Excel/Word detail columns) as a ZIP: `ملخص_الحركات_المالية_الشاملة.csv` + `الحركات_001.csv`… (≤ 1,000,000 rows each).
   - **Code:** `app/Services/Reports/ComprehensiveFinancialTransactions/Csv/`, internal worker `oms:comprehensive-csv-segment`, job `BuildComprehensiveFinancialTransactionsCsvExportJob` (queue `reports`). Reuses the Account Statement CSV encoder / ZIP / snapshot classes and its export store (now parameterized).

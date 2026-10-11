@@ -16,6 +16,7 @@ use App\Models\TransactionSuperType;
 use App\Models\TransactionType;
 use App\Services\Audit\Reports\ReportExportAuditRecorder;
 use App\Services\Audit\Reports\ReportExportFormat;
+use App\Services\Audit\Reports\ReportExportPurpose;
 use App\Services\Audit\Reports\ReportExportSubject;
 use App\Services\Reports\AccountStatement\AccountStatementExcelExports;
 use App\Services\Reports\AccountStatement\AccountStatementExportPlan;
@@ -24,9 +25,8 @@ use App\Services\Reports\AccountStatement\AccountStatementProjectionState;
 use App\Services\Reports\AccountStatement\AccountStatementReport;
 use App\Services\Reports\AccountStatement\AccountStatementScope;
 use App\Services\Reports\AccountStatement\Csv\AccountStatementCsvExport;
-use App\Services\Reports\AccountStatementExcelExportService;
-use App\Services\Reports\AccountStatementStreamingExcelExportService;
-use App\Services\Reports\AccountStatementWordExportService;
+use App\Services\Reports\AccountStatementStatisticsExcelExportService;
+use App\Services\Reports\AccountStatementStatisticsWordExportService;
 use App\Services\Reports\ComprehensiveFinancialTransactions\ExportTemporaryFiles;
 use App\Support\Search\ArabicSearch;
 use Filament\Actions\Action;
@@ -90,6 +90,15 @@ class AccountStatementPage extends Page implements HasSchemas
     protected static ?string $title = 'تقرير كشف الحساب';
 
     protected string $view = 'filament.pages.account-statement-page';
+
+    /** Detailed movements only (AccountStatementCsvExport). */
+    public const CSV_EXPORT_LABEL = 'تصدير البيانات CSV';
+
+    /** Statistics, summaries and applied filters only (AccountStatementStatisticsExcelExportService). */
+    public const EXCEL_EXPORT_LABEL = 'تصدير الإحصائيات Excel';
+
+    /** The same statistics as a document (AccountStatementStatisticsWordExportService). */
+    public const WORD_EXPORT_LABEL = 'تصدير الإحصائيات Word';
 
     public static function reportViewPermission(): string
     {
@@ -188,21 +197,21 @@ class AccountStatementPage extends Page implements HasSchemas
     protected function getHeaderActions(): array
     {
         return [
-            Action::make('exportExcel')
-                ->label('تصدير Excel')
-                ->icon('heroicon-o-arrow-down-tray')
-                ->visible(fn (): bool => $this->canExportReport())
-                ->action(fn () => $this->exportExcel()),
-
             Action::make('exportCsv')
-                ->label('تصدير CSV')
+                ->label(self::CSV_EXPORT_LABEL)
                 ->icon('heroicon-o-table-cells')
                 ->visible(fn (): bool => $this->canExportReport())
                 ->action(fn () => $this->exportCsv()),
 
+            Action::make('exportExcel')
+                ->label(self::EXCEL_EXPORT_LABEL)
+                ->icon('heroicon-o-chart-bar')
+                ->visible(fn (): bool => $this->canExportReport())
+                ->action(fn () => $this->exportExcel()),
+
             Action::make('exportWord')
-                ->label('تصدير Word')
-                ->icon('heroicon-o-document-text')
+                ->label(self::WORD_EXPORT_LABEL)
+                ->icon('heroicon-o-document-chart-bar')
                 ->visible(fn (): bool => $this->canExportReport())
                 ->action(fn () => $this->exportWord()),
         ];
@@ -536,11 +545,16 @@ class AccountStatementPage extends Page implements HasSchemas
     // ---------------------------------------------------------------------
 
     /**
-     * The mode comes from the export's estimated work — movements AND
-     * account / currency summary rows (AccountStatementExportPlan): the
-     * styled workbook or the streaming workbook inline, or, above the
-     * inline cap, a queued job whose file is downloaded when ready
-     * (browsing never waits for it).
+     * «تصدير الإحصائيات Excel»: the APPLIED report's statistics only —
+     * information, every applied filter, overall counts, the per-currency
+     * summary and every covered account's summary
+     * (AccountStatementStatisticsExcelExportService). No movement rows:
+     * detail data is «تصدير البيانات CSV».
+     *
+     * Small whatever the number of movements (one row per currency and per
+     * covered account), so it is always written inside this request — no
+     * queue. The workbook is written BEFORE the audit, so a failed export
+     * is never recorded as delivered; a failed audit delivers nothing.
      */
     public function exportExcel(): ?StreamedResponse
     {
@@ -550,53 +564,62 @@ class AccountStatementPage extends Page implements HasSchemas
             return null;
         }
 
-        $mode = AccountStatementExportPlan::excelMode($this->summary);
-
-        if ($mode === AccountStatementExportPlan::BACKGROUND) {
-            $this->startLargeExcelExport();
-
-            return null;
-        }
-
         $context = $this->exportContext();
+        $temporaryFiles = app(ExportTemporaryFiles::class);
+        $path = $temporaryFiles->create();
+        $exporter = app(AccountStatementStatisticsExcelExportService::class);
 
-        // The workbook is produced BEFORE the audit, so a failed export is
-        // never recorded as delivered; a failed audit delivers nothing.
-        if ($mode === AccountStatementExportPlan::STREAMING) {
-            $temporaryFiles = app(ExportTemporaryFiles::class);
-            $path = $temporaryFiles->create();
-            $exporter = app(AccountStatementStreamingExcelExportService::class);
-
-            try {
-                $exporter->writeTo($path, $context, $this->exportRows());
-                $this->auditExport(ReportExportFormat::Xlsx);
-            } catch (\Throwable $e) {
-                $temporaryFiles->delete($path);
-
-                throw $e;
-            }
-
-            return response()->streamDownload(function () use ($path, $temporaryFiles): void {
-                try {
-                    readfile($path);
-                } finally {
-                    $temporaryFiles->delete($path);
-                }
-            }, $exporter->filename($context), [
-                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        try {
+            $exporter->writeTo($path, $context, $this->statisticsFilterRows());
+            $this->auditExport(ReportExportFormat::Xlsx, ReportExportPurpose::Statistics, [
+                'exported_accounts' => count($context['accounts']),
+                'exported_currencies' => count($context['summary']['currencies'] ?? []),
             ]);
+        } catch (\Throwable $e) {
+            $temporaryFiles->delete($path);
+
+            throw $e;
         }
 
-        $response = app(AccountStatementExcelExportService::class)->stream($context, $this->exportRows());
-        $this->auditExport(ReportExportFormat::Xlsx);
-
-        return $response;
+        return response()->streamDownload(function () use ($path, $temporaryFiles): void {
+            try {
+                readfile($path);
+            } finally {
+                $temporaryFiles->delete($path);
+            }
+        }, $exporter->filename($context), [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
     }
 
     /**
-     * Word is a document format: above its measured work cap (movements +
-     * account summaries, AccountStatementExportPlan) it is refused — never
-     * truncated — and Excel is recommended. A refused export is not audited.
+     * Every applied filter of the statistics workbook, in screen order —
+     * «الكل» for an unused one, names listed in full (up to 200 per filter).
+     *
+     * @return array<int, array{0: string, 1: string}>
+     */
+    public function statisticsFilterRows(): array
+    {
+        $filters = AccountStatementFilters::fromArray($this->appliedFilters);
+        $labels = $this->filterLabels($filters, $this->scope(), 200);
+        $rows = [];
+
+        foreach (['الحساب', 'نوع الحساب', 'نوع البنك / طريقة الحساب', 'العملة', 'تصنيف المعاملة', 'نوع المعاملة', 'المشروع'] as $key) {
+            $rows[] = [$key, $labels[$key] ?? 'الكل'];
+        }
+
+        $rows[] = ['الحسابات المشمولة', $labels['الحسابات المشمولة'] ?? '0'];
+
+        return $rows;
+    }
+
+    /**
+     * «تصدير الإحصائيات Word»: the same statistics as «تصدير الإحصائيات
+     * Excel» (AccountStatementStatistics), as a document — no movement row.
+     * Its size follows the summary rows (one per covered account and per
+     * currency), never the movements: above word_max_summary_rows it is
+     * refused (never truncated) and the statistics workbook is recommended.
+     * A refused export is not audited. Written BEFORE the audit, like Excel.
      */
     public function exportWord(): ?StreamedResponse
     {
@@ -615,10 +638,32 @@ class AccountStatementPage extends Page implements HasSchemas
             return null;
         }
 
-        $response = app(AccountStatementWordExportService::class)->stream($this->exportContext(), $this->exportRows());
-        $this->auditExport(ReportExportFormat::Docx);
+        $context = $this->exportContext();
+        $temporaryFiles = app(ExportTemporaryFiles::class);
+        $path = $temporaryFiles->create();
+        $exporter = app(AccountStatementStatisticsWordExportService::class);
 
-        return $response;
+        try {
+            $exporter->writeTo($path, $context, $this->statisticsFilterRows());
+            $this->auditExport(ReportExportFormat::Docx, ReportExportPurpose::Statistics, [
+                'exported_accounts' => count($context['accounts']),
+                'exported_currencies' => count($context['summary']['currencies'] ?? []),
+            ]);
+        } catch (\Throwable $e) {
+            $temporaryFiles->delete($path);
+
+            throw $e;
+        }
+
+        return response()->streamDownload(function () use ($path, $temporaryFiles): void {
+            try {
+                readfile($path);
+            } finally {
+                $temporaryFiles->delete($path);
+            }
+        }, $exporter->filename($context), [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ]);
     }
 
     /**
@@ -626,9 +671,9 @@ class AccountStatementPage extends Page implements HasSchemas
      */
     public static function wordRefusalMessage(array $summary): string
     {
-        return 'هذا التقرير كبير على تصدير Word ('.number_format((int) ($summary['matched_lines'] ?? 0)).' حركة و'
-            .number_format((int) ($summary['account_count'] ?? 0)).' حساب في الملخص). '
-            .'يرجى استخدام تصدير Excel أو تضييق الفلاتر.';
+        return 'ملخص هذا التقرير كبير على مستند Word ('.number_format(AccountStatementExportPlan::summaryRows($summary)).' صف إحصائي، '
+            .'والحد '.number_format(AccountStatementExportPlan::wordMaxSummaryRows()).'). '
+            .'يرجى استخدام «'.self::EXCEL_EXPORT_LABEL.'» للإحصائيات أو تضييق الفلاتر؛ والحركات التفصيلية متاحة عبر «'.self::CSV_EXPORT_LABEL.'».';
     }
 
     /**
@@ -678,6 +723,12 @@ class AccountStatementPage extends Page implements HasSchemas
     }
 
     /**
+     * FORMER detail-Excel path, no longer reached from the page (the
+     * «تصدير الإحصائيات Excel» button writes statistics only). Kept, with
+     * its status URL and forgetExcelExport(), so a large workbook queued
+     * before the change still completes and downloads; see
+     * docs/TASKS_LOG.md 2026-10-11 for the removal candidates.
+     *
      * Queues the large workbook; the page then polls its JSON status URL.
      */
     private function startLargeExcelExport(): void
@@ -761,9 +812,10 @@ class AccountStatementPage extends Page implements HasSchemas
     }
 
     /**
-     * «تصدير CSV»: a ZIP of a summary CSV and the movement CSV(s) of the
-     * APPLIED report, read straight from the projection
-     * (AccountStatementCsvExport). Small reports are built inside this
+     * «تصدير البيانات CSV»: the detailed movements of the APPLIED report
+     * only — no summary or statistics — read straight from the projection
+     * (AccountStatementCsvExport): one .csv, or a ZIP of حركات_NNN.csv
+     * files for large exports. Small reports are built inside this
      * request and the browser is sent to the signed download; large ones
      * are built by a queued job (parallel workers) and the page polls the
      * JSON status endpoint. Either way the delivery is audited at download.
@@ -897,12 +949,13 @@ class AccountStatementPage extends Page implements HasSchemas
      * authorization and the "عرض" gate. Filters describe the applied
      * snapshot, never the live form.
      */
-    protected function auditExport(ReportExportFormat $format): void
+    protected function auditExport(ReportExportFormat $format, ?ReportExportPurpose $purpose = null, array $counts = []): void
     {
         app(ReportExportAuditRecorder::class)->exportRequested(
             ReportExportSubject::AccountStatement,
             $format,
-            $this->exportAuditFilters(),
+            $this->exportAuditFilters() + $counts,
+            $purpose,
         );
     }
 
@@ -1051,9 +1104,8 @@ class AccountStatementPage extends Page implements HasSchemas
      *
      * @return array<string, string>
      */
-    protected function filterLabels(AccountStatementFilters $filters, AccountStatementScope $scope): array
+    protected function filterLabels(AccountStatementFilters $filters, AccountStatementScope $scope, int $cap = 10): array
     {
-        $cap = 10;
         $list = function (array $names, int $total) use ($cap): string {
             $shown = implode('، ', array_slice($names, 0, $cap));
 

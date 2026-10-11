@@ -16,6 +16,217 @@
 ---
 
 ### Date
+2026-10-11 (addendum — Word also statistics-only on both reports; verified on `oms_stress`; NOT committed)
+
+### Task
+Turn «تصدير Word» into «تصدير الإحصائيات Word» on `/admin/account-statement` and `/admin/comprehensive-financial-transactions`:
+- statistics only, the same as the Excel statistics;
+- no detail rows;
+- re-decide the old movement-based size limit;
+- prove Excel == Word.
+
+### Result
+- **Final buttons (both pages):** «تصدير البيانات CSV» (detail rows only) · «تصدير الإحصائيات Excel» · «تصدير الإحصائيات Word» (statistics only). Labels are the page constants `CSV_EXPORT_LABEL` / `EXCEL_EXPORT_LABEL` / `WORD_EXPORT_LABEL`.
+- **One statistics model, two renderers:**
+  - `Statistics\StatisticsReport` holds sheets of label / value blocks, notes and tables. It is built once per export by `AccountStatement\AccountStatementStatistics` / `ComprehensiveFinancialTransactions\ComprehensiveStatistics`.
+  - It is rendered by `Excel\StatisticsWorkbook::write()` (OpenSpout, unchanged output) and `Word\StatisticsDocument::write()` (PhpWord, A4 landscape, RTL paragraphs and `bidiVisual` tables, repeated table header rows, page footer).
+  - The Excel services now delegate to the model; new `AccountStatementStatisticsWordExportService`, `ComprehensiveFinancialTransactionsStatisticsWordExportService`.
+- **Account Statement Word** contains:
+  - the title and export time;
+  - report data (period, content note);
+  - every applied filter («الكل» when unused);
+  - movements / accounts / currencies counts;
+  - the mixed-currency and dimension notes;
+  - the per-currency summary;
+  - «ملخص الحسابات»: account, currency, opening, debit, credit, closing, movements, for every covered account.
+- **Comprehensive Word** contains:
+  - the title and report data;
+  - every applied filter, including the full transaction-type multi-select list;
+  - the general counts;
+  - per currency: debit, credit, difference, balanced;
+  - per classification × currency and per transaction type × currency: transactions and lines on the first row, debit and credit.
+- **Size limit decision:**
+  - The old movement-based refusals are no longer consulted: Account Statement `word_max_units` (movements + 0.5 × accounts) and Comprehensive `word_max_lines`.
+  - Account Statement Word is refused only above `word_max_summary_rows` = 2,000 summary rows (covered accounts + currencies). The message recommends «تصدير الإحصائيات Excel» (no limit) and «تصدير البيانات CSV».
+  - Comprehensive Word has no limit: its rows are classifications and types × currencies, bounded by master data (49 rows for the full range).
+- **Pages:**
+  - Comprehensive Excel and Word share one `exportStatistics()` (live state or the snapshot manifest, no query).
+  - Account Statement Word uses the same context and filter rows as its Excel.
+  - Both are written before the audit and stream a temp file.
+- **Audit:** Word = `format docx`, `purpose statistics`. `purpose_label` for statistics is now «تصدير الإحصائيات والملخصات» (no format name, since both Excel and Word use it).
+
+**Word benchmarks (`oms_stress`, fresh process each, write of the statistics model):**
+
+| Case | Movements / lines | Summary rows | Time | DOCX | Peak memory |
+|---|---|---|---|---|---|
+| AS 4 accounts, 3 currencies | 187,582 | 7 | 0.05 s | 9 KB | 46 MB |
+| AS 1,612 accounts | 1,073,682 | 1,615 | 0.97 s (0.26 summaries + 0.71 write) | 62 KB | 94 MB |
+| AS 3,887 accounts | 1,067,022 | 3,890 | 3.63 s | 141 KB | 152 MB (now refused) |
+| AS 4,997 accounts | 1,221,151 | 5,000 | 5.38 s | 180 KB | 184 MB (now refused) |
+| CF full range | 1,221,151 | 49 | 0.05 s | 10 KB | 48 MB |
+
+The cost follows the summary rows (~0.7 ms and ~28 KB per row in PhpWord), never the movements. The 2,000-row cap (~1.3 s, ~105 MB) stays inside a default 128M PHP limit; local PHP has 512M.
+
+**Parity (0 differences everywhere):**
+- Stress script: both files read back, Excel's DISPLAYED values vs Word's table texts, row for row. AS: 4 accounts / 5 accounts + 4 types / 1,612 accounts (1,626 rows); CF: full range / 4 types / 2 accounts debit side.
+- Tests: `assertExcelWordParity()` on AS multi-account + multi-type and on CF live and snapshot modes.
+- Browser: AS (4 accounts, 187,582 movements) currency and account rows identical; CF (583,229 lines, 4 types) 40 / 40 rows identical.
+
+**Browser (LAN stress site):**
+- Both pages show exactly the three buttons.
+- AS Word was delivered for 187,582 movements. The old rules refused that case.
+- AS with 3,385 accounts: Word refused on 3,388 summary rows, with the new message; no download, no audit.
+- CF Word was delivered for 583,229 lines: 9.9 KB, no detail column.
+- CF small CSV: still a plain detail-only `.csv` (16 columns, 4,353 rows).
+
+**Old Word detail code now unused (kept; for the user's cleanup decision):**
+- `App\Services\Reports\AccountStatementWordExportService` (movement table, no caller).
+- `App\Services\Reports\ComprehensiveFinancialTransactionsWordExportService` (per-transaction detail blocks, no caller).
+- `AccountStatementPage::exportRows()`.
+- `AccountStatementExportPlan::wordMaxUnits()` + config `word_max_units`.
+- `ComprehensiveFinancialTransactionsPage::inlineExportRows()`, `liveExportSnapshot()`, `discardLiveExportSnapshot()`, `auditExport()` (snapshot form), `wordMaxLines()` / `wordLimitNotice()` + config `word_max_lines`.
+- The Muwakha family Word export is separate and unchanged.
+
+### Changed Files
+- New:
+  - `app/Services/Reports/Statistics/StatisticsReport.php`
+  - `app/Services/Reports/Word/StatisticsDocument.php`
+  - `app/Services/Reports/AccountStatement/AccountStatementStatistics.php`
+  - `app/Services/Reports/ComprehensiveFinancialTransactions/ComprehensiveStatistics.php`
+  - `app/Services/Reports/AccountStatementStatisticsWordExportService.php`
+  - `app/Services/Reports/ComprehensiveFinancialTransactionsStatisticsWordExportService.php`
+  - `tests/Support/Reports/StatisticsFileReader.php`
+- Changed:
+  - both report pages;
+  - both statistics Excel services and `Excel/StatisticsWorkbook.php`;
+  - `AccountStatement/AccountStatementExportPlan.php`;
+  - `ReportExportPurpose.php`, `ReportExportFormat.php` (doc);
+  - `config/oms.php` (`account_statement.word_max_summary_rows`).
+- Tests:
+  - the two statistics test files (Word tests);
+  - both CSV test files (buttons);
+  - `AccountStatementReportTest`;
+  - `ComprehensiveFinancialTransactionsLargeExportTest`, `…PageTest`, `…SnapshotFormatTest`, `…SnapshotPageTest`.
+
+### Verification
+- Targeted PHPUnit only: the same 16 paths, **360 tests, 18,442 assertions, all passing**. No full suite.
+- Benchmarks and parity were run as scripts outside PHPUnit, read-only on `oms_stress`.
+
+---
+
+### Date
+2026-10-11 (Both financial reports: data export separated from statistics export — implemented and verified on `oms_stress`; NOT committed)
+
+### Task
+On `/admin/comprehensive-financial-transactions` and `/admin/account-statement`: «تصدير البيانات CSV» = detailed rows ONLY; «تصدير الإحصائيات Excel» = statistics, summaries and applied filters ONLY. Word unchanged. No financial semantic change.
+
+### Result
+- **Buttons (both pages, in this order, side by side):** «تصدير البيانات CSV» · «تصدير الإحصائيات Excel» · «تصدير Word» (unchanged). Labels are page constants `CSV_EXPORT_LABEL` / `EXCEL_EXPORT_LABEL`.
+- **CSV = detail rows only.** The summary files (`ملخص_كشف_الحساب.csv`, `ملخص_الحركات_المالية_الشاملة.csv`) are no longer written. Columns, order, filters, segments, parallel workers, the proof before delivery and the `reports` job are unchanged. The account / report summaries are still READ, only as the proof's expectations.
+- **Packaging (user decision 2026-10-11):** one plain `.csv` when the export fits in one file of at most `csv.plain_max_rows` (100,000) planned rows: `كشف_الحساب_<ts>.csv` / `الحركات_المالية_الشاملة_<ts>.csv`. Otherwise a ZIP of the detail file(s) only: `حركات_كشف_الحساب.csv` or `حركات_001.csv`…, and `الحركات_001.csv`…. A plain export is written as stored (uncompressed) pieces and concatenated once (`AccountStatementCsvPart::concatenate()`). The download routes send `text/csv; charset=UTF-8` or `application/zip` from the file name.
+- **Excel = statistics only**, written at once in the request (no queue, no snapshot build) with OpenSpout, through a shared writer `App\Services\Reports\Excel\StatisticsWorkbook`. It is right-to-left, with a title, bordered sections, `#,##0.00` money and `#,##0` counts, and money stored rounded to 2 decimals.
+  - Account Statement (`AccountStatementStatisticsExcelExportService`):
+    - sheet «الإحصائيات»: report data, every applied filter («الكل» when unused, names in full up to 200), the covered accounts, movements / accounts / currencies counts (no cross-currency money total), the mixed-currency and dimension notes, and the per-currency summary;
+    - sheet «ملخص الحسابات»: every covered account (opening, debit, credit, closing, movements), with an autofilter.
+  - Comprehensive (`ComprehensiveFinancialTransactionsStatisticsExcelExportService`) — built from the statistics the displayed report already holds (live state, or the snapshot manifest in fallback mode; no query):
+    - «الملخص»: data, applied filters, general counts, per currency (debit, credit, difference, balanced);
+    - «حسب تصنيف المعاملة» and «حسب نوع المعاملة»: one row per group × currency, transactions / lines on the group's first row.
+- **Audit:** the recorder takes an optional `ReportExportPurpose` and writes `purpose` + `purpose_label`:
+  - CSV: `detail_data`, «تصدير البيانات التفصيلية (CSV)»;
+  - Excel: `statistics`, «تصدير الإحصائيات والملخصات (Excel)».
+  - Formats stay `csv` / `xlsx`. CSV adds `package_type`, and `package_bytes` is now the delivered file's size. Excel adds summary counts (`exported_accounts`, `exported_currencies` / `exported_*_summaries`). No exported content is logged.
+- **Messages:** the Word limit notice and the «CSV unavailable» notice no longer point to Excel (which no longer has rows). The Word refusal now recommends «تصدير البيانات CSV».
+- **Old detailed Excel path: left in place, unwired from the buttons** (kept so a workbook queued before the change still completes and downloads). Now unreachable from the UI — candidates for removal (user decision):
+  - AS: `AccountStatementStreamingExcelExportService`; `BuildAccountStatementExcelExportJob`; `AccountStatementPage::startLargeExcelExport()` (no caller), `excelExportStatusUrl()`, `forgetExcelExport()`, `$excelExportId` and its poller entry in the blade; `AccountStatementExportPlan::excelMode()` / `STYLED` / `STREAMING` / `BACKGROUND` / `styledExcelMaxUnits()` / `inlineStreamingExcelMaxUnits()`; config `styled_excel_max_units`, `inline_streaming_excel_max_units`; route `reports.account-statement.xlsx` and the controller's `show()` / xlsx branch. `AccountStatementExcelExportService` is NOT dead (Muwakha family statement uses it).
+  - Comprehensive: `ComprehensiveFinancialTransactionsExcelExportService` (no caller left); `ComprehensiveFinancialTransactionsStreamingExcelExportService`; `BuildComprehensiveFinancialTransactionsExcelExportJob`; `ComprehensiveFinancialTransactionsExcelExports`; `ComprehensiveFinancialTransactionsExcelDownloadController` + route `reports.comprehensive-financial-transactions.xlsx`; page `startLargeExcelExport()` (no caller), `refreshExcelExport()`, `abandonExcelExport()`, `$excelExportId`, `PREPARING_EXCEL_NOTICE`, `EXCEL_EXPORT_FAILED_NOTICE`, `styledExcelMaxLines()` + config `styled_excel_max_lines`, and the blade `cft-excel-export` section. The purge command's Excel-export cleanup. `liveExportSnapshot()` / `inlineExportRows()` stay (Word uses them).
+
+**CSV performance, before vs after summary removal** (interleaved A/B on `oms_stress`: an exact copy of the pre-change code vs the working tree, 3 rounds each, alternating order, 8 workers; median seconds):
+
+| Case | Rows | Before | After | Delivered after |
+|---|---|---|---|---|
+| AS types 4+6+13 | 1,067,022 | 13.82 | 14.15 | ZIP 2 files, 74.3 MB |
+| AS type 4 | 756,123 | 10.46 | 9.79 | ZIP, 56.9 MB |
+| AS type 12 | 80,795 | 7.83 | 7.55 | plain CSV, 68.6 MB |
+| AS account 8 | 58,900 | 8.41 | 9.93 | plain CSV, 51.5 MB |
+| CF full range | 1,221,151 | 12.56 | 12.46 | ZIP 2 files, 101.0 MB |
+| CF 2025 | 335,695 | 5.02 | 5.01 | ZIP, 27.7 MB |
+| CF 2022 | 87,125 | 2.67 | 2.91 | plain CSV, 82.2 MB |
+
+- ZIP exports: unchanged within this laptop's run-to-run noise (the summary file took 0.03–0.15 s).
+- Plain-CSV exports: +0.1–1.5 s. They write ~10× more bytes (no DEFLATE), plus one 50–80 MB concatenation (0.07–0.12 s).
+- An earlier sequential run (before / after, not interleaved) showed a uniform 10–30 % drift on unchanged paths, hence the A/B.
+
+**Excel statistics generation** (`oms_stress`, account summaries + write):
+- AS types 4+6+13 (3,887 accounts): 1.59 s, 172 KB.
+- AS all 4,997 accounts: 1.95 s, 222 KB.
+- AS 1–5 accounts: 0.10–0.12 s, 7–8 KB.
+- Comprehensive (full range, 7 classifications, 11 types): 0.15 s write, 12 KB (summaries already held from «عرض»).
+
+**Correctness (`oms_stress`, 0 differences everywhere):**
+- CSV data records are byte-identical (SHA-256 over every parsed record) to the old export's movement files in 7 cases:
+  - AS 1.07M / 80,795 / 58,900 / multi-account + multi-type;
+  - CF 1.22M / 87,125 / multi-type 159,193.
+  - The old export was itself verified against the ledger on 2026-10-08 / 10-10.
+- Independent replay: row counts = the report summaries; AS running balance of every row re-computed from each account's opening (3,887 accounts / 1.07M rows); per-account debit / credit / lines / closing; CF per-currency debit / credit.
+- No summary file or section in any package.
+- Statistics workbooks read back cell by cell = `summarize()` / `accountSummaries()` / `ComprehensiveReportSummaries` in 7 cases, every account row included.
+
+**Browser (LAN stress site):**
+- Both pages show the three buttons side by side (RTL).
+- AS, 4 accounts / 3 currencies / 105,567 movements:
+  - Excel statistics (2 RTL sheets) equals the screen's currency summary;
+  - CSV went to the new `reports` worker (≈ 2 s): ZIP with only `حركات_كشف_الحساب.csv`, 14 columns, 105,567 rows; Apache 200.
+- AS, 2 accounts + 3 types (1,028 rows): inline plain `.csv` (BOM, 14 columns, 1,028 rows); Excel lists the three types and the dimension note.
+- CF, 4 types, 159,193 lines:
+  - Excel = 3 RTL sheets, equal to the live summaries;
+  - CSV went to the background: ZIP with only `الحركات_001.csv`, 159,193 rows;
+  - 3 days, 2,629 lines: inline plain `.csv`, 16 columns.
+- Changing a filter without «عرض» refuses both exports (existing notice).
+- Audit events carry `purpose` / `purpose_label`.
+- Automated Chrome masks downloads (204), so the delivery was checked in Apache's access log and in the stored files.
+
+**Operational note:** the `reports` worker that was running had the old code in memory; it was restarted (`queue:restart`) and a new `queue:work --queue=reports` was started for `oms_stress`.
+
+### Changed Files
+- New:
+  - `app/Services/Reports/Excel/StatisticsWorkbook.php`
+  - `app/Services/Reports/AccountStatementStatisticsExcelExportService.php`
+  - `app/Services/Reports/ComprehensiveFinancialTransactionsStatisticsExcelExportService.php`
+  - `app/Services/Audit/Reports/ReportExportPurpose.php`
+  - `tests/Feature/Reports/AccountStatementStatisticsExcelTest.php`
+  - `tests/Feature/Reports/ComprehensiveStatisticsExcelTest.php`
+- Changed:
+  - `app/Filament/Pages/AccountStatementPage.php`
+  - `app/Filament/Pages/ComprehensiveFinancialTransactionsPage.php`
+  - `app/Services/Reports/AccountStatement/Csv/AccountStatementCsvExport.php`, `AccountStatementCsvFormat.php`, `AccountStatementCsvPart.php`
+  - `app/Services/Reports/ComprehensiveFinancialTransactions/Csv/ComprehensiveCsvExport.php`, `ComprehensiveCsvFormat.php`
+  - `app/Services/Reports/AccountStatement/AccountStatementExcelExports.php` (doc only)
+  - `app/Http/Controllers/Reports/AccountStatementExcelDownloadController.php`
+  - `app/Http/Controllers/Reports/ComprehensiveFinancialTransactionsCsvDownloadController.php`
+  - `app/Jobs/BuildAccountStatementCsvExportJob.php`, `app/Jobs/BuildComprehensiveFinancialTransactionsCsvExportJob.php`
+  - `app/Services/Audit/Reports/ReportExportAuditRecorder.php`, `ReportExportFormat.php` (doc)
+  - `config/oms.php` (`csv.plain_max_rows` × 2)
+- Tests updated:
+  - `AccountStatementCsvExportTest`, `ComprehensiveFinancialTransactionsCsvExportTest`
+  - `AccountStatementReportTest`
+  - `ComprehensiveFinancialTransactionsLargeExportTest`, `…PageTest`, `…SnapshotFormatTest`, `…SnapshotPageTest`
+  - `ComprehensiveReportProjectionPageTest`, `ComprehensiveTransactionTypeMultiSelectTest`
+- `graphify-out/` (update).
+
+### Verification
+- Targeted PHPUnit only (no full suite): 16 paths, **356 tests, 18,323 assertions, all passing**:
+  - the two new statistics test files;
+  - the two CSV test files;
+  - `AccountStatementReportTest`;
+  - the six comprehensive page / export test files;
+  - `ComprehensiveFinancialTransactionsBackgroundBuildTest`, `ReportExportAuthorizationTest`, `ReportExportAuditTest`;
+  - `MuwakhaFamilyAccountStatementTest`;
+  - `tests/Unit/Services/Reports`.
+- Benchmarks, correctness and statistics checks were run as scripts outside PHPUnit (scratchpad), read-only on `oms_stress`.
+
+---
+
+### Date
 2026-10-10 (تقرير الحركات المالية الشامل «تصدير CSV» — implemented and verified on `oms_stress`; NOT committed)
 
 ### Task

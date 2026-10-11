@@ -15,6 +15,7 @@ use App\Models\TransactionSuperType;
 use App\Models\TransactionType;
 use App\Services\Audit\Reports\ReportExportAuditRecorder;
 use App\Services\Audit\Reports\ReportExportFormat;
+use App\Services\Audit\Reports\ReportExportPurpose;
 use App\Services\Audit\Reports\ReportExportSubject;
 use App\Services\Reports\ComprehensiveFinancialTransactions\ComprehensiveFinancialTransactionsBuildStatus;
 use App\Services\Reports\ComprehensiveFinancialTransactions\ComprehensiveFinancialTransactionsExcelExports;
@@ -22,6 +23,7 @@ use App\Services\Reports\ComprehensiveFinancialTransactions\ComprehensiveFinanci
 use App\Services\Reports\ComprehensiveFinancialTransactions\ComprehensiveFinancialTransactionsSnapshot;
 use App\Services\Reports\ComprehensiveFinancialTransactions\ComprehensiveFinancialTransactionsSnapshotBuilder;
 use App\Services\Reports\ComprehensiveFinancialTransactions\ComprehensiveFinancialTransactionsSnapshotUnreadable;
+use App\Services\Reports\ComprehensiveFinancialTransactions\ExportTemporaryFiles;
 use App\Services\Reports\AccountStatement\AccountStatementExcelExports;
 use App\Services\Reports\ComprehensiveFinancialTransactions\Contracts\ComprehensiveFinancialTransactionsSnapshotRepository;
 use App\Services\Reports\ComprehensiveFinancialTransactions\Csv\ComprehensiveCsvExport;
@@ -30,9 +32,9 @@ use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\Comprehen
 use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportResolvedFilters;
 use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportRows;
 use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportSummaries;
-use App\Services\Reports\ComprehensiveFinancialTransactionsExcelExportService;
 use App\Services\Reports\ComprehensiveFinancialTransactionsReportService;
-use App\Services\Reports\ComprehensiveFinancialTransactionsWordExportService;
+use App\Services\Reports\ComprehensiveFinancialTransactionsStatisticsExcelExportService;
+use App\Services\Reports\ComprehensiveFinancialTransactionsStatisticsWordExportService;
 use App\Support\Search\ArabicSearch;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;
@@ -101,6 +103,15 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
 
     protected string $view = 'filament.pages.comprehensive-financial-transactions-page';
 
+    /** Detailed lines only (ComprehensiveCsvExport). */
+    public const CSV_EXPORT_LABEL = 'تصدير البيانات CSV';
+
+    /** Statistics, summaries and applied filters only (ComprehensiveFinancialTransactionsStatisticsExcelExportService). */
+    public const EXCEL_EXPORT_LABEL = 'تصدير الإحصائيات Excel';
+
+    /** The same statistics as a document (ComprehensiveFinancialTransactionsStatisticsWordExportService). */
+    public const WORD_EXPORT_LABEL = 'تصدير الإحصائيات Word';
+
     /**
      * Shown (and blocks export) when the displayed report's snapshot has
      * expired or been purged since "عرض".
@@ -125,7 +136,7 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
     public const CSV_EXPORT_FAILED_NOTICE = 'تعذر تجهيز ملف CSV. يرجى المحاولة مرة أخرى.';
 
     /** CSV reads only the real-time projection: while it is not READY, CSV is refused — never built another way. */
-    public const CSV_UNAVAILABLE_NOTICE = 'تصدير CSV غير متاح حالياً لأن فهرس التقرير السريع قيد التحديث؛ يرجى المحاولة لاحقاً أو استخدام تصدير Excel.';
+    public const CSV_UNAVAILABLE_NOTICE = 'تصدير البيانات CSV غير متاح حالياً لأن فهرس التقرير السريع قيد التحديث؛ يرجى المحاولة لاحقاً.';
 
     /** Shown above a report produced by the fallback (snapshot) path. */
     public const PROJECTION_FALLBACK_NOTICE = 'تم إعداد هذا التقرير بالطريقة الاحتياطية لأن فهرس التقرير السريع قيد التحديث حاليًا؛ النتائج دقيقة لكن قد يستغرق إعدادها وقتًا أطول.';
@@ -380,21 +391,21 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
     protected function getHeaderActions(): array
     {
         return [
-            Action::make('exportExcel')
-                ->label('تصدير Excel')
-                ->icon('heroicon-o-arrow-down-tray')
-                ->visible(fn (): bool => $this->canExportReport())
-                ->action(fn () => $this->exportExcel()),
-
             Action::make('exportCsv')
-                ->label('تصدير CSV')
+                ->label(self::CSV_EXPORT_LABEL)
                 ->icon('heroicon-o-table-cells')
                 ->visible(fn (): bool => $this->canExportReport())
                 ->action(fn () => $this->exportCsv()),
 
+            Action::make('exportExcel')
+                ->label(self::EXCEL_EXPORT_LABEL)
+                ->icon('heroicon-o-chart-bar')
+                ->visible(fn (): bool => $this->canExportReport())
+                ->action(fn () => $this->exportExcel()),
+
             Action::make('exportWord')
-                ->label('تصدير Word')
-                ->icon('heroicon-o-document-text')
+                ->label(self::WORD_EXPORT_LABEL)
+                ->icon('heroicon-o-document-chart-bar')
                 ->visible(fn (): bool => $this->canExportReport())
                 ->action(fn () => $this->exportWord()),
         ];
@@ -1267,19 +1278,38 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
     }
 
     /**
-     * Exports the exact result currently on screen — never the live filter
-     * state: the same immutable snapshot the page renders from, its rows
-     * streamed chunk by chunk. Both export methods stay thin; all rendering
-     * lives in their dedicated services.
-     *
-     * Up to styled_excel_max_lines lines: the styled PhpSpreadsheet workbook,
-     * delivered by Livewire as before. Above it: the streaming OpenSpout
-     * workbook, prepared by a queued job (it takes minutes for tens of
-     * thousands of lines) and then downloaded through its own signed route,
-     * which audits and re-checks the owner itself — never generated inside a
-     * request and never base64 inside a Livewire response.
+     * «تصدير الإحصائيات Excel»: the statistics the displayed report already
+     * produced — information, every applied filter, the general summary and
+     * the currency, classification and transaction-type summaries
+     * (ComprehensiveStatistics, rendered by
+     * ComprehensiveFinancialTransactionsStatisticsExcelExportService). No
+     * detail rows: detail data is «تصدير البيانات CSV».
      */
     public function exportExcel(): ?StreamedResponse
+    {
+        return $this->exportStatistics(ReportExportFormat::Xlsx);
+    }
+
+    /**
+     * «تصدير الإحصائيات Word»: the very same statistics as the workbook, as
+     * a document (ComprehensiveFinancialTransactionsStatisticsWordExportService).
+     * Its size is bounded by master data (classifications and types × the
+     * currencies — 49 rows for the full 1.22M-line range on oms_stress,
+     * 0.05 s), never by the number of lines, so it is never refused.
+     */
+    public function exportWord(): ?StreamedResponse
+    {
+        return $this->exportStatistics(ReportExportFormat::Docx);
+    }
+
+    /**
+     * Both statistics exports read what "عرض" computed and the screen shows
+     * — the live summaries kept in this component, or the displayed
+     * snapshot's manifest (fallback mode): no report query, no snapshot
+     * build, no queue. The file is written BEFORE the audit, so a failed
+     * export is never recorded as delivered; a failed audit delivers nothing.
+     */
+    private function exportStatistics(ReportExportFormat $format): ?StreamedResponse
     {
         $this->authorizeReportExport();
 
@@ -1288,47 +1318,63 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
         }
 
         if ($this->reportMode === self::MODE_LIVE) {
-            if ($this->lineCount > self::styledExcelMaxLines()) {
-                $this->startLargeExcelExport(null);
-
-                return null;
-            }
-
-            $snapshot = $this->liveExportSnapshot();
+            $filters = ComprehensiveFinancialTransactionsFilters::fromArray($this->liveFilters);
+            $labels = $this->appliedFilterLabels;
+            [$currencies, $categories, $types] = [$this->liveCurrencySummaries, $this->liveCategorySummaries, $this->liveTypeSummaries];
+            [$transactions, $lines, $currencyCount] = [$this->transactionCount, $this->lineCount, $this->currenciesCount];
         } else {
             $snapshot = $this->reportSnapshot();
+            $filters = $snapshot->filters();
+            $labels = $snapshot->filterLabels();
+            [$currencies, $categories, $types] = [$snapshot->currencySummaries(), $snapshot->categorySummaries(), $snapshot->typeSummaries()];
+            [$transactions, $lines, $currencyCount] = [$snapshot->transactionCount(), $snapshot->lineCount(), $snapshot->currenciesCount()];
+        }
 
-            if ($snapshot->lineCount() > self::styledExcelMaxLines()) {
-                $this->startLargeExcelExport($snapshot);
+        $exporter = $format === ReportExportFormat::Docx
+            ? app(ComprehensiveFinancialTransactionsStatisticsWordExportService::class)
+            : app(ComprehensiveFinancialTransactionsStatisticsExcelExportService::class);
+        $temporaryFiles = app(ExportTemporaryFiles::class);
+        $path = $temporaryFiles->create();
 
-                return null;
+        try {
+            $exporter->writeTo($path, $filters->dateFrom, $filters->dateTo, $labels, $currencies, $categories, $types, $transactions, $lines, $currencyCount);
+
+            app(ReportExportAuditRecorder::class)->exportRequested(
+                ReportExportSubject::ComprehensiveFinancialTransactions,
+                $format,
+                self::auditFiltersFor($filters, $labels, $transactions, $lines, $currencyCount, $this->hasSubmitted) + [
+                    'exported_currency_summaries' => count($currencies),
+                    'exported_classification_summaries' => count($categories),
+                    'exported_type_summaries' => count($types),
+                ],
+                ReportExportPurpose::Statistics,
+            );
+        } catch (\Throwable $e) {
+            $temporaryFiles->delete($path);
+
+            throw $e;
+        }
+
+        return response()->streamDownload(function () use ($path, $temporaryFiles): void {
+            try {
+                readfile($path);
+            } finally {
+                $temporaryFiles->delete($path);
             }
-        }
-
-        $rows = $this->inlineExportRows($snapshot);
-
-        if ($rows === null) {
-            return null;
-        }
-
-        $this->auditExport(ReportExportFormat::Xlsx, $snapshot);
-        $this->discardLiveExportSnapshot($snapshot);
-
-        return app(ComprehensiveFinancialTransactionsExcelExportService::class)->stream(
-            $snapshot->filters()->dateFrom,
-            $snapshot->filters()->dateTo,
-            $snapshot->filterLabels(),
-            $rows,
-            $snapshot->currencySummaries(),
-            $snapshot->categorySummaries(),
-            $snapshot->typeSummaries(),
-            $snapshot->transactionCount(),
-            $snapshot->lineCount(),
-            $snapshot->currenciesCount(),
-        );
+        }, $exporter->filename($filters->dateFrom, $filters->dateTo), [
+            'Content-Type' => $format === ReportExportFormat::Docx
+                ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
     }
 
     /**
+     * FORMER detail-Excel path, no longer reached from the page (the
+     * «تصدير الإحصائيات Excel» button writes statistics only). Kept, with
+     * its poller below, so a large workbook queued before the change still
+     * completes and downloads; see docs/TASKS_LOG.md 2026-10-11 for the
+     * removal candidates.
+     *
      * Queues the large-report workbook of the displayed snapshot. The page
      * then polls refreshExcelExport(), which starts the download when ready.
      */
@@ -1420,9 +1466,10 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
     }
 
     /**
-     * «تصدير CSV»: a ZIP of a summary CSV and the movement CSV(s) of the
-     * APPLIED report (every line, never the page on screen), read straight
-     * from the real-time projection (ComprehensiveCsvExport). Small reports
+     * «تصدير البيانات CSV»: the detailed lines of the APPLIED report only
+     * (every line, never the page on screen; no summary or statistics) —
+     * one .csv, or a ZIP of الحركات_NNN.csv files for large exports — read
+     * straight from the real-time projection (ComprehensiveCsvExport). Small reports
      * are built inside this request and the browser is sent to the signed
      * download; large ones by a queued job (parallel workers) while the page
      * polls a small JSON status endpoint. Either way the delivery is audited
@@ -1586,54 +1633,6 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
     }
 
     /**
-     * Word is a document format, not a bulk-data format: above
-     * word_max_lines lines it is refused (never truncated) and Excel is
-     * recommended instead. A refused export is not audited.
-     */
-    public function exportWord(): ?StreamedResponse
-    {
-        $this->authorizeReportExport();
-
-        if (! $this->canExport()) {
-            return null;
-        }
-
-        $lineCount = $this->reportMode === self::MODE_LIVE ? $this->lineCount : $this->reportSnapshot()->lineCount();
-
-        if ($lineCount > self::wordMaxLines()) {
-            Notification::make()
-                ->title(self::wordLimitNotice($lineCount))
-                ->danger()
-                ->send();
-
-            return null;
-        }
-
-        $snapshot = $this->reportMode === self::MODE_LIVE ? $this->liveExportSnapshot() : $this->reportSnapshot();
-        $rows = $this->inlineExportRows($snapshot);
-
-        if ($rows === null) {
-            return null;
-        }
-
-        $this->auditExport(ReportExportFormat::Docx, $snapshot);
-        $this->discardLiveExportSnapshot($snapshot);
-
-        return app(ComprehensiveFinancialTransactionsWordExportService::class)->stream(
-            $snapshot->filters()->dateFrom,
-            $snapshot->filters()->dateTo,
-            $snapshot->filterLabels(),
-            $rows,
-            $snapshot->currencySummaries(),
-            $snapshot->categorySummaries(),
-            $snapshot->typeSummaries(),
-            $snapshot->transactionCount(),
-            $snapshot->lineCount(),
-            $snapshot->currenciesCount(),
-        );
-    }
-
-    /**
      * OMS Task 9B.5 — see AccountStatementPage::auditExport() for the shared
      * placement rule. Filters come from the applied* snapshot only.
      *
@@ -1752,6 +1751,10 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
         return max(0, (int) config('oms.reports.comprehensive_financial_transactions.styled_excel_max_lines', 2000));
     }
 
+    /**
+     * FORMER Word cap (detail lines), unused since Word holds statistics only
+     * (2026-10-11).
+     */
     public static function wordMaxLines(): int
     {
         return max(0, (int) config('oms.reports.comprehensive_financial_transactions.word_max_lines', 2000));
@@ -1760,7 +1763,7 @@ class ComprehensiveFinancialTransactionsPage extends Page implements HasSchemas
     public static function wordLimitNotice(int $lineCount): string
     {
         return 'تصدير Word متاح للتقارير التي لا تتجاوز '.number_format(self::wordMaxLines()).' بند، '
-            .'وهذا التقرير يحتوي على '.number_format($lineCount).' بند. يرجى استخدام تصدير Excel لهذا التقرير.';
+            .'وهذا التقرير يحتوي على '.number_format($lineCount).' بند. يرجى استخدام «'.self::CSV_EXPORT_LABEL.'» لهذا التقرير.';
     }
 
     /**

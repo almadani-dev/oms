@@ -4,7 +4,6 @@ namespace Tests\Feature\Reports;
 
 use App\Filament\Pages\ComprehensiveFinancialTransactionsPage;
 use App\Jobs\BuildComprehensiveFinancialTransactionsCsvExportJob;
-use App\Jobs\BuildComprehensiveFinancialTransactionsExcelExportJob;
 use App\Models\AuditEvent;
 use App\Models\User;
 use App\Services\Reports\AccountStatement\Csv\AccountStatementCsvPart;
@@ -41,13 +40,14 @@ use Tests\TestCase;
 use ZipArchive;
 
 /**
- * «تصدير CSV» of "تقرير الحركات المالية الشامل".
+ * «تصدير البيانات CSV» of "تقرير الحركات المالية الشامل": detail lines ONLY.
  *
- * Every movement row of the package is compared, cell by cell and in order,
+ * Every movement row of the export is compared, cell by cell and in order,
  * with the LEDGER report (ComprehensiveFinancialTransactionsReportService::
  * generate() — the authoritative report, not the projection and not the CSV
- * code): the 16 detail columns of the Excel / Word exports. The summary file
- * is compared with the report's summaries.
+ * code): the 16 detail columns. No summary file or section is ever part of
+ * it (statistics are «تصدير الإحصائيات Excel»,
+ * ComprehensiveStatisticsExcelTest).
  */
 class ComprehensiveFinancialTransactionsCsvExportTest extends TestCase
 {
@@ -140,9 +140,44 @@ class ComprehensiveFinancialTransactionsCsvExportTest extends TestCase
         $package = app(ComprehensiveCsvExport::class)->build($filters);
 
         try {
-            return $this->unzip((string) file_get_contents($package['path']));
+            $this->assertSame(pathinfo($package['filename'], PATHINFO_EXTENSION), $package['stats']['package']);
+
+            return $this->unpack((string) file_get_contents($package['path']), $package['filename']);
         } finally {
             ComprehensiveCsvExport::discard($package['path']);
+        }
+    }
+
+    /**
+     * The plain CSV itself, or the files inside the ZIP.
+     *
+     * @return array<string, string>
+     */
+    private function unpack(string $bytes, string $filename): array
+    {
+        return str_ends_with($filename, '.csv') ? [$filename => $bytes] : $this->unzip($bytes);
+    }
+
+    /**
+     * Not a summary file, section or row anywhere: only the 16-column
+     * detail header and detail rows.
+     *
+     * @param  array<string, string>  $files
+     */
+    private function assertNoSummary(array $files): void
+    {
+        foreach ($files as $name => $bytes) {
+            $this->assertStringNotContainsString('ملخص', $name);
+            $rows = $this->parse($bytes);
+            $this->assertSame(ComprehensiveCsvFormat::MOVEMENT_HEADERS, $rows[0], "{$name}: the detail header only");
+
+            foreach ($rows as $row) {
+                $this->assertCount(16, $row, "{$name}: detail-shaped rows only");
+            }
+
+            foreach (['الملخص العام', 'الملخص حسب العملة', 'إحصائيات حسب', 'بيانات التقرير', 'ملفات الحركات', 'عدد بنود القيود'] as $section) {
+                $this->assertStringNotContainsString($section, $bytes, "{$name}: no statistics section");
+            }
         }
     }
 
@@ -286,12 +321,25 @@ class ComprehensiveFinancialTransactionsCsvExportTest extends TestCase
      */
     private function downloadFromPage($test): array
     {
-        $response = $this->get($this->downloadUrlFromPage($test));
-        $response->assertOk();
-        $response->assertHeader('Content-Type', 'application/zip');
-        $this->assertStringContainsString("filename*=utf-8''".rawurlencode('الحركات_المالية_الشاملة_'), (string) $response->headers->get('Content-Disposition'));
+        return $this->downloaded($this->get($this->downloadUrlFromPage($test)));
+    }
 
-        return $this->unzip($response->streamedContent());
+    /**
+     * A small export is one plain CSV.
+     *
+     * @return array<string, string>
+     */
+    private function downloaded($response, string $extension = 'csv'): array
+    {
+        $response->assertOk();
+        $response->assertHeader('Content-Type', $extension === 'csv' ? 'text/csv; charset=UTF-8' : 'application/zip');
+        $disposition = (string) $response->headers->get('Content-Disposition');
+        $this->assertSame(1, preg_match("~filename\\*=utf-8''([^;]+)~", $disposition, $m));
+        $filename = rawurldecode($m[1]);
+        $this->assertMatchesRegularExpression('/^الحركات_المالية_الشاملة_\d{8}_\d{6}\.'.$extension.'$/u', $filename);
+        $this->assertStringContainsString('filename=comprehensive-financial-transactions-', $disposition);
+
+        return $this->unpack($response->streamedContent(), $filename);
     }
 
     // =========================================================
@@ -327,61 +375,24 @@ class ComprehensiveFinancialTransactionsCsvExportTest extends TestCase
 
         $files = $this->build($filters);
 
-        $this->assertSame([ComprehensiveCsvFormat::SUMMARY_FILE, 'الحركات_001.csv'], array_keys($files));
+        // ONE plain CSV of detail rows — no summary file, no ZIP.
+        $this->assertCount(1, $files);
+        $this->assertMatchesRegularExpression('/^الحركات_المالية_الشاملة_\d{8}_\d{6}\.csv$/u', array_key_first($files));
         $this->assertSame($this->ledgerRows($filters), $this->movements($files), 'Rows, order and all 16 cells.');
+        $this->assertNoSummary($files);
     }
 
-    public function test_the_summary_file_holds_the_reports_summaries_per_currency(): void
+    public function test_one_file_above_the_plain_limit_is_zipped_without_a_summary(): void
     {
         $fx = $this->seedLedger();
+        config(['oms.reports.comprehensive_financial_transactions.csv.plain_max_rows' => 5]);
         $filters = $this->filters(['transaction_type_ids' => [$fx['typeA'], $fx['typeC'], $fx['typeNone']]]);
-        $summary = app(ComprehensiveReportSummaries::class)->compute(ComprehensiveFinancialTransactionsFilters::fromArray($filters));
-        $labels = app(ComprehensiveFinancialTransactionsReportService::class)->filterLabels(ComprehensiveFinancialTransactionsFilters::fromArray($filters));
 
-        $rows = $this->parse($this->build($filters)[ComprehensiveCsvFormat::SUMMARY_FILE]);
-        $section = function (string $title) use ($rows): array {
-            $start = array_search([$title], $rows, true);
-            $this->assertNotFalse($start, $title);
-            $out = [];
+        $files = $this->build($filters);
 
-            for ($i = $start + 2; $i < count($rows) && $rows[$i] !== [null] && $rows[$i] !== ['']; $i++) {
-                $out[] = $rows[$i];
-            }
-
-            return $out;
-        };
-
-        $info = $section('بيانات التقرير');
-        $this->assertSame(['من تاريخ', '2026-06-01'], $info[0]);
-        $this->assertSame(['نوع المعاملة', $labels['نوع المعاملة']], $info[5], 'The full multi-select list.');
-        $this->assertSame(['المشروع', 'الكل'], $info[9]);
-
-        $this->assertSame([
-            ['عدد المعاملات', (string) $summary['transaction_count']],
-            ['عدد بنود القيود', (string) $summary['line_count']],
-            ['عدد العملات الظاهرة', (string) $summary['currencies_count']],
-        ], $section('الملخص العام'));
-
-        $this->assertSame(array_map(fn (array $c): array => [
-            $c['currency'],
-            bcadd(sprintf('%.2f', $c['total_debit']), '0', 2),
-            bcadd(sprintf('%.2f', $c['total_credit']), '0', 2),
-            bcsub(bcadd(sprintf('%.2f', $c['total_debit']), '0', 2), bcadd(sprintf('%.2f', $c['total_credit']), '0', 2), 2),
-            $c['is_balanced'] ? 'متوازن' : 'غير متوازن',
-        ], $summary['currency_summaries']), $section('الملخص حسب العملة'));
-        $this->assertCount(2, $summary['currency_summaries'], 'USD and ILS stay apart.');
-
-        $expectedTypes = [];
-
-        foreach ($summary['type_summaries'] as $type) {
-            foreach ($type['currencies'] as $i => $c) {
-                $expectedTypes[] = [$type['name'], $i === 0 ? (string) $type['transaction_count'] : '', $c['currency'], bcadd(sprintf('%.2f', $c['total_debit']), '0', 2), bcadd(sprintf('%.2f', $c['total_credit']), '0', 2)];
-            }
-        }
-
-        $this->assertSame($expectedTypes, $section('إحصائيات حسب نوع المعاملة'));
-        $this->assertNotEmpty($section('إحصائيات حسب تصنيف المعاملة'));
-        $this->assertSame([['الحركات_001.csv', (string) $summary['line_count']]], $section('ملفات الحركات'));
+        $this->assertSame(['الحركات_001.csv'], array_keys($files));
+        $this->assertSame($this->ledgerRows($filters), $this->movements($files));
+        $this->assertNoSummary($files);
     }
 
     public function test_text_is_quoted_and_formula_guarded_while_money_stays_numeric(): void
@@ -398,7 +409,7 @@ class ComprehensiveFinancialTransactionsCsvExportTest extends TestCase
         $this->rebuild();
 
         $files = $this->build($this->filters(['date_from' => '2026-07-30', 'date_to' => '2026-07-30']));
-        $raw = $files['الحركات_001.csv'];
+        $raw = reset($files);
         $rows = $this->movements($files);
 
         $this->assertCount(2, $rows);
@@ -423,22 +434,16 @@ class ComprehensiveFinancialTransactionsCsvExportTest extends TestCase
         $files = $this->build($filters);
         $names = array_keys($files);
 
-        $this->assertSame(ComprehensiveCsvFormat::SUMMARY_FILE, $names[0]);
-        $this->assertGreaterThan(2, count($names) - 1);
-        $this->assertSame(array_map(fn (int $i) => sprintf('الحركات_%03d.csv', $i), range(1, count($names) - 1)), array_slice($names, 1));
+        // A ZIP of the detail files only — no summary file.
+        $this->assertGreaterThan(2, count($names));
+        $this->assertSame(array_map(fn (int $i) => sprintf('الحركات_%03d.csv', $i), range(1, count($names))), $names);
+        $this->assertNoSummary($files);
 
-        $listed = [];
-
-        foreach (array_slice($files, 1) as $name => $bytes) {
-            $rows = $this->parse($bytes);
-            $this->assertLessThanOrEqual(8, count($rows) - 1, "{$name} within the cap");
-            $listed[] = [$name, (string) (count($rows) - 1)];
+        foreach ($files as $name => $bytes) {
+            $this->assertLessThanOrEqual(8, count($this->parse($bytes)) - 1, "{$name} within the cap");
         }
 
         $this->assertSame($this->ledgerRows($filters), $this->movements($files), 'Concatenated files = every row exactly once, in order.');
-
-        $summary = $this->parse($files[ComprehensiveCsvFormat::SUMMARY_FILE]);
-        $this->assertSame($listed, array_slice($summary, array_search(['ملفات الحركات'], $summary, true) + 2));
 
         // A single day above the cap cannot be cut on a day boundary: refused, never truncated.
         config(['oms.reports.comprehensive_financial_transactions.csv.max_rows_per_file' => 3]);
@@ -587,20 +592,23 @@ class ComprehensiveFinancialTransactionsCsvExportTest extends TestCase
     // the page
     // =========================================================
 
-    public function test_the_csv_button_sits_right_beside_excel(): void
+    public function test_the_data_and_statistics_buttons_sit_side_by_side(): void
     {
         $this->seedLedger();
         $this->actingAs($this->superAdmin());
         $html = Livewire::test(ComprehensiveFinancialTransactionsPage::class)->html();
 
-        $excel = mb_strpos($html, 'تصدير Excel');
-        $csv = mb_strpos($html, 'تصدير CSV');
-        $word = mb_strpos($html, 'تصدير Word');
+        $csv = mb_strpos($html, 'تصدير البيانات CSV');
+        $excel = mb_strpos($html, 'تصدير الإحصائيات Excel');
+        $word = mb_strpos($html, 'تصدير الإحصائيات Word');
 
-        $this->assertNotFalse($excel);
         $this->assertNotFalse($csv);
+        $this->assertNotFalse($excel);
         $this->assertNotFalse($word);
-        $this->assertTrue($excel < $csv && $csv < $word, 'Excel, then CSV, then Word.');
+        $this->assertTrue($csv < $excel && $excel < $word, 'CSV data, then Excel statistics, then Word statistics.');
+        $this->assertStringNotContainsString('تصدير Word', $html, 'The old ambiguous label is gone.');
+        $this->assertStringNotContainsString('تصدير CSV', $html, 'The old ambiguous label is gone.');
+        $this->assertStringNotContainsString('تصدير Excel', $html, 'The old ambiguous label is gone.');
     }
 
     public function test_a_small_report_is_built_now_and_audited_once_at_download(): void
@@ -621,10 +629,14 @@ class ComprehensiveFinancialTransactionsCsvExportTest extends TestCase
         $rows = $this->movements($files);
         $this->assertNotEmpty($rows);
         $this->assertSame($this->ledgerRows($applied), $rows);
+        $this->assertNoSummary($files);
         $this->assertSame($test->get('lineCount'), count($rows), 'Every line of the report — not the 50-row page.');
 
         $payload = AuditEvent::where('event_category', 'report_export')->sole()->new_values;
         $this->assertSame('csv', $payload['format']);
+        $this->assertSame('detail_data', $payload['purpose']);
+        $this->assertSame('تصدير البيانات التفصيلية (CSV)', $payload['purpose_label']);
+        $this->assertSame('csv', $payload['package_type']);
         $this->assertSame('comprehensive_financial_transactions', $payload['report']);
         $this->assertSame('completed', $payload['status']);
         $this->assertSame('direct', $payload['delivery']);
@@ -635,9 +647,7 @@ class ComprehensiveFinancialTransactionsCsvExportTest extends TestCase
         $this->assertArrayNotHasKey('rows', $payload);
 
         // The browser may fetch the same URL again: same file, still ONE event.
-        $again = $this->get($this->downloadUrlFromPage($test));
-        $again->assertOk();
-        $this->assertSame($files, $this->unzip($again->streamedContent()));
+        $this->assertSame($files, $this->downloaded($this->get($this->downloadUrlFromPage($test))));
         $this->assertSame(1, AuditEvent::where('event_category', 'report_export')->count());
 
         // Expired: purged with every other report export.
@@ -692,10 +702,12 @@ class ComprehensiveFinancialTransactionsCsvExportTest extends TestCase
         $this->assertStringContainsString('/reports/comprehensive-financial-transactions/exports/'.$exportId.'/csv', $ready['download_url']);
         $test->call('forgetCsvExport')->assertSet('csvExportId', null);
 
-        $response = $this->get($ready['download_url']);
-        $response->assertOk();
-        $this->assertSame($this->ledgerRows($test->get('liveFilters')), $this->movements($this->unzip($response->streamedContent())));
-        $this->assertSame('background', AuditEvent::where('event_category', 'report_export')->sole()->new_values['delivery']);
+        $files = $this->downloaded($this->get($ready['download_url']));
+        $this->assertSame($this->ledgerRows($test->get('liveFilters')), $this->movements($files));
+        $this->assertNoSummary($files);
+        $payload = AuditEvent::where('event_category', 'report_export')->sole()->new_values;
+        $this->assertSame('background', $payload['delivery']);
+        $this->assertSame('detail_data', $payload['purpose']);
 
         // The Excel route never serves a CSV export.
         $this->get(URL::temporarySignedRoute('reports.comprehensive-financial-transactions.xlsx', now()->addMinutes(5), ['export' => $exportId]))->assertNotFound();
@@ -789,20 +801,17 @@ class ComprehensiveFinancialTransactionsCsvExportTest extends TestCase
         $this->assertSame(0, AuditEvent::where('event_category', 'report_export')->count());
     }
 
-    public function test_excel_and_word_are_unchanged(): void
+    public function test_word_is_statistics_and_the_csv_notice_never_points_to_excel(): void
     {
         $this->seedLedger();
-        Queue::fake();
         $test = $this->page(['date_from' => '2026-07-01', 'date_to' => '2026-07-31']);
 
-        $test->assertActionVisible('exportExcel');
         $test->assertActionVisible('exportWord');
-        $this->assertNotNull($test->instance()->exportExcel());
-        $this->assertSame('xlsx', AuditEvent::where('event_category', 'report_export')->sole()->new_values['format']);
-
-        config(['oms.reports.comprehensive_financial_transactions.styled_excel_max_lines' => 1]);
-        $test->call('exportExcel');
-        Queue::assertPushed(BuildComprehensiveFinancialTransactionsExcelExportJob::class);
-        Queue::assertNotPushed(BuildComprehensiveFinancialTransactionsCsvExportJob::class);
+        $this->assertNotNull($test->instance()->exportWord());
+        $payload = AuditEvent::where('event_category', 'report_export')->sole()->new_values;
+        $this->assertSame('docx', $payload['format']);
+        $this->assertSame('statistics', $payload['purpose']);
+        $this->assertStringNotContainsString('Excel', ComprehensiveFinancialTransactionsPage::CSV_UNAVAILABLE_NOTICE, 'Excel / Word hold no detail rows.');
+        $this->assertStringNotContainsString('Word', ComprehensiveFinancialTransactionsPage::CSV_UNAVAILABLE_NOTICE);
     }
 }

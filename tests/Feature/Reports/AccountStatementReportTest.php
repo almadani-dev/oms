@@ -800,21 +800,45 @@ class AccountStatementReportTest extends TestCase
         $this->assertSame(1, AuditEvent::where('event_category', 'report_export')->count());
     }
 
-    public function test_word_is_refused_above_its_limit_and_not_audited(): void
+    public function test_word_is_refused_above_its_summary_limit_and_not_audited(): void
     {
         $fx = $this->seedLedger();
-        config(['oms.reports.account_statement.word_max_units' => 10]);
+        // 1 account + 1 currency = 2 summary rows (and many movements).
+        config(['oms.reports.account_statement.word_max_summary_rows' => 1]);
 
         $test = $this->page(['account_ids' => [(string) $fx['a']->id], 'date_from' => '2025-01-01', 'date_to' => '2026-12-31']);
         $this->assertNull($test->instance()->exportWord());
         $this->assertSame(0, AuditEvent::where('event_category', 'report_export')->count());
 
-        config(['oms.reports.account_statement.word_max_units' => 2000]);
+        config(['oms.reports.account_statement.word_max_summary_rows' => 2]);
         $this->assertNotNull($test->instance()->exportWord());
         $this->assertSame(1, AuditEvent::where('event_category', 'report_export')->count());
     }
 
-    public function test_a_large_excel_is_prepared_in_the_background_and_downloaded_once(): void
+    /**
+     * A large detail workbook queued by the FORMER «تصدير Excel» (before the
+     * 2026-10-11 data / statistics split) still completes and downloads
+     * once. The page itself no longer queues one: its Excel button writes
+     * the statistics workbook at once.
+     *
+     * @return array{0: mixed, 1: string}
+     */
+    private function queueFormerDetailExcel($test, User $user): array
+    {
+        $page = $test->instance();
+        $exportId = app(AccountStatementExcelExports::class)->create($user->id, [
+            'filters' => $page->appliedFilters,
+            'filter_labels' => $page->appliedFilterLabels,
+            'summary' => $page->summary,
+            'plan' => $page->plan,
+            'audit' => $page->exportAuditFilters(),
+        ]);
+        $test->set('excelExportId', $exportId);
+
+        return [$test, $exportId];
+    }
+
+    public function test_a_former_queued_detail_excel_still_completes_and_downloads_once(): void
     {
         $fx = $this->seedLedger();
         config([
@@ -831,10 +855,13 @@ class AccountStatementReportTest extends TestCase
             ->set('data.date_to', '2026-12-31')
             ->call('showReport');
 
-        $this->assertNull($test->instance()->exportExcel());
-        $exportId = $test->get('excelExportId');
-        $this->assertNotNull($exportId);
-        Queue::assertPushed(BuildAccountStatementExcelExportJob::class);
+        // The button now writes statistics at once, whatever the size.
+        $this->assertNotNull($test->instance()->exportExcel());
+        Queue::assertNothingPushed();
+        $this->assertNull($test->get('excelExportId'));
+        AuditEvent::query()->delete();
+
+        [$test, $exportId] = $this->queueFormerDetailExcel($test, $user);
         $this->assertSame(0, AuditEvent::where('event_category', 'report_export')->count(), 'Audited at download, not at queueing.');
 
         // The page polls the lightweight status endpoint: pending first…
@@ -863,21 +890,15 @@ class AccountStatementReportTest extends TestCase
         $this->get($url)->assertNotFound();
     }
 
-    public function test_a_medium_excel_streams_inline_with_every_row(): void
+    public function test_the_former_streaming_detail_workbook_still_holds_every_row(): void
     {
         $fx = $this->seedLedger();
-        config(['oms.reports.account_statement.styled_excel_max_units' => 5]);
 
+        // Kept for the former queued detail exports (the job writes it).
         $test = $this->page(['account_ids' => [(string) $fx['a']->id], 'date_from' => '2025-01-01', 'date_to' => '2026-12-31']);
-        $response = $test->instance()->exportExcel();
-        $this->assertNotNull($response);
-
-        ob_start();
-        $response->sendContent();
-        $content = ob_get_clean();
         $path = $this->tempDir.DIRECTORY_SEPARATOR.'check.xlsx';
         File::ensureDirectoryExists($this->tempDir);
-        file_put_contents($path, $content);
+        app(\App\Services\Reports\AccountStatementStreamingExcelExportService::class)->writeTo($path, $test->instance()->exportContext());
 
         $sheet = IOFactory::load($path)->getActiveSheet();
         $balances = [];
@@ -924,15 +945,19 @@ class AccountStatementReportTest extends TestCase
 
         // The browser case: 276 movements, 1,767 accounts, 3 currencies.
         $this->assertSame(['units' => 1163, 'excel' => 'styled', 'word' => true], $plan(276, 1767, 3));
-        // Few movements, many accounts: no longer "small".
+        // Statistics-only Word follows the summary rows (accounts +
+        // currencies, ≤ 2,000), never the movements.
         $this->assertSame(['units' => 2503, 'excel' => 'streaming', 'word' => false], $plan(0, 5000, 3));
-        $this->assertSame(['units' => 2101, 'excel' => 'streaming', 'word' => false], $plan(1900, 400));
+        $this->assertSame(['units' => 2101, 'excel' => 'streaming', 'word' => true], $plan(1900, 400));
+        $this->assertTrue($plan(1000000, 4)['word'], 'A million movements over 4 accounts: Word statistics allowed.');
+        $this->assertTrue($plan(0, 1997, 3)['word']);
+        $this->assertFalse($plan(0, 1998, 3)['word']);
         $this->assertSame('background', $plan(9000, 10)['excel']);
         $this->assertSame('background', $plan(10, 16000)['excel'], 'A huge summary alone goes to the background.');
         $this->assertSame(['units' => 1462, 'excel' => 'styled', 'word' => true], $plan(1460, 1));
     }
 
-    public function test_a_broad_summary_scope_goes_to_the_background_even_with_few_movements(): void
+    public function test_a_broad_summary_scope_refuses_word_while_excel_statistics_are_written_now(): void
     {
         $fx = $this->seedLedger();
 
@@ -944,7 +969,7 @@ class AccountStatementReportTest extends TestCase
         config([
             'oms.reports.account_statement.styled_excel_max_units' => 10,
             'oms.reports.account_statement.inline_streaming_excel_max_units' => 20,
-            'oms.reports.account_statement.word_max_units' => 10,
+            'oms.reports.account_statement.word_max_summary_rows' => 10,
         ]);
         Queue::fake();
 
@@ -953,18 +978,18 @@ class AccountStatementReportTest extends TestCase
         $this->assertSame(0, $page->summary['matched_lines']);
         $this->assertSame(43, $page->summary['account_count']);
 
-        $this->assertNull($page->exportWord(), 'Word refused on work, not on movement count.');
+        $this->assertNull($page->exportWord(), 'Word refused on its summary size, not on the movement count.');
         $test->assertNotified(AccountStatementPage::wordRefusalMessage($page->summary));
-        $this->assertStringContainsString('43 حساب', AccountStatementPage::wordRefusalMessage($page->summary));
+        $this->assertStringContainsString('44 صف إحصائي', AccountStatementPage::wordRefusalMessage($page->summary), '43 accounts + 1 currency.');
 
-        $this->assertNull($page->exportExcel());
-        Queue::assertPushed(BuildAccountStatementExcelExportJob::class);
-
-        // The job receives exactly the applied filters and summary.
-        $payload = app(AccountStatementExcelExports::class)->status(auth()->id(), $test->get('excelExportId'))['payload'];
-        $this->assertSame($page->appliedFilters, $payload['filters']);
-        $this->assertSame($page->summary, $payload['summary']);
-        $this->assertSame(0, AuditEvent::where('event_category', 'report_export')->count());
+        // Statistics only (43 account summaries, no movement): written at
+        // once — never queued — and audited once.
+        $this->assertNotNull($page->exportExcel());
+        Queue::assertNothingPushed();
+        $this->assertNull($test->get('excelExportId'));
+        $payload = AuditEvent::where('event_category', 'report_export')->sole()->new_values;
+        $this->assertSame('statistics', $payload['purpose']);
+        $this->assertSame(43, $payload['exported_accounts']);
     }
 
     public function test_a_small_export_stays_synchronous(): void
@@ -1015,8 +1040,9 @@ class AccountStatementReportTest extends TestCase
         $ids = [$fx['a']->id, $fx['b']->id, $fx['c']->id, $fx['e']->id];
         $oracle = array_map(fn ($r) => $r['line_id'], $this->oracle($ids, '2025-11-01', '2026-03-31')['rows']);
         $test = $this->page(['account_ids' => array_map('strval', $ids), 'date_from' => '2025-11-01', 'date_to' => '2026-03-31']);
-        $test->instance()->exportExcel();
+        [$test] = $this->queueFormerDetailExcel($test, auth()->user());
         $statusUrl = $test->instance()->excelExportStatusUrl();
+        $this->assertNotNull($statusUrl);
         $summary = $test->get('summary');
         $pages = $test->get('pageCount');
 

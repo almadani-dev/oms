@@ -1,6 +1,45 @@
 # Prompts Log
 
 ### Date
+2026-10-11 ("CHANGE TO CURRENT EXPORT-SEPARATION TASK — Word must ALSO become STATISTICS-ONLY")
+
+### Prompt
+On both reports:
+- «تصدير الإحصائيات Word» = statistics only, matching Excel;
+- re-decide the Word size limit from the actual statistics workload (no "too many movements" refusal);
+- benchmark;
+- Excel == Word parity with 0 differences;
+- report the old Word detail code;
+- user messages must point to «تصدير البيانات CSV» for detail data;
+- targeted tests only; browser validation;
+- no commit, no push, no production.
+
+### Purpose
+- **"Do NOT keep a too-many-movements refusal just because it existed before":** led to measuring Word cost per summary row and a limit on summary rows only (Account Statement); none for Comprehensive.
+
+---
+
+### Date
+2026-10-11 ("TASK — SEPARATE DATA EXPORT FROM STATISTICS EXPORT FOR BOTH FINANCIAL REPORTS")
+
+### Prompt
+On both financial reports:
+- rename the buttons to «تصدير البيانات CSV» and «تصدير الإحصائيات Excel»;
+- CSV = detail rows only (no summary file / section; ZIP only when needed, one CSV when enough);
+- Excel = formatted statistics only (title, applied filters, currency / account / classification / type summaries), generated immediately unless measured otherwise;
+- audit format and purpose;
+- keep the old detailed Excel code until audited, report the dead code;
+- benchmark the CSV again;
+- 0-difference correctness; browser validation; targeted tests only;
+- no commit, no push, no production, `oms_stress` only, preserve the uncommitted work.
+
+### Purpose
+- **"If one CSV is enough, use one data CSV":** a single file of up to 1M rows would be ~1 GB uncompressed. The user chose a plain CSV up to 100,000 rows and a ZIP above that.
+- **"CSV performance before/after summary removal":** this laptop drifts 10–30 % between runs, so the comparison was made as an interleaved A/B against an exact copy of the pre-change code.
+
+---
+
+### Date
 2026-10-10 ("NEXT TASK — ULTRA-FAST CSV EXPORT FOR COMPREHENSIVE FINANCIAL TRANSACTIONS")
 
 ### Prompt

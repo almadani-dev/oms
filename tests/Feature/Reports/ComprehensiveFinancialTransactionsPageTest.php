@@ -781,7 +781,7 @@ class ComprehensiveFinancialTransactionsPageTest extends TestCase
     // export payload
     // =========================================================
 
-    public function test_excel_export_contains_the_bank_type_and_every_note(): void
+    public function test_the_statistics_excel_holds_no_bank_type_column_and_no_note(): void
     {
         $this->fixture();
 
@@ -804,24 +804,19 @@ class ComprehensiveFinancialTransactionsPageTest extends TestCase
 
         @unlink($path);
 
-        $this->assertStringContainsString('نوع البنك', $text);
-        $this->assertStringContainsString('بنك تجاري', $text);
-        $this->assertStringContainsString('محفظة إلكترونية', $text);
-        $this->assertStringContainsString('الملاحظات', $text);
-        $this->assertStringContainsString('ملاحظات المعاملة: ملاحظة على المعاملة', $text);
-        $this->assertStringContainsString('ملاحظات سطر القيد: ملاحظة على سطر القيد', $text);
-        $this->assertStringContainsString('ملاحظات الحساب: ملاحظة على الحساب الأول', $text);
-
-        // Lookup metadata is not a movement note.
-        $this->assertStringNotContainsString('ملاحظة نوع البنك', $text);
-
-        // transactions.description now occupies exactly one column: it appears
-        // once per detail row (2 lines here), never twice per row as before.
-        $this->assertSame(2, substr_count($text, 'وصف العملية المالية'));
-        $this->assertStringNotContainsString('الوصف / البيان', $text);
+        // Detail columns (bank type, every note source) belong to «تصدير
+        // البيانات CSV» (ComprehensiveFinancialTransactionsCsvExportTest
+        // compares all 16 columns with the ledger report).
+        $this->assertStringContainsString('عدد بنود القيود', $text);
+        $this->assertStringNotContainsString('نوع البنك', $text);
+        $this->assertStringNotContainsString('بنك تجاري', $text);
+        $this->assertStringNotContainsString('ملاحظات المعاملة: ملاحظة على المعاملة', $text);
+        $this->assertStringNotContainsString('ملاحظات سطر القيد: ملاحظة على سطر القيد', $text);
+        $this->assertStringNotContainsString('ملاحظات الحساب: ملاحظة على الحساب الأول', $text);
+        $this->assertStringNotContainsString('وصف العملية المالية', $text);
     }
 
-    public function test_word_export_still_streams_successfully(): void
+    public function test_word_statistics_stream_without_bank_type_or_notes(): void
     {
         $this->fixture();
 
@@ -848,21 +843,14 @@ class ComprehensiveFinancialTransactionsPageTest extends TestCase
 
         $this->assertNotFalse($document);
 
-        // Bank type reaches the per-line table, both values intact.
-        $this->assertStringContainsString('نوع البنك', $document);
-        $this->assertStringContainsString('بنك تجاري', $document);
-        $this->assertStringContainsString('محفظة إلكترونية', $document);
-
-        // Notes are written as labelled paragraphs, transaction- and line-scope.
-        $this->assertStringContainsString('ملاحظات المعاملة', $document);
-        $this->assertStringContainsString('ملاحظة على المعاملة', $document);
-        $this->assertStringContainsString('ملاحظات سطر القيد', $document);
-        $this->assertStringContainsString('ملاحظة على سطر القيد', $document);
-        $this->assertStringContainsString('ملاحظات الحساب', $document);
-        $this->assertStringContainsString('ملاحظة على الحساب الأول', $document);
-
-        // Lookup metadata is not a movement note.
-        $this->assertStringNotContainsString('ملاحظة نوع البنك', $document);
+        // Statistics only: the detail columns (bank type, every note source)
+        // belong to «تصدير البيانات CSV».
+        $this->assertStringContainsString('عدد بنود القيود', $document);
+        $this->assertStringNotContainsString('نوع البنك', $document);
+        $this->assertStringNotContainsString('بنك تجاري', $document);
+        $this->assertStringNotContainsString('ملاحظة على المعاملة', $document);
+        $this->assertStringNotContainsString('ملاحظة على سطر القيد', $document);
+        $this->assertStringNotContainsString('ملاحظة على الحساب الأول', $document);
     }
 
     /**

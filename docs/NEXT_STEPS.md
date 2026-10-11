@@ -1,5 +1,22 @@
 # Next Steps
 
+## Recommended Next Step (2026-10-11, data CSV vs statistics Excel on both reports — verified on `oms_stress`, NOT committed)
+
+**1. User check in the browser** (LAN stress site; the `reports` worker was restarted with the new code). On both reports:
+- the buttons «تصدير البيانات CSV» · «تصدير الإحصائيات Excel» · «تصدير الإحصائيات Word»;
+- open a statistics Word document (Excel and Word must show the same figures);
+- open a statistics workbook in Excel;
+- open a small plain CSV and a large ZIP.
+
+**2. Decisions for the user:**
+- remove the old detailed Excel infrastructure (list: TASKS_LOG 2026-10-11) once no queued workbook from before the change can remain (they expire within `pending_stale_minutes` / the purge window);
+- remove the old detail Word code (list: TASKS_LOG 2026-10-11 addendum; Word is statistics-only since the addendum);
+- whether `csv.plain_max_rows` (100,000) and the Account Statement `word_max_summary_rows` (2,000) suit production (check its PHP `memory_limit`).
+
+**3. Then:** approve and commit together with the earlier uncommitted change sets (Account Statement, Comprehensive CSV).
+
+---
+
 ## Recommended Next Step (2026-10-10, Comprehensive «تصدير CSV» implemented and verified on `oms_stress` — NOT committed)
 
 **1. User browser check.** No browser automation was available to the agent; the page, job, worker and routes were validated in-process on `oms_stress`. On `http://172.16.0.100/oms/public/admin/comprehensive-financial-transactions`:

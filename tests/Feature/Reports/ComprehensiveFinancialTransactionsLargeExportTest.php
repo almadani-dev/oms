@@ -252,23 +252,25 @@ class ComprehensiveFinancialTransactionsLargeExportTest extends TestCase
         $test->assertSet('excelExportId', null);
     }
 
-    public function test_a_large_report_queues_its_workbook_polls_cheaply_then_starts_the_signed_download(): void
+    public function test_a_large_report_gets_its_statistics_workbook_at_once_never_a_queued_one(): void
     {
         config(['oms.reports.comprehensive_financial_transactions.styled_excel_max_lines' => 5]);
         $this->seedAwkwardLedger();
-        $user = $this->superAdmin();
-        $test = $this->page($user);
+        $test = $this->page($this->superAdmin());
 
         Queue::fake();
-        $test->call('exportExcel');
-        $exportId = $test->get('excelExportId');
+        $this->assertInstanceOf(StreamedResponse::class, $test->instance()->exportExcel());
+        Queue::assertNothingPushed();
+        $test->assertSet('excelExportId', null);
+        $this->assertSame('statistics', AuditEvent::sole()->new_values['purpose']);
+    }
 
-        $this->assertNotNull($exportId);
-        $test->assertSee(ComprehensiveFinancialTransactionsPage::PREPARING_EXCEL_NOTICE, false)
-            ->assertSee('wire:poll.2s="refreshExcelExport"', false)
-            // The report itself stays on screen while the workbook is prepared.
-            ->assertSee('الملخص حسب العملة', false);
-        Queue::assertPushedOn('reports', BuildComprehensiveFinancialTransactionsExcelExportJob::class, fn ($job) => $job->ownerId === $user->id && $job->exportId === $exportId);
+    public function test_a_former_queued_workbook_is_prepared_from_the_snapshot_never_the_ledger(): void
+    {
+        $this->seedAwkwardLedger();
+        $user = $this->superAdmin();
+        // Queued by the FORMER detail «تصدير Excel» (before 2026-10-11).
+        $exportId = app(ComprehensiveFinancialTransactionsExcelExports::class)->create($user->id, $this->snapshot($user->id)->id());
 
         $ledger = 0;
         DB::listen(function ($query) use (&$ledger) {
@@ -276,31 +278,20 @@ class ComprehensiveFinancialTransactionsLargeExportTest extends TestCase
                 $ledger++;
             }
         });
-        $test->call('refreshExcelExport')->assertSet('excelExportId', $exportId);
-        $this->assertSame(0, $ledger, 'Polling never reads the ledger.');
 
         $this->runExportJob($user->id, $exportId);
 
-        $test->call('refreshExcelExport')
-            ->assertSet('excelExportId', null)
-            ->assertRedirectContains('/reports/comprehensive-financial-transactions/exports/'.$exportId.'/xlsx')
-            ->assertRedirectContains('signature=');
-
+        $this->assertSame(ComprehensiveFinancialTransactionsExcelExports::COMPLETED, app(ComprehensiveFinancialTransactionsExcelExports::class)->status($user->id, $exportId)['state']);
         $this->assertSame(0, $ledger, 'Preparing the workbook reads the snapshot, never the ledger.');
         $this->assertSame(0, AuditEvent::count(), 'Audited by the download itself, at delivery time.');
         $this->assertSame([], glob($this->tempDir.DIRECTORY_SEPARATOR.'cft-*') ?: [], 'The job removes its local temp file.');
     }
 
-    public function test_a_failed_workbook_tells_the_user_and_leaves_nothing_behind(): void
+    public function test_a_failed_former_workbook_leaves_nothing_behind(): void
     {
-        config(['oms.reports.comprehensive_financial_transactions.styled_excel_max_lines' => 5]);
         $this->seedAwkwardLedger();
         $user = $this->superAdmin();
-        $test = $this->page($user);
-
-        Queue::fake();
-        $test->call('exportExcel');
-        $exportId = $test->get('excelExportId');
+        $exportId = app(ComprehensiveFinancialTransactionsExcelExports::class)->create($user->id, $this->snapshot($user->id)->id());
 
         $this->app->instance(ComprehensiveFinancialTransactionsStreamingExcelExportService::class, new class extends ComprehensiveFinancialTransactionsStreamingExcelExportService
         {
@@ -319,10 +310,7 @@ class ComprehensiveFinancialTransactionsLargeExportTest extends TestCase
 
         $this->assertSame([], glob($this->tempDir.DIRECTORY_SEPARATOR.'cft-*') ?: []);
         $this->assertSame('failed', app(ComprehensiveFinancialTransactionsExcelExports::class)->status($user->id, $exportId)['state']);
-
-        $test->call('refreshExcelExport')
-            ->assertSet('excelExportId', null)
-            ->assertNotified(ComprehensiveFinancialTransactionsPage::EXCEL_EXPORT_FAILED_NOTICE);
+        app(ComprehensiveFinancialTransactionsExcelExports::class)->discard($user->id, $exportId);
 
         $this->assertSame([], Storage::disk('report_snapshots')->allFiles('comprehensive-financial-transactions-exports/'.$user->id));
         $this->assertSame(0, AuditEvent::count());
@@ -473,17 +461,15 @@ class ComprehensiveFinancialTransactionsLargeExportTest extends TestCase
     // Word policy
     // =========================================================
 
-    public function test_word_is_refused_above_its_limit_without_truncation_or_audit(): void
+    public function test_word_statistics_are_never_refused_on_the_line_count(): void
     {
+        // The former line cap at its minimum: no longer consulted.
         config(['oms.reports.comprehensive_financial_transactions.word_max_lines' => 5]);
         $this->seedAwkwardLedger();
         $test = $this->page($this->superAdmin());
 
-        $this->assertNull($test->instance()->exportWord());
-        $this->assertSame(0, AuditEvent::count());
-
-        $test->call('exportWord')->assertNotified(ComprehensiveFinancialTransactionsPage::wordLimitNotice(14));
-        $this->assertStringContainsString('يرجى استخدام تصدير Excel', ComprehensiveFinancialTransactionsPage::wordLimitNotice(14));
+        $this->assertInstanceOf(StreamedResponse::class, $test->instance()->exportWord());
+        $this->assertSame('statistics', AuditEvent::sole()->new_values['purpose']);
     }
 
     public function test_word_within_its_limit_is_unchanged(): void

@@ -7,7 +7,7 @@ use RuntimeException;
 
 /**
  * One piece of a file inside the CSV package, written by whoever produces
- * it (a segment worker, the summary writer, a header) — already in its
+ * it (a segment worker, a header) — already in its
  * final ZIP encoding: stored bytes, or a raw DEFLATE stream ended by a sync
  * flush, so that pieces written in parallel can simply be concatenated into
  * one ZIP entry (AccountStatementCsvZip).
@@ -97,6 +97,56 @@ final class AccountStatementCsvPart
             'stored' => $this->storedBytes,
             'deflate' => $this->deflate !== null,
         ];
+    }
+
+    /**
+     * Writes STORED pieces, in order, as one plain file (a single-file
+     * export delivered without a ZIP). Each byte is copied once.
+     *
+     * @param  array<int, array{path: string, deflate: bool}>  $parts
+     * @return int bytes written
+     */
+    public static function concatenate(string $path, array $parts): int
+    {
+        $out = fopen($path, 'wb');
+
+        if ($out === false) {
+            throw new RuntimeException('Could not create the CSV export file.');
+        }
+
+        $bytes = 0;
+
+        try {
+            foreach ($parts as $part) {
+                if ($part['deflate']) {
+                    throw new RuntimeException('A plain CSV can only be built from stored pieces.');
+                }
+
+                $in = fopen($part['path'], 'rb');
+
+                if ($in === false) {
+                    throw new RuntimeException('Could not read a CSV export piece.');
+                }
+
+                try {
+                    $copied = stream_copy_to_stream($in, $out);
+                } finally {
+                    fclose($in);
+                }
+
+                if ($copied === false || $copied !== filesize($part['path'])) {
+                    throw new RuntimeException('Could not write the CSV export (disk full?).');
+                }
+
+                $bytes += $copied;
+            }
+        } finally {
+            if (! fclose($out)) {
+                throw new RuntimeException('Could not write the CSV export (disk full?).');
+            }
+        }
+
+        return $bytes;
     }
 
     private function put(string $bytes): void

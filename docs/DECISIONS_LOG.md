@@ -14,6 +14,48 @@
 
 
 ### Date
+2026-10-11 (Word statistics-only; Word size limit)
+
+### Decision
+- **Word = statistics only** (user requirement): exactly the content of the Excel statistics, from ONE shared model (`StatisticsReport`), so the two formats cannot drift. Parity is also verified on the produced files.
+- **Size limit:** the movement-based refusals are dropped. Account Statement Word is limited by summary rows (accounts + currencies) ≤ `word_max_summary_rows` = 2,000. Comprehensive Word has no limit (its groups are bounded by master data).
+- Excel statistics keep no limit (OpenSpout streams). They are the recommended alternative when Word is refused.
+- The audit `purpose_label` for statistics no longer names a format («تصدير الإحصائيات والملخصات»); `format` = `xlsx` / `docx`.
+
+### Reason
+- Measured: Word cost ≈ 0.7 ms and ≈ 28 KB peak memory per summary row (PhpWord keeps the document in memory). 1,000,000+ movements over few accounts cost 0.05 s. 5,000 account rows cost 5.4 s and 184 MB. 2,000 rows stay near 1.3 s / ~105 MB, safe under a default 128M PHP memory limit.
+
+### Impact
+- A large report with few accounts or groups can now be exported to Word at once.
+- A very broad Account Statement scope (> 2,000 accounts) gets a clear message pointing to the Excel statistics and the CSV data.
+- No financial calculation changed.
+
+---
+
+### Date
+2026-10-11 (Data export vs statistics export, both financial reports)
+
+### Decision
+- **CSV = detailed rows only; Excel = statistics, summaries and applied filters only** (user requirement). Word unchanged.
+- **Packaging (user choice, 2026-10-11):** a plain `.csv` when the export fits in one file of at most `csv.plain_max_rows` = 100,000 planned rows; otherwise a ZIP (~11× smaller) of the detail file(s). The rejected options were plain CSV whenever there is one file (up to ~1 GB) and always ZIP.
+- **Statistics source:** Comprehensive uses the statistics the displayed report already produced (live state / snapshot manifest), so Excel = screen. Account Statement uses the «عرض» summary plus every covered account's summary of the applied filters (the screen's own account-summary reader).
+- **Statistics Excel is generated immediately** (OpenSpout): measured ≤ 2 s / 222 KB at 4,997 accounts; no queue, no snapshot.
+- **Audit:** formats unchanged (`csv` / `xlsx`); a new `purpose` (`detail_data` / `statistics`) with an Arabic `purpose_label`.
+- **Old detailed Excel path:** not deleted; unwired from the buttons and kept so already-queued exports complete. Removal is for the user to decide after verification.
+- Money cells of the statistics workbook are stored rounded to 2 decimals (a float difference such as -8526331.439999998 is stored as -8526331.44). This is display only; no calculation changed.
+
+### Reason
+- Users could not tell what each export contained. The detail Excel duplicated the CSV, and large Excel needed the background workbook path.
+- A plain CSV opens directly for small and medium exports; large ones stay compressed for download size.
+
+### Impact
+- No financial calculation, balance, filter, ordering, SoftDelete, projection or visibility rule changed. The CSV data rows are byte-identical to before.
+- Plain-CSV exports write uncompressed (+0.1–1.5 s measured at 59–87k rows); ZIP exports are unchanged.
+- The Word refusal and «CSV unavailable» notices no longer point to Excel.
+
+---
+
+### Date
 2026-10-10 (Comprehensive Financial Transactions «تصدير CSV»)
 
 ### Decision

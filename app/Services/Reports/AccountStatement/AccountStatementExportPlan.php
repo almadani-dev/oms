@@ -62,11 +62,31 @@ final class AccountStatementExportPlan
     }
 
     /**
+     * «تصدير الإحصائيات Word» (statistics only since 2026-10-11): its size
+     * is the number of summary rows — one per covered account and per
+     * currency — never the movements. Measured on oms_stress: 1,615 rows
+     * 0.97 s / 94 MB peak, 3,890 rows 3.6 s / 152 MB, 5,000 rows 5.4 s /
+     * 184 MB (PhpWord keeps every cell in memory); 2,000 rows stays near
+     * 1.3 s and ~105 MB, inside a default 128M PHP limit.
+     *
      * @param  array<string, mixed>  $summary
      */
     public static function wordAllowed(array $summary): bool
     {
-        return self::units($summary) <= self::wordMaxUnits();
+        return self::summaryRows($summary) <= self::wordMaxSummaryRows();
+    }
+
+    /**
+     * @param  array<string, mixed>  $summary
+     */
+    public static function summaryRows(array $summary): int
+    {
+        return (int) ($summary['account_count'] ?? 0) + count($summary['currencies'] ?? []);
+    }
+
+    public static function wordMaxSummaryRows(): int
+    {
+        return max(1, (int) config('oms.reports.account_statement.word_max_summary_rows', 2000));
     }
 
     /**
@@ -94,6 +114,10 @@ final class AccountStatementExportPlan
         return max(1, (int) config('oms.reports.account_statement.inline_streaming_excel_max_units', 8000));
     }
 
+    /**
+     * FORMER Word cap (movements + accounts), unused since Word holds
+     * statistics only (2026-10-11).
+     */
     public static function wordMaxUnits(): int
     {
         return max(1, (int) config('oms.reports.account_statement.word_max_units', 2000));

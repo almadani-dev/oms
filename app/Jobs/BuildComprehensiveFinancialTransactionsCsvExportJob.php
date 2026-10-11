@@ -11,7 +11,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Throwable;
 
 /**
- * Builds a large «تصدير CSV» package of "تقرير الحركات المالية الشامل" in
+ * Builds a large «تصدير البيانات CSV» export of "تقرير الحركات المالية الشامل" in
  * the background, from the APPLIED filters the page stored with the export,
  * with up to `csv.workers` parallel segment workers (CLI processes).
  *
@@ -86,7 +86,8 @@ class BuildComprehensiveFinancialTransactionsCsvExportJob implements ShouldQueue
             'exported_lines' => (int) $stats['lines'],
             'exported_transactions' => (int) $stats['transactions'],
             'movement_files' => count($stats['files']),
-            'package_bytes' => (int) $stats['zip_bytes'],
+            'package_type' => (string) $stats['package'],
+            'package_bytes' => (int) $stats['package_bytes'],
             'generation_seconds' => (string) $stats['seconds']['total'],
         ];
     }
