@@ -31,6 +31,12 @@ class BuildComprehensiveFinancialTransactionsExcelExportJob implements ShouldQue
 
     public bool $failOnTimeout = true;
 
+    /**
+     * Seconds; set from config in the constructor. Declared (Laravel's own
+     * job convention) so assigning it is not a PHP 8.2+ dynamic property.
+     */
+    public ?int $timeout = null;
+
     public function __construct(
         public readonly int $ownerId,
         public readonly string $exportId,
