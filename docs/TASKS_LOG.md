@@ -103,6 +103,9 @@
 - Targeted PHPUnit only: the same 16 paths, **360 tests, 18,433 assertions, all passing**.
 - `tests/Feature/Muwakha` (204 tests) was also run: 184 pass. 20 `MuwakhaFamilyImportTest` failures are PRE-EXISTING and unrelated (no shared code): the import command resolves the test's absolute Windows temp path as relative («Source file not found: C:\laragon\www\oms\C:\Users\…»). Not fixed (out of scope).
 
+### Commit Hash
+`aabf67e` refactor(reports): use single-sheet statistics exports and remove dead Word paths; knowledge graph: `d8ce9e0` chore(graphify): refresh knowledge graph — committed on 2026-10-11 in the rebuilt history after `77c764e`; not pushed.
+
 ---
 
 ### Date
@@ -201,6 +204,9 @@ The cost follows the summary rows (~0.7 ms and ~28 KB per row in PhpWord), never
 ### Verification
 - Targeted PHPUnit only: the same 16 paths, **360 tests, 18,442 assertions, all passing**. No full suite.
 - Benchmarks and parity were run as scripts outside PHPUnit, read-only on `oms_stress`.
+
+### Commit Hash
+`062e6d1` feat(reports): separate detail CSV from statistics Excel and Word (together with the 2026-10-11 data/statistics split) — committed on 2026-10-11 in the rebuilt history after `77c764e`; not pushed.
 
 ---
 
@@ -313,6 +319,9 @@ On `/admin/comprehensive-financial-transactions` and `/admin/account-statement`:
   - `MuwakhaFamilyAccountStatementTest`;
   - `tests/Unit/Services/Reports`.
 - Benchmarks, correctness and statistics checks were run as scripts outside PHPUnit (scratchpad), read-only on `oms_stress`.
+
+### Commit Hash
+`062e6d1` feat(reports): separate detail CSV from statistics Excel and Word (together with the Word addendum) — committed on 2026-10-11 in the rebuilt history after `77c764e`; not pushed.
 
 ---
 
@@ -446,6 +455,9 @@ Sparse cases are bound by point reads (transactions, notes, ledger lines scatter
 
 Commit: none (not committed, by instruction).
 
+### Commit Hash
+`86bbaa0` feat(comprehensive): add high-performance CSV export — committed on 2026-10-11 in the rebuilt history after `77c764e`; not pushed.
+
 ---
 
 
@@ -575,6 +587,9 @@ Hence the inline cap is 25,000 units.
 
 Benchmarks and independent verification were run outside PHPUnit on `oms_stress` (scratch scripts, not committed).
 
+### Commit Hash
+`e0392c1` feat(account-statement): add projected multi-account reporting and CSV export (together with the 2026-10-07 redesign and polish) — committed on 2026-10-11 in the rebuilt history after `77c764e`; not pushed.
+
 ---
 
 
@@ -627,6 +642,9 @@ Move `http://oms.test/admin` off threaded `mod_php` to the same FastCGI isolatio
 - **Tests:** AccountStatementReport + ComprehensiveFinancialTransactionsLargeExport + ComprehensiveFinancialTransactionsSnapshotFormat + ComprehensiveReportProjectionPage + ComprehensiveTransactionTypeMultiSelect — 129 tests / 13,633 assertions, all pass.
 - Pint clean.
 - The temporary probe was deleted (404 on both hosts).
+
+### Commit Hash
+`530e422` fix(jobs): declare report export job timeout (the comprehensive Excel job; the account statement jobs carry the declaration in `e0392c1`); documentation: `696b4e8` docs(dev): document isolated local FastCGI runtimes — committed on 2026-10-11 in the rebuilt history after `77c764e`; not pushed.
 
 ---
 
@@ -689,6 +707,9 @@ Isolate the LAN stress site from normal `oms` at the PHP process level, so that 
 ### Verification
 - `httpd -t` returned Syntax OK, and `httpd -S` showed the expected vhost map.
 - The identity load tests, browser tests and fingerprints are listed above. No PHPUnit run was needed: no application code changed.
+
+### Commit Hash
+`696b4e8` docs(dev): document isolated local FastCGI runtimes (server configuration itself is outside the repository) — committed on 2026-10-11 in the rebuilt history after `77c764e`; not pushed.
 
 ---
 
@@ -797,6 +818,9 @@ Targeted tests only:
 | ComprehensiveReportProjectionPage + AccountStatementReport | 78 | 2,348 |
 
 All pass. In the browser: styling, labels, rows and the new polling were checked. The concurrency run surfaced the environment race described above. Test export jobs and files were removed from `oms_stress`.
+
+### Commit Hash
+`e0392c1` feat(account-statement): add projected multi-account reporting and CSV export (together with the redesign and the 2026-10-08 CSV export) — committed on 2026-10-11 in the rebuilt history after `77c764e`; not pushed.
 
 ---
 
@@ -947,6 +971,9 @@ Targeted tests only (never the full suite):
 - `ComprehensiveReportProjectionWritePathsTest` + `ComprehensiveReportProjectionPageTest`: 41 / 248, pass.
 
 On stress: verifier 0 differences; 600-sample balance check 0; parity 0 mismatches (151 statements) and 4/4 multi-account; benchmark matrix as above. No commit.
+
+### Commit Hash
+`e0392c1` feat(account-statement): add projected multi-account reporting and CSV export (together with the polish and the 2026-10-08 CSV export) — committed on 2026-10-11 in the rebuilt history after `77c764e`; not pushed.
 
 ---
 
