@@ -57,11 +57,8 @@ class GeneralExpenseForm
                         $set('credit_account_id', null);
                     }),
 
-                DatePicker::make('date')
-                    ->label('تاريخ المصروف')
-                    ->default(today())
-                    ->required(),
-
+                // Two per row, in this order: المبلغ | العملة,
+                // تصنيف المعاملة | نوع المعاملة, السنة المالية | تاريخ المصروف.
                 Select::make('transaction_super_type_id')
                     ->label('تصنيف المعاملة')
                     ->options(fn () => TransactionSuperType::orderBy('name')->pluck('name', 'id'))
@@ -82,6 +79,11 @@ class GeneralExpenseForm
                     ->label('السنة المالية')
                     ->options(fn () => FiscalYear::where('is_active', true)->orderBy('name')->pluck('name', 'id'))
                     ->preload()
+                    ->required(),
+
+                DatePicker::make('date')
+                    ->label('تاريخ المصروف')
+                    ->default(today())
                     ->required(),
 
                 Textarea::make('description')
