@@ -5,6 +5,7 @@ use App\Http\Controllers\Backups\BackupDownloadController;
 use App\Http\Controllers\Reports\AccountStatementExcelDownloadController;
 use App\Http\Controllers\Reports\ComprehensiveFinancialTransactionsCsvDownloadController;
 use App\Http\Controllers\Reports\ComprehensiveFinancialTransactionsExcelDownloadController;
+use App\Http\Controllers\Reports\DonorFinancialReportCsvDownloadController;
 use App\Http\Controllers\Restores\RestoreLaunchController;
 use App\Http\Controllers\Restores\RestoreProgressPollController;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
@@ -91,6 +92,16 @@ Route::get('/reports/comprehensive-financial-transactions/exports/{export}/csv-s
     ->where('export', '[0-9a-hjkmnp-tv-z]{26}')
     ->middleware(\Filament\Http\Middleware\Authenticate::class)
     ->name('reports.comprehensive-financial-transactions.csv-status');
+
+// «تصدير البيانات CSV» package of "تقرير الجهات المانحة" (one .csv, or a ZIP
+// of CSVs) the page built inside the click request — same shape and
+// guarantees as the CSV routes above: opaque ULID, Filament auth + signature;
+// the controller re-checks both report permissions and ownership, and audits
+// the first delivery.
+Route::get('/reports/donor-financial-report/exports/{export}/csv', [DonorFinancialReportCsvDownloadController::class, 'show'])
+    ->where('export', '[0-9a-hjkmnp-tv-z]{26}')
+    ->middleware([\Filament\Http\Middleware\Authenticate::class, 'signed'])
+    ->name('reports.donor-financial-report.csv');
 
 // Large-report Excel download for "تقرير كشف الحساب" — same shape and
 // guarantees as the route above (opaque ULID, Filament auth + signature;

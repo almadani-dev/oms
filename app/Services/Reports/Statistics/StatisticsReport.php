@@ -12,11 +12,14 @@ namespace App\Services\Reports\Statistics;
  * CSV»).
  *
  * Table cell kinds: text | count (int; null = empty) | money (exact
- * 2-decimal string or the report's float) | balanced (bool → متوازن /
- * غير متوازن).
+ * 2-decimal string or the report's float) | money_optional (as money; null
+ * = ABSENT) | balanced (bool → متوازن / غير متوازن).
  */
 final class StatisticsReport
 {
+    /** What a money_optional cell shows when the amount is absent. */
+    public const ABSENT = '—';
+
     /**
      * @var array<int, array{name: string, widths: array<int, float|int>, blocks: array<int, array<string, mixed>>}>
      */

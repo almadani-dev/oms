@@ -27,6 +27,13 @@ Current open work only; history lives in TASKS_LOG. Deployment detail: AI_PROJEC
 - `general_expenses.partner_id` is write-never since 2026-09-22; dropping it (and `general_exchanges.partner_id` / `الجهة`) is a separate, explicitly-scoped decision after a `partner_id` impact audit on production data.
 - Whether account deletion should be blocked when the account has transaction lines (deleting an account with an opening balance leaves its OPB transaction in place).
 
+**3b. Donor Financial Report exports (2026-10-12, uncommitted — awaiting approval):**
+- Commit after approval (server-side report state, three-table screen paging, line-grain CSV, selectors — TASKS_LOG 2026-10-12).
+- Pre-existing, not changed: «عرض» for the largest donor still waits ~11 s (up to ~19–30 s on a cold buffer pool) in `DonorFinancialReportService::generate()` itself; speeding it up needs its own audit.
+- Optional, one line per query: give `DonorFinancialReportService::buildMovements()` the CSV's tie order (id), so screen and CSV agree row for row (today ties of the same date text and kind are in database order; 227 tie groups for donor 17).
+- Business decision: the screen and CSV show a line's `debit_base` / `credit_base` (base currency) next to the line's own currency code.
+- Business decision: the disbursement summaries count budgets whose transaction is soft-deleted (`transaction_id IS NOT NULL` only), the movement list does not (`t.deleted_at IS NULL`).
+
 **4. Separate, pre-existing issues:**
 - `MuwakhaFamilyImportTest` fails 20 tests on this Windows machine: the import command resolves an absolute temp path as relative («Source file not found: C:\laragon\www\oms\C:\Users\…»).
 - An unauthenticated `Accept: application/json` request to any Filament-authenticated route answers 500 instead of 401.

@@ -94,6 +94,7 @@ final class StatisticsDocument
     {
         return match ($kind) {
             'money' => number_format(round((float) $value, 2), 2),
+            'money_optional' => $value === null ? StatisticsReport::ABSENT : number_format(round((float) $value, 2), 2),
             'count' => $value === null ? '' : number_format((int) $value),
             'balanced' => $value ? 'متوازن' : 'غير متوازن',
             default => is_int($value) ? number_format($value) : (string) $value,

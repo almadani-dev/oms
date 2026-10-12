@@ -13,6 +13,24 @@
         return 'donor-rpt-number';
     };
 
+    // Renders one project amount cell: each currency on its own line (the
+    // screen's per-currency stack), «—» when the project has none. Built as
+    // compact HTML, like $linesDetail below: inside the projects loop the
+    // template's indentation alone was more than half of that table's HTML.
+    $perCurrency = function (array $values, bool $signed) use ($money, $signClass) {
+        if ($values === []) {
+            return '<span class="donor-rpt-number" style="color: var(--dr-muted);">—</span>';
+        }
+
+        $html = '';
+        foreach ($values as $code => $value) {
+            $html .= '<span class="'.e($signed ? $signClass($value) : 'donor-rpt-number').'">'
+                .$money($value).' <span class="donor-rpt-number-code">'.e($code).'</span></span>';
+        }
+
+        return $html;
+    };
+
     // Renders a per-movement "بنود القيد" expandable widget: account,
     // currency, debit, credit, دور سطر القيد, وصف سطر القيد for every active
     // line of the movement's transaction. Returns raw HTML (escaped manually).
@@ -251,6 +269,24 @@
             font-weight: 700;
         }
 
+        .donor-rpt-pager {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .donor-rpt-pager-info {
+            min-width: 11rem;
+            text-align: center;
+            color: var(--dr-muted);
+            font-size: 0.82rem;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+
         @media (max-width: 1100px) {
             .donor-rpt-summary-grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -261,6 +297,8 @@
             .donor-rpt-summary-grid {
                 grid-template-columns: 1fr;
             }
+
+            .donor-rpt-pager-info { min-width: 100%; order: -1; }
         }
     </style>
 
@@ -283,6 +321,10 @@
             @if (! $hasSubmitted)
                 <section class="donor-rpt-card">
                     <div class="donor-rpt-empty">يرجى اختيار الجهة المانحة ثم الضغط على عرض</div>
+                </section>
+            @elseif ($reportExpired)
+                <section class="donor-rpt-card">
+                    <div class="donor-rpt-empty">{{ \App\Filament\Pages\DonorFinancialReportPage::REPORT_EXPIRED_NOTICE }}</div>
                 </section>
             @else
                 {{-- A) Donor summary --}}
@@ -416,7 +458,7 @@
                     @endif
                 </section>
 
-                {{-- D) Projects table --}}
+                {{-- D) Projects table — one page of 50 at a time; the exports cover them all --}}
                 <section class="donor-rpt-card">
                     <div class="donor-rpt-section-title">مشاريع الجهة المانحة ({{ $report['projects_count'] }})</div>
                     @if (empty($report['projects']))
@@ -443,7 +485,7 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach ($report['projects'] as $project)
+                                    @foreach ($projectRows as $project)
                                         <tr>
                                             <td dir="ltr">{{ $project['code'] ?: '-' }}</td>
                                             <td>{{ $project['name'] }}</td>
@@ -454,25 +496,24 @@
                                             <td dir="ltr">{{ $project['start_date'] ?: '-' }}</td>
                                             <td dir="ltr">{{ $project['end_date'] ?: '-' }}</td>
                                             @foreach (['planned' => false, 'received' => false, 'surplus' => true, 'final' => false, 'execution_paid' => false, 'remaining' => true] as $key => $signed)
-                                                <td>
-                                                    @forelse ($project[$key] as $code => $value)
-                                                        <span class="{{ $signed ? $signClass($value) : 'donor-rpt-number' }}">
-                                                            {!! $money($value) !!} <span class="donor-rpt-number-code">{{ $code }}</span>
-                                                        </span>
-                                                    @empty
-                                                        <span class="donor-rpt-number" style="color: var(--dr-muted);">—</span>
-                                                    @endforelse
-                                                </td>
+                                                <td>{!! $perCurrency($project[$key], $signed) !!}</td>
                                             @endforeach
                                         </tr>
                                     @endforeach
                                 </tbody>
                             </table>
                         </div>
+
+                        @include('filament.pages.partials.donor-financial-report-pager', [
+                            'pager' => $projectsPager,
+                            'method' => 'goToProjectsPage',
+                            'noun' => 'المشاريع',
+                            'pagerLabel' => 'صفحات مشاريع الجهة المانحة',
+                        ])
                     @endif
                 </section>
 
-                {{-- E) Project cost details --}}
+                {{-- E) Project cost details — one page of 50 at a time; the exports cover them all --}}
                 <section class="donor-rpt-card">
                     <div class="donor-rpt-section-title">تفاصيل تكاليف المشاريع</div>
                     @if (empty($report['cost_details']))
@@ -492,7 +533,7 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach ($report['cost_details'] as $row)
+                                    @foreach ($costItemRows as $row)
                                         <tr>
                                             <td>
                                                 <span dir="ltr">{{ $row['project_code'] ?: '' }}</span>
@@ -509,13 +550,20 @@
                                 </tbody>
                             </table>
                         </div>
+
+                        @include('filament.pages.partials.donor-financial-report-pager', [
+                            'pager' => $costItemsPager,
+                            'method' => 'goToCostItemsPage',
+                            'noun' => 'البنود',
+                            'pagerLabel' => 'صفحات تفاصيل تكاليف المشاريع',
+                        ])
                     @endif
                 </section>
 
-                {{-- F) Financial movements --}}
+                {{-- F) Financial movements — one stored page at a time; the exports cover them all --}}
                 <section class="donor-rpt-card">
-                    <div class="donor-rpt-section-title">الحركات المالية ({{ count($report['movements']) }})</div>
-                    @if (empty($report['movements']))
+                    <div class="donor-rpt-section-title">الحركات المالية ({{ $report['movements_count'] }})</div>
+                    @if (empty($movementRows))
                         <div class="donor-rpt-empty">لا توجد حركات مالية</div>
                     @else
                         <div class="donor-rpt-table-wrap">
@@ -537,7 +585,7 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach ($report['movements'] as $row)
+                                    @foreach ($movementRows as $row)
                                         <tr>
                                             <td dir="ltr">{{ $row['date'] ? \Illuminate\Support\Carbon::parse($row['date'])->format('Y-m-d') : '-' }}</td>
                                             <td>{{ $row['kind_label'] }}</td>
@@ -565,6 +613,13 @@
                                 </tbody>
                             </table>
                         </div>
+
+                        @include('filament.pages.partials.donor-financial-report-pager', [
+                            'pager' => $movementsPager,
+                            'method' => 'goToMovementsPage',
+                            'noun' => 'الحركات',
+                            'pagerLabel' => 'صفحات الحركات المالية',
+                        ])
                     @endif
                 </section>
             @endif

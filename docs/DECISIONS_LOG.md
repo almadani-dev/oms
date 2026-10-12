@@ -13,6 +13,25 @@
 ---
 
 ### Date
+2026-10-12 (Donor Financial Report: data export vs statistics export)
+
+### Decision
+- **CSV = the financial movements only**; the projects table and the cost-item table go to the statistics (both are per-project / per-cost-item aggregates). User choice over "movements + cost items" and "all three tables".
+- **One CSV row per ACCOUNTING LINE** (user correction of the earlier "one row per movement, lines folded"): the movement's columns repeat on each of its lines, so a movement's amount appears once per line — sum the debit / credit columns, not «المبلغ». A movement without an active line keeps one row with empty line cells (none on `oms_stress`).
+- **CSV built synchronously** in the click request (no queue / polling): one donor per report; still ~13 s for the largest donor at line grain. User choice.
+- **The report is kept server-side** (approved): an owner-scoped file store keyed by a locked token, not Livewire state and not the database cache (the largest report is ~18 MB serialized, above the cache table's value size); no migration. Raising Livewire's `payload.max_size` was rejected.
+- **Screen paging, display only** (approved): movements, projects and cost items 50 rows per page (OMS convention), three independent pagers (First / Previous / Next / Last). Movements are cut into stored page files at «عرض» (read directly by number — the "keyset" of a fixed, immutable list; no database OFFSET, nothing re-queried); projects / cost items (≤ a few hundred rows) are sliced from the stored summary, the same arrays the statistics exports read whole, so screen and exports cannot drift. CSV / Excel / Word unchanged and always full-scope.
+- Projects in the statistics: one row per project × currency (the screen stacks currencies in one cell); an absent figure is «—», as on screen.
+
+### Reason
+- Same model as the two other financial reports; the donor report cannot exceed ~22k lines on `oms_stress`.
+
+### Impact
+- Old `DonorFinancialReportExcelExportService` / `DonorFinancialReportWordExportService` removed (approved; zero callers after browser validation).
+
+---
+
+### Date
 2026-10-11 (both financial reports: data export vs statistics export; Word statistics-only; single-sheet Excel; cleanup scope)
 
 ### Decision

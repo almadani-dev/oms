@@ -6,8 +6,9 @@ namespace App\Services\Audit\Reports;
  * What an export delivers, recorded beside its format in the
  * `report_export.export_requested` payload (`purpose`, `purpose_label`).
  *
- * The two financial reports with a data / statistics split (تقرير كشف
- * الحساب, تقرير الحركات المالية الشامل, 2026-10-11):
+ * The financial reports with a data / statistics split (تقرير كشف
+ * الحساب, تقرير الحركات المالية الشامل, 2026-10-11; تقرير الجهات المانحة,
+ * 2026-10-12):
  *
  *  - DetailData  «تصدير البيانات CSV»: the detailed rows only
  *  - Statistics  «تصدير الإحصائيات Excel» / «تصدير الإحصائيات Word»:

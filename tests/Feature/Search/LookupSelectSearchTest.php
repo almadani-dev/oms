@@ -323,7 +323,9 @@ class LookupSelectSearchTest extends TestCase
         $component = Livewire::test(DonorFinancialReportPage::class);
         $select = $this->select($component, 'donor_id');
 
-        $this->assertNoPreload($select);
+        // Opening, before typing: the donors (name order), never the non-donor.
+        $this->assertBoundedInitialOptions($select);
+        $this->assertSame([$this->light->id => $this->light->name, $this->hope->id => $this->hope->name], $select->getOptions());
         $this->assertSame([$this->hope->id => $this->hope->name], $select->getSearchResults('الامل'));
         $this->assertSame([], $select->getSearchResults('التاجر'), 'a non-donor partner is never offered');
 
@@ -338,12 +340,14 @@ class LookupSelectSearchTest extends TestCase
     {
         $component = Livewire::test(DonorFinancialReportPage::class);
 
-        // No donor yet: nothing to search.
+        // No donor yet: nothing to list or search.
+        $this->assertSame([], $this->select($component, 'project_id')->getOptions());
         $this->assertSame([], $this->select($component, 'project_id')->getSearchResults('مشروع'));
 
         $component->set('data.donor_id', $this->hope->id);
         $select = $this->select($component, 'project_id');
-        $this->assertNoPreload($select);
+        $this->assertBoundedInitialOptions($select);
+        $this->assertSame([$this->relief->id => "{$this->relief->code} - {$this->relief->name}"], $select->getOptions(), "the chosen donor's projects only");
         $this->assertSame([$this->relief->id => "{$this->relief->code} - {$this->relief->name}"], $select->getSearchResults('مشروع'));
         $this->assertSame([$this->relief->id => "{$this->relief->code} - {$this->relief->name}"], $select->getSearchResults($this->relief->code));
         $this->assertSame([], $select->getSearchResults('التعليم'), "another donor's project is never offered");
@@ -371,8 +375,24 @@ class LookupSelectSearchTest extends TestCase
         $component = Livewire::test(DonorFinancialReportPage::class);
         $this->assertCount(50, $this->select($component, 'donor_id')->getSearchResults('جهة'));
 
+        // Opening lists the first 50 donors by name; the last one (beyond
+        // them) is still found by search, and once chosen its label resolves
+        // and the value stays valid.
+        $donors = $this->select($component, 'donor_id');
+        $initialDonors = $donors->getOptions();
+        $this->assertCount(50, $initialDonors);
+        $this->assertSame($initialDonors, $donors->getSearchResults(''), 'the same rule as an empty search');
+        $last = Partner::where('is_donor', true)->orderByDesc('name')->firstOrFail();
+        $this->assertArrayNotHasKey($last->id, $initialDonors);
+        $this->assertSame([$last->id => $last->name], $donors->getSearchResults($last->name));
+
+        $component->set('data.donor_id', $last->id);
+        $this->assertSame($last->name, $this->select($component, 'donor_id')->getOptionLabel(withDefault: false));
+        $this->assertNull($this->select($component, 'donor_id')->getInValidationRuleValues());
+
         $component->set('data.donor_id', $this->hope->id);
         $this->assertCount(50, $this->select($component, 'project_id')->getSearchResults('رقم'));
+        $this->assertCount(50, $this->select($component, 'project_id')->getOptions());
     }
 
     // =====================================================================

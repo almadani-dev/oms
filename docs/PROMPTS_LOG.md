@@ -13,6 +13,30 @@ Reusable prompt patterns and short references to past prompts. What was done liv
 ---
 
 ### Date
+2026-10-12 ("NEXT TASK — APPLY THE FINAL EXPORT MODEL TO DONOR FINANCIAL REPORT")
+
+### Prompt
+Apply CSV = detail / Excel + Word = statistics (one worksheet, Excel == Word) to تقرير الجهات المانحة; audit first, reuse the shared export infrastructure, benchmark on `oms_stress`, verify CSV against the report service, no commit.
+
+### Purpose
+- "AUDIT FIRST — DO NOT GUESS": the report has three detail-like tables, so the CSV scope, the line grain and the sync/background choice were asked before coding (DECISIONS_LOG 2026-10-12).
+- "Do not manufacture row counts": benchmarks stop at the largest real donor (9,695 movements).
+
+---
+
+### Date
+2026-10-12 ("DONOR FINANCIAL REPORT — FINAL FIX PASS BEFORE COMMIT")
+
+### Prompt
+Fix the Livewire payload blocker server-side (never by raising the limit), give the donor / project pickers a bounded initial list, and correct the CSV to one row per accounting line; measure payloads before / after; no commit.
+
+### Purpose
+- Records the CSV grain correction (DECISIONS_LOG 2026-10-12) and that browser payload sizes, not "smaller", are the acceptance evidence.
+- Follow-ups "BOUND THE RENDERED PAGE" and "PAGE PROJECTS AND COST ITEMS": page the on-screen movements, projects and cost items (50 / page, three independent pagers), exports stay full-scope; before / after HTML, payload and timings measured.
+
+---
+
+### Date
 2026-10-11 (both financial reports: "SEPARATE DATA EXPORT FROM STATISTICS EXPORT" → "Word must ALSO become STATISTICS-ONLY" → "FINAL PRE-COMMIT — single-sheet statistics Excel + safe dead-code cleanup")
 
 ### Prompt

@@ -8,6 +8,8 @@ use App\Services\Reports\AccountStatement\AccountStatementExcelExports;
 use App\Services\Reports\AccountStatement\Csv\AccountStatementCsvExport;
 use App\Services\Reports\ComprehensiveFinancialTransactions\Csv\ComprehensiveCsvExport;
 use App\Services\Reports\ComprehensiveFinancialTransactions\ExportTemporaryFiles;
+use App\Services\Reports\DonorFinancialReport\Csv\DonorFinancialReportCsvExport;
+use App\Services\Reports\DonorFinancialReport\DonorFinancialReportState;
 use Illuminate\Console\Command;
 
 /**
@@ -31,12 +33,14 @@ class PurgeReportSnapshotsCommand extends Command
         ComprehensiveFinancialTransactionsExcelExports $workbooks,
         ExportTemporaryFiles $temporaryFiles,
     ): int {
-        $removed = $repository->purge(now());
+        // Comprehensive snapshots and the donor report's displayed reports
+        // (DonorFinancialReportState) left behind by closed tabs.
+        $removed = $repository->purge(now()) + app(DonorFinancialReportState::class)->purge(now());
         // Account statement exports (workbooks never downloaded, CSV
-        // packages after their download window), the comprehensive report's
-        // CSV packages, and crashed CSV builds of both.
-        $exports = $workbooks->purge(now()) + app(AccountStatementExcelExports::class)->purge(now()) + ComprehensiveCsvExport::store()->purge(now());
-        $files = $temporaryFiles->purge(now()) + AccountStatementCsvExport::purge(now()) + ComprehensiveCsvExport::purge(now());
+        // packages after their download window), the comprehensive and
+        // donor reports' CSV packages, and crashed CSV builds of all three.
+        $exports = $workbooks->purge(now()) + app(AccountStatementExcelExports::class)->purge(now()) + ComprehensiveCsvExport::store()->purge(now()) + DonorFinancialReportCsvExport::store()->purge(now());
+        $files = $temporaryFiles->purge(now()) + AccountStatementCsvExport::purge(now()) + ComprehensiveCsvExport::purge(now()) + DonorFinancialReportCsvExport::purge(now());
 
         $this->info("Removed {$removed} report snapshot(s), {$exports} prepared export(s) and {$files} stale temporary file(s).");
 

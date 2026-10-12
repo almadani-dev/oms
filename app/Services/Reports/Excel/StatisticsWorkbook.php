@@ -186,7 +186,8 @@ final class StatisticsWorkbook
 
     /**
      * A bordered table. $kinds per column: text | count (null = empty cell)
-     * | money | balanced (a bool shown as متوازن / غير متوازن in colour).
+     * | money | money_optional (null = «—») | balanced (a bool shown as
+     * متوازن / غير متوازن in colour).
      *
      * @param  array<int, string>  $headers
      * @param  iterable<array<int, mixed>>  $rows
@@ -247,6 +248,8 @@ final class StatisticsWorkbook
             // 2-decimal amounts; a value the report holds as a float sum
             // (e.g. a difference) is stored as shown, without float noise.
             'money' => new NumericCell(round((float) $value, 2), $this->style('money')),
+            // An amount the report shows as "—" when absent (null).
+            'money_optional' => $value === null ? $this->text(StatisticsReport::ABSENT, 'cell') : new NumericCell(round((float) $value, 2), $this->style('money')),
             'count' => $value === null ? new EmptyCell(null, $this->style('cell')) : new NumericCell((int) $value, $this->style('count')),
             'balanced' => $this->text($value ? 'متوازن' : 'غير متوازن', $value ? 'success' : 'danger'),
             default => $this->text((string) $value, 'cell'),

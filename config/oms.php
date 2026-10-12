@@ -201,6 +201,46 @@ return [
                 'attempts' => 2,
             ],
         ],
+
+        // "تقرير الجهات المانحة" «تصدير البيانات CSV»
+        // (DonorFinancialReportCsvExport): the accounting lines ONLY of the
+        // APPLIED filters' financial movements, one row per line
+        // (statistics are «تصدير الإحصائيات Excel / Word»). One donor per
+        // report (≤ ~22k lines on oms_stress), so it is built inside the
+        // click request — no queue.
+        'donor_financial_report' => [
+            // The displayed report, kept on the server
+            // (DonorFinancialReportState) instead of in Livewire state;
+            // removed by oms:purge-report-snapshots after this many minutes.
+            'state' => [
+                'disk' => env('OMS_DFR_STATE_DISK', 'report_snapshots'),
+                'ttl_minutes' => 240,
+                // Movements per screen page (the stored report is cut into
+                // pages of this size at «عرض»).
+                'page_size' => 50,
+            ],
+            'csv' => [
+                // Accounting-line rows per CSV; above it, a ZIP of
+                // بيانات_الجهات_المانحة_NNN.csv (Excel's sheet limit is
+                // 1,048,576 rows including the header).
+                'max_rows_per_file' => 1000000,
+                // ZIP entries: 'deflate' (level 1) or 'store'.
+                'zip_compression' => env('OMS_DFR_CSV_ZIP_COMPRESSION', 'deflate'),
+                // A second click with the same applied filters within this
+                // many seconds re-delivers the package just built instead
+                // of building it again.
+                'recent_export_seconds' => 30,
+                // Export store (AccountStatementExcelExports with this
+                // prefix): same private disk and lifecycle as the other
+                // reports' CSV packages.
+                'export_disk' => env('OMS_DFR_EXPORT_DISK', 'report_snapshots'),
+                'export_temp_dir' => storage_path('app/private/report-exports'),
+                'job_timeout' => 600,
+                'pending_stale_minutes' => 30,
+                'export_temp_max_age_minutes' => 60,
+                'export_url_ttl_minutes' => 10,
+            ],
+        ],
     ],
 
     'backup' => [

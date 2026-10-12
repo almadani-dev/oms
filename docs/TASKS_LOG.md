@@ -16,6 +16,36 @@
 ---
 
 ### Date
+2026-10-12 (Donor Financial Report — final export model, server-side report state, line-grain CSV, selectors; verified on `oms_stress`; uncommitted)
+
+### Task
+Apply «تصدير البيانات CSV» (detail only) / «تصدير الإحصائيات Excel / Word» (statistics only, one worksheet) to تقرير الجهات المانحة; then fix the Livewire payload blocker, the search-only pickers and the CSV grain.
+
+### Result
+- Buttons «تصدير البيانات CSV» · «تصدير الإحصائيات Excel» · «تصدير الإحصائيات Word»; filters, «عرض» gate (a filter change clears the report and blocks export), browsing and formulas unchanged.
+- Report state server-side (`DonorFinancialReportState`): Livewire request after «عرض» 3,655 KB → 1.3–1.5 KB (donor 295), ~31–37 MB → 1.2–1.5 KB (donor 17); no `PayloadTooLargeException`, no 500 (44 requests in the browser run, all 200).
+- Pickers: 50 donors / 50 projects of the donor on opening; donors 17 / 295 / 300 (positions 136 / 227 / 274 by name) found by search, labels resolved.
+- CSV: 19 columns, one row per accounting line — التاريخ, نوع الحركة, كود المشروع, اسم المشروع, رقم المعاملة, وصف العملية المالية, المرجع, المبلغ, العملة, المبلغ النهائي (بعد الخصومات والتحويل), عملة الصرف, ملاحظات, رمز الحساب, اسم الحساب, عملة السطر, مدين, دائن, دور سطر القيد, وصف سطر القيد. Reuses `AccountStatementCsvFormat` / `…CsvPart` / `…CsvZip` / `…CsvSnapshot` and the owner-scoped export store; per-user lock + 30 s re-delivery of an identical export.
+- Statistics: one sheet «الإحصائيات»; Excel == Word.
+- **Verifier (CSV vs `DonorFinancialReportService::generate()` + an independent SQL count of active lines), 14 cases** (donor 17 all / date / status / type / EUR / ILS / one project / project+ILS / combined; donors 8, 295, 300, 344): 0 differences; rows = service lines = SQL lines (donor 17: 9,695 movements → 21,546 rows); 0 duplicates; ties of the same date text and kind ordered by id (the service: database order).
+- **Benchmarks (dev laptop, noisy; 128 MB buffer pool), donor 17:** movement query 3.9–5.9 s, line query 4.5–5.2 s, reader 9.3–10.4 s, encoding negligible, file ready 12.6–13.7 s (1,572–1,685 rows/s), 17.6 MB raw / 1.6 MB ZIP, peak ~10 MB above baseline. «عرض» (service) 9.8–11.4 s; store write ≤ 0.12 s, reads ≤ 0.07 s; Excel / Word ≤ 0.43 s, 47 / 40 KB. Donors 295 / 300: CSV 0.24 / 0.06 s.
+- Browser (stress site): donors 17, 295, 300 — «عرض», CSV (downloads 200: 17,989,622 / 1,808,005 / 145,477 bytes), Excel, Word, filter change after «عرض» (report cleared, export blocked); audit 9 events `csv/detail_data`, `xlsx|docx/statistics`, ids and counts only.
+- **Screen paging (movements, projects, cost items — 50 / page, independent pagers):** donor 17 «عرض» HTML 35.1 MB → 0.48 MB server-side (browser response 54.3 MB → 0.63 MB; the projects cell markup was also compacted — its indentation was half that table's HTML); re-render 0.70 s / +102 MB → 0.07 s / +4 MB; page moves 0.06–0.14 s server, 0.44–0.87 s in a visible browser tab (1.6–2.7 s when the automated tab is hidden: timer / rAF throttling). Requests 1.4–1.6 KB, state out ~1.2 KB. Stored pages / slices == the service's movements (9,695), projects (120) and cost items (345), order and values, 0 duplicates (donors 17, 8, 295, 300). Exports from pages 2/3 · 7/7 · 2/194: CSV 21,546 rows / 17,989,622 bytes, Excel / Word 120 projects / 345 cost items. 88 browser requests, all 200.
+
+### Changed Files
+- New: `app/Services/Reports/DonorFinancialReport/{DonorFinancialReportState,DonorFinancialReportStatistics}.php`, `…/Csv/DonorFinancialReportCsvExport.php`, `…/Csv/DonorFinancialReportCsvFormat.php`, `app/Http/Controllers/Reports/DonorFinancialReportCsvDownloadController.php`, `tests/Feature/Reports/DonorFinancialReportExportTest.php`.
+- Changed: `app/Filament/Pages/DonorFinancialReportPage.php`, `resources/views/filament/pages/donor-financial-report-page.blade.php` (+ new `partials/donor-financial-report-pager.blade.php`), `app/Services/Reports/{Statistics/StatisticsReport,Excel/StatisticsWorkbook,Word/StatisticsDocument}.php` (`money_optional`), `app/Console/Commands/PurgeReportSnapshotsCommand.php`, `app/Services/Audit/Reports/{ReportExportFormat,ReportExportPurpose}.php` (comments), `config/oms.php`, `routes/web.php`, `tests/Feature/Search/LookupSelectSearchTest.php`.
+- Deleted (zero callers): `app/Services/Reports/DonorFinancialReportExcelExportService.php`, `app/Services/Reports/DonorFinancialReportWordExportService.php`.
+
+### Verification
+- `DonorFinancialReportExportTest` 21/21 (689 assertions); `LookupSelectSearchTest` 20/20, `ReportExportAuditTest` 23/23, `ReportExportAuthorizationTest` 28/28, `ReportPageAccessTest` 30/30, `AccountStatementStatisticsExcelTest` 8/8, `ComprehensiveStatisticsExcelTest` 8/8. Full suites not run (forbidden).
+
+### Commit Hash
+Not committed (awaiting approval).
+
+---
+
+### Date
 2026-10-11 (final pre-commit — single-sheet statistics Excel + safe dead-code cleanup; verified on `oms_stress`)
 
 ### Task

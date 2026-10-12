@@ -12,8 +12,10 @@ namespace App\Services\Audit\Reports;
  *          ("تصدير CSV", تقرير كشف الحساب, 2026-10-08)
  *          ComprehensiveCsvExport                -> .csv, or .zip of UTF-8 CSVs
  *          ("تصدير CSV", تقرير الحركات المالية الشامل, 2026-10-10)
+ *          DonorFinancialReportCsvExport         -> .csv, or .zip of UTF-8 CSVs
+ *          («تصدير البيانات CSV», تقرير الجهات المانحة, 2026-10-12)
  *
- * For those two reports (2026-10-11) CSV is «تصدير البيانات CSV» (detail rows
+ * For those reports (2026-10-11 / 2026-10-12) CSV is «تصدير البيانات CSV» (detail rows
  * only), Xlsx is «تصدير الإحصائيات Excel» and Docx «تصدير الإحصائيات Word»
  * (statistics only, one shared model); the event's `purpose`
  * (ReportExportPurpose) says which.
