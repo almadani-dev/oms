@@ -16,7 +16,7 @@
 ---
 
 ### Date
-2026-10-13 (Donor Financial Report — real-time projection read path; `oms_stress` only; uncommitted)
+2026-10-13 (Donor Financial Report — real-time projection read path; `oms_stress` only; committed `4b9f8c8`)
 
 ### Task
 Remove the full-report rebuild from «عرض»: derived projection maintained in the same DB transaction as every financial write, 50-row reads, exact summaries, rebuild / verify commands, parity with the legacy service.
@@ -39,7 +39,7 @@ Remove the full-report rebuild from «عرض»: derived projection maintained in
 - `DonorFinancialReportExportTest` 26/26, `DonorFinancialReportProjectionWritePathsTest` 10/10, `ComprehensiveReportProjectionWritePathsTest` 11/11, `AccountStatementWritePathsTest` 8/8, `ReportExportAuditTest` 23/23, `ReportExportAuthorizationTest` 28/28, `ReportPageAccessTest` 30/30, `CleanOperationalDataCommandTest` 37/37, financial audit / guard / attachment tests of the three workflows (11 files) all pass. Full suites not run (forbidden).
 
 ### Commit Hash
-Not committed (awaiting approval).
+`4b9f8c8` feat(donor-report): add real-time reporting projection (not pushed).
 
 ---
 
