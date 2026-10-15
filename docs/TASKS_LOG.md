@@ -44,7 +44,7 @@ Remove the full-report rebuild from «عرض»: derived projection maintained in
 ---
 
 ### Date
-2026-10-12 (Donor Financial Report — final export model, server-side report state, line-grain CSV, selectors; verified on `oms_stress`; uncommitted)
+2026-10-12 (Donor Financial Report — final export model, server-side report state, line-grain CSV, selectors; verified on `oms_stress`; committed `9026abf`)
 
 ### Task
 Apply «تصدير البيانات CSV» (detail only) / «تصدير الإحصائيات Excel / Word» (statistics only, one worksheet) to تقرير الجهات المانحة; then fix the Livewire payload blocker, the search-only pickers and the CSV grain.
@@ -69,7 +69,7 @@ Apply «تصدير البيانات CSV» (detail only) / «تصدير الإح�
 - `DonorFinancialReportExportTest` 21/21 (689 assertions); `LookupSelectSearchTest` 20/20, `ReportExportAuditTest` 23/23, `ReportExportAuthorizationTest` 28/28, `ReportPageAccessTest` 30/30, `AccountStatementStatisticsExcelTest` 8/8, `ComprehensiveStatisticsExcelTest` 8/8. Full suites not run (forbidden).
 
 ### Commit Hash
-Not committed (awaiting approval).
+`9026abf` feat(donor-report): modernize exports and bound report state.
 
 ---
 
