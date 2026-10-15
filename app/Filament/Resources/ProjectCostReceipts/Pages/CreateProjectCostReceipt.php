@@ -15,6 +15,7 @@ use App\Services\Audit\Financial\FinancialAccountRole;
 use App\Services\Audit\Financial\FinancialAuditRecorder;
 use App\Services\Audit\Financial\FinancialAuditSubject;
 use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportProjector;
+use App\Services\Reports\DonorFinancialReport\Projection\DonorReportProjector;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
@@ -123,6 +124,10 @@ class CreateProjectCostReceipt extends CreateRecord
             // "تقرير الحركات المالية الشامل" from the final ledger state, inside
             // this same DB transaction (a failure rolls all of it back).
             app(ComprehensiveReportProjector::class)->syncTransaction($transaction->id);
+
+            // Donor report projection: re-derive this receipt from its final
+            // state, inside this same DB transaction.
+            app(DonorReportProjector::class)->syncReceipts([$receipt->id]);
 
             // STEP 6 - If file uploaded
             if (!empty($data['receipt_image'])) {

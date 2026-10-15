@@ -12,6 +12,7 @@ use App\Services\Audit\Financial\FinancialAccountRole;
 use App\Services\Audit\Financial\FinancialAuditRecorder;
 use App\Services\Audit\Financial\FinancialAuditSubject;
 use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportProjector;
+use App\Services\Reports\DonorFinancialReport\Projection\DonorReportProjector;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
@@ -268,6 +269,10 @@ class ProjectCostBudgetsPaymentsTable
 
             // STEP 4 - Soft delete the project_cost_budgets row
             $record->delete();
+
+            // Donor report projection: the disbursement (and its execution payments) leaves the report, inside this
+            // same DB transaction (after its own soft delete).
+            app(DonorReportProjector::class)->syncBudgets([$record->id]);
 
             // STEP 6 - One financial AuditEvent carrying the pre-delete
             // snapshot, inside this same transaction and REQUIRED.

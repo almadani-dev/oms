@@ -13,6 +13,24 @@
 ---
 
 ### Date
+2026-10-13 (Donor Financial Report: real-time projection)
+
+### Decision
+- **Schema approved by the user** before applying it: two derived tables keyed by cost item (`donor_report_movements`, `donor_report_lines`) + a state row; no text copied; projects / cost items / accounts / currencies read live; legacy service kept as the automatic fallback while the projection is not READY.
+- Synchronous maintenance by explicit calls at the 9 receipt / disbursement / execution-payment write sites (not via the ledger projector: its delete-path call runs before the business row's soft delete).
+- Summaries computed at «عرض» into small locked Livewire state (Account Statement pattern); pages and exports read the projection live with the applied filters. The disk-backed `DonorFinancialReportState` is used only by the legacy path.
+- Text copy for the CSV (line descriptions, transaction texts, notes) measured but NOT done: proposal only (NEXT_STEPS).
+- Disbursement-final currency row order: deterministic (currency id); the legacy order was MySQL temp-table order (undefined). Values unchanged.
+
+### Reason
+- Donor 17 «عرض» was 10–13 s of random I/O into the ledger; cost-item clustering makes each donor a few contiguous ranges.
+
+### Impact
+- Writes +2–16 ms median per source; the known soft-delete inconsistency is reproduced, still unresolved.
+
+---
+
+### Date
 2026-10-12 (Donor Financial Report: data export vs statistics export)
 
 ### Decision

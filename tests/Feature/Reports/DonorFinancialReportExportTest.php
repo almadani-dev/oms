@@ -13,6 +13,8 @@ use App\Services\Reports\DonorFinancialReport\Csv\DonorFinancialReportCsvExport;
 use App\Services\Reports\DonorFinancialReport\Csv\DonorFinancialReportCsvFormat;
 use App\Services\Reports\DonorFinancialReport\DonorFinancialReportState;
 use App\Services\Reports\DonorFinancialReport\DonorFinancialReportStatistics;
+use App\Services\Reports\DonorFinancialReport\Projection\DonorReportProjection;
+use App\Services\Reports\DonorFinancialReport\Projection\DonorReportProjectionRebuilder;
 use App\Services\Reports\DonorFinancialReportService;
 use App\Support\Permissions\PermissionRegistry;
 use Filament\Facades\Filament;
@@ -36,7 +38,12 @@ use Tests\TestCase;
 use ZipArchive;
 
 /**
- * "تقرير الجهات المانحة" — page state and exports, the final model:
+ * "تقرير الجهات المانحة" — page state and exports, the final model.
+ *
+ * The fixtures insert business rows directly (like the stress generator),
+ * so they rebuild the donor report projection afterwards; the tests about
+ * the server-side stored report pin the page to its legacy path (projection
+ * not READY), where that store is still used:
  *
  *  - the computed report lives on the server (DonorFinancialReportState),
  *    owner-scoped; the Livewire state keeps only a token, the applied
@@ -53,6 +60,8 @@ class DonorFinancialReportExportTest extends TestCase
     use StatisticsFileReader;
 
     private string $tempDir;
+
+    private bool $legacy = false;
 
     protected function setUp(): void
     {
@@ -108,6 +117,7 @@ class DonorFinancialReportExportTest extends TestCase
 
     public function test_a_large_report_stays_on_the_server_and_the_page_keeps_working_after_show(): void
     {
+        $this->legacyPath();
         $fx = $this->seedDonor();
         $this->bulkReceipts($fx['cost_usd'], 1500);
 
@@ -156,6 +166,7 @@ class DonorFinancialReportExportTest extends TestCase
 
     public function test_the_movements_are_shown_fifty_per_page_without_gap_or_duplicate(): void
     {
+        $this->legacyPath();
         $fx = $this->seedDonor();
         $this->bulkReceipts($fx['cost_usd'], 1500);
         $test = $this->page(['donor_id' => $fx['donor']]);
@@ -216,6 +227,7 @@ class DonorFinancialReportExportTest extends TestCase
 
     public function test_projects_and_cost_items_are_paged_fifty_per_page_on_independent_pagers(): void
     {
+        $this->legacyPath();
         $fx = $this->seedDonor();
         $this->bulkReceipts($fx['cost_usd'], 60);
         // 75 more projects of the donor, two cost items each: 77 projects
@@ -324,6 +336,7 @@ class DonorFinancialReportExportTest extends TestCase
 
     public function test_the_stored_report_is_owner_scoped_replaced_on_show_and_removed_on_a_filter_change(): void
     {
+        $this->legacyPath();
         $fx = $this->seedDonor();
         $owner = $this->superAdmin();
         $test = $this->page(['donor_id' => $fx['donor']], $owner);
@@ -353,6 +366,7 @@ class DonorFinancialReportExportTest extends TestCase
 
     public function test_the_report_token_cannot_be_swapped_from_the_browser(): void
     {
+        $this->legacyPath();
         $fx = $this->seedDonor();
         $test = $this->page(['donor_id' => $fx['donor']]);
 
@@ -362,6 +376,7 @@ class DonorFinancialReportExportTest extends TestCase
 
     public function test_an_expired_report_asks_for_show_again_and_blocks_exports(): void
     {
+        $this->legacyPath();
         $fx = $this->seedDonor();
         $test = $this->page(['donor_id' => $fx['donor']]);
 
@@ -699,6 +714,196 @@ class DonorFinancialReportExportTest extends TestCase
     }
 
     // =========================================================
+    // projection path (real-time projection READY)
+    // =========================================================
+
+    public function test_the_projection_path_reads_fifty_rows_per_table_and_never_rebuilds_the_report(): void
+    {
+        $fx = $this->seedDonor();
+        $this->bulkReceipts($fx['cost_usd'], 1500);
+        foreach (range(1, 75) as $i) {
+            $project = $this->project($fx['donor'], sprintf('BP-%03d', $i), 'مشروع دفعة', $fx['super'], $fx['status'], '2026-01-20');
+            $this->cost($project, 10, $fx['usd'], sprintf('بند-%03d-أ', $i));
+            $this->cost($project, 20, $fx['ils'], sprintf('بند-%03d-ب', $i));
+        }
+
+        $legacy = app(DonorFinancialReportService::class)->generate($fx['donor'], array_fill_keys(['date_from', 'date_to', 'project_status_id', 'project_super_id', 'currency_id', 'project_id'], null));
+        $test = $this->page(['donor_id' => $fx['donor']]);
+
+        // From here on the legacy service must never run: no «عرض» rebuild of
+        // the report from the ledger on any page move or export.
+        $this->app->instance(DonorFinancialReportService::class, new class extends DonorFinancialReportService
+        {
+            public function generate(int $donorId, array $filters): array
+            {
+                throw new \LogicException('The legacy report must not be generated on the projection path.');
+            }
+        });
+
+        $test->assertSet('fromProjection', true)->assertSet('reportToken', null)
+            ->assertSet('movementsPages', 31)->assertSet('projectsPages', 2)->assertSet('costItemsPages', 4)
+            ->assertSee('الحركات المالية (1506)')
+            ->assertSee('صفحة 1 من 31 — الحركات 1–50 من 1,506')
+            ->assertSee('صفحة 1 من 2 — المشاريع 1–50 من 77')
+            ->assertSee('صفحة 1 من 4 — البنود 1–50 من 152');
+        $this->assertLessThan(16 * 1024, strlen((string) json_encode($test->snapshot)), 'Only filters, counts, page numbers and the small summary.');
+        $this->assertSame([], Storage::disk('report_snapshots')->allFiles(), 'Nothing stored on disk for the screen.');
+        $this->assertSame($legacy['cost_summary'], $test->get('projectionSummary')['cost_summary']);
+        $this->assertSame($legacy['disb_source_summary'], $test->get('projectionSummary')['disb_source_summary']);
+        $this->assertSame($legacy['disb_final_summary'], $test->get('projectionSummary')['disb_final_summary']);
+
+        // Movements: every row once, in order, 50 per page, bounded HTML.
+        $seen = [];
+        for ($page = 1; $page <= 31; $page++) {
+            $html = $test->call('goToMovementsPage', $page)->html();
+            $this->assertLessThan(450 * 1024, strlen($html), 'Three 50-row tables (50 movements with 800-char notes, 50 projects, 50 cost items).');
+            preg_match_all('/(\d{5})x{800}/', $html, $m);
+            $this->assertLessThanOrEqual(50, count($m[1]) + ($page === 1 ? 6 : 0));
+            $seen = [...$seen, ...array_map('intval', $m[1])];
+            $test->assertSet('projectsPage', 1)->assertSet('costItemsPage', 1);
+        }
+        $this->assertSame(range(1, 1500), $seen, 'Every movement exactly once, in the report order.');
+        $test->assertSee('الحركات 1,501–1,506 من 1,506');
+        $test->call('goToMovementsPage', 99)->assertSet('movementsPage', 31);
+        $test->call('goToMovementsPage', -1)->assertSet('movementsPage', 1);
+
+        // Projects and cost items: each on its own pager, every row once.
+        $seenProjects = [];
+        foreach ([1, 2] as $page) {
+            $section = (string) strstr((string) strstr($test->call('goToProjectsPage', $page)->html(), 'مشاريع الجهة المانحة ('), 'تفاصيل تكاليف المشاريع', true);
+            preg_match_all('/BP-\d{3}/', $section, $m);
+            $seenProjects = [...$seenProjects, ...$m[0]];
+            $test->assertSet('movementsPage', 1)->assertSet('costItemsPage', 1);
+        }
+        $seenCosts = [];
+        foreach ([1, 2, 3, 4] as $page) {
+            preg_match_all('/بند-\d{3}-[أب]/u', $test->call('goToCostItemsPage', $page)->html(), $m);
+            $seenCosts = [...$seenCosts, ...$m[0]];
+            $test->assertSet('projectsPage', 2)->assertSet('movementsPage', 1);
+        }
+        $this->assertSame(array_values(array_filter(array_column($legacy['projects'], 'code'), fn ($c) => str_starts_with((string) $c, 'BP-'))), $seenProjects);
+        $this->assertSame(array_values(array_filter(array_column($legacy['cost_details'], 'notes'), fn ($n) => str_starts_with((string) $n, 'بند-'))), $seenCosts);
+        $test->assertSee('البنود 151–152 من 152');
+
+        // Exports cover the whole applied report, from any page.
+        $test->call('exportCsv');
+        $this->assertCount(1 + 1500 + 10, $this->parseCsv($this->downloadFromPage($test)[0]));
+        $statistics = $this->statisticsRows(array_merge(...array_values($this->xlsxDisplayedSheets($this->streamedBytes($this->export($test, 'exportExcel', 'xlsx'))))));
+        $this->assertContains(['عدد الحركات المالية', '1,506'], $statistics);
+        $this->assertStringContainsString('BP-075', $this->docxText($this->streamedBytes($this->export($test, 'exportWord', 'docx'))));
+
+        // A filter change still clears everything.
+        $test->set('data.project_status_id', $fx['status'])
+            ->assertSet('hasSubmitted', false)->assertSet('fromProjection', false)->assertSet('projectionSummary', [])
+            ->assertSet('movementsPages', 0)->assertDontSee('TX-BUDGET');
+    }
+
+    public function test_the_projection_report_equals_the_legacy_report_for_every_filter_combination(): void
+    {
+        $fx = $this->seedDonor();
+        $checker = app(\App\Services\Reports\DonorFinancialReport\Projection\DonorReportParityChecker::class);
+        $sets = [
+            [], ['date_from' => '2026-01-01', 'date_to' => '2026-01-31'], ['date_from' => '2026-02-01'], ['date_to' => '2025-12-31'],
+            ['project_status_id' => $fx['status']], ['project_super_id' => $fx['super']], ['currency_id' => $fx['usd']], ['currency_id' => $fx['ils']],
+            ['project_id' => $fx['project']], ['project_id' => $fx['other_project'], 'currency_id' => $fx['ils']],
+            ['date_from' => '2026-01-01', 'date_to' => '2026-12-31', 'project_status_id' => $fx['status'], 'project_super_id' => $fx['super'], 'currency_id' => $fx['ils']],
+        ];
+
+        foreach ($sets as $filters) {
+            $result = $checker->compare($fx['donor'], $filters);
+            $this->assertSame(0, $result['differences'], json_encode($filters).': '.implode(' | ', $result['samples']));
+        }
+
+        // The verifier proves the projection rows themselves.
+        $verify = app(\App\Services\Reports\DonorFinancialReport\Projection\DonorReportProjectionVerifier::class)->verify(markState: false);
+        $this->assertSame(0, $verify['differences'], implode(' | ', $verify['samples']));
+    }
+
+    public function test_csv_and_statistics_are_identical_on_both_paths(): void
+    {
+        Carbon::setTestNow('2026-10-13 09:00:00');
+        $fx = $this->seedDonor();
+
+        foreach ([[], ['currency_id' => $fx['ils']], ['project_status_id' => $fx['status']]] as $filters) {
+            $files = [];
+            foreach ([true, false] as $fromProjection) {
+                $package = app(DonorFinancialReportCsvExport::class)->build($fx['donor'], $filters, $fromProjection);
+                $files[] = file_get_contents($package['path']);
+                DonorFinancialReportCsvExport::discard($package['path']);
+            }
+            $this->assertSame($files[0], $files[1], 'CSV bytes, '.json_encode($filters));
+        }
+
+        $projection = $this->page(['donor_id' => $fx['donor'], 'currency_id' => $fx['usd']]);
+        $projection->assertSet('fromProjection', true);
+        $projectionXlsx = $this->statisticsRows(array_merge(...array_values($this->xlsxDisplayedSheets($this->streamedBytes($this->export($projection, 'exportExcel', 'xlsx'))))));
+        $projectionDocx = $this->streamedBytes($this->export($projection, 'exportWord', 'docx'));
+
+        $this->legacyPath();
+        $legacy = $this->page(['donor_id' => $fx['donor'], 'currency_id' => $fx['usd']]);
+        $legacy->assertSet('fromProjection', false);
+        $legacyXlsx = $this->statisticsRows(array_merge(...array_values($this->xlsxDisplayedSheets($this->streamedBytes($this->export($legacy, 'exportExcel', 'xlsx'))))));
+
+        $this->assertSame($legacyXlsx, $projectionXlsx, 'Same statistics workbook on both paths.');
+        $this->assertExcelWordParity($this->streamedBytes($this->export($projection, 'exportExcel', 'xlsx')), $projectionDocx);
+        Carbon::setTestNow();
+    }
+
+    public function test_the_page_uses_the_legacy_path_until_the_projection_is_ready_and_never_reads_a_stale_one(): void
+    {
+        $fx = $this->seedDonor();
+
+        // Not READY (never rebuilt / invalid): «عرض» uses the legacy service.
+        DB::table(DonorReportProjection::STATE)->update(['status' => 'invalid']);
+        $test = $this->page(['donor_id' => $fx['donor']]);
+        $test->assertSet('fromProjection', false)->assertSee('TX-BUDGET');
+        $this->assertNotNull($test->get('reportToken'));
+
+        // READY: the projection path.
+        DB::table(DonorReportProjection::STATE)->update(['status' => 'ready']);
+        $test->call('showReport')->assertSet('fromProjection', true)->assertSet('reportToken', null)->assertSee('TX-BUDGET');
+
+        // It stops being READY after «عرض»: nothing is read from it any more.
+        DB::table(DonorReportProjection::STATE)->update(['status' => 'invalid']);
+        $test->call('$refresh')->assertSee(DonorFinancialReportPage::REPORT_EXPIRED_NOTICE)->assertDontSee('TX-BUDGET');
+        $test->call('exportExcel');
+        Notification::assertNotified(DonorFinancialReportPage::REPORT_EXPIRED_NOTICE);
+        $test->call('showReport')->assertSet('fromProjection', false)->assertSee('TX-BUDGET');
+
+        // A donor deleted after «عرض» on the projection path: the page asks
+        // for «عرض» again instead of failing.
+        DB::table(DonorReportProjection::STATE)->update(['status' => 'ready']);
+        $test->call('showReport')->assertSet('fromProjection', true);
+        DB::table('partners')->where('id', $fx['donor'])->update(['deleted_at' => now()]);
+        $test->call('goToMovementsPage', 1)->assertOk()->assertSee(DonorFinancialReportPage::REPORT_EXPIRED_NOTICE);
+    }
+
+    public function test_rebuild_and_verify_commands(): void
+    {
+        $fx = $this->seedDonor();
+
+        $this->artisan('oms:rebuild-donor-financial-report-projection', ['--fresh' => true, '--verify' => true])->assertExitCode(0);
+        $this->assertSame('ready', DB::table(DonorReportProjection::STATE)->value('status'));
+        $this->assertNotNull(DB::table(DonorReportProjection::STATE)->value('verified_at'));
+        $this->artisan('oms:verify-donor-financial-report-projection', ['--parity' => true, '--donors' => (string) $fx['donor'], '--filters' => true])->assertExitCode(0);
+
+        // Drift (a projection row changed behind the projector's back): found
+        // by the independent verifier, which marks the projection invalid.
+        DB::table(DonorReportProjection::MOVEMENTS)->where('kind', DonorReportProjection::RECEIPT)->limit(1)->update(['amount' => 1]);
+        $this->artisan('oms:verify-donor-financial-report-projection')->assertExitCode(1);
+        $this->assertSame('invalid', DB::table(DonorReportProjection::STATE)->value('status'));
+        $this->page(['donor_id' => $fx['donor']])->assertSet('fromProjection', false);
+
+        // A scoped repair fixes the donor; a full rebuild makes it READY again.
+        $this->artisan('oms:rebuild-donor-financial-report-projection', ['--donor' => (string) $fx['donor'], '--verify' => true])->assertExitCode(0);
+        $this->artisan('oms:rebuild-donor-financial-report-projection', ['--verify' => true])->assertExitCode(0);
+        $this->assertSame('ready', DB::table(DonorReportProjection::STATE)->value('status'));
+
+        // Idempotent: a second rebuild changes nothing.
+        $this->assertSame(0, app(DonorReportProjectionRebuilder::class)->rebuild()['sources_changed']);
+    }
+
+    // =========================================================
     // fixtures and helpers
     // =========================================================
 
@@ -770,7 +975,26 @@ class DonorFinancialReportExportTest extends TestCase
         $this->payment($budget, null, 300, $ils->id, '2026-03-09');
         $this->receipt($costIls, null, 20, $ils->id, '2026-03-07', null);
 
+        $this->rebuildProjection();
+
         return ['donor' => $donor, 'status' => $status, 'super' => $super, 'ils' => $ils->id, 'usd' => $usd->id, 'project' => $project, 'other_project' => $other, 'cost_usd' => $costUsd];
+    }
+
+    /** Rows inserted directly bypass the projector, as the stress generator does: rebuild. */
+    private function rebuildProjection(): void
+    {
+        app(DonorReportProjectionRebuilder::class)->rebuild();
+
+        if ($this->legacy) {
+            $this->legacyPath();
+        }
+    }
+
+    /** The projection is not READY: the page uses the legacy live service and its stored report. */
+    private function legacyPath(): void
+    {
+        $this->legacy = true;
+        DB::table(DonorReportProjection::STATE)->update(['status' => 'missing']);
     }
 
     /**
@@ -787,6 +1011,8 @@ class DonorFinancialReportExportTest extends TestCase
                 'notes' => sprintf('%05d', $i).str_repeat('x', 800), 'created_at' => now(), 'updated_at' => now(),
             ], $chunk));
         }
+
+        $this->rebuildProjection();
     }
 
     private function project(int $donor, string $code, string $name, int $super, int $status, string $approval, ?string $donorName = null): int

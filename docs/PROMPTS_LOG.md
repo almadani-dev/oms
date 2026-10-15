@@ -13,6 +13,18 @@ Reusable prompt patterns and short references to past prompts. What was done liv
 ---
 
 ### Date
+2026-10-13 ("DONOR FINANCIAL REPORT — REAL-TIME PROJECTION + SUB-SECOND/LOW-LATENCY DISPLAY")
+
+### Prompt
+Replace the per-«عرض» report rebuild with a synchronously maintained, rebuildable projection (same philosophy as the Comprehensive report); audit + baseline first, schema reported before applying, `oms_stress` only, independent verifier and legacy parity at 0 differences, targeted tests, no commit.
+
+### Purpose
+- "Report the schema before applying it": the design was approved before the migration was written.
+- "Preserve CURRENT SoftDelete behavior exactly": the known budget/transaction inconsistency is reproduced, not fixed.
+
+---
+
+### Date
 2026-10-12 ("NEXT TASK — APPLY THE FINAL EXPORT MODEL TO DONOR FINANCIAL REPORT")
 
 ### Prompt

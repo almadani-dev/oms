@@ -1,6 +1,6 @@
 # Next Steps
 
-## Recommended Next Step (2026-10-11 — Account Statement redesign and report exports committed locally, not pushed; unfinished work only)
+## Recommended Next Step (2026-10-13 — Donor Financial Report projection uncommitted; unfinished work only)
 
 Current open work only; history lives in TASKS_LOG. Deployment detail: AI_PROJECT_MEMORY → Operational Reference (Comprehensive report deployment checklist; Restore recovery runbook).
 
@@ -27,10 +27,11 @@ Current open work only; history lives in TASKS_LOG. Deployment detail: AI_PROJEC
 - `general_expenses.partner_id` is write-never since 2026-09-22; dropping it (and `general_exchanges.partner_id` / `الجهة`) is a separate, explicitly-scoped decision after a `partner_id` impact audit on production data.
 - Whether account deletion should be blocked when the account has transaction lines (deleting an account with an opening balance leaves its OPB transaction in place).
 
-**3b. Donor Financial Report exports (2026-10-12, uncommitted — awaiting approval):**
-- Commit after approval (server-side report state, three-table screen paging, line-grain CSV, selectors — TASKS_LOG 2026-10-12).
-- Pre-existing, not changed: «عرض» for the largest donor still waits ~11 s (up to ~19–30 s on a cold buffer pool) in `DonorFinancialReportService::generate()` itself; speeding it up needs its own audit.
-- Optional, one line per query: give `DonorFinancialReportService::buildMovements()` the CSV's tie order (id), so screen and CSV agree row for row (today ties of the same date text and kind are in database order; 227 tie groups for donor 17).
+**3b. Donor Financial Report real-time projection (2026-10-13, uncommitted — awaiting approval; TASKS_LOG 2026-10-13):**
+- Approve and commit (browser validation done 2026-10-13); production rollout per AI_PROJECT_MEMORY → Operational Reference (Donor report projection rollout). The dev `oms` database is not migrated (the page stays on the legacy path there).
+- Optional proposal (measured): copy line description / role, transaction number / reference / description and movement notes into the projection to cut the donor 17 CSV from ~7.5 s to roughly 1–2 s (estimate: the text reads take ~6.5 s); costs extra storage and a sync in `transactions:backfill-descriptions`.
+- Dead-code candidates once the projection path is proven in production: `DonorFinancialReportState` and its purge (legacy path only), the legacy branch of the page, the legacy CSV query (kept today as the parity oracle) — keep `DonorFinancialReportService` as the verifier oracle.
+- Pre-existing gap noticed: the Account Statement projection tables are not classified in `OperationalDataCleanupService` (reported as unexpected tables); the donor tables are.
 - Business decision: the screen and CSV show a line's `debit_base` / `credit_base` (base currency) next to the line's own currency code.
 - Business decision: the disbursement summaries count budgets whose transaction is soft-deleted (`transaction_id IS NOT NULL` only), the movement list does not (`t.deleted_at IS NULL`).
 

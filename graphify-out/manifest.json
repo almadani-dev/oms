@@ -125,8 +125,8 @@
     "semantic_hash": ""
   },
   "app/Filament/Pages/DonorFinancialReportPage.php": {
-    "mtime": 1791802847.4220352,
-    "ast_hash": "3093192cbcd083a3e53d455480e782cb",
+    "mtime": 1791886934.792817,
+    "ast_hash": "9d0d8e40b48d796286a3166b3524f493",
     "semantic_hash": ""
   },
   "app/Filament/Pages/ProjectFinancialDetailsPage.php": {
@@ -350,13 +350,13 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/ExecutionPayments/Pages/CreateExecutionPayment.php": {
-    "mtime": 1791204801.8983393,
-    "ast_hash": "82a76954b1e202ff96cae65835cc3a10",
+    "mtime": 1791885808.3395076,
+    "ast_hash": "3623a082f0f4da4226f57088404b9f0b",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ExecutionPayments/Pages/EditExecutionPayment.php": {
-    "mtime": 1791204801.9013433,
-    "ast_hash": "de686f34959338ee831d49de1a7e955c",
+    "mtime": 1791885808.3405085,
+    "ast_hash": "106c3a421c61dff25943a8d8c9044d0c",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ExecutionPayments/Pages/ListExecutionPayments.php": {
@@ -375,8 +375,8 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/ExecutionPayments/Tables/ExecutionPaymentsTable.php": {
-    "mtime": 1791204801.9043648,
-    "ast_hash": "dc94a66c8c5d45de1877722c08a5d2ea",
+    "mtime": 1791886557.5792701,
+    "ast_hash": "d7c00dcbfffb53474d9ec8641368aa98",
     "semantic_hash": ""
   },
   "app/Filament/Resources/FiscalYears/FiscalYearResource.php": {
@@ -580,13 +580,13 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectCostBudgetsPayments/Pages/CreateProjectCostBudgetsPayment.php": {
-    "mtime": 1791204801.9003425,
-    "ast_hash": "42080b65155719cfcc4159f431fd1fcf",
+    "mtime": 1791885808.3384998,
+    "ast_hash": "ffcd0036d43e6f8e72c59cc5753f322b",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectCostBudgetsPayments/Pages/EditProjectCostBudgetsPayment.php": {
-    "mtime": 1791204801.9033434,
-    "ast_hash": "c3e0fc894a0a28ed8fb1fcaca45afd7d",
+    "mtime": 1791885808.3395076,
+    "ast_hash": "6244734f588a69608b0a63a608ffcc64",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectCostBudgetsPayments/Pages/ListProjectCostBudgetsPayments.php": {
@@ -610,18 +610,18 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectCostBudgetsPayments/Tables/ProjectCostBudgetsPaymentsTable.php": {
-    "mtime": 1791204801.906343,
-    "ast_hash": "071e00664c65a83acd3f148ca77b973c",
+    "mtime": 1791885808.3415072,
+    "ast_hash": "ea16258f152624d57aee11fa3ee5cad2",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectCostReceipts/Pages/CreateProjectCostReceipt.php": {
-    "mtime": 1791204801.8983393,
-    "ast_hash": "fb5170afad33d0e36d3f1bc007241130",
+    "mtime": 1791885808.3364637,
+    "ast_hash": "358c881776257bc36d0113367c202e1f",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectCostReceipts/Pages/EditProjectCostReceipt.php": {
-    "mtime": 1791204801.9033434,
-    "ast_hash": "ef08ec8f6b5ab125a7556289804bc9a5",
+    "mtime": 1791885808.3374627,
+    "ast_hash": "26b8b7e0c59511521b1d8e39b13417de",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectCostReceipts/Pages/ListProjectCostReceipts.php": {
@@ -645,8 +645,8 @@
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectCostReceipts/Tables/ProjectCostReceiptsTable.php": {
-    "mtime": 1791204801.906343,
-    "ast_hash": "09fd9dbe4b3eb8473f43c60ad769db0e",
+    "mtime": 1791885808.3405085,
+    "ast_hash": "a6496ef754c7b8df27745820f660165b",
     "semantic_hash": ""
   },
   "app/Filament/Resources/ProjectCosts/Pages/CreateProjectCost.php": {
@@ -1765,8 +1765,8 @@
     "semantic_hash": ""
   },
   "app/Services/Maintenance/OperationalDataCleanupService.php": {
-    "mtime": 1791204853.472203,
-    "ast_hash": "73190cb2e67a31250516065252472aaf",
+    "mtime": 1791885818.5784264,
+    "ast_hash": "0bed9ebd286ade2b2bb94866244c50fa",
     "semantic_hash": ""
   },
   "app/Services/Permissions/PermissionManagementService.php": {
@@ -2995,8 +2995,8 @@
     "semantic_hash": ""
   },
   "resources/views/filament/pages/donor-financial-report-page.blade.php": {
-    "mtime": 1791800106.0635767,
-    "ast_hash": "9a0c413977db75cadc512512368d6503",
+    "mtime": 1791885884.2042036,
+    "ast_hash": "b8221994a2c0528d5a9470c9d8ac1375",
     "semantic_hash": ""
   },
   "resources/views/filament/pages/project-financial-details-page.blade.php": {
@@ -4050,28 +4050,28 @@
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1791800606.708663,
-    "ast_hash": "3cd5a4a07fee29f0627cb1c45484bf1a",
+    "mtime": 1791889409.0802114,
+    "ast_hash": "35d8f3e6fe96358b6e5f0d85270e1dab",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
-    "mtime": 1791802514.1011806,
-    "ast_hash": "f6e0bab4b1c9a4ffd972055e43728db3",
+    "mtime": 1791889409.2784607,
+    "ast_hash": "1415e41a56ee0a0807d8484ffc80075a",
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1791802514.2166603,
-    "ast_hash": "1e3d601346dcdfcb0cecfb53e2625bdc",
+    "mtime": 1791889442.0744843,
+    "ast_hash": "05190ed0bba10bbc9663ed25c1785e74",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
-    "mtime": 1791800606.9257123,
-    "ast_hash": "16d0e230e4281bbc40c71c0881ff79da",
+    "mtime": 1791889429.9915993,
+    "ast_hash": "cd971588fb25cf88cab41cf83cbed7a5",
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1791802525.795449,
-    "ast_hash": "338967441aa38d88438251d9536c0cf4",
+    "mtime": 1791889429.4047315,
+    "ast_hash": "f3d2eb629888f43cce65976b52f4beda",
     "semantic_hash": ""
   },
   "public/robots.txt": {
@@ -5495,8 +5495,8 @@
     "semantic_hash": ""
   },
   "app/Services/Reports/DonorFinancialReport/Csv/DonorFinancialReportCsvExport.php": {
-    "mtime": 1791795615.6935625,
-    "ast_hash": "d09f237f8bca2d62ea0f2153a595ec06",
+    "mtime": 1791885545.5475454,
+    "ast_hash": "b7002de7e8d6215044eb5aa01ef0d24e",
     "semantic_hash": ""
   },
   "app/Services/Reports/DonorFinancialReport/Csv/DonorFinancialReportCsvFormat.php": {
@@ -5520,8 +5520,68 @@
     "semantic_hash": ""
   },
   "tests/Feature/Reports/DonorFinancialReportExportTest.php": {
-    "mtime": 1791802417.969829,
-    "ast_hash": "32f9331ff530c5313b24441bcce97b53",
+    "mtime": 1791886934.845687,
+    "ast_hash": "2a4a91a95220fca91bc1f07f7cae1e28",
+    "semantic_hash": ""
+  },
+  "app/Console/Commands/Reports/RebuildDonorFinancialReportProjectionCommand.php": {
+    "mtime": 1791885569.7449856,
+    "ast_hash": "f451050c4688873098a4f9f5fc3b062c",
+    "semantic_hash": ""
+  },
+  "app/Console/Commands/Reports/VerifyDonorFinancialReportProjectionCommand.php": {
+    "mtime": 1791885592.122664,
+    "ast_hash": "3cdffed8f2891526473014b446398f0d",
+    "semantic_hash": ""
+  },
+  "app/Services/Reports/DonorFinancialReport/Projection/DonorReportParityChecker.php": {
+    "mtime": 1791886211.2452857,
+    "ast_hash": "b99963ea52fda2e18cd5280d72181cb1",
+    "semantic_hash": ""
+  },
+  "app/Services/Reports/DonorFinancialReport/Projection/DonorReportProjection.php": {
+    "mtime": 1791885104.753206,
+    "ast_hash": "38849d1e6df9bc61f3592d22cfc26622",
+    "semantic_hash": ""
+  },
+  "app/Services/Reports/DonorFinancialReport/Projection/DonorReportProjectionRebuilder.php": {
+    "mtime": 1791885424.7068636,
+    "ast_hash": "8e1b00867d15a34bbf1df7abc4cc60fb",
+    "semantic_hash": ""
+  },
+  "app/Services/Reports/DonorFinancialReport/Projection/DonorReportProjectionState.php": {
+    "mtime": 1791885104.8070335,
+    "ast_hash": "b72a8d4f9a5668bd15ce369dd053bab1",
+    "semantic_hash": ""
+  },
+  "app/Services/Reports/DonorFinancialReport/Projection/DonorReportProjectionVerifier.php": {
+    "mtime": 1791885493.4550064,
+    "ast_hash": "1daf2c3d4c42f34bcc60b879362ad143",
+    "semantic_hash": ""
+  },
+  "app/Services/Reports/DonorFinancialReport/Projection/DonorReportProjector.php": {
+    "mtime": 1791885176.9008477,
+    "ast_hash": "17aeeb87a4b8ae9a456c81515febc1e2",
+    "semantic_hash": ""
+  },
+  "app/Services/Reports/DonorFinancialReport/Projection/DonorReportReader.php": {
+    "mtime": 1791888953.4986472,
+    "ast_hash": "ead98e1e6c136b746a1beb520640b1ba",
+    "semantic_hash": ""
+  },
+  "app/Services/Reports/DonorFinancialReport/Projection/DonorReportScope.php": {
+    "mtime": 1791885238.516484,
+    "ast_hash": "a4b3414f781551623a604bc4ddde7b4d",
+    "semantic_hash": ""
+  },
+  "database/migrations/2026_10_13_100000_create_donor_report_projection_tables.php": {
+    "mtime": 1791885086.3397849,
+    "ast_hash": "2bc71913580a3f0bdd41cde29ec38c45",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Reports/DonorFinancialReportProjectionWritePathsTest.php": {
+    "mtime": 1791886222.5199153,
+    "ast_hash": "e949bfd5180bd5ecd43f1d3fe96f680c",
     "semantic_hash": ""
   }
 }

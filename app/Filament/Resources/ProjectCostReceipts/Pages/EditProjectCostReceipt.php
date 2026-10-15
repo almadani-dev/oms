@@ -16,6 +16,7 @@ use App\Services\Audit\Financial\FinancialAccountRole;
 use App\Services\Audit\Financial\FinancialAuditRecorder;
 use App\Services\Audit\Financial\FinancialAuditSubject;
 use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportProjector;
+use App\Services\Reports\DonorFinancialReport\Projection\DonorReportProjector;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
@@ -186,6 +187,10 @@ class EditProjectCostReceipt extends EditRecord
             if ($record->transaction_id) {
                 app(ComprehensiveReportProjector::class)->syncTransaction((int) $record->transaction_id);
             }
+
+            // Donor report projection: re-derive this receipt (cost item, date, amount) from its final
+            // state, inside this same DB transaction.
+            app(DonorReportProjector::class)->syncReceipts([$record->id]);
 
             // STEP 7 - Handle file upload/replacement/removal
             $existingAttachment = $record->attachments()->latest('id')->first();

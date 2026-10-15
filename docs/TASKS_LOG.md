@@ -16,6 +16,34 @@
 ---
 
 ### Date
+2026-10-13 (Donor Financial Report — real-time projection read path; `oms_stress` only; uncommitted)
+
+### Task
+Remove the full-report rebuild from «عرض»: derived projection maintained in the same DB transaction as every financial write, 50-row reads, exact summaries, rebuild / verify commands, parity with the legacy service.
+
+### Result
+- **Baseline (legacy service, donor 17):** 10.2–13.2 s, 19 queries, +55 MB (120 projects, 345 cost items, 9,695 movements, 21,546 lines); donor 295 1.49 s, donor 300 0.17 s. Cost = random I/O (lines query 3.7–4.3 s, payments 2.3 s, deduction lines 1.5 s).
+- **Rebuild** (`--fresh --verify`): 395,566 movements / 883,761 lines in 223 s, PHP 58 MB flat; verifier 0 differences (79–94 s). Storage: movements 65.7 MB + 11.5 MB index, lines 159 MB (≈ 270 MB per 1M accounting lines).
+- **Parity (legacy vs projection, incl. CSV records):** all 537 donors 0 differences (372,865 movements, 832,844 lines); 78 filter cases (donors 17, 295, 300 + 5 random × date / status / type / currency / project / combined) 0 differences. Currency row order notes: disbursement-final grain only (MySQL temp-table order in legacy).
+- **Reads (donor 17, warm):** «عرض» server 163–244 ms (scope 24–33 ms, summary 36–124 ms); full Livewire «عرض» 0.23–0.33 s (1.58 s first cold call); projects page 17–47 ms, cost items 6–13 ms, movements first / middle / last 14–66 ms; pager requests 0.11–0.23 s server. Donor 295 «عرض» 0.20 s, donor 300 0.15 s. Request 2.9–3.3 KB, state ≤ 2.9 KB. All queries PRIMARY-range (EXPLAIN); no extra index.
+- **CSV donor 17:** 7.3–8.0 s from the projection (legacy 13–15 s), byte-identical (17,989,622 bytes); remaining time = text hydration I/O (line texts ~4 s, transaction texts ~2.2 s). Kept synchronous. Excel 0.31–0.62 s / Word 0.37–0.42 s (47 / 40 KB), Excel == Word.
+- **Write overhead (rolled back on stress):** receipts 1.9–7.5 ms median (max 35 ms, 4–8 queries), budgets 4.1–15.7 ms (max 24 ms, 9–13), payments 1.6–6.7 ms (max 13 ms, 4–8).
+- **Browser (stress site, real Livewire):** donors 17 / 295 / 300 on the projection path; donor 17 «عرض» visible 0.59–1.26 s (HTTP 0.45–0.93 s, 614 KB HTML), pager moves 0.43–0.80 s visible via First / Previous / Next / Last (HTTP 0.28–0.62 s; a request without report work costs 0.17–0.78 s on this FastCGI setup); donors 295 / 300 «عرض» 0.38–0.52 s. Filter change cleared the report; re-«عرض» (ILS) 3,427 movements. CSV 21,546 rows built in 8.73 s, download 200 / 17,989,622 bytes; Excel 2.5 s and Word 200; one audit event each (ids and counts only). 49 requests all 200 (47 Livewire updates, no 404, no PayloadTooLarge), no console error, no new `laravel.log` entry, stress banner present.
+- Graphify `update .`: 16,405 → 16,530 nodes, 42,528 → 42,910 edges; no code node lost (docs / view node ids re-keyed, counts equal or higher).
+
+### Changed Files
+- New: `database/migrations/2026_10_13_100000_create_donor_report_projection_tables.php`; `app/Services/Reports/DonorFinancialReport/Projection/{DonorReportProjection,DonorReportProjectionState,DonorReportProjector,DonorReportScope,DonorReportReader,DonorReportProjectionRebuilder,DonorReportProjectionVerifier,DonorReportParityChecker}.php`; `app/Console/Commands/Reports/{Rebuild,Verify}DonorFinancialReportProjectionCommand.php`; `tests/Feature/Reports/DonorFinancialReportProjectionWritePathsTest.php`.
+- Changed: `app/Filament/Pages/DonorFinancialReportPage.php`, `resources/views/filament/pages/donor-financial-report-page.blade.php`, `app/Services/Reports/DonorFinancialReport/Csv/DonorFinancialReportCsvExport.php`, the 9 write sites (`ProjectCostReceipts`, `ProjectCostBudgetsPayments`, `ExecutionPayments` Create / Edit pages and Tables), `app/Services/Maintenance/OperationalDataCleanupService.php`, `tests/Feature/Reports/DonorFinancialReportExportTest.php`.
+
+### Verification
+- `DonorFinancialReportExportTest` 26/26, `DonorFinancialReportProjectionWritePathsTest` 10/10, `ComprehensiveReportProjectionWritePathsTest` 11/11, `AccountStatementWritePathsTest` 8/8, `ReportExportAuditTest` 23/23, `ReportExportAuthorizationTest` 28/28, `ReportPageAccessTest` 30/30, `CleanOperationalDataCommandTest` 37/37, financial audit / guard / attachment tests of the three workflows (11 files) all pass. Full suites not run (forbidden).
+
+### Commit Hash
+Not committed (awaiting approval).
+
+---
+
+### Date
 2026-10-12 (Donor Financial Report — final export model, server-side report state, line-grain CSV, selectors; verified on `oms_stress`; uncommitted)
 
 ### Task

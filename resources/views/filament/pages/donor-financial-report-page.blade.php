@@ -461,7 +461,7 @@
                 {{-- D) Projects table — one page of 50 at a time; the exports cover them all --}}
                 <section class="donor-rpt-card">
                     <div class="donor-rpt-section-title">مشاريع الجهة المانحة ({{ $report['projects_count'] }})</div>
-                    @if (empty($report['projects']))
+                    @if ($projectsPager['total'] === 0)
                         <div class="donor-rpt-empty">لا توجد مشاريع مطابقة للفلاتر المحددة</div>
                     @else
                         <div class="donor-rpt-table-wrap">
@@ -516,7 +516,7 @@
                 {{-- E) Project cost details — one page of 50 at a time; the exports cover them all --}}
                 <section class="donor-rpt-card">
                     <div class="donor-rpt-section-title">تفاصيل تكاليف المشاريع</div>
-                    @if (empty($report['cost_details']))
+                    @if ($costItemsPager['total'] === 0)
                         <div class="donor-rpt-empty">لا توجد بنود تكاليف</div>
                     @else
                         <div class="donor-rpt-table-wrap">
@@ -560,7 +560,7 @@
                     @endif
                 </section>
 
-                {{-- F) Financial movements — one stored page at a time; the exports cover them all --}}
+                {{-- F) Financial movements — one page at a time; the exports cover them all --}}
                 <section class="donor-rpt-card">
                     <div class="donor-rpt-section-title">الحركات المالية ({{ $report['movements_count'] }})</div>
                     @if (empty($movementRows))

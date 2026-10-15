@@ -14,10 +14,14 @@ use App\Services\Audit\Reports\ReportExportFormat;
 use App\Services\Audit\Reports\ReportExportPurpose;
 use App\Services\Audit\Reports\ReportExportSubject;
 use App\Services\Reports\AccountStatement\AccountStatementExcelExports;
+use App\Services\Reports\AccountStatement\Csv\AccountStatementCsvSnapshot;
 use App\Services\Reports\ComprehensiveFinancialTransactions\ExportTemporaryFiles;
 use App\Services\Reports\DonorFinancialReport\Csv\DonorFinancialReportCsvExport;
 use App\Services\Reports\DonorFinancialReport\DonorFinancialReportState;
 use App\Services\Reports\DonorFinancialReport\DonorFinancialReportStatistics;
+use App\Services\Reports\DonorFinancialReport\Projection\DonorReportProjectionState;
+use App\Services\Reports\DonorFinancialReport\Projection\DonorReportReader;
+use App\Services\Reports\DonorFinancialReport\Projection\DonorReportScope;
 use App\Services\Reports\DonorFinancialReportService;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;
@@ -30,6 +34,7 @@ use Filament\Schemas\Contracts\HasSchemas;
 use Filament\Schemas\Schema;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Js;
 use Livewire\Attributes\Locked;
@@ -57,8 +62,18 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  *    report's statistics and summaries only (DonorFinancialReportStatistics,
  *    one model for both formats; one worksheet).
  *
- * Live queries via DonorFinancialReportService (no snapshot tables). Read-only:
- * never writes to any financial table.
+ * Two read paths, chosen at each «عرض»:
+ *
+ *  - projection (DonorReportProjectionState READY): the summaries are read
+ *    from the real-time donor report projection at «عرض» and kept as small
+ *    #[Locked] state; each render reads only the 50 rows of each table
+ *    (DonorReportReader) — the report is never rebuilt from the ledger;
+ *    the statistics exports and the CSV re-read the projection with the
+ *    applied filters;
+ *  - legacy (projection not READY, e.g. before its first rebuild): the live
+ *    DonorFinancialReportService report stored server-side as above.
+ *
+ * Read-only: never writes to any financial table.
  */
 class DonorFinancialReportPage extends Page implements HasSchemas
 {
@@ -165,6 +180,20 @@ class DonorFinancialReportPage extends Page implements HasSchemas
     #[Locked]
     public array $appliedFilters = [];
 
+    /** The displayed report was read from the donor report projection. */
+    #[Locked]
+    public bool $fromProjection = false;
+
+    /**
+     * Projection path only: the summary read at «عرض» — donor card, counts,
+     * the three per-currency summaries (a few rows each) and the applied
+     * filter labels. Never a project, cost item or movement row.
+     *
+     * @var array<string, mixed>
+     */
+    #[Locked]
+    public array $projectionSummary = [];
+
     /**
      * Request-local memo of the stored summary. Protected, so Livewire never
      * dehydrates it — it is re-read from $reportToken on each request.
@@ -172,6 +201,9 @@ class DonorFinancialReportPage extends Page implements HasSchemas
      * @var array<string, mixed>|null
      */
     protected ?array $summaryMemo = null;
+
+    /** Request-local memo of the applied filters resolved against the live project tables. */
+    protected ?DonorReportScope $scopeMemo = null;
 
     public function mount(): void
     {
@@ -318,7 +350,28 @@ class DonorFinancialReportPage extends Page implements HasSchemas
             'project_id' => $state['project_id'] ?? null,
         ];
 
-        $result = app(DonorFinancialReportService::class)->generate((int) $state['donor_id'], $filters);
+        $donorId = (int) $state['donor_id'];
+
+        if (app(DonorReportProjectionState::class)->isReady()) {
+            // The summaries only — read from the projection, never rebuilt
+            // from the ledger; the three tables are read 50 rows per render.
+            $summary = app(DonorReportReader::class)->summary(DonorReportScope::resolve($donorId, $filters));
+
+            $this->clearResults();
+
+            $this->fromProjection = true;
+            $this->projectionSummary = $summary + ['applied_filters' => $this->appliedFilterLabels($filters)];
+            $this->movementsCount = (int) $summary['movements_count'];
+            $this->movementsPages = self::pageCount($this->movementsCount);
+            $this->projectsPages = self::pageCount((int) $summary['projects_count']);
+            $this->costItemsPages = self::pageCount((int) $summary['cost_items_count']);
+            $this->appliedFilters = $filters + ['donor_id' => $donorId];
+            $this->hasSubmitted = true;
+
+            return;
+        }
+
+        $result = app(DonorFinancialReportService::class)->generate($donorId, $filters);
         $report = array_merge($result, [
             'applied_filters' => $this->appliedFilterLabels($filters),
         ]);
@@ -330,7 +383,7 @@ class DonorFinancialReportPage extends Page implements HasSchemas
         $this->movementsPages = self::pageCount($this->movementsCount);
         $this->projectsPages = self::pageCount(count($report['projects'] ?? []));
         $this->costItemsPages = self::pageCount(count($report['cost_details'] ?? []));
-        $this->appliedFilters = $filters + ['donor_id' => (int) $state['donor_id']];
+        $this->appliedFilters = $filters + ['donor_id' => $donorId];
         $this->hasSubmitted = true;
     }
 
@@ -382,7 +435,10 @@ class DonorFinancialReportPage extends Page implements HasSchemas
         $this->costItemsPage = 1;
         $this->costItemsPages = 0;
         $this->appliedFilters = [];
+        $this->fromProjection = false;
+        $this->projectionSummary = [];
         $this->summaryMemo = null;
+        $this->scopeMemo = null;
     }
 
     /**
@@ -398,7 +454,31 @@ class DonorFinancialReportPage extends Page implements HasSchemas
             return null;
         }
 
+        if ($this->fromProjection) {
+            // A projection that stopped being READY (verifier drift, an
+            // untrusted rebuild) is never read, nor a donor deleted since
+            // «عرض»: the user presses «عرض» again.
+            return $this->summaryMemo ??= app(DonorReportProjectionState::class)->isReady() && $this->scope() !== null ? $this->projectionSummary : null;
+        }
+
         return $this->summaryMemo ??= $this->reportState()->summary($this->ownerId(), $this->reportToken);
+    }
+
+    /**
+     * The applied filters resolved against the live project tables
+     * (projection path); null when the donor no longer exists.
+     */
+    protected function scope(): ?DonorReportScope
+    {
+        if ($this->scopeMemo === null) {
+            try {
+                $this->scopeMemo = DonorReportScope::resolve((int) $this->appliedFilters['donor_id'], $this->appliedFilters);
+            } catch (ModelNotFoundException) {
+                return null;
+            }
+        }
+
+        return $this->scopeMemo;
     }
 
     /**
@@ -413,6 +493,10 @@ class DonorFinancialReportPage extends Page implements HasSchemas
      */
     protected function getViewData(): array
     {
+        if ($this->fromProjection) {
+            return $this->projectionViewData();
+        }
+
         $report = $this->report();
         $movements = $report === null ? null : $this->reportState()->movementsPage($this->ownerId(), $this->reportToken, $this->movementsPage);
 
@@ -434,6 +518,74 @@ class DonorFinancialReportPage extends Page implements HasSchemas
             'costItemRows' => $costItems,
             'costItemsPager' => self::pager($this->costItemsPage, $this->costItemsPages, $perPage, count($costItems), count($report['cost_details'] ?? [])),
         ];
+    }
+
+    /**
+     * Projection path: the summary from state, and ONE page of each table
+     * read from the projection for this render only — 50 movements (with
+     * their lines), 50 projects, 50 cost items; nothing else is read.
+     *
+     * @return array<string, mixed>
+     */
+    private function projectionViewData(): array
+    {
+        $report = $this->report();
+        $perPage = DonorFinancialReportState::pageSize();
+
+        if ($report === null) {
+            return [
+                'report' => null,
+                'reportExpired' => $this->hasSubmitted,
+                'movementRows' => [],
+                'movementsPager' => self::pager(1, 0, $perPage, 0, 0),
+                'projectRows' => [],
+                'projectsPager' => self::pager(1, 0, $perPage, 0, 0),
+                'costItemRows' => [],
+                'costItemsPager' => self::pager(1, 0, $perPage, 0, 0),
+            ];
+        }
+
+        $reader = app(DonorReportReader::class);
+        $scope = $this->scope();
+        $movements = $this->movementsCount > 0 ? $reader->movementsPage($scope, $this->movementsPage, $perPage) : [];
+        $projects = (int) $report['projects_count'] > 0 ? $reader->projectsPage($scope, $this->appliedFilters, $this->projectsPage, $perPage) : [];
+        $costItems = (int) $report['cost_items_count'] > 0 ? $reader->costItemsPage($scope, $this->costItemsPage, $perPage) : [];
+
+        return [
+            'report' => $report,
+            'reportExpired' => false,
+            'movementRows' => $movements,
+            'movementsPager' => self::pager($this->movementsPage, $this->movementsPages, $perPage, count($movements), $this->movementsCount),
+            'projectRows' => $projects,
+            'projectsPager' => self::pager($this->projectsPage, $this->projectsPages, $perPage, count($projects), (int) $report['projects_count']),
+            'costItemRows' => $costItems,
+            'costItemsPager' => self::pager($this->costItemsPage, $this->costItemsPages, $perPage, count($costItems), (int) $report['cost_items_count']),
+        ];
+    }
+
+    /**
+     * The whole applied report for the statistics exports: on the
+     * projection path re-read from the projection with the applied filters
+     * (one consistent snapshot); on the legacy path the stored report.
+     *
+     * @return array<string, mixed>
+     */
+    private function statisticsSource(): array
+    {
+        if (! $this->fromProjection) {
+            return $this->report();
+        }
+
+        return AccountStatementCsvSnapshot::run(function (): array {
+            $reader = app(DonorReportReader::class);
+            $scope = DonorReportScope::resolve((int) $this->appliedFilters['donor_id'], $this->appliedFilters);
+
+            return $reader->summary($scope) + [
+                'applied_filters' => $this->projectionSummary['applied_filters'] ?? [],
+                'projects' => $reader->projects($scope, $this->appliedFilters),
+                'cost_details' => $reader->costItems($scope),
+            ];
+        });
     }
 
     /**
@@ -518,7 +670,7 @@ class DonorFinancialReportPage extends Page implements HasSchemas
             return null;
         }
 
-        $report = $this->report();
+        $report = $this->statisticsSource();
         $word = $format === ReportExportFormat::Docx;
         $temporaryFiles = app(ExportTemporaryFiles::class);
         $path = $temporaryFiles->create();

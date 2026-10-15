@@ -124,6 +124,11 @@ class OperationalDataCleanupService
         'comprehensive_report_monthly_totals',
         'comprehensive_report_monthly_transactions',
         'comprehensive_report_signatures',
+        // Derived read model of the donor financial report (no foreign keys),
+        // emptied with the business rows it mirrors. Its one-row state is
+        // preserved.
+        'donor_report_lines',
+        'donor_report_movements',
         // Generated report data — CASCADE children of projects.
         'project_financial_alerts',
         'project_financial_snapshot_currency_totals',
@@ -182,6 +187,8 @@ class OperationalDataCleanupService
         // still READY after a cleanup, since ledger and projection are both
         // emptied together).
         'comprehensive_report_projection_state' => false,
+        // Health flag of the donor financial report projection (same rule).
+        'donor_report_projection_state' => false,
         // History tables.
         'audit_events' => false,
         'backup_operations' => true,
@@ -212,6 +219,8 @@ class OperationalDataCleanupService
         'comprehensive_report_monthly_totals' => false,
         'comprehensive_report_monthly_transactions' => false,
         'comprehensive_report_signatures' => false,
+        'donor_report_movements' => false,
+        'donor_report_lines' => false,
     ];
 
     /**

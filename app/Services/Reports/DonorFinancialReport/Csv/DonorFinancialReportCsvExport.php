@@ -9,6 +9,9 @@ use App\Services\Reports\AccountStatement\Csv\AccountStatementCsvFormat;
 use App\Services\Reports\AccountStatement\Csv\AccountStatementCsvPart;
 use App\Services\Reports\AccountStatement\Csv\AccountStatementCsvSnapshot;
 use App\Services\Reports\AccountStatement\Csv\AccountStatementCsvZip;
+use App\Services\Reports\DonorFinancialReport\Projection\DonorReportProjectionState;
+use App\Services\Reports\DonorFinancialReport\Projection\DonorReportReader;
+use App\Services\Reports\DonorFinancialReport\Projection\DonorReportScope;
 use Illuminate\Contracts\Filesystem\Factory as FilesystemFactory;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
@@ -47,6 +50,12 @@ use RuntimeException;
  * One donor's report is small (≤ ~22k lines on oms_stress), so the export
  * is built inside the click request; the split stays as a safety net, never
  * a truncation.
+ *
+ * Source: while the donor report projection is READY the movements and
+ * lines are read from it (DonorReportReader::movements(), the same rows,
+ * order and texts); otherwise — and always for movements(), the legacy
+ * oracle the projection is verified against — from the authoritative
+ * tables with the service's joins.
  */
 final class DonorFinancialReportCsvExport
 {
@@ -73,14 +82,15 @@ final class DonorFinancialReportCsvExport
      *                                         project_status_id, project_super_id, currency_id, project_id)
      * @return array{path: string, filename: string, fallback_filename: string, stats: array<string, mixed>}
      */
-    public function build(int $donorId, array $filters): array
+    public function build(int $donorId, array $filters, ?bool $fromProjection = null): array
     {
         $started = microtime(true);
         $at = Carbon::now();
         $workDir = self::createWorkDir();
+        $fromProjection ??= app(DonorReportProjectionState::class)->isReady();
 
         try {
-            $result = AccountStatementCsvSnapshot::run(fn (): array => $this->write($donorId, $filters, $workDir, $at));
+            $result = AccountStatementCsvSnapshot::run(fn (): array => $this->write($donorId, $filters, $workDir, $at, $fromProjection));
         } catch (\Throwable $e) {
             self::removeWorkDir($workDir);
 
@@ -215,9 +225,18 @@ final class DonorFinancialReportCsvExport
      * @param  array<string, mixed>  $filters
      * @return array{path: string, filename: string, fallback_filename: string, stats: array<string, mixed>}
      */
-    private function write(int $donorId, array $filters, string $workDir, Carbon $at): array
+    private function write(int $donorId, array $filters, string $workDir, Carbon $at, bool $fromProjection): array
     {
-        $planned = $this->count($donorId, $filters);
+        if ($fromProjection) {
+            $reader = app(DonorReportReader::class);
+            $scope = DonorReportScope::resolve($donorId, $filters);
+            $planned = $reader->movementCount($scope);
+            $source = $reader->movements($scope, csv: true);
+        } else {
+            $planned = $this->count($donorId, $filters);
+            $source = $this->movements($donorId, $filters);
+        }
+
         $maxRows = max(1, (int) config(self::CONFIG.'.max_rows_per_file', 1000000));
         $header = AccountStatementCsvFormat::header(DonorFinancialReportCsvFormat::HEADERS);
 
@@ -230,7 +249,7 @@ final class DonorFinancialReportCsvExport
         $movements = 0;
         $lines = 0;
 
-        foreach ($this->movements($donorId, $filters) as $movement) {
+        foreach ($source as $movement) {
             foreach (self::records($movement) as $record) {
                 if ($part === null || $inFile === $maxRows) {
                     if ($part !== null) {

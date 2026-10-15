@@ -18,6 +18,7 @@ use App\Services\Audit\Financial\FinancialAccountRole;
 use App\Services\Audit\Financial\FinancialAuditRecorder;
 use App\Services\Audit\Financial\FinancialAuditSubject;
 use App\Services\Reports\ComprehensiveFinancialTransactions\Projection\ComprehensiveReportProjector;
+use App\Services\Reports\DonorFinancialReport\Projection\DonorReportProjector;
 use App\Services\Transactions\TransactionDescriptionBuilder;
 use App\Services\Transactions\TransactionLineDescriptionBuilder;
 use App\Services\Validation\FinancialAccountGuard;
@@ -223,6 +224,10 @@ class EditExecutionPayment extends EditRecord
             if ($transaction) {
                 app(ComprehensiveReportProjector::class)->syncTransaction($transaction->id);
             }
+
+            // Donor report projection: re-derive this execution payment (budget, date, amount) from its final
+            // state, inside this same DB transaction.
+            app(DonorReportProjector::class)->syncPayments([$record->id]);
 
             // STEP 6 - Handle file replacement/removal
             $existing        = $record->attachments()->latest('id')->first();
