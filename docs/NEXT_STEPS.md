@@ -15,6 +15,8 @@ Current open work only; history lives in TASKS_LOG. Deployment detail: AI_PROJEC
 
 **1b. Comprehensive month-enumeration fix (2026-10-18, not pushed; TASKS_LOG 2026-10-18):** normal deploy, then `php artisan oms:rebuild-comprehensive-report-projection --verify`; expect 0 differences (the April 2026 aggregates are recreated).
 
+**1c. Receipt form donor picker (2026-10-18, not committed; TASKS_LOG 2026-10-18):** UX only, normal deploy; nothing to run. Optional: decide whether the execution-payment, general-exchange and disbursement partner Selects should also open on a bounded first 50.
+
 **2. Development `oms` (decision for the user):** neither projection is migrated there. To switch it on: `php artisan migrate`, then `php artisan oms:rebuild-comprehensive-report-projection --verify` and `php artisan oms:rebuild-account-statement-projection --verify` (additive tables, but it changes `oms`).
 
 **3. Decisions for the user:**

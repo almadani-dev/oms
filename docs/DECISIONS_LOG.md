@@ -13,6 +13,20 @@
 ---
 
 ### Date
+2026-10-18 (Receipt form donor picker: bounded opening list)
+
+### Decision
+- The receipt form's donor (`partner_id`) Select lists the first 50 donors (name order) on opening, like the Donor Financial Report picker; this replaces Batch E's "nothing preloaded" (DECISIONS_LOG 2026-09-28) for this one Select only.
+
+### Reason
+- An empty Select until the user typed was a UX problem; a bounded `LIMIT 50` page keeps the Batch E guarantee of never loading the whole partners table.
+
+### Impact
+- One bounded partners query per form render. Eligibility and validation unchanged (label resolver). The execution-payment, general-exchange and disbursement partner Selects still open empty.
+
+---
+
+### Date
 2026-10-18 (Comprehensive projection: month enumeration)
 
 ### Decision

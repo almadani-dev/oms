@@ -32,6 +32,7 @@ use App\Models\User;
 use App\Support\Permissions\PermissionRegistry;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\URL;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Livewire;
@@ -42,7 +43,8 @@ use Tests\TestCase;
 /**
  * Search Batch E: the large lookup Selects of three reports and three financial
  * forms search on the server (ArabicSearch, at most 50 results, nothing
- * preloaded), and a selected value always resolves its label — including one
+ * preloaded; the report pickers and the receipt's donor picker list a bounded
+ * first 50 on opening), and a selected value always resolves its label — including one
  * outside the first 50 results — through the same eligibility scope that
  * Filament's `in` validation checks.
  *
@@ -472,7 +474,14 @@ class LookupSelectSearchTest extends TestCase
         $component = Livewire::test($create);
         $select = $this->select($component, 'partner_id');
 
-        $this->assertNoPreload($select);
+        if ($donorsOnly) {
+            // The receipt's donor picker opens on the donors (name order),
+            // like the donor report's — never the non-donor.
+            $this->assertBoundedInitialOptions($select);
+            $this->assertSame([$this->light->id => $this->light->name, $this->hope->id => $this->hope->name], $select->getOptions());
+        } else {
+            $this->assertNoPreload($select);
+        }
         $this->assertSame([$this->hope->id => $this->hope->name], $select->getSearchResults('الامل'));
         $this->assertSame(
             $donorsOnly ? [] : [$this->trader->id => $this->trader->name],
@@ -494,6 +503,55 @@ class LookupSelectSearchTest extends TestCase
         $this->manyPartners(55, donor: true);
 
         $this->assertCount(50, $this->select(Livewire::test($create), 'partner_id')->getSearchResults('جهة'));
+    }
+
+    public function test_receipt_donor_picker_opens_on_a_bounded_first_page_of_donors(): void
+    {
+        $this->manyPartners(55, donor: true);
+        // Both would sort before every "جهة رقم 0NN" donor if they were eligible.
+        $nonDonor = Partner::create(['name' => 'جهة رقم 000 تاجر', 'partner_type_id' => PartnerType::first()->id, 'is_donor' => false]);
+        $deleted = Partner::create(['name' => 'جهة رقم 000 محذوفة', 'partner_type_id' => PartnerType::first()->id, 'is_donor' => true]);
+        $deleted->delete();
+
+        $component = Livewire::test(CreateProjectCostReceipt::class);
+        $select = $this->select($component, 'partner_id');
+
+        // Opening, before typing: the first 50 donors by name, from one
+        // LIMIT 50 query — never the whole partners table.
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $initial = $select->getOptions();
+        $partnerQueries = collect(DB::getQueryLog())->pluck('query')->filter(fn (string $sql): bool => str_contains($sql, 'partners'));
+        DB::disableQueryLog();
+
+        $this->assertCount(50, $initial);
+        $this->assertNotEmpty($partnerQueries);
+        foreach ($partnerQueries as $sql) {
+            $this->assertMatchesRegularExpression('/\blimit 50\b/i', $sql, 'the opening list is bounded');
+        }
+        $this->assertSame($initial, $select->getSearchResults(''), 'the same rule as an empty search');
+        $this->assertSame([$this->light->id => $this->light->name], array_slice($initial, 0, 1, true), 'name order');
+        $this->assertArrayNotHasKey($nonDonor->id, $initial, 'a non-donor is never listed');
+        $this->assertArrayNotHasKey($deleted->id, $initial, 'a soft-deleted donor is never listed');
+
+        // "مؤسسة الأمل" sorts after all 56 other donors: outside the opening
+        // list, still found by Arabic search (bare alef), and once chosen its
+        // label resolves and the value stays valid.
+        $this->assertArrayNotHasKey($this->hope->id, $initial);
+        $this->assertSame([$this->hope->id => $this->hope->name], $select->getSearchResults('الامل'));
+        $this->assertCount(50, $select->getSearchResults('جهة'), 'search stays bounded');
+        $this->assertSame([], $select->getSearchResults('محذوفة'));
+        $this->assertSame([], $select->getSearchResults('تاجر'));
+
+        $component->set('data.partner_id', $this->hope->id);
+        $this->assertSame($this->hope->name, $this->select($component, 'partner_id')->getOptionLabel(withDefault: false));
+        $this->assertNull($this->select($component, 'partner_id')->getInValidationRuleValues());
+
+        // Stale/ineligible values still fail Filament's `in` rule.
+        foreach ([$nonDonor, $deleted] as $partner) {
+            $component->set('data.partner_id', $partner->id);
+            $this->assertSame([], $this->select($component, 'partner_id')->getInValidationRuleValues(), $partner->name);
+        }
     }
 
     public function test_soft_deleted_partner_is_neither_offered_nor_valid(): void

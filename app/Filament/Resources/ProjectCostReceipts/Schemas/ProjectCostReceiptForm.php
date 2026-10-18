@@ -117,13 +117,16 @@ class ProjectCostReceiptForm
                     ->required(),
 
                 // Donors only (is_donor), as before, now searchable on the server
-                // by name — at most 50 results. The saved value is the partner
-                // id; its label resolves through the same donors-only scope,
-                // which Filament's `in` validation checks, so a non-donor id is
-                // still rejected.
+                // by name — at most 50 results; on opening, before any typing,
+                // the first 50 donors (name order) are listed. The saved value
+                // is the partner id; its label resolves through the same
+                // donors-only scope, which Filament's `in` validation checks, so
+                // a non-donor id is still rejected and a donor outside the
+                // first 50 still reads its name.
                 Select::make('partner_id')
                     ->label('الجهة المانحة')
                     ->searchable()
+                    ->options(fn (): array => FinancialLookupFilters::partnerOptions('', self::donorsOnly(...)))
                     ->getSearchResultsUsing(fn (?string $search): array => FinancialLookupFilters::partnerOptions($search ?? '', self::donorsOnly(...)))
                     ->getOptionLabelUsing(fn (mixed $value): ?string => blank($value) ? null : FinancialLookupFilters::partnerLabel($value, self::donorsOnly(...)))
                     ->optionsLimit(FinancialLookupFilters::OPTIONS_LIMIT)

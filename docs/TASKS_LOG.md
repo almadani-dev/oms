@@ -16,6 +16,32 @@
 ---
 
 ### Date
+2026-10-18 (Receipt form donor picker — bounded first 50 on opening)
+
+### Task
+The «الجهة المانحة» (`partner_id`) Select of the Project Cost Receipt form opened with an empty list (Search Batch E: server-side search, nothing preloaded) until the user typed.
+
+### Result
+- Audit first: the implementation matched the Batch E description; the Donor Financial Report picker already used `FinancialLookupFilters::partnerOptions('', donorsOnly)` for its opening list.
+- The receipt picker now reuses `FinancialLookupFilters::partnerOptions('', self::donorsOnly(...))` as `->options()`: the first 50 eligible donors (name order) on opening, one `LIMIT 50` query, never the whole table.
+- Unchanged: Arabic-aware typed search (≤ 50), selected-label resolution and donors-only `in` validation through `partnerLabel()`, SoftDelete exclusion, receipt accounting and create / edit / delete write paths, `transaction.partner_id` semantics, the shared helper, other forms.
+
+### Changed Files
+- `app/Filament/Resources/ProjectCostReceipts/Schemas/ProjectCostReceiptForm.php`
+- `tests/Feature/Search/LookupSelectSearchTest.php` (receipt case of the partner data-provider test now expects bounded donor-only initial options; new `test_receipt_donor_picker_opens_on_a_bounded_first_page_of_donors`)
+- `graphify-out/` (`graphify update .`)
+
+### Verification
+- `LookupSelectSearchTest` 21/21 (205 assertions).
+- `ProjectCostReceiptAccountValidationTest` + `BalanceGuardIntegrationTest` 13/13 (62 assertions).
+- `graphify update .` completed. Full suites not run (forbidden).
+
+### Commit Hash
+Not committed.
+
+---
+
+### Date
 2026-10-18 (Comprehensive projection rebuild — timezone-safe month enumeration)
 
 ### Task
