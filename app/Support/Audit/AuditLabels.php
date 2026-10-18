@@ -220,6 +220,10 @@ final class AuditLabels
         'is_active' => 'مفعّل',
         'is_base' => 'العملة الأساسية',
 
+        // projects: the donor-side name and number are two different fields
+        'donor_project_name' => 'اسم المشروع لدى الجهة المانحة',
+        'donor_project_number' => 'رقم المشروع لدى الجهة المانحة',
+
         // attachments
         'file_name' => 'اسم الملف',
         'mime_type' => 'نوع الملف',

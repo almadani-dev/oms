@@ -470,7 +470,8 @@
                                     <tr>
                                         <th>كود المشروع</th>
                                         <th>اسم المشروع</th>
-                                        <th>اسم المشروع لدى المانح</th>
+                                        <th>اسم المشروع لدى الجهة المانحة</th>
+                                        <th>رقم المشروع لدى الجهة المانحة</th>
                                         <th>نوع المشروع</th>
                                         <th>الحالة</th>
                                         <th>تاريخ الاعتماد</th>
@@ -490,6 +491,8 @@
                                             <td dir="ltr">{{ $project['code'] ?: '-' }}</td>
                                             <td>{{ $project['name'] }}</td>
                                             <td>{{ $project['donor_project_name'] ?: '-' }}</td>
+                                            {{-- ?? : a report stored before this column existed has no such key --}}
+                                            <td dir="ltr">{{ ($project['donor_project_number'] ?? null) ?: '-' }}</td>
                                             <td>{{ $project['super_name'] ?: '-' }}</td>
                                             <td>{{ $project['status_name'] ?: '-' }}</td>
                                             <td dir="ltr">{{ $project['approval_date'] ?: '-' }}</td>

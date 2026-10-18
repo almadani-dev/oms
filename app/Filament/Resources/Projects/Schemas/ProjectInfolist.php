@@ -28,6 +28,11 @@ class ProjectInfolist
                     ->label('المشروع الرئيسي'),
                 TextEntry::make('donor_project_name')
                     ->label('اسم المشروع لدى الجهة المانحة')
+                    ->placeholder('—')
+                    ->columnSpanFull(),
+                TextEntry::make('donor_project_number')
+                    ->label('رقم المشروع لدى الجهة المانحة')
+                    ->placeholder('—')
                     ->columnSpanFull(),
             ]),
             Section::make('التواريخ')->columns(2)->schema([

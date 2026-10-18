@@ -28,16 +28,23 @@ class ProjectsTable
                 TextColumn::make('projectStatus.name')->label('الحالة')->badge()
                     ->color(fn ($record) => $record?->projectStatus?->color ? 'gray' : 'primary'),
                 TextColumn::make('donor.name')->label('الجهة المانحة')->sortable(),
+                TextColumn::make('donor_project_number')
+                    ->label('رقم المشروع لدى الجهة المانحة')
+                    ->placeholder('—')
+                    ->sortable()
+                    ->toggleable(),
                 TextColumn::make('start_date')->label('تاريخ البداية')->date()->sortable(),
                 TextColumn::make('end_date')->label('تاريخ النهاية')->date()->sortable(),
                 TextColumn::make('created_at')->label('تاريخ الإنشاء')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),
             ])
-            // Table-level search through ArabicSearch: code is an identifier, the
-            // project and donor names are alef-folded Arabic text; the donor is
-            // reached through one correlated EXISTS, never a join.
+            // Table-level search through ArabicSearch: code and the donor's
+            // project number are identifiers, the project and donor names are
+            // alef-folded Arabic text; the donor is reached through one
+            // correlated EXISTS, never a join.
             ->searchable([
                 fn (Builder $query, string $search): Builder => static::applyProjectSearch($query, $search),
                 fn (Builder $query, string $search): Builder => static::applyDonorSearch($query, $search),
+                fn (Builder $query, string $search): Builder => ArabicSearch::whereContainsIdentifier($query, 'donor_project_number', $search),
             ])
             ->searchPlaceholder('ابحث في المشاريع...')
             ->filters([

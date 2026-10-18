@@ -204,7 +204,9 @@ class FinalSearchGapsTest extends TestCase
         $component = Livewire::test(CreateProjectCostBudgetsPayment::class);
         $select = $this->select($component, 'partner_id');
 
-        $this->assertSame([], $select->getOptions(), 'no option list may be shipped to the page');
+        // Opening, before typing: a bounded first page of every partner, donor
+        // or not, in name order (LookupSelectSearchTest covers the 50 bound).
+        $this->assertSame([$this->light->id => $this->light->name, $this->hope->id => $this->hope->name], $select->getOptions());
         $this->assertFalse($select->isPreloaded());
         $this->assertTrue($select->hasDynamicSearchResults());
         $this->assertTrue($select->isRequired());

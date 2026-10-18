@@ -8,6 +8,7 @@ use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 
@@ -48,10 +49,21 @@ class ProjectForm
                     // The label shows the code, so the code must be searchable too.
                     ->searchable(['code', 'name'])
                     ->preload(),
-                TextInput::make('donor_project_name')
-                    ->label('اسم المشروع لدى الجهة المانحة')
-                    ->maxLength(255)
-                    ->columnSpanFull(),
+                // The donor-side name and number share their own full-width row
+                // (RTL source order: name on the right, number on the left),
+                // stacking on narrow screens.
+                Grid::make(['default' => 1, 'md' => 2])->schema([
+                    TextInput::make('donor_project_name')
+                        ->label('اسم المشروع لدى الجهة المانحة')
+                        ->maxLength(255),
+                    // The donor's own reference, kept exactly as typed (text, never
+                    // a number: leading zeros, letters, "/" and "-" survive). Not
+                    // the internal generated code above.
+                    TextInput::make('donor_project_number')
+                        ->label('رقم المشروع لدى الجهة المانحة')
+                        ->maxLength(255)
+                        ->helperText('المرجع الذي تستخدمه الجهة المانحة لهذا المشروع، ويختلف عن كود المشروع الداخلي في النظام.'),
+                ])->columnSpanFull(),
             ]),
             Section::make('التواريخ')->columns(2)->schema([
                 DatePicker::make('approval_date')

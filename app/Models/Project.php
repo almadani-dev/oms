@@ -21,6 +21,7 @@ class Project extends Model
         'start_date',
         'end_date',
         'donor_project_name',
+        'donor_project_number',
         'donor_id',
         'project_super_id',
         'project_status_id',

@@ -64,12 +64,15 @@ class GeneralExchangeForm
                         ->required(),
 
                     // Every (non-deleted) partner, as before, searched on the
-                    // server by name — at most 50 results. Still optional; the
-                    // saved value is the partner id, and its label (and `in`
-                    // validation) resolves through the same lookup.
+                    // server by name — at most 50 results; on opening, before
+                    // any typing, the first 50 partners (name order) are listed.
+                    // Still optional; the saved value is the partner id, and its
+                    // label (and `in` validation) resolves through the same
+                    // lookup, so a partner outside the first 50 still reads its name.
                     Select::make('partner_id')
                         ->label('الجهة')
                         ->searchable()
+                        ->options(fn (): array => FinancialLookupFilters::partnerOptions(''))
                         ->getSearchResultsUsing(fn (?string $search): array => FinancialLookupFilters::partnerOptions($search ?? ''))
                         ->getOptionLabelUsing(fn (mixed $value): ?string => blank($value) ? null : FinancialLookupFilters::partnerLabel($value))
                         ->preload(false)

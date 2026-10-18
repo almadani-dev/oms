@@ -330,6 +330,7 @@ final class DonorReportReader
                 'code' => $project->code,
                 'name' => $project->name,
                 'donor_project_name' => $project->donor_project_name,
+                'donor_project_number' => $project->donor_project_number,
                 'super_name' => $project->projectSuper?->name,
                 'status_name' => $project->projectStatus?->name,
                 'approval_date' => $project->approval_date?->format('Y-m-d'),

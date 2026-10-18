@@ -16,6 +16,50 @@
 ---
 
 ### Date
+2026-10-18 (Partner pickers bounded first 50 + separate donor project number)
+
+### Task
+Approved implementation after a read-only audit (D1–D5, DECISIONS_LOG 2026-10-18): the partner pickers of صرف مبلغ المشروع, صرف مبلغ التنفيذ and التحويلات العامة opened empty until the user typed; projects needed a donor-side project NUMBER separate from the existing donor-side project NAME, shown on the Projects UI and the Donor Financial Report.
+
+### Result
+- **Pickers:** the three `partner_id` Selects reuse `FinancialLookupFilters::partnerOptions('')` as `->options()`: the first 50 non-deleted partners (donor or not) on opening, Create and Edit (shared schemas). Search, label / `in` validation, hydration and write paths unchanged; no `is_donor`, project or budget dependency added; `resetBudget()` and the beneficiary-account filter untouched.
+- **D3:** `partnerOptions()` orders by `name`, then `id`. Consumers audited first: the three forms, the receipt and donor-report donor pickers (donors-only scope, unchanged) and the five financial-list partner filters; no test pinned the partner query SQL.
+- **Donor project number:** new nullable `projects.donor_project_number` (migration below), `Project::$fillable`; Project Create / Edit TextInput (max 255, helper text), View entry, Projects list column (visible, toggleable, sortable, `—`, identifier search OR'd with the existing code / name / donor search); donor report screen + statistics Excel / Word column after the name column (16 columns: header, widths, kinds and row identity extended together); legacy service and projection reader rows carry the key in the same position (parity checker); a report stored before deploy renders «-» (`?? null`). Audited field + Arabic labels for `donor_project_name` / `donor_project_number`.
+- `donor_project_name` values, `code` generation and `donor_id` unchanged; no data backfill.
+- Found while testing: Livewire's `Testable` has `assertSeeHtmlInOrder` but no `assertSeeInOrder` (it falls through to the raw update response), so the screen assertion uses the HTML form.
+
+### Changed Files
+- `app/Filament/Resources/ProjectCostBudgetsPayments/Schemas/ProjectCostBudgetsPaymentForm.php`
+- `app/Filament/Resources/ExecutionPayments/Schemas/ExecutionPaymentForm.php`
+- `app/Filament/Resources/GeneralExchanges/Schemas/GeneralExchangeForm.php`
+- `app/Filament/Tables/FinancialLookupFilters.php`
+- `database/migrations/2026_10_18_100000_add_donor_project_number_to_projects_table.php` (new)
+- `app/Models/Project.php`
+- `app/Filament/Resources/Projects/Schemas/ProjectForm.php`, `ProjectInfolist.php`, `Tables/ProjectsTable.php`
+- `app/Services/Reports/DonorFinancialReportService.php`, `app/Services/Reports/DonorFinancialReport/Projection/DonorReportReader.php`, `app/Services/Reports/DonorFinancialReport/DonorFinancialReportStatistics.php`
+- `resources/views/filament/pages/donor-financial-report-page.blade.php`
+- `app/Services/Audit/Crud/AuditSubjectRegistry.php`, `app/Support/Audit/AuditLabels.php`
+- Tests: `tests/Feature/Search/LookupSelectSearchTest.php` (disbursement added to `partnerForms`; all pickers expect bounded initial options; new `test_every_partner_picker_opens_on_a_bounded_deterministic_first_page` ×3; Edit test covers the disbursement Edit page and bounded Edit options), `tests/Feature/Search/FinalSearchGapsTest.php` (opening list instead of "no options"), `tests/Feature/Reports/DonorFinancialReportExportTest.php` (DP-1 number `00123/AB-7`; separate header / value columns on screen and in Excel; amounts unchanged), `tests/Feature/Projects/DonorProjectNumberTest.php` (new, 10 tests)
+- `graphify-out/` (`graphify update .`)
+
+### Verification
+Targeted only, SQLite `:memory:` test database (the new migration ran only there, through `migrateSqliteSchema()`):
+- `LookupSelectSearchTest` 26/26 (299 assertions)
+- `FinalSearchGapsTest --filter budget_payment` 3/3 (20)
+- `ProjectCostBudgetsPayments/ZeroPercentageDeductionFormTest` 6/6 (61); `GeneralExchanges/ZeroPercentageDeductionFormTest` 6/6 (49); `ExecutionPaymentCreditAccountTest` 11/11 (40)
+- `FinancialListsSearchTest --filter partner` 4/4 (24)
+- `DonorFinancialReportExportTest` 26/26 (952) — includes legacy-vs-projection parity and CSV / statistics identical on both paths
+- `DonorProjectNumberTest` 10/10 (97)
+- `MasterDataTableSearchTest --filter project` 8/8 (28); `ProjectSelectCodeSearchTest` 10/10 (30)
+- `AuditedFilamentCrudTest --filter project` 3/3 (34); `AuditLabelCoverageTest` 9/9 (82); `AuditCrudInfrastructureTest` 11/11 (222)
+- Full suites not run (forbidden). No migration run on `oms`, `oms_stress` or production. `graphify update .` completed.
+
+### Commit Hash
+Not committed.
+
+---
+
+### Date
 2026-10-18 (Receipt form donor picker — bounded first 50 on opening)
 
 ### Task

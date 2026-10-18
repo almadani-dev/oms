@@ -10,6 +10,8 @@ use App\Filament\Resources\ExecutionPayments\Pages\CreateExecutionPayment;
 use App\Filament\Resources\ExecutionPayments\Pages\EditExecutionPayment;
 use App\Filament\Resources\GeneralExchanges\Pages\CreateGeneralExchange;
 use App\Filament\Resources\GeneralExchanges\Pages\EditGeneralExchange;
+use App\Filament\Resources\ProjectCostBudgetsPayments\Pages\CreateProjectCostBudgetsPayment;
+use App\Filament\Resources\ProjectCostBudgetsPayments\Pages\EditProjectCostBudgetsPayment;
 use App\Filament\Resources\ProjectCostReceipts\Pages\CreateProjectCostReceipt;
 use App\Filament\Resources\ProjectCostReceipts\Pages\EditProjectCostReceipt;
 use App\Models\Account;
@@ -41,9 +43,9 @@ use Tests\Support\Integrity\IntegrityTestFixtures;
 use Tests\TestCase;
 
 /**
- * Search Batch E: the large lookup Selects of three reports and three financial
- * forms search on the server (ArabicSearch, at most 50 results, nothing
- * preloaded; the report pickers and the receipt's donor picker list a bounded
+ * Search Batch E: the large lookup Selects of three reports and the financial
+ * forms search on the server (ArabicSearch, at most 50 results, never
+ * preloaded; the report pickers and the forms' partner pickers list a bounded
  * first 50 on opening), and a selected value always resolves its label — including one
  * outside the first 50 results — through the same eligibility scope that
  * Filament's `in` validation checks.
@@ -462,10 +464,81 @@ class LookupSelectSearchTest extends TestCase
     public static function partnerForms(): array
     {
         return [
+            'project disbursement (all partners)' => [CreateProjectCostBudgetsPayment::class, EditProjectCostBudgetsPayment::class, false],
             'execution payment (all partners)' => [CreateExecutionPayment::class, EditExecutionPayment::class, false],
             'general exchange (all partners)' => [CreateGeneralExchange::class, EditGeneralExchange::class, false],
             'receipt (donors only)' => [CreateProjectCostReceipt::class, EditProjectCostReceipt::class, true],
         ];
+    }
+
+    /**
+     * The pickers whose eligibility is every (non-deleted) partner.
+     *
+     * @return array<string, array{class-string}>
+     */
+    public static function everyPartnerForms(): array
+    {
+        return array_map(
+            fn (array $case): array => [$case[0]],
+            array_filter(self::partnerForms(), fn (array $case): bool => ! $case[2]),
+        );
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('everyPartnerForms')]
+    public function test_every_partner_picker_opens_on_a_bounded_deterministic_first_page(string $create): void
+    {
+        $this->manyPartners(55, donor: false);
+        // All three sort before every "جهة رقم 0NN" partner. The two twins share
+        // a name, so only the id can order them; the deleted one is never listed.
+        $twinA = Partner::create(['name' => 'جهة رقم 000 توأم', 'partner_type_id' => PartnerType::first()->id, 'is_donor' => false]);
+        $twinB = Partner::create(['name' => 'جهة رقم 000 توأم', 'partner_type_id' => PartnerType::first()->id, 'is_donor' => false]);
+        $deleted = Partner::create(['name' => 'جهة رقم 000 محذوفة', 'partner_type_id' => PartnerType::first()->id, 'is_donor' => false]);
+        $deleted->delete();
+
+        $component = Livewire::test($create);
+        $select = $this->select($component, 'partner_id');
+
+        // Opening, before typing: the first 50 partners by name then id, from
+        // LIMIT 50 queries only — never the whole partners table.
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $initial = $select->getOptions();
+        $partnerQueries = collect(DB::getQueryLog())->pluck('query')->filter(fn (string $sql): bool => str_contains($sql, 'partners'));
+        DB::disableQueryLog();
+
+        $this->assertCount(50, $initial);
+        $this->assertNotEmpty($partnerQueries);
+        foreach ($partnerQueries as $sql) {
+            $this->assertMatchesRegularExpression('/order by "name" asc, "id" asc limit 50\b/i', $sql, 'bounded and deterministic');
+        }
+        $this->assertFalse($select->isPreloaded());
+        $this->assertSame($initial, $select->getSearchResults(''), 'the same rule as an empty search');
+
+        // Name order, the twins by id; non-donors are eligible here.
+        $this->assertSame(
+            [$this->light->id, $twinA->id, $twinB->id],
+            array_slice(array_keys($initial), 0, 3),
+        );
+        $this->assertFalse($twinA->is_donor);
+        $this->assertArrayNotHasKey($deleted->id, $initial, 'a soft-deleted partner is never listed');
+
+        // Outside the opening list, still found by Arabic search (bare alef for
+        // the hamza-alef name), and search stays bounded.
+        $this->assertArrayNotHasKey($this->hope->id, $initial);
+        $this->assertArrayNotHasKey($this->trader->id, $initial);
+        $this->assertSame([$this->hope->id => $this->hope->name], $select->getSearchResults('الامل'));
+        $this->assertSame([$this->trader->id => $this->trader->name], $select->getSearchResults('التاجر'));
+        $this->assertCount(50, $select->getSearchResults('جهة'));
+        $this->assertSame([], $select->getSearchResults('محذوفة'));
+
+        // A non-donor outside the first 50, once chosen, reads its name and
+        // stays valid; the soft-deleted partner still fails Filament's `in` rule.
+        $component->set('data.partner_id', $this->trader->id);
+        $this->assertSame($this->trader->name, $this->select($component, 'partner_id')->getOptionLabel(withDefault: false));
+        $this->assertNull($this->select($component, 'partner_id')->getInValidationRuleValues());
+
+        $component->set('data.partner_id', $deleted->id);
+        $this->assertSame([], $this->select($component, 'partner_id')->getInValidationRuleValues());
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('partnerForms')]
@@ -474,14 +547,16 @@ class LookupSelectSearchTest extends TestCase
         $component = Livewire::test($create);
         $select = $this->select($component, 'partner_id');
 
-        if ($donorsOnly) {
-            // The receipt's donor picker opens on the donors (name order),
-            // like the donor report's — never the non-donor.
-            $this->assertBoundedInitialOptions($select);
-            $this->assertSame([$this->light->id => $this->light->name, $this->hope->id => $this->hope->name], $select->getOptions());
-        } else {
-            $this->assertNoPreload($select);
-        }
+        // Every picker opens on a bounded first page (name order) with its own
+        // eligibility: the receipt's on the donors only, never the non-donor;
+        // the others on every partner, the non-donor included.
+        $this->assertBoundedInitialOptions($select);
+        $this->assertSame(
+            $donorsOnly
+                ? [$this->light->id => $this->light->name, $this->hope->id => $this->hope->name]
+                : [$this->light->id => $this->light->name, $this->trader->id => $this->trader->name, $this->hope->id => $this->hope->name],
+            $select->getOptions(),
+        );
         $this->assertSame([$this->hope->id => $this->hope->name], $select->getSearchResults('الامل'));
         $this->assertSame(
             $donorsOnly ? [] : [$this->trader->id => $this->trader->name],
@@ -589,12 +664,28 @@ class LookupSelectSearchTest extends TestCase
             'project_cost_id' => $cost->id, 'amount' => 10, 'currency_id' => $this->currency->id,
             'date' => '2026-07-01', 'transaction_id' => $this->transaction($late)->id,
         ]);
+        $disbursement = ProjectCostBudget::create([
+            'project_cost_id' => $cost->id, 'original_amount' => 100, 'final_amount' => 100,
+            'source_currency_id' => $this->currency->id, 'disbursement_currency_id' => $this->currency->id,
+            'transaction_id' => $this->transaction($late)->id,
+        ]);
 
-        foreach ([[EditExecutionPayment::class, $payment], [EditGeneralExchange::class, $exchange], [EditProjectCostReceipt::class, $receipt]] as [$page, $record]) {
+        $pages = [
+            [EditProjectCostBudgetsPayment::class, $disbursement],
+            [EditExecutionPayment::class, $payment],
+            [EditGeneralExchange::class, $exchange],
+            [EditProjectCostReceipt::class, $receipt],
+        ];
+
+        foreach ($pages as [$page, $record]) {
             $component = Livewire::test($page, ['record' => $record->getRouteKey()])
                 ->assertSet('data.partner_id', $late->id);
 
+            // Edit opens on the same bounded first page as Create; the saved
+            // partner sits outside it and still reads its name and validates.
             $select = $this->select($component, 'partner_id');
+            $this->assertCount(50, $select->getOptions(), $page);
+            $this->assertArrayNotHasKey($late->id, $select->getOptions(), $page);
             $this->assertSame('يوسف للتجارة', $select->getOptionLabel(withDefault: false), $page);
             $this->assertNull($select->getInValidationRuleValues(), $page);
         }

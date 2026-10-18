@@ -154,12 +154,15 @@ class ExecutionPaymentForm
                     ->required(),
 
                 // Every (non-deleted) partner, as before, searched on the server
-                // by name — at most 50 results, never the whole table. The saved
-                // value is still the partner id; its label (and Filament's `in`
-                // validation) resolves through the same lookup.
+                // by name — at most 50 results, never the whole table; on
+                // opening, before any typing, the first 50 partners (name order)
+                // are listed. The saved value is still the partner id; its label
+                // (and Filament's `in` validation) resolves through the same
+                // lookup, so a partner outside the first 50 still reads its name.
                 Select::make('partner_id')
                     ->label('الجهة / المستفيد')
                     ->searchable()
+                    ->options(fn (): array => FinancialLookupFilters::partnerOptions(''))
                     ->getSearchResultsUsing(fn (?string $search): array => FinancialLookupFilters::partnerOptions($search ?? ''))
                     ->getOptionLabelUsing(fn (mixed $value): ?string => blank($value) ? null : FinancialLookupFilters::partnerLabel($value))
                     ->optionsLimit(FinancialLookupFilters::OPTIONS_LIMIT)

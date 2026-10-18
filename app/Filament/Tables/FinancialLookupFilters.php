@@ -81,6 +81,10 @@ final class FinancialLookupFilters
     }
 
     /**
+     * Up to OPTIONS_LIMIT partners matching $search by name, in name order;
+     * the id breaks ties between partners of the same name, so the bounded
+     * page is deterministic.
+     *
      * @return array<int, string>
      */
     public static function partnerOptions(string $search, ?Closure $scope = null): array
@@ -88,6 +92,7 @@ final class FinancialLookupFilters
         return self::partnerQuery($scope)
             ->where(fn (Builder $query): Builder => ArabicSearch::whereContainsText($query, 'name', $search))
             ->orderBy('name')
+            ->orderBy('id')
             ->limit(self::OPTIONS_LIMIT)
             ->pluck('name', 'id')
             ->all();

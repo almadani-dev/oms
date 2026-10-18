@@ -15,7 +15,7 @@ Current open work only; history lives in TASKS_LOG. Deployment detail: AI_PROJEC
 
 **1b. Comprehensive month-enumeration fix (2026-10-18, not pushed; TASKS_LOG 2026-10-18):** normal deploy, then `php artisan oms:rebuild-comprehensive-report-projection --verify`; expect 0 differences (the April 2026 aggregates are recreated).
 
-**1c. Receipt form donor picker (2026-10-18, not committed; TASKS_LOG 2026-10-18):** UX only, normal deploy; nothing to run. Optional: decide whether the execution-payment, general-exchange and disbursement partner Selects should also open on a bounded first 50.
+**1c. Partner pickers + donor project number (2026-10-18, not committed; TASKS_LOG 2026-10-18):** the receipt donor picker (committed `f9a4a3f`) and now the disbursement, execution-payment and general-exchange partner pickers open on a bounded first 50 (the earlier open question is resolved by D4). Deploy needs `php artisan migrate` for `2026_10_18_100000_add_donor_project_number_to_projects_table` (additive nullable column) BEFORE the new code serves requests on that environment — the Projects pages and the donor report read the column; no projection rebuild. Optional follow-ups (not requested): show the donor project number on the general projects page and the project financial report / Word header (both snapshot-based, need a snapshot change or a join); add it to topbar global search.
 
 **2. Development `oms` (decision for the user):** neither projection is migrated there. To switch it on: `php artisan migrate`, then `php artisan oms:rebuild-comprehensive-report-projection --verify` and `php artisan oms:rebuild-account-statement-projection --verify` (additive tables, but it changes `oms`).
 

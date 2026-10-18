@@ -60,7 +60,7 @@ final class DonorFinancialReportStatistics
     public const DISB_FINAL_HEADERS = ['العملة', 'صافي مبلغ الصرف / المبلغ النهائي', 'إجمالي مبالغ التنفيذ المدفوعة', 'المتبقي من الصرف'];
 
     public const PROJECT_HEADERS = [
-        'كود المشروع', 'اسم المشروع', 'اسم المشروع لدى المانح', 'نوع المشروع', 'الحالة',
+        'كود المشروع', 'اسم المشروع', 'اسم المشروع لدى الجهة المانحة', 'رقم المشروع لدى الجهة المانحة', 'نوع المشروع', 'الحالة',
         'تاريخ الاعتماد', 'تاريخ البداية', 'تاريخ النهاية', 'العملة',
         'التكلفة المخططة', 'المستلم', 'الفائض/العجز', 'صافي الصرف', 'التنفيذ المدفوع', 'المتبقي من الصرف',
     ];
@@ -79,7 +79,7 @@ final class DonorFinancialReportStatistics
         $exportedAt = now()->format('Y-m-d H:i');
 
         return (new StatisticsReport(self::TITLE, 'تاريخ ووقت التصدير: '.$exportedAt))
-            ->sheet(self::SHEET, [34, 30, 24, 18, 14, 14, 14, 14, 10, 18, 18, 18, 18, 18, 18])
+            ->sheet(self::SHEET, [34, 30, 24, 20, 18, 14, 14, 14, 14, 10, 18, 18, 18, 18, 18, 18])
             ->pairs('بيانات التقرير', [
                 ['من تاريخ (تاريخ الاعتماد)', self::dash($appliedFilters['date_from'] ?? null)],
                 ['إلى تاريخ (تاريخ الاعتماد)', self::dash($appliedFilters['date_to'] ?? null)],
@@ -105,7 +105,7 @@ final class DonorFinancialReportStatistics
                 (string) $r['currency_code'], $r['final'], $r['execution_paid'], $r['remaining'],
             ], $report['disb_final_summary']), ['text', 'money', 'money', 'money'])
             ->table('مشاريع الجهة المانحة ('.number_format((int) $report['projects_count']).')', self::PROJECT_HEADERS, self::projectRows($report), [
-                'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text',
+                'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text',
                 'money_optional', 'money_optional', 'money_optional', 'money_optional', 'money_optional', 'money_optional',
             ], autoFilter: true)
             ->table('تفاصيل تكاليف المشاريع', self::COST_DETAIL_HEADERS, self::costDetailRows($report), ['text', 'text', 'money', 'text', 'money', 'money', 'text'], autoFilter: true)
@@ -192,6 +192,7 @@ final class DonorFinancialReportStatistics
                 self::dash($project['code'] ?? null, '-'),
                 (string) $project['name'],
                 self::dash($project['donor_project_name'] ?? null, '-'),
+                self::dash($project['donor_project_number'] ?? null, '-'),
                 self::dash($project['super_name'] ?? null, '-'),
                 self::dash($project['status_name'] ?? null, '-'),
                 self::dash($project['approval_date'] ?? null, '-'),

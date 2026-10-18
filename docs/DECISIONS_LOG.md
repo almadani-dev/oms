@@ -13,6 +13,27 @@
 ---
 
 ### Date
+2026-10-18 (Partner pickers: bounded opening list everywhere; separate donor project number — D1–D5)
+
+### Decision
+- **D1:** the donor-side project NAME and NUMBER are two different fields. `projects.donor_project_name` keeps its meaning and data («اسم المشروع لدى الجهة المانحة»); a new nullable `projects.donor_project_number` holds «رقم المشروع لدى الجهة المانحة». Nothing is renamed, copied, inferred or backfilled; the number is free text, optional and not unique; the internal `code` and `donor_id` are untouched.
+- **D2:** both fields are shown, as separate columns with those two labels, on the Projects UI and on the Donor Financial Report screen and statistics export (the report's former «اسم المشروع لدى المانح» header now reads «اسم المشروع لدى الجهة المانحة»).
+- **D3:** `FinancialLookupFilters::partnerOptions()` orders by name, then id, so partners of the same name have a deterministic order.
+- **D4:** the general-exchange partner picker («الجهة», التحويلات العامة) gets the bounded first 50 too, with the project-disbursement and execution-payment pickers. This completes the receipt decision below for every financial-form partner picker.
+- **D5:** the Projects list column is visible by default, toggleable, sortable, searchable (identifier search) and shows «—» when empty.
+
+### Reason
+- The audit found `donor_project_name` labelled and documented as a name (stress data: names); the user confirmed a number is a different piece of information.
+- Empty pickers until the user typed were a UX problem; `LIMIT 50` keeps the never-the-whole-table guarantee, and the label resolver keeps validation unchanged.
+
+### Impact
+- One migration (additive, nullable) is required on every environment before the new code runs there. No projection rebuild (the report reads projects live).
+- One bounded partners query per form render on the three forms; tie order changes only for same-name partners in the shared helper's other consumers.
+- The donor report statistics sheet has 16 columns (Excel and Word share one model, so Word gets the column too).
+
+---
+
+### Date
 2026-10-18 (Receipt form donor picker: bounded opening list)
 
 ### Decision

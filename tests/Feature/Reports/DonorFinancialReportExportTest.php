@@ -657,6 +657,11 @@ class DonorFinancialReportExportTest extends TestCase
         $test = $this->page(['donor_id' => $fx['donor']]);
         AuditEvent::query()->delete();
 
+        // The screen shows the donor-side name and number as two separate
+        // columns, as the export below does.
+        $test->assertSeeHtmlInOrder(['<th>اسم المشروع</th>', '<th>اسم المشروع لدى الجهة المانحة</th>', '<th>رقم المشروع لدى الجهة المانحة</th>', '<th>نوع المشروع</th>'])
+            ->assertSeeHtmlInOrder(['<td>مشروع المانح</td>', '<td>اسم لدى المانح</td>', '<td dir="ltr">00123/AB-7</td>', '<td>نوع أ</td>']);
+
         $xlsx = $this->streamedBytes($this->export($test, 'exportExcel', 'xlsx'));
         $docx = $this->streamedBytes($this->export($test, 'exportWord', 'docx'));
 
@@ -685,10 +690,18 @@ class DonorFinancialReportExportTest extends TestCase
         $this->assertContains(['USD', '5.00', '100.00', '-95.00'], $rows);
         $this->assertNotContains('الإجمالي', $flat);
 
-        // Projects: one row per project × currency, «—» where the project has no figure.
-        $this->assertContains(['DP-1', 'مشروع المانح', 'اسم لدى المانح', 'نوع أ', 'نشط', '2026-01-10', '-', '-', 'USD', '1,000.00', '410.00', '-590.00', '5.00', '100.00', '-95.00'], $rows);
-        $this->assertContains(['DP-1', 'مشروع المانح', 'اسم لدى المانح', 'نوع أ', 'نشط', '2026-01-10', '-', '-', 'ILS', '—', '—', '—', '900.00', '300.00', '600.00'], $rows);
-        $this->assertContains(['DP-2', 'مشروع آخر', '-', 'نوع ب', 'مغلق', '2026-02-15', '-', '-', 'ILS', '500.00', '20.00', '-480.00', '—', '—', '—'], $rows);
+        // Projects: one row per project × currency, «—» where the project has no
+        // figure. The donor-side name and number are two separate columns (the
+        // number kept as typed, leading zeros included; «-» when empty), and
+        // every amount is the same figure in the same column as before.
+        $this->assertContains(DonorFinancialReportStatistics::PROJECT_HEADERS, $rows);
+        $this->assertSame(
+            ['اسم المشروع لدى الجهة المانحة', 'رقم المشروع لدى الجهة المانحة'],
+            array_slice(DonorFinancialReportStatistics::PROJECT_HEADERS, 2, 2),
+        );
+        $this->assertContains(['DP-1', 'مشروع المانح', 'اسم لدى المانح', '00123/AB-7', 'نوع أ', 'نشط', '2026-01-10', '-', '-', 'USD', '1,000.00', '410.00', '-590.00', '5.00', '100.00', '-95.00'], $rows);
+        $this->assertContains(['DP-1', 'مشروع المانح', 'اسم لدى المانح', '00123/AB-7', 'نوع أ', 'نشط', '2026-01-10', '-', '-', 'ILS', '—', '—', '—', '900.00', '300.00', '600.00'], $rows);
+        $this->assertContains(['DP-2', 'مشروع آخر', '-', '-', 'نوع ب', 'مغلق', '2026-02-15', '-', '-', 'ILS', '500.00', '20.00', '-480.00', '—', '—', '—'], $rows);
 
         // Every real filter, «الكل» when unused; the donor card.
         $this->assertContains(['حالة المشروع', DonorFinancialReportStatistics::ALL], $rows);
@@ -940,7 +953,7 @@ class DonorFinancialReportExportTest extends TestCase
         $status = DB::table('projects_status')->insertGetId(['name' => 'نشط', 'created_at' => now(), 'updated_at' => now()]);
         $status2 = DB::table('projects_status')->insertGetId(['name' => 'مغلق', 'created_at' => now(), 'updated_at' => now()]);
 
-        $project = $this->project($donor, 'DP-1', 'مشروع المانح', $super, $status, '2026-01-10', 'اسم لدى المانح');
+        $project = $this->project($donor, 'DP-1', 'مشروع المانح', $super, $status, '2026-01-10', 'اسم لدى المانح', '00123/AB-7');
         $other = $this->project($donor, 'DP-2', 'مشروع آخر', $super2, $status2, '2026-02-15');
         $foreign = $this->project($otherDonor, 'XP-1', 'مشروع جهة أخرى', $super, $status, '2026-01-10');
 
@@ -1015,11 +1028,12 @@ class DonorFinancialReportExportTest extends TestCase
         $this->rebuildProjection();
     }
 
-    private function project(int $donor, string $code, string $name, int $super, int $status, string $approval, ?string $donorName = null): int
+    private function project(int $donor, string $code, string $name, int $super, int $status, string $approval, ?string $donorName = null, ?string $donorNumber = null): int
     {
         return (int) DB::table('projects')->insertGetId([
             'name' => $name, 'code' => $code, 'donor_id' => $donor, 'project_super_id' => $super, 'project_status_id' => $status,
-            'approval_date' => $approval, 'donor_project_name' => $donorName, 'created_at' => now(), 'updated_at' => now(),
+            'approval_date' => $approval, 'donor_project_name' => $donorName, 'donor_project_number' => $donorNumber,
+            'created_at' => now(), 'updated_at' => now(),
         ]);
     }
 
