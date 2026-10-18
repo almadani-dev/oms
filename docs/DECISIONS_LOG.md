@@ -13,6 +13,21 @@
 ---
 
 ### Date
+2026-10-18 (Comprehensive projection: month enumeration)
+
+### Decision
+- Projection month ranges are enumerated with integer year/month arithmetic on the stored date text, never a cumulative timezone-aware Carbon cursor.
+- Historical dates (year 0025) stay supported by the rebuild; the ledger date was not changed by the fix.
+
+### Reason
+- A cursor in Asia/Jerusalem drifts across historical midnight DST gaps and silently omits the final month.
+
+### Impact
+- Rebuild output is unchanged for normal ranges; no migration. Production needs a deploy and a Comprehensive projection rebuild / verify.
+
+---
+
+### Date
 2026-10-13 (Donor Financial Report: real-time projection)
 
 ### Decision

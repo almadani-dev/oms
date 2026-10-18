@@ -16,6 +16,28 @@
 ---
 
 ### Date
+2026-10-18 (Comprehensive projection rebuild — timezone-safe month enumeration)
+
+### Task
+Fix the rebuild dropping the latest month's aggregates when the earliest `transaction_time` is historical (year 0025) under Asia/Jerusalem.
+
+### Result
+- `ComprehensiveReportProjectionRebuilder::months()` uses integer year/month arithmetic instead of a cumulative Carbon cursor; the final month is always included. Formulas, inclusion rules, verifier and live projector unchanged; no migration; no ledger data changed.
+
+### Changed Files
+- `app/Services/Reports/ComprehensiveFinancialTransactions/Projection/ComprehensiveReportProjectionRebuilder.php`
+- `tests/Feature/Reports/ComprehensiveReportProjectionMonthRangeTest.php` (new)
+
+### Verification
+- `ComprehensiveReportProjectionMonthRangeTest` 2/2 (27 assertions); the same test against the old code fails (24011 vs 24012 months).
+- `ComprehensiveReportProjectionPageTest` 30/30 (188), `ComprehensiveReportProjectionWritePathsTest` 11/11 (57). Full suites not run (forbidden).
+
+### Commit Hash
+`fix(comprehensive): make projection month rebuild timezone-safe` (not pushed).
+
+---
+
+### Date
 2026-10-13 (Donor Financial Report — real-time projection read path; `oms_stress` only; committed `4b9f8c8`)
 
 ### Task

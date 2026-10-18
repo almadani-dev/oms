@@ -13,6 +13,8 @@ Current open work only; history lives in TASKS_LOG. Deployment detail: AI_PROJEC
 - Operator decision: a daily scheduled `oms:verify-comprehensive-report-projection` and `oms:verify-account-statement-projection`.
 - A real production restore drill (a real `mysql` import on real infrastructure) is still outstanding; restore auditing is proven only by the simulated replacement in `RestoreAuditTest` (since 2026-07-30).
 
+**1b. Comprehensive month-enumeration fix (2026-10-18, not pushed; TASKS_LOG 2026-10-18):** normal deploy, then `php artisan oms:rebuild-comprehensive-report-projection --verify`; expect 0 differences (the April 2026 aggregates are recreated).
+
 **2. Development `oms` (decision for the user):** neither projection is migrated there. To switch it on: `php artisan migrate`, then `php artisan oms:rebuild-comprehensive-report-projection --verify` and `php artisan oms:rebuild-account-statement-projection --verify` (additive tables, but it changes `oms`).
 
 **3. Decisions for the user:**

@@ -176,12 +176,14 @@ final class ComprehensiveReportProjectionRebuilder
             ->first();
 
         if ($range !== null && $range->first_time !== null) {
-            $cursor = Carbon::parse(ComprehensiveReportProjection::monthOf(ComprehensiveReportProjection::time($range->first_time)));
-            $last = Carbon::parse(ComprehensiveReportProjection::monthOf(ComprehensiveReportProjection::time($range->last_time)));
+            // Plain year/month arithmetic, not a Carbon cursor: a cursor in
+            // the app timezone that crosses a midnight DST gap (Asia/Jerusalem
+            // 1994-04-01) drifts to 01:00 and then drops the last month.
+            $index = self::monthIndex(ComprehensiveReportProjection::time($range->first_time));
+            $last = self::monthIndex(ComprehensiveReportProjection::time($range->last_time));
 
-            while ($cursor->lessThanOrEqualTo($last)) {
-                $months[$cursor->format('Y-m-d')] = true;
-                $cursor->addMonthNoOverflow();
+            for (; $index <= $last; $index++) {
+                $months[sprintf('%04d-%02d-01', intdiv($index, 12), $index % 12 + 1)] = true;
             }
         }
 
@@ -195,6 +197,12 @@ final class ComprehensiveReportProjectionRebuilder
         sort($months);
 
         return $months;
+    }
+
+    /** Months since year 0 of a "Y-m-d H:i:s" time: year * 12 + month - 1. */
+    private static function monthIndex(string $transactionTime): int
+    {
+        return (int) substr($transactionTime, 0, 4) * 12 + (int) substr($transactionTime, 5, 2) - 1;
     }
 
     /**

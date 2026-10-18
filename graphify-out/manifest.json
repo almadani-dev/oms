@@ -4050,18 +4050,18 @@
     "semantic_hash": ""
   },
   "docs/AI_PROJECT_MEMORY.md": {
-    "mtime": 1791889409.0802114,
-    "ast_hash": "35d8f3e6fe96358b6e5f0d85270e1dab",
+    "mtime": 1792309062.9088686,
+    "ast_hash": "7a8eb6e55d169c2bbd50f6f0d1c004fb",
     "semantic_hash": ""
   },
   "docs/DECISIONS_LOG.md": {
-    "mtime": 1791889409.2784607,
-    "ast_hash": "1415e41a56ee0a0807d8484ffc80075a",
+    "mtime": 1792309064.5910249,
+    "ast_hash": "22af510f4e0bd37dde621fee05b1ca15",
     "semantic_hash": ""
   },
   "docs/NEXT_STEPS.md": {
-    "mtime": 1791889442.0744843,
-    "ast_hash": "05190ed0bba10bbc9663ed25c1785e74",
+    "mtime": 1792309065.7818606,
+    "ast_hash": "c4e2326c60054b1d44f8bc7574585326",
     "semantic_hash": ""
   },
   "docs/PROMPTS_LOG.md": {
@@ -4070,8 +4070,8 @@
     "semantic_hash": ""
   },
   "docs/TASKS_LOG.md": {
-    "mtime": 1791889429.4047315,
-    "ast_hash": "f3d2eb629888f43cce65976b52f4beda",
+    "mtime": 1792309064.1776075,
+    "ast_hash": "4faa8dc74530a70d4208d522289a91f3",
     "semantic_hash": ""
   },
   "public/robots.txt": {
@@ -5130,8 +5130,8 @@
     "semantic_hash": ""
   },
   "app/Services/Reports/ComprehensiveFinancialTransactions/Projection/ComprehensiveReportProjectionRebuilder.php": {
-    "mtime": 1791204198.5859723,
-    "ast_hash": "405558acb26b0c723d56ecf705338ef3",
+    "mtime": 1792307791.6523168,
+    "ast_hash": "03a5206cfd069100e52d5e1b5a6814de",
     "semantic_hash": ""
   },
   "app/Services/Reports/ComprehensiveFinancialTransactions/Projection/ComprehensiveReportProjectionState.php": {
@@ -5582,6 +5582,11 @@
   "tests/Feature/Reports/DonorFinancialReportProjectionWritePathsTest.php": {
     "mtime": 1791886222.5199153,
     "ast_hash": "e949bfd5180bd5ecd43f1d3fe96f680c",
+    "semantic_hash": ""
+  },
+  "tests/Feature/Reports/ComprehensiveReportProjectionMonthRangeTest.php": {
+    "mtime": 1792307462.9050045,
+    "ast_hash": "6ec6c97d4e87efd99a02a8ab93d2fe58",
     "semantic_hash": ""
   }
 }
