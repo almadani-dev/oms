@@ -38,7 +38,7 @@ After the security update (entry below), the user approved a browser smoke test 
 - Targeted tests: `MuwakhaFamilyLinkedAccountsTest`, `RelationManagerAuthorizationTest`, `AuthenticationAuditTest` → 39 / 39 (247 assertions). No test references the sidebar / layout markup.
 
 ### Commit Hash
-Pending on `chore/security-php-8.3.36-deps`.
+`81e92a7` on `chore/security-php-8.3.36-deps` (hash line added in the follow-up commit).
 
 ---
 ### Date
