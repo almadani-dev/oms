@@ -13,6 +13,34 @@
 ### Verification
 
 
+---
+
+### Date
+2026-10-31 (Browser smoke test on Filament 5.11 + stale published panel views removed)
+
+### Task
+After the security update (entry below), the user approved a browser smoke test on PHP 8.3.36; it revealed that the navigation sidebar showed only group headings. The user then approved: delete the unmodified published Filament views, rebuild `base.blade.php` from 5.11 keeping `lang` / `dir`, verify, document, commit.
+
+### Result
+- Apache and MySQL started the way Laragon does (`httpd.exe` from its bin dir; `mysqld --defaults-file=…/my.ini`); `X-Powered-By: PHP/8.3.36` on `oms.test`, `localhost/oms/public` and the LAN stress host; login page 200.
+- Smoke test as the signed-in Super Admin: dashboard, receipts / projects / Muwakha lists, project View with costs RelationManager (create / edit / delete visible), Muwakha family View (linked-accounts table), receipt Create form + donor picker; all Livewire updates 200; no PHP errors in Apache or Laravel logs. Exports not exercised (download approval).
+- **Root cause of the broken sidebar:** 33 `filament-panels` views published at the initial commit; 32 byte-identical to Filament 5.6.7 (checked against the cached 5.6.7 archive), one customised (`components/layout/base.blade.php`: `lang="ar-u-nu-latn"`, `dir="rtl"`). Filament 5.11's `livewire/sidebar.blade.php` initialises `collapsedGroups`; the stale copy did not, so `groupIsCollapsed()` threw and every group's items were `display: none`.
+- **Fix:** 32 views deleted; `base.blade.php` rebuilt from the 5.11 vendor file with only the two attribute lines changed (diff against vendor = exactly those two lines). `php artisan view:clear`.
+- **Verified in the browser:** `<html lang="ar-u-nu-latn" dir="rtl">`, `collapsedGroups` is an array, all six groups `display: flex` with their items and icons, toggling «التقارير» collapses / re-expands and persists to `filament:sidebar:collapsed_groups`, console error count unchanged by the interaction (no new errors).
+
+### Changed Files
+- `resources/views/vendor/filament-panels/**` — 32 files deleted (auth, avatar, header, layout index / simple, logo, page, sub-navigation, sidebar, tenant-menu, theme-switcher, topbar, unsaved-action-changes-alert, user-menu, livewire global-search / sidebar / simple-user-menu / topbar, pages, relation-manager, widgets)
+- `resources/views/vendor/filament-panels/components/layout/base.blade.php` — rebuilt from Filament 5.11
+- `docs/*.md`
+
+### Verification
+- Browser (built-in pane, viewport 1366×900): sidebar groups and items visible; group toggle works and persists; no new console errors; `lang` / `dir` as before.
+- Targeted tests: `MuwakhaFamilyLinkedAccountsTest`, `RelationManagerAuthorizationTest`, `AuthenticationAuditTest` → 39 / 39 (247 assertions). No test references the sidebar / layout markup.
+
+### Commit Hash
+Pending on `chore/security-php-8.3.36-deps`.
+
+---
 ### Date
 2026-10-31 (PHP2Shell response: local PHP 8.3.36 + dependency security update)
 

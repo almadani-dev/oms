@@ -10,6 +10,24 @@
 
 ### Impact
 
+---
+
+### Date
+2026-10-31 (Published Filament views — S5–S6)
+
+### Decision
+- **S5:** OMS publishes no Filament panel views. The 32 views that were byte-identical to Filament 5.6.7 are deleted; Filament's own views render.
+- **S6:** the single remaining override, `components/layout/base.blade.php`, exists only for `lang="ar-u-nu-latn"` (Latin digits) and `dir="rtl"`. It is kept in sync with the vendor file on every Filament upgrade; nothing else is customised in it.
+
+### Reason
+- Published views freeze at one release: the 5.11 upgrade added sidebar initialisation that the stale copy lacked, which hid every navigation item. The theme-mode storage key had silently diverged the same way.
+- `dir="rtl"` alone would already come from Filament's Arabic translation; `-u-nu-latn` has no non-view equivalent, so one minimal override stays.
+
+### Impact
+- Future Filament upgrades need one diff of `base.blade.php`; no other view maintenance.
+- Deploy: no migration; `php artisan view:clear` (or the usual `optimize:clear`) after deploy so the compiled stale views are dropped.
+
+---
 ### Date
 2026-10-31 (PHP2Shell response — S1–S4)
 
