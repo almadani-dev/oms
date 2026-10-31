@@ -1,6 +1,16 @@
 # Next Steps
 
-## Recommended Next Step (2026-10-13 — Donor Financial Report projection committed `4b9f8c8`, not pushed; unfinished work only)
+## Recommended Next Step (2026-10-31 — PHP2Shell response on branch `chore/security-php-8.3.36-deps`, not merged)
+
+**0. Security branch (urgent, in this order):**
+- **Production PHP version — check now:** `php -v` on the web runtime (and `phpinfo()` «Server API»). Anything below 8.3.36 / 8.4.27 / 8.5.12 / 8.2.35 is PHP2Shell-vulnerable (CVE-2026-109618 / CVE-2026-109619, exploited in the wild). Interim mitigation while patching: `session.upload_progress.enabled=0` in php.ini / the FPM pool (not `ini_set` / `.user.ini`) and a worker restart; this also covers the still-unpatched CVE-2026-115560. Apply the same ini setting locally if the user wants defence in depth.
+- Done 2026-10-31 (TASKS_LOG): PHP 8.3.36 confirmed over HTTP on all three local hosts; browser smoke test passed after removing the stale published Filament views. Still to check when Laragon's GUI is next opened: its PHP menu should show 8.3.36 selected (otherwise select it once so it does not rewrite `mod_php.conf`).
+- Remaining before merging into `main`: one Excel / Word export from the panel (not exercised in the pane), and a relation-manager tab as a limited user (expects the tab hidden; a direct URL now gives 403). Then merge.
+- Deploy must run `php artisan view:clear` / `optimize:clear` after `composer install` so the compiled copies of the deleted published views disappear.
+- Deploy order on the server: PHP upgrade first, then `composer install` with this lock (runs `filament:upgrade`), `config:cache`, `queue:restart`.
+- Decide S4 (DECISIONS_LOG 2026-10-31): amend the «never run the full suite» rule for dependency upgrades, or record the one-time deviation.
+
+**Previous head (2026-10-13 — Donor Financial Report projection committed `4b9f8c8`, not pushed; unfinished work only)**
 
 Current open work only; history lives in TASKS_LOG. Deployment detail: AI_PROJECT_MEMORY → Operational Reference (Comprehensive report deployment checklist; Restore recovery runbook).
 
@@ -40,7 +50,7 @@ Current open work only; history lives in TASKS_LOG. Deployment detail: AI_PROJEC
 - Business decision: the disbursement summaries count budgets whose transaction is soft-deleted (`transaction_id IS NOT NULL` only), the movement list does not (`t.deleted_at IS NULL`).
 
 **4. Separate, pre-existing issues:**
-- `MuwakhaFamilyImportTest` fails 20 tests on this Windows machine: the import command resolves an absolute temp path as relative («Source file not found: C:\laragon\www\oms\C:\Users\…»).
+- `MuwakhaFamilyImportTest` fails 20 tests on this Windows machine (re-confirmed 2026-10-31): the import command resolves an absolute temp path as relative («Source file not found: C:\laragon\www\oms\C:\Users\…»).
 - An unauthenticated `Accept: application/json` request to any Filament-authenticated route answers 500 instead of 401.
 - Four other jobs assign an undeclared `$timeout` (PHP 8.2+ deprecation): `BuildComprehensiveFinancialTransactionsSnapshotJob`, `CreateBackupJob`, `RetentionCleanupJob`, `VerifyBackupIntegrityJob`. The one-line `public ?int $timeout = null;` declaration would fix each.
 - **Follow-up audits, not done (recorded 2026-10-05):** `ProjectCosts/RelationManagers/BudgetsRelationManager` and `ReceiptsRelationManager` still expose plain Create / Edit / Delete actions that may bypass the ledger, balances and audit; `MuwakhaFamilyAccountStatementService`'s docblock says receipt lines carry `project_cost_id`, but the current write path stores NULL.

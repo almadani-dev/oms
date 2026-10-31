@@ -13,6 +13,42 @@
 ---
 
 ### Date
+2026-10-31 (Published Filament views — S5–S6)
+
+### Decision
+- **S5:** OMS publishes no Filament panel views. The 32 views that were byte-identical to Filament 5.6.7 are deleted; Filament's own views render.
+- **S6:** the single remaining override, `components/layout/base.blade.php`, exists only for `lang="ar-u-nu-latn"` (Latin digits) and `dir="rtl"`. It is kept in sync with the vendor file on every Filament upgrade; nothing else is customised in it.
+
+### Reason
+- Published views freeze at one release: the 5.11 upgrade added sidebar initialisation that the stale copy lacked, which hid every navigation item. The theme-mode storage key had silently diverged the same way.
+- `dir="rtl"` alone would already come from Filament's Arabic translation; `-u-nu-latn` has no non-view equivalent, so one minimal override stays.
+
+### Impact
+- Future Filament upgrades need one diff of `base.blade.php`; no other view maintenance.
+- Deploy: no migration; `php artisan view:clear` (or the usual `optimize:clear`) after deploy so the compiled stale views are dropped.
+
+---
+### Date
+2026-10-31 (PHP2Shell response — S1–S4)
+
+### Decision
+- **S1:** the security update lives on its own branch `chore/security-php-8.3.36-deps` (user's choice), to be merged into `main` after a browser smoke test of the admin panel on Filament 5.11.
+- **S2:** tests broken by library behaviour changes are adapted to the new behaviour, not pinned to the old one: Filament 5.11's 403 for a RelationManager mounted without `viewAny` is accepted as stricter authorization; its `like ? escape '!'` wildcard escaping is accepted (it matches OMS's own identifier-search rule); the OMS audit listener test counts only `App\` listeners.
+- **S3:** the vulnerable PHP 8.3.28 directory is kept on disk for diagnosis-only rollback; it must not serve requests again.
+- **S4 (open, for the user):** the full test suite was run for this framework-wide upgrade although the project rule says never to. Either amend the rule with an explicit «dependency upgrade» exception or record that the runs on 2026-10-31 were a one-time deviation.
+
+### Reason
+- PHP2Shell is exploited in the wild and the fix is only in a newer PHP build; `composer audit` showed 43 advisories, some affecting components the panel uses (Filament MFA, Livewire authorization, Guzzle, commonmark).
+- A dependency upgrade has no single «changed area», so targeted test files cannot show which expectations the libraries changed.
+
+### Impact
+- Deployments must run PHP ≥ 8.3.36 (or 8.4.27 / 8.5.12 / 8.2.35) and this `composer.lock`; `composer install` on the server (its script runs `filament:upgrade`), then `config:cache` and `queue:restart` as usual. No migration.
+- Users without `<module>.view_any` now receive 403 on a direct relation-manager request instead of an empty component (the tab was already hidden for them).
+
+---
+---
+
+### Date
 2026-10-18 (Partner pickers: bounded opening list everywhere; separate donor project number — D1–D5)
 
 ### Decision

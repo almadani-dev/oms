@@ -88,7 +88,7 @@ class ProjectSelectCodeSearchTest extends TestCase
         $sql = $this->capturedSql(fn () => $select->getSearchResults('GAZ'));
 
         $this->assertCount(1, $sql);
-        $this->assertMatchesRegularExpression('/"code"\s+like\s+\?\s+or\s+"name"\s+like\s+\?/i', $sql[0]);
+        $this->assertMatchesRegularExpression('/"code"\s+like\s+\?(?:\s+escape\s+\'!\')?\s+or\s+"name"\s+like\s+\?(?:\s+escape\s+\'!\')?/i', $sql[0]);
         $this->assertStringContainsString('"deleted_at" is null', $sql[0]);
         $this->assertStringContainsString('limit 50', $sql[0]);
     }
@@ -144,7 +144,7 @@ class ProjectSelectCodeSearchTest extends TestCase
         $sql = $this->capturedSql(fn () => $select->getSearchResults('المياه'));
 
         $this->assertCount(1, $sql);
-        $this->assertMatchesRegularExpression('/"code"\s+like\s+\?\s+or\s+"name"\s+like\s+\?/i', $sql[0]);
+        $this->assertMatchesRegularExpression('/"code"\s+like\s+\?(?:\s+escape\s+\'!\')?\s+or\s+"name"\s+like\s+\?(?:\s+escape\s+\'!\')?/i', $sql[0]);
         $this->assertStringContainsString('"deleted_at" is null', $sql[0]);
         $this->assertStringContainsString('limit 50', $sql[0]);
     }

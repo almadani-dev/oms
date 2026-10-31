@@ -330,6 +330,18 @@ class AuthenticationAuditTest extends SecurityAuditTestCase
     {
         $raw = \Illuminate\Support\Facades\Event::getRawListeners();
 
+        // Only the application's own listeners count: since Filament 5.11 the
+        // notifications package registers its own Login / Logout closure
+        // (mailbox scope rotation), which is not a duplicate audit listener.
+        $appListeners = fn (array $listeners): array => array_values(array_filter(
+            $listeners,
+            function ($listener): bool {
+                $class = is_array($listener) ? ($listener[0] ?? null) : $listener;
+
+                return is_string($class) && str_starts_with($class, 'App\\');
+            },
+        ));
+
         foreach ([
             \Illuminate\Auth\Events\Attempting::class,
             \Illuminate\Auth\Events\Login::class,
@@ -338,7 +350,7 @@ class AuthenticationAuditTest extends SecurityAuditTestCase
         ] as $event) {
             $this->assertCount(
                 1,
-                $raw[$event] ?? [],
+                $appListeners($raw[$event] ?? []),
                 sprintf('%s must have exactly one audit listener registered.', class_basename($event)),
             );
         }

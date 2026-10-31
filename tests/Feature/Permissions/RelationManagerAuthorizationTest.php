@@ -113,7 +113,7 @@ class RelationManagerAuthorizationTest extends TestCase
     {
         $project = $this->makeProject();
 
-        $this->actingAs($this->userWithPermissions(['projects.view_any', 'projects.view', 'project_costs.create']));
+        $this->actingAs($this->userWithPermissions(['projects.view_any', 'projects.view', 'project_costs.view_any', 'project_costs.create']));
 
         Livewire::test(CostsRelationManager::class, [
             'ownerRecord' => $project,
@@ -127,8 +127,19 @@ class RelationManagerAuthorizationTest extends TestCase
         $currency = Currency::create(['name' => 'USD', 'code' => 'USD', 'symbol' => 'USD']);
         $cost = ProjectCost::create(['project_id' => $project->id, 'amount' => 1000, 'currency_id' => $currency->id]);
 
-        // Only projects.view + view_any — no project_costs.* at all.
+        // Only projects.view + view_any — no project_costs.* at all. Since
+        // Filament 5.11 (CanAuthorizeAccess) a RelationManager mounted without
+        // viewAny on the RELATED model answers 403 outright.
         $this->actingAs($this->userWithPermissions(['projects.view_any', 'projects.view']));
+
+        Livewire::test(CostsRelationManager::class, [
+            'ownerRecord' => $project,
+            'pageClass' => EditProject::class,
+        ])->assertForbidden();
+
+        // project_costs.view_any alone renders the table, but edit / delete
+        // still need their own permission.
+        $this->actingAs($this->userWithPermissions(['projects.view_any', 'projects.view', 'project_costs.view_any']));
 
         $livewire = Livewire::test(CostsRelationManager::class, [
             'ownerRecord' => $project,
@@ -137,7 +148,7 @@ class RelationManagerAuthorizationTest extends TestCase
         $livewire->assertTableActionHidden('edit', record: $cost);
         $livewire->assertTableActionHidden('delete', record: $cost);
 
-        $this->actingAs($this->userWithPermissions(['projects.view_any', 'projects.view', 'project_costs.update', 'project_costs.delete']));
+        $this->actingAs($this->userWithPermissions(['projects.view_any', 'projects.view', 'project_costs.view_any', 'project_costs.update', 'project_costs.delete']));
 
         $livewire = Livewire::test(CostsRelationManager::class, [
             'ownerRecord' => $project,
@@ -174,7 +185,7 @@ class RelationManagerAuthorizationTest extends TestCase
         $cost = ProjectCost::create(['project_id' => $project->id, 'amount' => 1000, 'currency_id' => $currency->id]);
 
         $this->actingAs($this->userWithPermissions([
-            'project_costs.view_any', 'project_costs.view', 'project_cost_budgets_payments.create',
+            'project_costs.view_any', 'project_costs.view', 'project_cost_budgets_payments.view_any', 'project_cost_budgets_payments.create',
         ]));
 
         Livewire::test(BudgetsRelationManager::class, [
@@ -237,7 +248,7 @@ class RelationManagerAuthorizationTest extends TestCase
         $currency = Currency::create(['name' => 'USD', 'code' => 'USD', 'symbol' => 'USD']);
 
         $this->actingAs($this->userWithPermissions([
-            'currencies.view_any', 'currencies.view', 'exchange_rate_histories.create',
+            'currencies.view_any', 'currencies.view', 'exchange_rate_histories.view_any', 'exchange_rate_histories.create',
         ]));
 
         Livewire::test(ExchangeRateHistoryRelationManager::class, [

@@ -13,6 +13,20 @@ Reusable prompt patterns and short references to past prompts. What was done liv
 ---
 
 ### Date
+2026-10-31 («ايش نوع ال php الموجود في المشروع؟ وانتشرت ثغرة قبل فترة هل هي موجودة ع هذا المشروع ام لا» → «Yes, fix both»)
+
+### Prompt
+Identify the runtime and whether a recently publicised vulnerability applies, then fix: install the patched PHP build in Laragon, update the affected Composer packages, re-run `composer audit` and the tests.
+
+### Purpose
+- An unnamed «recent vulnerability» was resolved by searching the current advisories (PHP2Shell) instead of guessing, and the answer separated «vulnerable locally» from «production unknown».
+- `composer audit` first, then update only the advisories' packages `--with-all-dependencies`; every resulting test failure was traced to vendor code before any test was changed.
+- The green test suite did not catch the broken sidebar; the browser smoke test did («يلا اشتغل صح» after «في مشاكل في العرض تاع الناف بار»). A framework upgrade needs a real-page check, not only PHPUnit.
+
+---
+---
+
+### Date
 2026-10-13 ("DONOR FINANCIAL REPORT — REAL-TIME PROJECTION + SUB-SECOND/LOW-LATENCY DISPLAY")
 
 ### Prompt
