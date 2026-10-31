@@ -38,7 +38,7 @@ After the security update (entry below), the user approved a browser smoke test 
 - Targeted tests: `MuwakhaFamilyLinkedAccountsTest`, `RelationManagerAuthorizationTest`, `AuthenticationAuditTest` → 39 / 39 (247 assertions). No test references the sidebar / layout markup.
 
 ### Commit Hash
-`81e92a7` on `chore/security-php-8.3.36-deps` (hash line added in the follow-up commit).
+`81e92a7` on `chore/security-php-8.3.36-deps` (hash line added in the follow-up commit). Branch merged into `main` with merge commit `0199e9a` on 2026-10-31 (user approval «Merge into main»); not pushed.
 
 ---
 ### Date
@@ -72,7 +72,7 @@ The user asked which PHP the project runs and whether «the vulnerability that s
 - `vendor/bin/pint --test` on the four files: only `AuthenticationAuditTest` reports `fully_qualified_strict_types` / `ordered_imports`, both already present in the committed file (checked against `HEAD`).
 
 ### Commit Hash
-`2459ffd` on `chore/security-php-8.3.36-deps` (docs hash line added in the follow-up commit).
+`2459ffd` on `chore/security-php-8.3.36-deps` (docs hash line added in the follow-up commit). Merged into `main` via `0199e9a` on 2026-10-31.
 
 ---
 ---
