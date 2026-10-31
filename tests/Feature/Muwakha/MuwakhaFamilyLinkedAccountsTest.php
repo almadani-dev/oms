@@ -182,7 +182,7 @@ class MuwakhaFamilyLinkedAccountsTest extends MuwakhaTestCase
             $this->assertSame(7, substr_count($row, '<td'), 'Seven cells per row.');
             $this->assertSame(
                 7,
-                substr_count($row, 'fi-in-entry-label fi-hidden'),
+                substr_count($row, 'fi-in-entry-label fi-sr-only'),
                 'Every cell must hide its own label; the table head names the column.',
             );
         }

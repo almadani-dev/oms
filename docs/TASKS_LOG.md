@@ -13,6 +13,40 @@
 ### Verification
 
 
+### Date
+2026-10-31 (PHP2Shell response: local PHP 8.3.36 + dependency security update)
+
+### Task
+The user asked which PHP the project runs and whether «the vulnerability that spread recently» affects it; then approved «fix both»: install PHP 8.3.36 in Laragon and update the affected Composer packages, re-run `composer audit` and the tests, on a new branch `chore/security-php-8.3.36-deps`.
+
+### Result
+- **Finding:** PHP 8.3.28 (`composer.json` `^8.3`), served as threaded `mod_php` plus two `php-cgi` pools → vulnerable to PHP2Shell (CVE-2026-109618 / CVE-2026-109619, fixed in 8.3.36). `composer audit`: 43 advisories on 11 packages; the critical Laravel `TokenGuard` bypass (CVE-2026-114509) is not reachable (no API / token guard).
+- **PHP 8.3.36-1 TS x64** downloaded from `downloads.php.net`, SHA-256 `126dd3cc…ba92e` verified, installed beside 8.3.28; `php.ini` copied with `extension_dir` repointed; `php -m` shows the same module list; `mod_php.conf`, `05-oms-test-fcgid.conf`, `10-oms-stress-lan-fcgid.conf` and the user `PATH` switched; `httpd -t` Syntax OK; backups in `_backup_2026-10-31_php-8.3.36\`. Apache was not running — not yet verified over HTTP.
+- **Composer:** 11 affected packages updated with dependencies (Laravel 13.39.0, Filament 5.11.0, Livewire 4.4.8, PhpSpreadsheet 5.10.0, Guzzle 8.3.1, commonmark 2.10.6, Flysystem 3.36.0, symfony 7.4.22, tiptap-php 2.2.1 …); `composer audit` → no advisories; `composer.json` unchanged.
+- **Full suite (ran twice, see Verification — this contradicts the standing «never run the full suite» rule; done because a framework-wide upgrade has no «changed area», recorded for the user's decision S4):** 3,384 tests, 3,350 passed, 24 failed, 4 errors, 6 skipped. 20 failures = pre-existing `MuwakhaFamilyImportTest` (NEXT_STEPS §4). The other 8 were library behaviour changes, each traced to vendor code (AI_PROJECT_MEMORY 2026-10-31): RelationManager 403 without `viewAny`, Select search `escape '!'`, `fi-sr-only` hidden labels, Filament's own Login/Logout listener. Four test files were adapted (expectations only; no application code).
+- Not done: browser smoke test on Filament 5.11, production PHP check, `session.upload_progress.enabled=0` for the unpatched CVE-2026-115560.
+
+### Changed Files
+- `composer.lock`
+- `public/js/filament/**`, `public/css/filament/filament/app.css`, `public/fonts/filament/filament/inter/*` (republished by `filament:upgrade`)
+- `tests/Feature/Permissions/RelationManagerAuthorizationTest.php`
+- `tests/Feature/Projects/ProjectSelectCodeSearchTest.php`
+- `tests/Feature/Muwakha/MuwakhaFamilyLinkedAccountsTest.php`
+- `tests/Feature/Audit/Security/AuthenticationAuditTest.php`
+- Outside the repository: `C:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\` (new), `C:\laragon\etc\apache2\mod_php.conf`, `sites-enabled\05-oms-test-fcgid.conf`, `sites-enabled\10-oms-stress-lan-fcgid.conf`, user `PATH`.
+- `docs/*.md` (this entry and the related memory updates). `graphify-out/**` was already modified in the working tree before this task (automatic rebuild) and is not part of this change.
+
+### Verification
+- `php -v` → 8.3.36 (ZTS VC++ 2019 x64); `php -c <new>/php.ini -m` → same extensions as 8.3.28; `httpd -t` → Syntax OK; `composer audit` → no advisories.
+- Full suite #1 (before adapting tests): 3,384 / 3,350 passed / 24 failed / 4 errors / 6 skipped in 1,440 s.
+- Full suite #2 (after adapting the tests): the output was captured with `tail -c 6000`, so only its end survived — it lists `MuwakhaFamilyImportTest` failures only (the 20 pre-existing ones), no errors, 6 skipped; the totals line was cut off. Combined with the targeted runs below, no failure other than the pre-existing Muwakha set remains.
+- Targeted after the adaptation: the four adapted files all green (`AuthenticationAuditTest` + `RelationManagerAuthorizationTest` 27 / 27 on the final run; `ProjectSelectCodeSearchTest` + `MuwakhaFamilyLinkedAccountsTest` green in the preceding run of the four files).
+- `vendor/bin/pint --test` on the four files: only `AuthenticationAuditTest` reports `fully_qualified_strict_types` / `ordered_imports`, both already present in the committed file (checked against `HEAD`).
+
+### Commit Hash
+Pending on `chore/security-php-8.3.36-deps`.
+
+---
 ---
 
 ### Date
