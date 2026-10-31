@@ -44,7 +44,7 @@ The user asked which PHP the project runs and whether «the vulnerability that s
 - `vendor/bin/pint --test` on the four files: only `AuthenticationAuditTest` reports `fully_qualified_strict_types` / `ordered_imports`, both already present in the committed file (checked against `HEAD`).
 
 ### Commit Hash
-Pending on `chore/security-php-8.3.36-deps`.
+`2459ffd` on `chore/security-php-8.3.36-deps` (docs hash line added in the follow-up commit).
 
 ---
 ---
