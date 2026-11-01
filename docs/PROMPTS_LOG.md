@@ -13,6 +13,19 @@ Reusable prompt patterns and short references to past prompts. What was done liv
 ---
 
 ### Date
+2026-11-01 (Production deploy driven through a second Claude Code on the server)
+
+### Prompt (pattern, not verbatim)
+English prompts pasted into the server's Claude Code (in `tmux`): «Work in phases; after each phase print a short report and wait for "continue". Never read or print .env. Never run migrate:fresh / rollback / db:wipe / db:seed / oms:clean-operational-data / git reset --hard / manual SQL writes. Announce state-changing commands and run them only after "continue".» Phases: A read-only discovery (deploy script contents, PHP package changelog grep for the CVE ids, git fetch + `HEAD..origin/main`, `migrate:status`, workers, cron, disk, db name), B PHP mitigation, C0 workers, C backup, D run `oms-deploy`, E post-checks, plus an explicit rollback recipe.
+
+### Purpose / lessons
+- The server-side Claude reads what this machine cannot reach; this session reviews each report and writes the next phase. Screenshots of its output were enough.
+- On Ubuntu, check `zgrep CVE-… /usr/share/doc/php8.3-cli/changelog.Debian.gz` and `dpkg -l`, not `php -v`.
+- `sudo` credential caching is per terminal: `! sudo -v` inside Claude Code does not help its subprocesses; the user runs root commands in a second SSH window (or a narrow NOPASSWD rule).
+- The server Claude caught two mistakes in the plan (`tar` excludes placed after the path; `mysqldump` needing `--no-tablespaces` for a non-admin MySQL 8 user) — keep phases small so such fixes stay visible.
+
+---
+### Date
 2026-10-31 («ايش نوع ال php الموجود في المشروع؟ وانتشرت ثغرة قبل فترة هل هي موجودة ع هذا المشروع ام لا» → «Yes, fix both»)
 
 ### Prompt

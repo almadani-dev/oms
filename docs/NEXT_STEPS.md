@@ -1,14 +1,19 @@
 # Next Steps
 
-## Recommended Next Step (2026-10-31 — PHP2Shell response on branch `chore/security-php-8.3.36-deps`, not merged)
+## Recommended Next Step (2026-11-01 — `main` 56fabcf deployed to production; PHP2Shell closed everywhere)
 
-**0. Security branch (urgent, in this order):**
-- **Production PHP version — check now:** `php -v` on the web runtime (and `phpinfo()` «Server API»). Anything below 8.3.36 / 8.4.27 / 8.5.12 / 8.2.35 is PHP2Shell-vulnerable (CVE-2026-109618 / CVE-2026-109619, exploited in the wild). Interim mitigation while patching: `session.upload_progress.enabled=0` in php.ini / the FPM pool (not `ini_set` / `.user.ini`) and a worker restart; this also covers the still-unpatched CVE-2026-115560. Apply the same ini setting locally if the user wants defence in depth.
+**0a. Production follow-ups (open, from the 2026-11-01 deploy — TASKS_LOG):**
+- **Supervisor boot race (do soon):** the three `queue:work` programs die at boot when Supervisor starts before MySQL (happened 2026-10-24, left production without backups for 8 days). Fix in `/etc/supervisor/conf.d/oms-workers.conf`: `startretries=10`, `startsecs=10` (or a systemd drop-in `After=mysql.service` / `Wants=mysql.service` for `supervisor.service`), then `supervisorctl reread && update`. Verify with a controlled restart of the workers, not of the server.
+- **Backup monitoring:** nothing alerts when `CreateBackupJob` stops running; consider a scheduled check that the newest file in `storage/app/private/backups` is < 26 h old (or `queue:monitor`), with a notification.
+- Change the local stress-environment password that was typed into chat on 2026-11-01 (not stored anywhere by the assistant).
+- Locally: `session.upload_progress.enabled = 0` is NOT yet set in `C:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.ini` (defence in depth only; dev machine).
+
+**0. Security branch (done, kept for the record):**
+- Production PHP checked 2026-11-01: Ubuntu `8.3.6-0ubuntu0.24.04.13` already patched for PHP2Shell (2026-10-22); `session.upload_progress.enabled = 0` applied on FPM + CLI for CVE-2026-115560.
 - Done 2026-10-31 (TASKS_LOG): PHP 8.3.36 confirmed over HTTP on all three local hosts; browser smoke test passed after removing the stale published Filament views. Still to check when Laragon's GUI is next opened: its PHP menu should show 8.3.36 selected (otherwise select it once so it does not rewrite `mod_php.conf`).
 - Merged into `main` on 2026-10-31 (merge commit `0199e9a`, `--no-ff`); pushed to `origin/main` the same day (user approval «Yes, push»; remote tip `8ff6c13` + this docs commit).
 - 2026-11-01: merged `main` also smoke-tested on the LAN stress site (`oms_stress`, 550k transactions) — sidebar, lists, project costs relation manager, Muwakha family View, receipt form with `%` in the donor search: all fine (TASKS_LOG). Still not exercised: one Excel / Word export from the panel, and a relation-manager tab as a limited user (expects the tab hidden; a direct URL now gives 403).
-- Deploy must run `php artisan view:clear` / `optimize:clear` after `composer install` so the compiled copies of the deleted published views disappear.
-- Deploy order on the server: PHP upgrade first, then `composer install` with this lock (runs `filament:upgrade`), `config:cache`, `queue:restart`.
+- Deployed 2026-11-01 14:20 IST with `/home/oms/bin/oms-deploy` (`68cb1c6` → `56fabcf`, ≈ 20 s maintenance, health 200, workers up); its `optimize` step covered the compiled-view cleanup.
 - Decide S4 (DECISIONS_LOG 2026-10-31): amend the «never run the full suite» rule for dependency upgrades, or record the one-time deviation.
 
 **Previous head (2026-10-13 — Donor Financial Report projection committed `4b9f8c8`, not pushed; unfinished work only)**
@@ -16,7 +21,7 @@
 Current open work only; history lives in TASKS_LOG. Deployment detail: AI_PROJECT_MEMORY → Operational Reference (Comprehensive report deployment checklist; Restore recovery runbook).
 
 **1. Production rollout (each step needs explicit approval):**
-- **R1:** production PHP must serve one request per process with no shared environment (the threaded `mod_php` race found locally on 2026-10-07). Run the read-only pre-deploy checks (EXPLAIN of the snapshot path queries, CLI `memory_limit`, current queue / scheduler state) first.
+- **R1:** satisfied — production is `php-fpm8.3` (`fpm-fcgi`), seen 2026-11-01. Still run the read-only pre-deploy checks (EXPLAIN of the snapshot path queries, CLI `memory_limit`, current queue / scheduler state) first.
 - Verified backup, short `down` window, `php artisan migrate --force`, `config:cache`, `queue:restart`, `up`; then `php artisan oms:rebuild-comprehensive-report-projection --verify` and `php artisan oms:rebuild-account-statement-projection --verify`, then the comprehensive `--parity` check. Until rebuilt, the comprehensive report uses its snapshot fallback and the Account Statement shows «قيد التهيئة»; financial writes keep working.
 - A persistent Linux `reports` queue worker (Supervisor / systemd: boot auto-start, restart on failure, `timeout` / `retry_after`; `DB_QUEUE_RETRY_AFTER=3900`), a separate `backups` worker, and the scheduler running `oms:purge-report-snapshots`.
 - **CSV speed:** the floor is ledger-text I/O through MySQL's buffer pool (128 MB here). Check production `innodb_buffer_pool_size`, cores, `max_connections` (+9 per large export), and `proc_open` + the CLI `php` on the worker before setting `OMS_AS_CSV_WORKERS` / `OMS_CFT_CSV_WORKERS`.

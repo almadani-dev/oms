@@ -13,6 +13,25 @@
 ---
 
 ### Date
+2026-11-01 (Production deploy — P1–P4)
+
+### Decision
+- **P1:** no PHP version upgrade on the production server. Ubuntu's `8.3.6-0ubuntu0.24.04.13` carries the PHP2Shell fix; the package changelog, not `php -v`, is the source of truth for patch status on Ubuntu.
+- **P2:** `session.upload_progress.enabled = 0` stays permanently in the FPM and CLI `php.ini` on production (and is to be re-applied after any future PHP package that ships a new `php.ini`). OMS does not use upload progress.
+- **P3:** the existing `oms-deploy` script is the deployment method; it is run as-is, preceded by a manual `mysqldump` + code tar because the script has no backup step. No custom deploy steps.
+- **P4:** the dead queue workers were started before deploying and the 17 catch-up backup / retention jobs were allowed to run (old code, their own payloads) rather than deleted from the `jobs` table.
+
+### Reason
+- P1: upgrading PHP outside Ubuntu's packages would add a third-party repository to a production box for no security gain.
+- P2: CVE-2026-115560 has no fix in any PHP release or Ubuntu package yet; the setting is the documented mitigation.
+- P3: the script already does everything the plan needed (including `optimize` → `view:cache`, which drops the stale compiled copies of the deleted published views) and has preflight, lock, log, health and worker checks.
+- P4: `oms-deploy` fails at its final worker check if the workers are down, and deleting queued jobs is a manual DB write on production.
+
+### Impact
+- Production runs `main` 56fabcf; backups run again; one remaining risk is the Supervisor-before-MySQL boot race (open item in NEXT_STEPS).
+
+---
+### Date
 2026-10-31 (Published Filament views — S5–S6)
 
 ### Decision

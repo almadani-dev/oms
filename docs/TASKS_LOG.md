@@ -16,6 +16,33 @@
 ---
 
 ### Date
+2026-11-01 (Production deploy of `main` 56fabcf + production PHP2Shell check + queue workers revived)
+
+### Task
+User asked to move the update to the production server, driven through the Claude Code instance running there (inside `tmux`), with this session writing the phased prompts and reviewing every report. Blanket approval for the phases; root-level commands were run by the user in a second SSH window because `sudo` on the server needs a password and its credential cache is per-terminal (`! sudo -v` typed inside Claude Code did not carry over).
+
+### Result
+- **Deploy script found and read:** `/home/oms/bin/oms-deploy` (bash, runs as `oms` only, lock file, log in `/home/oms/deploy-logs/`): preflight (clean tree, branch `main`), fetch, refuses non-fast-forward, `artisan down --retry=60`, `git merge --ff-only origin/main`, `composer install --no-dev --prefer-dist --optimize-autoloader`, `npm ci` + `npm run build`, `migrate --force`, `optimize` + `filament:optimize`, `queue:restart`, `up`, health check (12 × 5 s on the login page, expects 200), then requires `queue:work` processes for `default`, `backups`, `reports`. No backup step. Since `optimize` runs `view:cache`, which clears compiled views first, the deleted published Filament views needed no extra step.
+- **Production PHP (Phase A):** Ubuntu 24.04 package `8.3.6-0ubuntu0.24.04.13`, installed 2026-10-22, changelog carries the PHP2Shell patch (CVE-2026-109618 / 109619); `php-fpm8.3` had been restarted after it (running since 2026-10-28), so the web runtime was already safe. CVE-2026-115560 not mentioned → `session.upload_progress.enabled = 0` set in the FPM and CLI `php.ini` (both backed up as `php.ini.bak-2026-11-01`), FPM restarted, verified `Off`, login page 200. No PHP upgrade: Ubuntu back-ports fixes under the same version number and `apt` offers nothing newer.
+- **Found in passing — queue workers dead since 2026-10-24 06:24:** Supervisor started before MySQL at boot, the three `queue:work` programs failed 3× in ~7 s and went FATAL. 17 jobs waited (9 `CreateBackupJob`, 8 `RetentionCleanupJob`), i.e. **no automatic backups from 2026-10-25 to 2026-11-01**. Workers started via `supervisorctl`; the queue drained in under a minute, `failed_jobs` stayed 0, 9 catch-up backups were written. Side effect: retention (7 daily) pruned the Oct 18–24 dailies; weeklies of Oct 9 / 16 / 23 remain.
+- **Pre-deploy backup (Phase C):** `mysqldump --single-transaction --routines --triggers --no-tablespaces` → `/home/oms/backups/oms-pre-deploy-2026-11-01-1419.sql.gz` (488 KB, 59 tables, `gunzip -t` OK); code tar without `vendor` / `node_modules` / `storage/app` (70 MB); rollback commit `68cb1c6`.
+- **Deploy (Phase D):** `oms-deploy` exit 0, 14:20:25 → 14:20:47 (≈ 20 s maintenance), `68cb1c6` → `56fabcf`, repository clean, HTTPS 200 on first attempt, three workers respawned by Supervisor, 545-line log with no ERROR / WARNING. No migrations pending (79 ran; last `2026_10_18_100000_add_donor_project_number_to_projects_table`, so production already carried the Oct 18 work).
+- Other facts: production is `fpm-fcgi` (checklist R1 satisfied); project at `/var/www/oms`, owner `oms`; Supervisor programs `oms-default-worker`, `oms-backup-worker`, `oms-reports-worker` in `/etc/supervisor/conf.d/oms-workers.conf`; scheduler cron present; disk 96 GB with 93 GB free; database ≈ 12 MB, 59 tables; backups disk `storage/app/private/backups` (encrypted `.omsbak.enc`).
+
+### Changed Files
+- Server only (outside git): `/etc/php/8.3/fpm/php.ini`, `/etc/php/8.3/cli/php.ini` (one directive each). Repository: `docs/*.md` (this record).
+
+### Verification
+- Phase B: `php -i` and `php-fpm8.3 -i` read `session.upload_progress.enabled => Off`; FPM `active`; login 200.
+- Phase C0: `supervisorctl status` RUNNING ×3; jobs table 0; `failed_jobs` 0; new backup files listed.
+- Phase D: script final status block above; Phase E (read-only post-checks) was running when this entry was written; the user confirmed the panel looks right («الامور تمام مبدئيا»).
+- Not exercised on production: exports, limited-user relation-manager tab.
+
+### Commit Hash
+Pending on `main`.
+
+---
+### Date
 2026-11-01 (Smoke test of merged `main` on the LAN stress site `oms_stress`)
 
 ### Task
