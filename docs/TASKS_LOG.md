@@ -16,6 +16,27 @@
 ---
 
 ### Date
+2026-11-01 (Production: Supervisor boot-order fix for the queue workers)
+
+### Task
+Close the follow-up from the deploy entry below: the three `queue:work` programs died at the 2026-10-24 boot because Supervisor started them before MySQL accepted connections. Same working mode: phased prompt to the server's Claude Code (read-only preparation and verification), root command run by the user.
+
+### Result
+- **Diagnosis on record** (`/var/log/supervisor/supervisord.log`, 2026-10-24): supervisord started 06:23:56, spawned the three programs four times, each exited with status 1 («Connection refused» in the worker logs), and all three «entered FATAL state, too many start retries too quickly» by 06:24:10; `mysql.service` became active at 06:24:09. The workers missed the database by about one second; `supervisor.service` only had `After=network.target`.
+- **Fix applied 14:49 IST:** `/etc/supervisor/conf.d/oms-workers.conf` — `startsecs` 5 → 10 and `startretries` 3 → 10 in each of the three `[program:…]` sections (6 changed lines, nothing else; backup `oms-workers.conf.bak-2026-11-01`). New systemd drop-in `/etc/systemd/system/supervisor.service.d/override.conf` with `[Unit] After=mysql.service` / `Wants=mysql.service`. Applied by `bash /home/oms/supervisor-fix/apply.sh` (prepared by the server Claude, run as root by the user): backup → install → `daemon-reload` → `supervisorctl reread` (3 × changed) → `supervisorctl update` (restarted the three programs; queue was empty) → status.
+- **Verified:** supervisord.log shows each program «entered RUNNING state, process has stayed up for > than 10 seconds (startsecs)»; `systemctl show supervisor.service` reports `Wants=mysql.service`, `After=… mysql.service …` and the drop-in path; workers present with fresh elapsed times; `jobs` 0, `failed_jobs` 0, no Laravel log entry today. No reboot test (would interrupt production); the next real reboot is the live test — check `supervisorctl status` and that the following night's 02:00 backup file exists.
+
+### Changed Files
+- Server only (outside git): `/etc/supervisor/conf.d/oms-workers.conf`, `/etc/systemd/system/supervisor.service.d/override.conf`. Repository: `docs/*.md`.
+
+### Verification
+- See Result; all read-only checks by the server Claude after the user's root command.
+
+### Commit Hash
+Pending on `main`.
+
+---
+### Date
 2026-11-01 (Production deploy of `main` 56fabcf + production PHP2Shell check + queue workers revived)
 
 ### Task

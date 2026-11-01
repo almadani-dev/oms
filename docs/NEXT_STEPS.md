@@ -3,7 +3,8 @@
 ## Recommended Next Step (2026-11-01 — `main` 56fabcf deployed to production; PHP2Shell closed everywhere)
 
 **0a. Production follow-ups (open, from the 2026-11-01 deploy — TASKS_LOG):**
-- **Supervisor boot race (do soon):** the three `queue:work` programs die at boot when Supervisor starts before MySQL (happened 2026-10-24, left production without backups for 8 days). Fix in `/etc/supervisor/conf.d/oms-workers.conf`: `startretries=10`, `startsecs=10` (or a systemd drop-in `After=mysql.service` / `Wants=mysql.service` for `supervisor.service`), then `supervisorctl reread && update`. Verify with a controlled restart of the workers, not of the server.
+- Supervisor boot race: **fixed 2026-11-01 14:49** (`startsecs=10`, `startretries=10`, systemd drop-in `After=`/`Wants=mysql.service`; TASKS_LOG). After the next real reboot: `sudo supervisorctl status` must show the three workers RUNNING and the next 02:00 backup file must appear.
+- Rotate the `oms` sudo password on the server (it was typed in a visible session on 2026-11-01) and clear it from the shell history.
 - **Backup monitoring:** nothing alerts when `CreateBackupJob` stops running; consider a scheduled check that the newest file in `storage/app/private/backups` is < 26 h old (or `queue:monitor`), with a notification.
 - Change the local stress-environment password that was typed into chat on 2026-11-01 (not stored anywhere by the assistant).
 - Locally: `session.upload_progress.enabled = 0` is NOT yet set in `C:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.ini` (defence in depth only; dev machine).
