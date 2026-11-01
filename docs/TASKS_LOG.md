@@ -16,6 +16,28 @@
 ---
 
 ### Date
+2026-11-01 (Smoke test of merged `main` on the LAN stress site `oms_stress`)
+
+### Task
+User asked how to try the update on the stress database / site, then gave blanket approval («خود كل الصلاحيات … واعطيني النتائج»). No code change; verification only.
+
+### Result
+- The stress vhost serves the same checkout (`C:/laragon/www/oms`) with `APP_ENV=stress` / `oms_stress` / `storage\stress`, so merged `main` (`7a441ac`) was already live there on PHP 8.3.36. `php artisan --env=stress view:clear` run first (its compiled views are separate from the normal site's and still held pre-cleanup copies).
+- Signed in by the user. Verified in the built-in browser: red stress banner; `<html lang="ar-u-nu-latn" dir="rtl">`; sidebar 7 groups / 34 items all `display: flex`; comprehensive report page (550,319 transactions, 1,221,151 lines) renders; receipts list (10 rows, pagination); projects list; project 1 View with the costs RelationManager (1 row, «إضافة project cost» / تعديل / حذف visible) — it lazy-loads via `x-intersect`, so it only renders once scrolled into view; Muwakha family 420 View (5 sections, linked-accounts table 1 row, 8 `fi-sr-only` labels); receipt Create form (all fields) with the donor picker: first 50 on open, `100%` → 0 results (the `%` is escaped by the Filament 5.11 `like … escape '!'` query), `النور` → 18 results. Every Livewire update 200.
+- **Transient finding:** the two first requests after `view:clear` (13:27:10 / 13:27:26) logged `rename(…\views\xxx.tmp → …php): Access is denied (code: 5)` and answered 500 — two of the 16 php-cgi workers compiled the same Blade view at once and Windows refused the second rename over the open file. Not application code; it did not recur once the views were compiled (0 further log entries). On Windows pools, run `view:clear` only when the pool is idle, or warm one page before opening several.
+
+### Changed Files
+- `docs/TASKS_LOG.md`, `docs/AI_PROJECT_MEMORY.md`, `docs/NEXT_STEPS.md` (this record only)
+
+### Verification
+- Browser checks above; `storage/stress/logs/laravel.log` has no entries after the two compile-race errors; Apache error log clean.
+- Not exercised: Excel / Word / CSV exports (download approval), limited-user relation-manager tab.
+
+### Commit Hash
+Pending on `main`.
+
+---
+### Date
 2026-10-31 (Browser smoke test on Filament 5.11 + stale published panel views removed)
 
 ### Task
