@@ -34,7 +34,7 @@ User asked how to try the update on the stress database / site, then gave blanke
 - Not exercised: Excel / Word / CSV exports (download approval), limited-user relation-manager tab.
 
 ### Commit Hash
-Pending on `main`.
+`0ea9022` on `main` (hash line added in the follow-up commit).
 
 ---
 ### Date
