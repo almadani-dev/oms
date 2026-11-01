@@ -39,7 +39,7 @@ User asked to move the update to the production server, driven through the Claud
 - Not exercised on production: exports, limited-user relation-manager tab.
 
 ### Commit Hash
-Pending on `main`.
+`8d4448f` on `main` (hash line added in the follow-up commit).
 
 ---
 ### Date
