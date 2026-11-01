@@ -33,7 +33,7 @@ Close the follow-up from the deploy entry below: the three `queue:work` programs
 - See Result; all read-only checks by the server Claude after the user's root command.
 
 ### Commit Hash
-Pending on `main`.
+`b428516` on `main` (hash line added in the follow-up commit).
 
 ---
 ### Date
